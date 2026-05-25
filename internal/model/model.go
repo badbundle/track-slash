@@ -1,0 +1,53 @@
+package model
+
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type Status string
+
+const (
+	StatusTodo       Status = "todo"
+	StatusInProgress Status = "in_progress"
+	StatusDone       Status = "done"
+)
+
+func (s Status) Valid() bool {
+	switch s {
+	case StatusTodo, StatusInProgress, StatusDone:
+		return true
+	}
+	return false
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Project struct {
+	ID          uuid.UUID `json:"id"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Issue struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	Number      int        `json:"number"`
+	Identifier  string     `json:"identifier"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Status      Status     `json:"status"`
+	AssigneeID  *uuid.UUID `json:"assignee_id,omitempty"`
+	ReporterID  *uuid.UUID `json:"reporter_id,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
