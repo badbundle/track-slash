@@ -31,7 +31,7 @@ func (s *Store) CreateUser(ctx context.Context, email, name string) (model.User,
 }
 
 func (s *Store) GetUser(ctx context.Context, id uuid.UUID) (model.User, error) {
-	const q = `SELECT id, email, name, created_at FROM users WHERE id = $1`
+	const q = `SELECT id, email, name, created_at FROM users WHERE id = $1 AND deleted_at IS NULL`
 	var u model.User
 	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
 	if err != nil {
@@ -60,10 +60,10 @@ type ListUsersParams struct {
 // strictly monotonic.
 func (s *Store) ListUsers(ctx context.Context, p ListUsersParams) ([]model.User, bool, error) {
 	args := []any{}
-	q := `SELECT id, email, name, created_at FROM users`
+	q := `SELECT id, email, name, created_at FROM users WHERE deleted_at IS NULL`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += ` WHERE (created_at, id) > ($1, $2)`
+		q += ` AND (created_at, id) > ($1, $2)`
 	}
 	args = append(args, p.Limit+1)
 	q += fmt.Sprintf(` ORDER BY created_at ASC, id ASC LIMIT $%d`, len(args))
@@ -90,4 +90,19 @@ func (s *Store) ListUsers(ctx context.Context, p ListUsersParams) ([]model.User,
 		users = users[:p.Limit]
 	}
 	return users, hasMore, nil
+}
+
+func (s *Store) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE users SET deleted_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id)
+	if err != nil {
+		// Defensive: soft-delete has no expected FK/check mapping.
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

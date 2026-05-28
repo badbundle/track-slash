@@ -25,7 +25,8 @@ type CreateSprintParams struct {
 func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.Sprint, error) {
 	const q = `
 		INSERT INTO sprints (project_id, name, goal, start_date, end_date)
-		VALUES ($1, $2, $3, $4, $5)
+		SELECT id, $2, $3, $4, $5 FROM projects
+		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id, project_id, name, goal, status, start_date, end_date,
 		          completed_at, created_at, updated_at
 	`
@@ -35,6 +36,9 @@ func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.S
 		&out.StartDate, &out.EndDate, &out.CompletedAt, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
+		if isNoRows(err) {
+			return model.Sprint{}, fmt.Errorf("project not found: %w", ErrNotFound)
+		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
@@ -53,7 +57,7 @@ func (s *Store) GetSprint(ctx context.Context, id uuid.UUID) (model.Sprint, erro
 	const q = `
 		SELECT id, project_id, name, goal, status, start_date, end_date,
 		       completed_at, created_at, updated_at
-		FROM sprints WHERE id = $1
+		FROM sprints WHERE id = $1 AND deleted_at IS NULL
 	`
 	var out model.Sprint
 	err := s.db.QueryRow(ctx, q, id).Scan(
@@ -90,7 +94,7 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 		SELECT id, project_id, name, goal, status, start_date, end_date,
 		       completed_at, created_at, updated_at
 		FROM sprints
-		WHERE project_id = $1
+		WHERE project_id = $1 AND deleted_at IS NULL
 	`
 	if p.Status != "" {
 		args = append(args, string(p.Status))
@@ -145,7 +149,7 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 	var out model.Sprint
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var current model.SprintStatus
-		err := tx.QueryRow(ctx, `SELECT status FROM sprints WHERE id = $1 FOR UPDATE`, id).Scan(&current)
+		err := tx.QueryRow(ctx, `SELECT status FROM sprints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&current)
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -191,7 +195,7 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 			return tx.QueryRow(ctx, `
 				SELECT id, project_id, name, goal, status, start_date, end_date,
 				       completed_at, created_at, updated_at
-				FROM sprints WHERE id = $1
+				FROM sprints WHERE id = $1 AND deleted_at IS NULL
 			`, id).Scan(
 				&out.ID, &out.ProjectID, &out.Name, &out.Goal, &out.Status,
 				&out.StartDate, &out.EndDate, &out.CompletedAt, &out.CreatedAt, &out.UpdatedAt,
@@ -201,7 +205,7 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 		sets = append(sets, "updated_at = now()")
 		args = append(args, id)
 		q := fmt.Sprintf(`
-			UPDATE sprints SET %s WHERE id = $%d
+			UPDATE sprints SET %s WHERE id = $%d AND deleted_at IS NULL
 			RETURNING id, project_id, name, goal, status, start_date, end_date,
 			          completed_at, created_at, updated_at
 		`, strings.Join(sets, ", "), i)
@@ -253,7 +257,7 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		var projectID uuid.UUID
 		var status model.SprintStatus
 		err := tx.QueryRow(ctx, `
-			SELECT project_id, status FROM sprints WHERE id = $1 FOR UPDATE
+			SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
 		`, id).Scan(&projectID, &status)
 		if err != nil {
 			if isNoRows(err) {
@@ -269,7 +273,7 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		var t uuid.UUID
 		err = tx.QueryRow(ctx, `
 			SELECT id FROM sprints
-			WHERE project_id = $1 AND status = 'planned'
+			WHERE project_id = $1 AND status = 'planned' AND deleted_at IS NULL
 			ORDER BY start_date ASC, created_at ASC
 			LIMIT 1
 		`, projectID).Scan(&t)
@@ -282,7 +286,7 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 
 		if _, err := tx.Exec(ctx, `
 			UPDATE issues SET sprint_id = $2, updated_at = now()
-			WHERE sprint_id = $1 AND status <> 'done'
+			WHERE sprint_id = $1 AND status <> 'done' AND deleted_at IS NULL
 		`, id, target); err != nil {
 			return err
 		}
@@ -290,7 +294,7 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		return tx.QueryRow(ctx, `
 			UPDATE sprints
 			SET status = 'completed', completed_at = now(), updated_at = now()
-			WHERE id = $1
+			WHERE id = $1 AND deleted_at IS NULL
 			RETURNING id, project_id, name, goal, status, start_date, end_date,
 			          completed_at, created_at, updated_at
 		`, id).Scan(
@@ -302,4 +306,33 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		return model.Sprint{}, err
 	}
 	return out, nil
+}
+
+func (s *Store) DeleteSprint(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE sprints SET deleted_at = now(), updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL AND status <> 'active'
+	`, id)
+	if err != nil {
+		// Defensive: soft-delete has no expected FK/check mapping.
+		return err
+	}
+	if tag.RowsAffected() > 0 {
+		return nil
+	}
+	var status model.SprintStatus
+	err = s.db.QueryRow(ctx, `
+		SELECT status FROM sprints WHERE id = $1 AND deleted_at IS NULL
+	`, id).Scan(&status)
+	if err != nil {
+		if isNoRows(err) {
+			return ErrNotFound
+		}
+		// Defensive: only no-rows has a domain mapping here.
+		return err
+	}
+	if status == model.SprintStatusActive {
+		return fmt.Errorf("cannot delete active sprint: %w", ErrConflict)
+	}
+	return ErrNotFound
 }

@@ -224,3 +224,16 @@ func (s *Server) completeSprint(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, sp)
 }
+
+func (s *Server) deleteSprint(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := s.store.DeleteSprint(r.Context(), id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -30,7 +30,7 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 			sourceStatus  model.Status
 		)
 		err := tx.QueryRow(ctx, `
-			SELECT project_id, status FROM issues WHERE id = $1 FOR UPDATE
+			SELECT project_id, status FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
 		`, p.SourceID).Scan(&sourceProject, &sourceStatus)
 		if err != nil {
 			if isNoRows(err) {
@@ -40,7 +40,7 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 		}
 
 		var targetProject uuid.UUID
-		err = tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1`, p.TargetID).Scan(&targetProject)
+		err = tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1 AND deleted_at IS NULL`, p.TargetID).Scan(&targetProject)
 		if err != nil {
 			if isNoRows(err) {
 				return fmt.Errorf("target issue not found: %w", ErrConflict)
@@ -128,6 +128,15 @@ type ListIssueLinksForIssueParams struct {
 // outgoing (source_id = id) and incoming (target_id = id). The HTTP layer
 // derives direction-aware display names.
 func (s *Store) ListIssueLinksForIssue(ctx context.Context, p ListIssueLinksForIssueParams) ([]model.IssueLink, bool, error) {
+	var issueID uuid.UUID
+	if err := s.db.QueryRow(ctx, `SELECT id FROM issues WHERE id = $1 AND deleted_at IS NULL`, p.IssueID).Scan(&issueID); err != nil {
+		if isNoRows(err) {
+			return nil, false, ErrNotFound
+		}
+		// Defensive: only no-rows has a domain mapping here.
+		return nil, false, err
+	}
+
 	args := []any{p.IssueID}
 	q := `
 		SELECT id, project_id, source_id, target_id, link_type, created_at, updated_at

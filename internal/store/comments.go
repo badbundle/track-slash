@@ -21,7 +21,7 @@ type CreateCommentParams struct {
 func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model.Comment, error) {
 	const q = `
 		INSERT INTO comments (issue_id, author_id, body)
-		VALUES ($1, $2, $3)
+		SELECT id, $2, $3 FROM issues WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id, issue_id, author_id, body, created_at, updated_at
 	`
 	var out model.Comment
@@ -29,6 +29,9 @@ func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model
 		&out.ID, &out.IssueID, &out.AuthorID, &out.Body, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
+		if isNoRows(err) {
+			return model.Comment{}, fmt.Errorf("issue not found: %w", ErrNotFound)
+		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
@@ -76,7 +79,7 @@ type ListCommentsForIssueParams struct {
 
 func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssueParams) ([]model.Comment, bool, error) {
 	var issueID uuid.UUID
-	if err := s.db.QueryRow(ctx, `SELECT id FROM issues WHERE id = $1`, p.IssueID).Scan(&issueID); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT id FROM issues WHERE id = $1 AND deleted_at IS NULL`, p.IssueID).Scan(&issueID); err != nil {
 		if isNoRows(err) {
 			return nil, false, ErrNotFound
 		}

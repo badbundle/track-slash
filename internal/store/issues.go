@@ -30,7 +30,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		)
 		err := tx.QueryRow(ctx, `
 			SELECT next_issue_number, key
-			FROM projects WHERE id = $1
+			FROM projects WHERE id = $1 AND deleted_at IS NULL
 			FOR UPDATE
 		`, p.ProjectID).Scan(&number, &projectKey)
 		if err != nil {
@@ -81,7 +81,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
-		WHERE i.id = $1
+		WHERE i.id = $1 AND i.deleted_at IS NULL AND p.deleted_at IS NULL
 	`
 	var iss model.Issue
 	var key string
@@ -129,7 +129,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
-		WHERE i.id = ANY($1)
+		WHERE i.id = ANY($1) AND i.deleted_at IS NULL AND p.deleted_at IS NULL
 	`
 	rows, err := s.db.Query(ctx, q, ids)
 	if err != nil {
@@ -160,7 +160,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
-		WHERE i.project_id = $1
+		WHERE i.project_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
 	`
 	if p.Status != "" {
 		args = append(args, string(p.Status))
@@ -260,7 +260,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	sets = append(sets, "updated_at = now()")
 	args = append(args, id)
 	q := fmt.Sprintf(`
-		UPDATE issues SET %s WHERE id = $%d
+		UPDATE issues SET %s WHERE id = $%d AND deleted_at IS NULL
 	`, strings.Join(sets, ", "), i)
 
 	// When assigning a sprint, guard against cross-project assignment in a tx.
@@ -269,13 +269,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.SprintID != nil && !p.ClearSprint {
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			var issueProject, sprintProject uuid.UUID
-			if err := tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1 FOR UPDATE`, id).Scan(&issueProject); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject); err != nil {
 				if isNoRows(err) {
 					return ErrNotFound
 				}
 				return err
 			}
-			if err := tx.QueryRow(ctx, `SELECT project_id FROM sprints WHERE id = $1`, *p.SprintID).Scan(&sprintProject); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject); err != nil {
 				if isNoRows(err) {
 					return fmt.Errorf("sprint not found: %w", ErrConflict)
 				}
@@ -309,4 +309,19 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		return model.Issue{}, ErrNotFound
 	}
 	return s.GetIssue(ctx, id)
+}
+
+func (s *Store) DeleteIssue(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE issues SET deleted_at = now(), updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id)
+	if err != nil {
+		// Defensive: soft-delete has no expected FK/check mapping.
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
