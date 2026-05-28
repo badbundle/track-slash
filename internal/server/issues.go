@@ -62,9 +62,26 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
 	params := store.ListIssuesParams{
 		ProjectID: projectID,
 		Status:    statusFilter,
+		Cursor:    cursor,
+		Limit:     limit,
 	}
 
 	sprintParam := r.URL.Query().Get("sprint")
@@ -88,12 +105,18 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		params.SprintID = &sid
 	}
 
-	out, err := s.store.ListIssues(r.Context(), params)
+	out, hasMore, err := s.store.ListIssues(r.Context(), params)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	var next *string
+	if hasMore {
+		last := out[len(out)-1]
+		enc := encodeCursor(store.IssuesCursor{Number: last.Number})
+		next = &enc
+	}
+	writePage(w, out, next)
 }
 
 // maxBatchIssues caps the number of ids accepted by /issues?ids= to keep

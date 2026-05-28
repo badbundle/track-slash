@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 type createUserReq struct {
@@ -39,12 +41,36 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.store.ListUsers(r.Context())
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.UsersCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.UsersCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
+	users, hasMore, err := s.store.ListUsers(r.Context(), store.ListUsersParams{
+		Cursor: cursor,
+		Limit:  limit,
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+	var next *string
+	if hasMore {
+		last := users[len(users)-1]
+		enc := encodeCursor(store.UsersCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		next = &enc
+	}
+	writePage(w, users, next)
 }
 
 func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {

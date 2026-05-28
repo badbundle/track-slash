@@ -250,7 +250,7 @@ func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
-	sprints := decode[[]model.Sprint](t, body)
+	sprints := decodePage[model.Sprint](t, body).Items
 	if len(sprints) != 2 {
 		t.Fatalf("len = %d", len(sprints))
 	}
@@ -576,7 +576,7 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("backlog code = %d", code)
 	}
-	got := decode[[]model.Issue](t, body)
+	got := decodePage[model.Issue](t, body).Items
 	if len(got) != 1 || got[0].ID != backlog.ID {
 		t.Fatalf("backlog list = %+v, want only %s", got, backlog.ID)
 	}
@@ -586,7 +586,7 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("by sprint code = %d", code)
 	}
-	got = decode[[]model.Issue](t, body)
+	got = decodePage[model.Issue](t, body).Items
 	if len(got) != 1 || got[0].ID != inSprint.ID {
 		t.Fatalf("by sprint = %+v, want only %s", got, inSprint.ID)
 	}

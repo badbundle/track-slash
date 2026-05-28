@@ -94,15 +94,42 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.store.ListSprints(r.Context(), store.ListSprintsParams{
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.SprintsCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.SprintsCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
+	out, hasMore, err := s.store.ListSprints(r.Context(), store.ListSprintsParams{
 		ProjectID: projectID,
 		Status:    statusFilter,
+		Cursor:    cursor,
+		Limit:     limit,
 	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	var next *string
+	if hasMore {
+		last := out[len(out)-1]
+		enc := encodeCursor(store.SprintsCursor{
+			StartDate: last.StartDate,
+			CreatedAt: last.CreatedAt,
+			ID:        last.ID,
+		})
+		next = &enc
+	}
+	writePage(w, out, next)
 }
 
 func (s *Server) getSprint(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 var projectKeyRe = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,9}$`)
@@ -43,12 +45,36 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
-	out, err := s.store.ListProjects(r.Context())
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.ProjectsCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.ProjectsCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
+	out, hasMore, err := s.store.ListProjects(r.Context(), store.ListProjectsParams{
+		Cursor: cursor,
+		Limit:  limit,
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
+	var next *string
+	if hasMore {
+		last := out[len(out)-1]
+		enc := encodeCursor(store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		next = &enc
+	}
+	writePage(w, out, next)
 }
 
 func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {

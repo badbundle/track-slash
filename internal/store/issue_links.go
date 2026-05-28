@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -110,34 +111,61 @@ func (s *Store) GetIssueLink(ctx context.Context, id uuid.UUID) (model.IssueLink
 	return out, nil
 }
 
-// ListIssueLinksForIssue returns all links touching the given issue id, both
+// IssueLinksCursor keys off (created_at, id) — created_at alone can tie under
+// rapid bulk inserts so id is the deterministic tiebreaker.
+type IssueLinksCursor struct {
+	CreatedAt time.Time `json:"t"`
+	ID        uuid.UUID `json:"i"`
+}
+
+type ListIssueLinksForIssueParams struct {
+	IssueID uuid.UUID
+	Cursor  *IssueLinksCursor
+	Limit   int
+}
+
+// ListIssueLinksForIssue returns links touching the given issue id, both
 // outgoing (source_id = id) and incoming (target_id = id). The HTTP layer
 // derives direction-aware display names.
-func (s *Store) ListIssueLinksForIssue(ctx context.Context, issueID uuid.UUID) ([]model.IssueLink, error) {
-	const q = `
+func (s *Store) ListIssueLinksForIssue(ctx context.Context, p ListIssueLinksForIssueParams) ([]model.IssueLink, bool, error) {
+	args := []any{p.IssueID}
+	q := `
 		SELECT id, project_id, source_id, target_id, link_type, created_at, updated_at
 		FROM issue_links
-		WHERE source_id = $1 OR target_id = $1
-		ORDER BY created_at ASC
+		WHERE (source_id = $1 OR target_id = $1)
 	`
-	rows, err := s.db.Query(ctx, q, issueID)
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
+		q += fmt.Sprintf(" AND (created_at, id) > ($%d, $%d)", len(args)-1, len(args))
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(" ORDER BY created_at ASC, id ASC LIMIT $%d", len(args))
+
+	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
-	out := []model.IssueLink{}
+	out := make([]model.IssueLink, 0, p.Limit)
 	for rows.Next() {
 		var l model.IssueLink
 		if err := rows.Scan(
 			&l.ID, &l.ProjectID, &l.SourceID, &l.TargetID, &l.LinkType,
 			&l.CreatedAt, &l.UpdatedAt,
 		); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		out = append(out, l)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
 }
 
 func (s *Store) DeleteIssueLink(ctx context.Context, id uuid.UUID) error {

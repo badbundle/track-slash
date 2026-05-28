@@ -221,7 +221,7 @@ func TestHTTPListIssueLinksDirectionalView(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("list code = %d", code)
 	}
-	got := decode[[]linkView](t, body)
+	got := decodePage[linkView](t, body).Items
 	if len(got) != len(cases)+1 {
 		t.Fatalf("len = %d, want %d", len(got), len(cases)+1)
 	}
@@ -293,7 +293,7 @@ func TestHTTPListIssueLinksIncomingDisplayNames(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("list code = %d", code)
 	}
-	got := decode[[]linkView](t, body)
+	got := decodePage[linkView](t, body).Items
 	displayByType := map[model.LinkType]string{}
 	for _, v := range got {
 		if v.Direction != "incoming" {
@@ -323,8 +323,9 @@ func TestHTTPListIssueLinksEmpty(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
-	if string(body) != "[]\n" && string(body) != "[]" {
-		t.Fatalf("body = %q, want empty array", body)
+	p := decodePage[linkView](t, body)
+	if len(p.Items) != 0 || p.NextCursor != nil {
+		t.Fatalf("envelope = %+v, want empty items + nil cursor", p)
 	}
 }
 

@@ -166,9 +166,12 @@ func TestListSprintsOrderingAndStatusFilter(t *testing.T) {
 	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
 	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
 
-	all, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID})
+	all, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID, Limit: 100})
 	if err != nil {
 		t.Fatalf("ListSprints: %v", err)
+	}
+	if more {
+		t.Fatalf("hasMore=true unexpectedly")
 	}
 	wantOrder := []uuid.UUID{a.ID, b.ID, c.ID}
 	if len(all) != 3 {
@@ -181,9 +184,10 @@ func TestListSprintsOrderingAndStatusFilter(t *testing.T) {
 	}
 
 	mustActivate(t, env, a.ID)
-	active, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+	active, _, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
 		ProjectID: env.projectID,
 		Status:    model.SprintStatusActive,
+		Limit:     100,
 	})
 	if err != nil {
 		t.Fatalf("ListSprints active: %v", err)
@@ -502,9 +506,12 @@ func TestUpdateSprintStatusNoOp(t *testing.T) {
 
 func TestListSprintsEmptyProject(t *testing.T) {
 	env := newSprintsEnv(t)
-	out, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID})
+	out, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID, Limit: 100})
 	if err != nil {
 		t.Fatalf("ListSprints: %v", err)
+	}
+	if more {
+		t.Fatalf("hasMore=true on empty list")
 	}
 	if len(out) != 0 {
 		t.Fatalf("len = %d, want 0", len(out))
@@ -622,10 +629,11 @@ func TestListIssuesStatusAndSprintCombined(t *testing.T) {
 	assignIssueToSprint(t, env, b.ID, sp.ID)
 	setIssueStatus(t, env, b.ID, model.StatusDone)
 
-	todoInSprint, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+	todoInSprint, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
 		ProjectID: env.projectID,
 		Status:    model.StatusTodo,
 		SprintID:  &sp.ID,
+		Limit:     100,
 	})
 	if err != nil {
 		t.Fatalf("ListIssues: %v", err)
@@ -634,10 +642,11 @@ func TestListIssuesStatusAndSprintCombined(t *testing.T) {
 		t.Fatalf("todo+sprint = %+v, want only %s", todoInSprint, a.ID)
 	}
 
-	doneBacklog, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+	doneBacklog, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
 		ProjectID: env.projectID,
 		Status:    model.StatusDone,
 		Backlog:   true,
+		Limit:     100,
 	})
 	if err != nil {
 		t.Fatalf("ListIssues backlog+done: %v", err)
@@ -658,8 +667,8 @@ func TestListIssuesBacklogFilter(t *testing.T) {
 	inSprint := mustCreateIssue(t, env, "in-sprint-1")
 	assignIssueToSprint(t, env, inSprint.ID, sp.ID)
 
-	backlog, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
-		ProjectID: env.projectID, Backlog: true,
+	backlog, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID, Backlog: true, Limit: 100,
 	})
 	if err != nil {
 		t.Fatalf("ListIssues backlog: %v", err)
@@ -668,8 +677,8 @@ func TestListIssuesBacklogFilter(t *testing.T) {
 		t.Fatalf("backlog = %+v, want only %s", backlog, backlogIss.ID)
 	}
 
-	bySprint, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
-		ProjectID: env.projectID, SprintID: &sp.ID,
+	bySprint, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID, SprintID: &sp.ID, Limit: 100,
 	})
 	if err != nil {
 		t.Fatalf("ListIssues by sprint: %v", err)
