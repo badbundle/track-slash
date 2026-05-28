@@ -69,6 +69,33 @@ type Issue struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+type LinkType string
+
+const (
+	LinkTypeBlocks     LinkType = "blocks"
+	LinkTypeDuplicates LinkType = "duplicates"
+	LinkTypeRelatesTo  LinkType = "relates_to"
+	LinkTypeClones     LinkType = "clones"
+)
+
+func (t LinkType) Valid() bool {
+	switch t {
+	case LinkTypeBlocks, LinkTypeDuplicates, LinkTypeRelatesTo, LinkTypeClones:
+		return true
+	}
+	return false
+}
+
+type IssueLink struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	SourceID  uuid.UUID `json:"source_id"`
+	TargetID  uuid.UUID `json:"target_id"`
+	LinkType  LinkType  `json:"link_type"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Sprint struct {
 	ID          uuid.UUID    `json:"id"`
 	ProjectID   uuid.UUID    `json:"project_id"`
