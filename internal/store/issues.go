@@ -104,6 +104,43 @@ type ListIssuesParams struct {
 	Status    model.Status // empty = all
 }
 
+// ListIssuesByIDs returns the issues matching the supplied id set, in no
+// guaranteed order. Missing ids are silently skipped — callers diff against
+// their request to detect deletions. Designed for batched WebSocket-driven
+// refetches; ids should be capped by the caller.
+func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.Issue, error) {
+	if len(ids) == 0 {
+		return []model.Issue{}, nil
+	}
+	const q = `
+		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
+		       i.assignee_id, i.reporter_id, i.created_at, i.updated_at
+		FROM issues i
+		JOIN projects p ON p.id = i.project_id
+		WHERE i.id = ANY($1)
+	`
+	rows, err := s.db.Query(ctx, q, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]model.Issue, 0, len(ids))
+	for rows.Next() {
+		var iss model.Issue
+		var key string
+		if err := rows.Scan(
+			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
+			&iss.AssigneeID, &iss.ReporterID, &iss.CreatedAt, &iss.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
+		out = append(out, iss)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, error) {
 	args := []any{p.ProjectID}
 	q := `

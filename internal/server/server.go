@@ -7,15 +7,17 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/bradleymackey/track-slash/internal/realtime"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 type Server struct {
 	store *store.Store
+	hub   *realtime.Hub
 }
 
-func New(s *store.Store) *Server {
-	return &Server{store: s}
+func New(s *store.Store, hub *realtime.Hub) *Server {
+	return &Server{store: s, hub: hub}
 }
 
 func (s *Server) Router() http.Handler {
@@ -25,27 +27,37 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(15 * time.Second))
 
 	r.Get("/healthz", s.healthz)
 
-	r.Route("/users", func(r chi.Router) {
-		r.Post("/", s.createUser)
-		r.Get("/", s.listUsers)
-		r.Get("/{id}", s.getUser)
-	})
+	// WebSocket endpoint sits outside the request-timeout group: the
+	// connection is long-lived and would otherwise be killed mid-stream.
+	if s.hub != nil {
+		r.Method(http.MethodGet, "/ws", s.hub.Handler())
+	}
 
-	r.Route("/projects", func(r chi.Router) {
-		r.Post("/", s.createProject)
-		r.Get("/", s.listProjects)
-		r.Get("/{id}", s.getProject)
-		r.Post("/{projectID}/issues", s.createIssue)
-		r.Get("/{projectID}/issues", s.listIssues)
-	})
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Timeout(15 * time.Second))
 
-	r.Route("/issues", func(r chi.Router) {
-		r.Get("/{id}", s.getIssue)
-		r.Patch("/{id}", s.updateIssue)
+		r.Route("/users", func(r chi.Router) {
+			r.Post("/", s.createUser)
+			r.Get("/", s.listUsers)
+			r.Get("/{id}", s.getUser)
+		})
+
+		r.Route("/projects", func(r chi.Router) {
+			r.Post("/", s.createProject)
+			r.Get("/", s.listProjects)
+			r.Get("/{id}", s.getProject)
+			r.Post("/{projectID}/issues", s.createIssue)
+			r.Get("/{projectID}/issues", s.listIssues)
+		})
+
+		r.Route("/issues", func(r chi.Router) {
+			r.Get("/", s.batchIssues)
+			r.Get("/{id}", s.getIssue)
+			r.Patch("/{id}", s.updateIssue)
+		})
 	})
 
 	return r
