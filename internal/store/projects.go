@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -34,7 +35,7 @@ func (s *Store) CreateProject(ctx context.Context, key, name, description string
 func (s *Store) GetProject(ctx context.Context, id uuid.UUID) (model.Project, error) {
 	const q = `
 		SELECT id, key, name, description, created_at, updated_at
-		FROM projects WHERE id = $1
+		FROM projects WHERE id = $1 AND deleted_at IS NULL
 	`
 	var p model.Project
 	err := s.db.QueryRow(ctx, q, id).
@@ -63,10 +64,11 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 	q := `
 		SELECT id, key, name, description, created_at, updated_at
 		FROM projects
+		WHERE deleted_at IS NULL
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += ` WHERE (created_at, id) > ($1, $2)`
+		q += ` AND (created_at, id) > ($1, $2)`
 	}
 	args = append(args, p.Limit+1)
 	q += fmt.Sprintf(` ORDER BY created_at ASC, id ASC LIMIT $%d`, len(args))
@@ -93,4 +95,35 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 		out = out[:p.Limit]
 	}
 	return out, hasMore, nil
+}
+
+func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE projects SET deleted_at = now(), updated_at = now()
+			WHERE id = $1 AND deleted_at IS NULL
+		`, id)
+		if err != nil {
+			// Defensive: soft-delete has no expected FK/check mapping.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE issues SET deleted_at = now(), updated_at = now()
+			WHERE project_id = $1 AND deleted_at IS NULL
+		`, id); err != nil {
+			// Defensive: cascading soft-delete has no expected FK/check mapping.
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE sprints SET deleted_at = now(), updated_at = now()
+			WHERE project_id = $1 AND deleted_at IS NULL
+		`, id)
+		if err != nil {
+			// Defensive: cascading soft-delete has no expected FK/check mapping.
+		}
+		return err
+	})
 }

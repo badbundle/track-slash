@@ -371,6 +371,82 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 	waitForCommentEvent(t, commentSub, commentID, issueID, projectID, OpDelete)
 }
 
+// TestListenerReceivesSoftDeleteAsDelete verifies updating deleted_at emits a
+// realtime delete op so subscribers see the same event kind as hard deletes.
+func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {
+	dbURL := testDatabaseURL()
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	sqlDB, err := sql.Open("pgx", dbURL)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := migrations.Up(sqlDB); err != nil {
+		t.Fatalf("migrations.Up: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	hub := NewHub()
+	listener := NewListener(dbURL, hub)
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	t.Cleanup(stopListener)
+	go listener.Run(listenerCtx)
+
+	time.Sleep(500 * time.Millisecond)
+
+	var projectID, issueID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
+	`, uniqueKey(t), "rt-soft-delete").Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'A') RETURNING id::text
+	`, projectID).Scan(&issueID); err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+
+	issueSub := newTestClient(16)
+	hub.Subscribe(issueSub, "issue:"+issueID)
+
+	if _, err := pool.Exec(ctx, `UPDATE issues SET deleted_at = now() WHERE id = $1`, issueID); err != nil {
+		t.Fatalf("soft-delete issue: %v", err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-issueSub.send:
+			if ev.Entity != EntityIssue {
+				continue
+			}
+			if ev.Op != OpDelete && ev.ID.String() == issueID {
+				continue
+			}
+			if ev.Op != OpDelete {
+				t.Fatalf("op = %s, want delete", ev.Op)
+			}
+			if ev.ID.String() != issueID {
+				t.Fatalf("id = %s, want %s", ev.ID, issueID)
+			}
+			return
+		case <-deadline:
+			t.Fatal("did not receive soft-delete event within 3s")
+		}
+	}
+}
+
 func waitForCommentEvent(t *testing.T, c *Client, commentID, issueID, projectID string, op Op) {
 	t.Helper()
 	deadline := time.After(3 * time.Second)

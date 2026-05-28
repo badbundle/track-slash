@@ -63,12 +63,14 @@ func (s *Server) Router() http.Handler {
 			r.Post("/", s.createUser)
 			r.Get("/", s.listUsers)
 			r.Get("/{id}", s.getUser)
+			r.Delete("/{id}", s.deleteUser)
 		})
 
 		r.Route("/projects", func(r chi.Router) {
 			r.Post("/", s.createProject)
 			r.Get("/", s.listProjects)
 			r.Get("/{id}", s.getProject)
+			r.Delete("/{id}", s.deleteProject)
 			r.Post("/{projectID}/issues", s.createIssue)
 			r.Get("/{projectID}/issues", s.listIssues)
 			r.Post("/{projectID}/sprints", s.createSprint)
@@ -79,6 +81,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/", s.batchIssues)
 			r.Get("/{id}", s.getIssue)
 			r.Patch("/{id}", s.updateIssue)
+			r.Delete("/{id}", s.deleteIssue)
 			r.Post("/{id}/comments", s.createComment)
 			r.Get("/{id}/comments", s.listComments)
 			r.Post("/{id}/links", s.createIssueLink)
@@ -94,6 +97,7 @@ func (s *Server) Router() http.Handler {
 		r.Route("/sprints", func(r chi.Router) {
 			r.Get("/{id}", s.getSprint)
 			r.Patch("/{id}", s.updateSprint)
+			r.Delete("/{id}", s.deleteSprint)
 			r.Post("/{id}/complete", s.completeSprint)
 		})
 

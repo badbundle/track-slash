@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -22,6 +22,7 @@ import (
 // alongside a freshly created project for test isolation.
 type sprintsTestEnv struct {
 	ctx       context.Context
+	pool      *pgxpool.Pool
 	store     *store.Store
 	projectID uuid.UUID
 }
@@ -56,7 +57,7 @@ func newSprintsEnv(t *testing.T) *sprintsTestEnv {
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
-	return &sprintsTestEnv{ctx: ctx, store: s, projectID: proj.ID}
+	return &sprintsTestEnv{ctx: ctx, pool: pool, store: s, projectID: proj.ID}
 }
 
 func uniqueProjectKey(t *testing.T) string {
