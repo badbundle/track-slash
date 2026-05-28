@@ -270,7 +270,7 @@ func TestListIssueLinksForIssueReturnsBothDirections(t *testing.T) {
 		t.Fatalf("incoming: %v", err)
 	}
 
-	links, err := env.store.ListIssueLinksForIssue(env.ctx, a.ID)
+	links, _, err := env.store.ListIssueLinksForIssue(env.ctx, store.ListIssueLinksForIssueParams{IssueID: a.ID, Limit: 100})
 	if err != nil {
 		t.Fatalf("ListIssueLinksForIssue: %v", err)
 	}
@@ -289,9 +289,12 @@ func TestListIssueLinksForIssueReturnsBothDirections(t *testing.T) {
 func TestListIssueLinksForIssueEmpty(t *testing.T) {
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "lone")
-	links, err := env.store.ListIssueLinksForIssue(env.ctx, a.ID)
+	links, more, err := env.store.ListIssueLinksForIssue(env.ctx, store.ListIssueLinksForIssueParams{IssueID: a.ID, Limit: 100})
 	if err != nil {
 		t.Fatalf("ListIssueLinksForIssue: %v", err)
+	}
+	if more {
+		t.Fatalf("hasMore=true on empty list")
 	}
 	if len(links) != 0 {
 		t.Fatalf("len = %d, want 0", len(links))

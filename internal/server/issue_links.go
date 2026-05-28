@@ -62,7 +62,27 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid issue id")
 		return
 	}
-	links, err := s.store.ListIssueLinksForIssue(r.Context(), issueID)
+
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.IssueLinksCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssueLinksCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
+	links, hasMore, err := s.store.ListIssueLinksForIssue(r.Context(), store.ListIssueLinksForIssueParams{
+		IssueID: issueID,
+		Cursor:  cursor,
+		Limit:   limit,
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -81,7 +101,13 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, v)
 	}
-	writeJSON(w, http.StatusOK, out)
+	var next *string
+	if hasMore {
+		last := links[len(links)-1]
+		enc := encodeCursor(store.IssueLinksCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+		next = &enc
+	}
+	writePage(w, out, next)
 }
 
 func (s *Server) getIssueLink(w http.ResponseWriter, r *http.Request) {

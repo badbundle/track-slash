@@ -72,9 +72,19 @@ func (s *Store) GetSprint(ctx context.Context, id uuid.UUID) (model.Sprint, erro
 type ListSprintsParams struct {
 	ProjectID uuid.UUID
 	Status    model.SprintStatus // empty = all
+	Cursor    *SprintsCursor
+	Limit     int
 }
 
-func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.Sprint, error) {
+// SprintsCursor keys off (start_date, created_at, id) matching the list's
+// stable ordering. All three are needed because start_date+created_at can tie.
+type SprintsCursor struct {
+	StartDate time.Time `json:"s"`
+	CreatedAt time.Time `json:"c"`
+	ID        uuid.UUID `json:"i"`
+}
+
+func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.Sprint, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
 		SELECT id, project_id, name, goal, status, start_date, end_date,
@@ -86,26 +96,39 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 		args = append(args, string(p.Status))
 		q += fmt.Sprintf(" AND status = $%d", len(args))
 	}
-	q += " ORDER BY start_date ASC, created_at ASC"
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.StartDate, p.Cursor.CreatedAt, p.Cursor.ID)
+		q += fmt.Sprintf(" AND (start_date, created_at, id) > ($%d, $%d, $%d)",
+			len(args)-2, len(args)-1, len(args))
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(" ORDER BY start_date ASC, created_at ASC, id ASC LIMIT $%d", len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
-	out := []model.Sprint{}
+	out := make([]model.Sprint, 0, p.Limit)
 	for rows.Next() {
 		var sp model.Sprint
 		if err := rows.Scan(
 			&sp.ID, &sp.ProjectID, &sp.Name, &sp.Goal, &sp.Status,
 			&sp.StartDate, &sp.EndDate, &sp.CompletedAt, &sp.CreatedAt, &sp.UpdatedAt,
 		); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		out = append(out, sp)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
 }
 
 type UpdateSprintParams struct {

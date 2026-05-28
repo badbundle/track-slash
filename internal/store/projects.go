@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -46,24 +48,49 @@ func (s *Store) GetProject(ctx context.Context, id uuid.UUID) (model.Project, er
 	return p, nil
 }
 
-func (s *Store) ListProjects(ctx context.Context) ([]model.Project, error) {
-	const q = `
+type ProjectsCursor struct {
+	CreatedAt time.Time `json:"t"`
+	ID        uuid.UUID `json:"i"`
+}
+
+type ListProjectsParams struct {
+	Cursor *ProjectsCursor
+	Limit  int
+}
+
+func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model.Project, bool, error) {
+	args := []any{}
+	q := `
 		SELECT id, key, name, description, created_at, updated_at
-		FROM projects ORDER BY created_at ASC
+		FROM projects
 	`
-	rows, err := s.db.Query(ctx, q)
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
+		q += ` WHERE (created_at, id) > ($1, $2)`
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(` ORDER BY created_at ASC, id ASC LIMIT $%d`, len(args))
+
+	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
-	out := []model.Project{}
+	out := make([]model.Project, 0, p.Limit)
 	for rows.Next() {
-		var p model.Project
-		if err := rows.Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
-			return nil, err
+		var pr model.Project
+		if err := rows.Scan(&pr.ID, &pr.Key, &pr.Name, &pr.Description, &pr.CreatedAt, &pr.UpdatedAt); err != nil {
+			return nil, false, err
 		}
-		out = append(out, p)
+		out = append(out, pr)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
 }

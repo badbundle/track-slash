@@ -106,6 +106,14 @@ type ListIssuesParams struct {
 	// and SprintID is ignored. Both nil/false → no sprint filter.
 	SprintID *uuid.UUID
 	Backlog  bool
+	Cursor   *IssuesCursor
+	Limit    int
+}
+
+// IssuesCursor keys off (project_id, number). Number is monotonic per project
+// (see CreateIssue's FOR UPDATE counter) so it's a sufficient sole key.
+type IssuesCursor struct {
+	Number int `json:"n"`
 }
 
 // ListIssuesByIDs returns the issues matching the supplied id set, in no
@@ -145,7 +153,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 	return out, rows.Err()
 }
 
-func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, error) {
+func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
 		SELECT i.id, i.project_id, i.number, pr.key, i.title, i.description, i.status,
@@ -165,15 +173,20 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		args = append(args, *p.SprintID)
 		q += fmt.Sprintf(" AND i.sprint_id = $%d", len(args))
 	}
-	q += " ORDER BY i.number ASC"
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.Number)
+		q += fmt.Sprintf(" AND i.number > $%d", len(args))
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(" ORDER BY i.number ASC LIMIT $%d", len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
-	out := []model.Issue{}
+	out := make([]model.Issue, 0, p.Limit)
 	for rows.Next() {
 		var iss model.Issue
 		var key string
@@ -181,12 +194,19 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
 			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
 		); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
 		out = append(out, iss)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
 }
 
 type UpdateIssueParams struct {
