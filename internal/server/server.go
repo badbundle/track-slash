@@ -54,6 +54,7 @@ func (s *Server) Router() http.Handler {
 		})
 
 		r.Route("/issues", func(r chi.Router) {
+			r.Get("/", s.batchIssues)
 			r.Get("/{id}", s.getIssue)
 			r.Patch("/{id}", s.updateIssue)
 		})

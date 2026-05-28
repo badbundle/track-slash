@@ -73,6 +73,48 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// maxBatchIssues caps the number of ids accepted by /issues?ids= to keep
+// query cost bounded and prevent unbounded URL length abuse.
+const maxBatchIssues = 200
+
+func (s *Server) batchIssues(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("ids")
+	if raw == "" {
+		writeError(w, http.StatusBadRequest, "ids query param required (comma-separated uuids)")
+		return
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > maxBatchIssues {
+		writeError(w, http.StatusBadRequest, "too many ids (max 200)")
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(parts))
+	seen := make(map[uuid.UUID]struct{}, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		id, err := uuid.Parse(p)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid uuid: "+p)
+			return
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	out, err := s.store.ListIssuesByIDs(r.Context(), ids)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
