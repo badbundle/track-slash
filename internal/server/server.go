@@ -51,12 +51,20 @@ func (s *Server) Router() http.Handler {
 			r.Get("/{id}", s.getProject)
 			r.Post("/{projectID}/issues", s.createIssue)
 			r.Get("/{projectID}/issues", s.listIssues)
+			r.Post("/{projectID}/sprints", s.createSprint)
+			r.Get("/{projectID}/sprints", s.listProjectSprints)
 		})
 
 		r.Route("/issues", func(r chi.Router) {
 			r.Get("/", s.batchIssues)
 			r.Get("/{id}", s.getIssue)
 			r.Patch("/{id}", s.updateIssue)
+		})
+
+		r.Route("/sprints", func(r chi.Router) {
+			r.Get("/{id}", s.getSprint)
+			r.Patch("/{id}", s.updateSprint)
+			r.Post("/{id}/complete", s.completeSprint)
 		})
 	})
 

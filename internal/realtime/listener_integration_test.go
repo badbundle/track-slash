@@ -97,6 +97,83 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 	}
 }
 
+// TestListenerReceivesSprintEvent verifies sprint INSERT fires the
+// sprints_events trigger, the listener decodes the payload, and the hub fans
+// it out on both the project topic and the sprint topic.
+func TestListenerReceivesSprintEvent(t *testing.T) {
+	dbURL := testDatabaseURL()
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	sqlDB, err := sql.Open("pgx", dbURL)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := migrations.Up(sqlDB); err != nil {
+		t.Fatalf("migrations.Up: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	hub := NewHub()
+	listener := NewListener(dbURL, hub)
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	t.Cleanup(stopListener)
+	go listener.Run(listenerCtx)
+
+	time.Sleep(500 * time.Millisecond)
+
+	var projectID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
+	`, uniqueKey(t), "rt-sprint").Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	projSub := newTestClient(8)
+	hub.Subscribe(projSub, "project:"+projectID)
+
+	var sprintID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO sprints (project_id, name, start_date, end_date)
+		VALUES ($1, 'S1', DATE '2026-06-01', DATE '2026-06-14')
+		RETURNING id::text
+	`, projectID).Scan(&sprintID); err != nil {
+		t.Fatalf("insert sprint: %v", err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-projSub.send:
+			if ev.Entity != EntitySprint {
+				continue
+			}
+			if ev.Op != OpInsert {
+				t.Errorf("op = %s, want insert", ev.Op)
+			}
+			if ev.ID.String() != sprintID {
+				t.Errorf("id = %s, want %s", ev.ID, sprintID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatal("did not receive sprint event within 3s")
+		}
+	}
+}
+
 func uniqueKey(t *testing.T) string {
 	t.Helper()
 	return "rt_" + time.Now().Format("150405.000000")
