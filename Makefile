@@ -1,4 +1,8 @@
-DATABASE_URL ?= postgres://track:track@localhost:5432/track?sslmode=disable
+-include .env
+export
+
+POSTGRES_PORT ?= 5432
+DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/track?sslmode=disable
 PORT ?= 8080
 
 .PHONY: run migrate up down db-logs test tidy build vet
