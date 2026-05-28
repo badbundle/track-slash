@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -372,6 +373,280 @@ func TestUpdateIssueSetSprintCrossProjectRejected(t *testing.T) {
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("err = %v, want ErrConflict", err)
 	}
+}
+
+func TestGetSprintNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	_, err := env.store.GetSprint(env.ctx, uuid.New())
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestCreateSprintProjectNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	_, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
+		ProjectID: uuid.New(),
+		Name:      "ghost",
+		StartDate: date(2026, 6, 1),
+		EndDate:   date(2026, 6, 14),
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUpdateSprintNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	name := "nope"
+	_, err := env.store.UpdateSprint(env.ctx, uuid.New(), store.UpdateSprintParams{Name: &name})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUpdateSprintNoFieldsReturnsCurrent(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "noop", date(2026, 6, 1), date(2026, 6, 14))
+	got, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{})
+	if err != nil {
+		t.Fatalf("UpdateSprint: %v", err)
+	}
+	if got.ID != sp.ID || got.Name != "noop" || got.Status != model.SprintStatusPlanned {
+		t.Fatalf("got = %+v", got)
+	}
+}
+
+func TestUpdateSprintRejectsActiveToPlanned(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+	mustActivate(t, env, sp.ID)
+	st := model.SprintStatusPlanned
+	_, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{Status: &st})
+	if !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("active→planned: err = %v, want ErrConflict", err)
+	}
+}
+
+func TestUpdateSprintRejectsAfterCompleted(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+	mustActivate(t, env, sp.ID)
+	if _, err := env.store.CompleteSprint(env.ctx, sp.ID); err != nil {
+		t.Fatalf("CompleteSprint: %v", err)
+	}
+	for _, target := range []model.SprintStatus{model.SprintStatusActive, model.SprintStatusPlanned} {
+		st := target
+		_, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{Status: &st})
+		if !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("completed→%s: err = %v, want ErrConflict", target, err)
+		}
+	}
+}
+
+func TestUpdateSprintNameGoalDates(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "old", date(2026, 6, 1), date(2026, 6, 14))
+
+	newName := "renamed"
+	newGoal := "ship feature X"
+	newStart := date(2026, 6, 8)
+	newEnd := date(2026, 6, 22)
+	got, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{
+		Name:      &newName,
+		Goal:      &newGoal,
+		StartDate: &newStart,
+		EndDate:   &newEnd,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSprint: %v", err)
+	}
+	if got.Name != newName || got.Goal != newGoal {
+		t.Fatalf("name/goal not updated: %+v", got)
+	}
+	if !got.StartDate.Equal(newStart) || !got.EndDate.Equal(newEnd) {
+		t.Fatalf("dates not updated: %s..%s", got.StartDate, got.EndDate)
+	}
+}
+
+func TestUpdateSprintDateCheckViolation(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+	newEnd := date(2026, 5, 1)
+	_, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{EndDate: &newEnd})
+	if !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict (CHECK)", err)
+	}
+}
+
+func TestCompleteSprintNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	_, err := env.store.CompleteSprint(env.ctx, uuid.New())
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUpdateSprintStatusNoOp(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+	st := model.SprintStatusPlanned
+	got, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{Status: &st})
+	if err != nil {
+		t.Fatalf("planned→planned should be no-op: %v", err)
+	}
+	if got.Status != model.SprintStatusPlanned {
+		t.Fatalf("Status = %s", got.Status)
+	}
+}
+
+func TestListSprintsEmptyProject(t *testing.T) {
+	env := newSprintsEnv(t)
+	out, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID})
+	if err != nil {
+		t.Fatalf("ListSprints: %v", err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("len = %d, want 0", len(out))
+	}
+}
+
+func TestUpdateIssueClearAssignee(t *testing.T) {
+	env := newSprintsEnv(t)
+	email := fmt.Sprintf("u%d@test.local", time.Now().UnixNano())
+	user, err := env.store.CreateUser(env.ctx, email, "A")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "T",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	got, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{ClearAssignee: true})
+	if err != nil {
+		t.Fatalf("UpdateIssue clear: %v", err)
+	}
+	if got.AssigneeID != nil {
+		t.Fatalf("AssigneeID = %v, want nil", got.AssigneeID)
+	}
+}
+
+func TestUpdateIssueClearSprint(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+	iss := mustCreateIssue(t, env, "T")
+	assignIssueToSprint(t, env, iss.ID, sp.ID)
+
+	got, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{ClearSprint: true})
+	if err != nil {
+		t.Fatalf("UpdateIssue ClearSprint: %v", err)
+	}
+	if got.SprintID != nil {
+		t.Fatalf("SprintID = %v, want nil", got.SprintID)
+	}
+}
+
+func TestUpdateIssueEmptyParamsReturnsCurrent(t *testing.T) {
+	env := newSprintsEnv(t)
+	iss := mustCreateIssue(t, env, "unchanged")
+	got, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{})
+	if err != nil {
+		t.Fatalf("UpdateIssue: %v", err)
+	}
+	if got.ID != iss.ID || got.Title != "unchanged" {
+		t.Fatalf("got = %+v", got)
+	}
+}
+
+func TestUpdateIssueNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	title := "new"
+	_, err := env.store.UpdateIssue(env.ctx, uuid.New(), store.UpdateIssueParams{Title: &title})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUpdateIssueSprintNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	iss := mustCreateIssue(t, env, "T")
+	bogus := uuid.New()
+	_, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{SprintID: &bogus})
+	if !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+}
+
+func TestListIssuesByIDsRoundtrip(t *testing.T) {
+	env := newSprintsEnv(t)
+	i1 := mustCreateIssue(t, env, "one")
+	i2 := mustCreateIssue(t, env, "two")
+
+	empty, err := env.store.ListIssuesByIDs(env.ctx, nil)
+	if err != nil {
+		t.Fatalf("ListIssuesByIDs empty: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty len = %d", len(empty))
+	}
+
+	got, err := env.store.ListIssuesByIDs(env.ctx, []uuid.UUID{i1.ID, i2.ID, uuid.New()})
+	if err != nil {
+		t.Fatalf("ListIssuesByIDs: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2 (missing id silently skipped)", len(got))
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, iss := range got {
+		seen[iss.ID] = true
+	}
+	if !seen[i1.ID] || !seen[i2.ID] {
+		t.Fatalf("missing one of expected ids: %+v", seen)
+	}
+}
+
+func TestListIssuesStatusAndSprintCombined(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+
+	a := mustCreateIssue(t, env, "todo-in-sprint")
+	b := mustCreateIssue(t, env, "done-in-sprint")
+	c := mustCreateIssue(t, env, "todo-backlog")
+
+	assignIssueToSprint(t, env, a.ID, sp.ID)
+	assignIssueToSprint(t, env, b.ID, sp.ID)
+	setIssueStatus(t, env, b.ID, model.StatusDone)
+
+	todoInSprint, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Status:    model.StatusTodo,
+		SprintID:  &sp.ID,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	if len(todoInSprint) != 1 || todoInSprint[0].ID != a.ID {
+		t.Fatalf("todo+sprint = %+v, want only %s", todoInSprint, a.ID)
+	}
+
+	doneBacklog, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Status:    model.StatusDone,
+		Backlog:   true,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues backlog+done: %v", err)
+	}
+	if len(doneBacklog) != 0 {
+		t.Fatalf("done+backlog len = %d, want 0", len(doneBacklog))
+	}
+
+	_ = c
 }
 
 func TestListIssuesBacklogFilter(t *testing.T) {

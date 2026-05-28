@@ -173,6 +173,13 @@ func TestHubRemoveDropsAllSubscriptions(t *testing.T) {
 	}
 }
 
+func TestTopicsUnknownEntity(t *testing.T) {
+	got := Event{Entity: Entity("user"), ID: uuid.New()}.Topics()
+	if got != nil {
+		t.Fatalf("Topics for unknown entity = %v, want nil", got)
+	}
+}
+
 func TestParseTopic(t *testing.T) {
 	id := uuid.New()
 	cases := []struct {
