@@ -54,6 +54,38 @@ func TestHubFanoutToSubscribers(t *testing.T) {
 	}
 }
 
+func TestSprintEventFansOutToProjectAndSprintTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	sprintID := uuid.New()
+
+	projSub := newTestClient(4)
+	sprintSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(projSub, ProjectTopic(projectID))
+	hub.Subscribe(sprintSub, SprintTopic(sprintID))
+	hub.Subscribe(unrelated, SprintTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpUpdate,
+		Entity:    EntitySprint,
+		ID:        sprintID,
+		ProjectID: &projectID,
+		Version:   3,
+	})
+
+	if _, ok := recv(t, projSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive sprint event")
+	}
+	if _, ok := recv(t, sprintSub, time.Second); !ok {
+		t.Fatal("sprint subscriber did not receive event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated sprint subscriber received event")
+	}
+}
+
 func TestHubDeduplicatesAcrossTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
@@ -141,6 +173,13 @@ func TestHubRemoveDropsAllSubscriptions(t *testing.T) {
 	}
 }
 
+func TestTopicsUnknownEntity(t *testing.T) {
+	got := Event{Entity: Entity("user"), ID: uuid.New()}.Topics()
+	if got != nil {
+		t.Fatalf("Topics for unknown entity = %v, want nil", got)
+	}
+}
+
 func TestParseTopic(t *testing.T) {
 	id := uuid.New()
 	cases := []struct {
@@ -150,8 +189,10 @@ func TestParseTopic(t *testing.T) {
 	}{
 		{"issue:" + id.String(), "issue", false},
 		{"project:" + id.String(), "project", false},
+		{"sprint:" + id.String(), "sprint", false},
 		{"user:" + id.String(), "", true},
 		{"issue:not-a-uuid", "", true},
+		{"sprint:not-a-uuid", "", true},
 		{"", "", true},
 	}
 	for _, tc := range cases {

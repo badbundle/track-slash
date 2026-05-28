@@ -44,10 +44,10 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 			INSERT INTO issues (project_id, number, title, description, assignee_id, reporter_id)
 			VALUES ($1, $2, $3, $4, $5, $6)
 			RETURNING id, project_id, number, title, description, status,
-			          assignee_id, reporter_id, created_at, updated_at
+			          assignee_id, reporter_id, sprint_id, created_at, updated_at
 		`, p.ProjectID, number, p.Title, p.Description, p.AssigneeID, p.ReporterID).
 			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status,
-				&out.AssigneeID, &out.ReporterID, &out.CreatedAt, &out.UpdatedAt)
+				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -78,7 +78,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
 		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
-		       i.assignee_id, i.reporter_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		WHERE i.id = $1
@@ -87,7 +87,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 	var key string
 	err := s.db.QueryRow(ctx, q, id).Scan(
 		&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-		&iss.AssigneeID, &iss.ReporterID, &iss.CreatedAt, &iss.UpdatedAt,
+		&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
 		if isNoRows(err) {
@@ -102,6 +102,10 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 type ListIssuesParams struct {
 	ProjectID uuid.UUID
 	Status    model.Status // empty = all
+	// SprintID filters by sprint. Backlog == true means "WHERE sprint_id IS NULL"
+	// and SprintID is ignored. Both nil/false → no sprint filter.
+	SprintID *uuid.UUID
+	Backlog  bool
 }
 
 // ListIssuesByIDs returns the issues matching the supplied id set, in no
@@ -114,7 +118,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 	}
 	const q = `
 		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
-		       i.assignee_id, i.reporter_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		WHERE i.id = ANY($1)
@@ -131,7 +135,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		var key string
 		if err := rows.Scan(
 			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.CreatedAt, &iss.UpdatedAt,
+			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -145,14 +149,21 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	args := []any{p.ProjectID}
 	q := `
 		SELECT i.id, i.project_id, i.number, pr.key, i.title, i.description, i.status,
-		       i.assignee_id, i.reporter_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		WHERE i.project_id = $1
 	`
 	if p.Status != "" {
 		args = append(args, string(p.Status))
-		q += " AND i.status = $2"
+		q += fmt.Sprintf(" AND i.status = $%d", len(args))
+	}
+	switch {
+	case p.Backlog:
+		q += " AND i.sprint_id IS NULL"
+	case p.SprintID != nil:
+		args = append(args, *p.SprintID)
+		q += fmt.Sprintf(" AND i.sprint_id = $%d", len(args))
 	}
 	q += " ORDER BY i.number ASC"
 
@@ -168,7 +179,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		var key string
 		if err := rows.Scan(
 			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.CreatedAt, &iss.UpdatedAt,
+			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -179,11 +190,13 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 }
 
 type UpdateIssueParams struct {
-	Title       *string
-	Description *string
-	Status      *model.Status
-	AssigneeID  *uuid.UUID
+	Title         *string
+	Description   *string
+	Status        *model.Status
+	AssigneeID    *uuid.UUID
 	ClearAssignee bool
+	SprintID      *uuid.UUID
+	ClearSprint   bool
 }
 
 func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssueParams) (model.Issue, error) {
@@ -212,6 +225,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		args = append(args, *p.AssigneeID)
 		i++
 	}
+	if p.ClearSprint {
+		sets = append(sets, "sprint_id = NULL")
+	} else if p.SprintID != nil {
+		sets = append(sets, fmt.Sprintf("sprint_id = $%d", i))
+		args = append(args, *p.SprintID)
+		i++
+	}
 
 	if len(sets) == 0 {
 		return s.GetIssue(ctx, id)
@@ -223,11 +243,45 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		UPDATE issues SET %s WHERE id = $%d
 	`, strings.Join(sets, ", "), i)
 
+	// When assigning a sprint, guard against cross-project assignment in a tx.
+	// The cheap one-shot path stays untouched when the caller is only changing
+	// title/description/status/assignee or clearing the sprint.
+	if p.SprintID != nil && !p.ClearSprint {
+		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+			var issueProject, sprintProject uuid.UUID
+			if err := tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1 FOR UPDATE`, id).Scan(&issueProject); err != nil {
+				if isNoRows(err) {
+					return ErrNotFound
+				}
+				return err
+			}
+			if err := tx.QueryRow(ctx, `SELECT project_id FROM sprints WHERE id = $1`, *p.SprintID).Scan(&sprintProject); err != nil {
+				if isNoRows(err) {
+					return fmt.Errorf("sprint not found: %w", ErrConflict)
+				}
+				return err
+			}
+			if issueProject != sprintProject {
+				return fmt.Errorf("sprint belongs to a different project: %w", ErrConflict)
+			}
+			_, err := tx.Exec(ctx, q, args...)
+			return err
+		})
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				return model.Issue{}, fmt.Errorf("invalid assignee or sprint: %w", ErrConflict)
+			}
+			return model.Issue{}, err
+		}
+		return s.GetIssue(ctx, id)
+	}
+
 	tag, err := s.db.Exec(ctx, q, args...)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return model.Issue{}, fmt.Errorf("invalid assignee: %w", ErrConflict)
+			return model.Issue{}, fmt.Errorf("invalid assignee or sprint: %w", ErrConflict)
 		}
 		return model.Issue{}, err
 	}

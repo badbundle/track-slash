@@ -23,3 +23,25 @@ func TestStatusValid(t *testing.T) {
 		})
 	}
 }
+
+func TestSprintStatusValid(t *testing.T) {
+	cases := []struct {
+		in   SprintStatus
+		want bool
+	}{
+		{SprintStatusPlanned, true},
+		{SprintStatusActive, true},
+		{SprintStatusCompleted, true},
+		{"", false},
+		{"open", false},
+		{"ACTIVE", false},
+		{"in progress", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.in), func(t *testing.T) {
+			if got := c.in.Valid(); got != c.want {
+				t.Fatalf("SprintStatus(%q).Valid() = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}

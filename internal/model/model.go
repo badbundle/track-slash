@@ -22,6 +22,22 @@ func (s Status) Valid() bool {
 	return false
 }
 
+type SprintStatus string
+
+const (
+	SprintStatusPlanned   SprintStatus = "planned"
+	SprintStatusActive    SprintStatus = "active"
+	SprintStatusCompleted SprintStatus = "completed"
+)
+
+func (s SprintStatus) Valid() bool {
+	switch s {
+	case SprintStatusPlanned, SprintStatusActive, SprintStatusCompleted:
+		return true
+	}
+	return false
+}
+
 type User struct {
 	ID        uuid.UUID `json:"id"`
 	Email     string    `json:"email"`
@@ -48,6 +64,20 @@ type Issue struct {
 	Status      Status     `json:"status"`
 	AssigneeID  *uuid.UUID `json:"assignee_id,omitempty"`
 	ReporterID  *uuid.UUID `json:"reporter_id,omitempty"`
+	SprintID    *uuid.UUID `json:"sprint_id,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type Sprint struct {
+	ID          uuid.UUID    `json:"id"`
+	ProjectID   uuid.UUID    `json:"project_id"`
+	Name        string       `json:"name"`
+	Goal        string       `json:"goal"`
+	Status      SprintStatus `json:"status"`
+	StartDate   time.Time    `json:"start_date"`
+	EndDate     time.Time    `json:"end_date"`
+	CompletedAt *time.Time   `json:"completed_at,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }

@@ -62,10 +62,33 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, err := s.store.ListIssues(r.Context(), store.ListIssuesParams{
+	params := store.ListIssuesParams{
 		ProjectID: projectID,
 		Status:    statusFilter,
-	})
+	}
+
+	sprintParam := r.URL.Query().Get("sprint")
+	sprintIDParam := r.URL.Query().Get("sprint_id")
+	if sprintParam != "" && sprintIDParam != "" {
+		writeError(w, http.StatusBadRequest, "specify either sprint or sprint_id, not both")
+		return
+	}
+	switch {
+	case sprintParam == "backlog":
+		params.Backlog = true
+	case sprintParam != "":
+		writeError(w, http.StatusBadRequest, "sprint must be 'backlog'")
+		return
+	case sprintIDParam != "":
+		sid, err := uuid.Parse(sprintIDParam)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid sprint_id")
+			return
+		}
+		params.SprintID = &sid
+	}
+
+	out, err := s.store.ListIssues(r.Context(), params)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -137,6 +160,8 @@ type updateIssueReq struct {
 	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
 	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
 	ClearAssignee bool       `json:"clear_assignee,omitempty"`
+	SprintID      *uuid.UUID `json:"sprint_id,omitempty"`
+	ClearSprint   bool       `json:"clear_sprint,omitempty"`
 }
 
 func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +194,8 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Status:        req.Status,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,
+		SprintID:      req.SprintID,
+		ClearSprint:   req.ClearSprint,
 	})
 	if err != nil {
 		writeStoreError(w, err)
