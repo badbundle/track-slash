@@ -65,7 +65,7 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	s := store.New(pool)
 	// Hub is nil — none of these handlers need realtime fanout; /ws route
 	// is just skipped when hub == nil (see server.go:35).
-	srv := server.New(s, nil)
+	srv := server.New(s, nil, nil)
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 
