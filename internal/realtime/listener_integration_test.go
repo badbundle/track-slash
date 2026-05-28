@@ -174,6 +174,120 @@ func TestListenerReceivesSprintEvent(t *testing.T) {
 	}
 }
 
+// TestListenerReceivesIssueLinkEvent verifies issue_links INSERT fires the
+// issue_links_events trigger, the listener decodes the payload, and the hub
+// fans it out on both the project topic and the issue_link topic. The
+// duplicates link path also closes the source issue, producing a follow-up
+// issue UPDATE event.
+func TestListenerReceivesIssueLinkEvent(t *testing.T) {
+	dbURL := testDatabaseURL()
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	sqlDB, err := sql.Open("pgx", dbURL)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := migrations.Up(sqlDB); err != nil {
+		t.Fatalf("migrations.Up: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	hub := NewHub()
+	listener := NewListener(dbURL, hub)
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	t.Cleanup(stopListener)
+	go listener.Run(listenerCtx)
+
+	time.Sleep(500 * time.Millisecond)
+
+	var projectID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
+	`, uniqueKey(t), "rt-link").Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	var srcID, tgtID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'A') RETURNING id::text
+	`, projectID).Scan(&srcID); err != nil {
+		t.Fatalf("insert src: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 2, 'B') RETURNING id::text
+	`, projectID).Scan(&tgtID); err != nil {
+		t.Fatalf("insert tgt: %v", err)
+	}
+
+	projSub := newTestClient(16)
+	hub.Subscribe(projSub, "project:"+projectID)
+
+	var linkID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issue_links (project_id, source_id, target_id, link_type)
+		VALUES ($1, $2, $3, 'blocks')
+		RETURNING id::text
+	`, projectID, srcID, tgtID).Scan(&linkID); err != nil {
+		t.Fatalf("insert link: %v", err)
+	}
+
+	linkSub := newTestClient(8)
+	hub.Subscribe(linkSub, "issue_link:"+linkID)
+
+	gotProjLink := false
+	deadline := time.After(3 * time.Second)
+	for !gotProjLink {
+		select {
+		case ev := <-projSub.send:
+			if ev.Entity != EntityIssueLink {
+				continue
+			}
+			if ev.Op != OpInsert {
+				t.Errorf("op = %s, want insert", ev.Op)
+			}
+			if ev.ID.String() != linkID {
+				t.Errorf("id = %s, want %s", ev.ID, linkID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			gotProjLink = true
+		case <-deadline:
+			t.Fatal("did not receive link event on project topic within 3s")
+		}
+	}
+
+	// Delete the link and verify the OpDelete event arrives on the link topic.
+	if _, err := pool.Exec(ctx, `DELETE FROM issue_links WHERE id = $1`, linkID); err != nil {
+		t.Fatalf("delete link: %v", err)
+	}
+	deadline = time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-linkSub.send:
+			if ev.Entity != EntityIssueLink {
+				continue
+			}
+			if ev.Op == OpDelete {
+				return
+			}
+		case <-deadline:
+			t.Fatal("did not receive link delete event within 3s")
+		}
+	}
+}
+
 func uniqueKey(t *testing.T) string {
 	t.Helper()
 	return "rt_" + time.Now().Format("150405.000000")
