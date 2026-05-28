@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/migrations"
 )
@@ -284,6 +284,114 @@ func TestListenerReceivesIssueLinkEvent(t *testing.T) {
 			}
 		case <-deadline:
 			t.Fatal("did not receive link delete event within 3s")
+		}
+	}
+}
+
+// TestListenerReceivesCommentEvent verifies comment events include both issue_id
+// and project_id so the hub can fan them out on comment, issue, and project topics.
+func TestListenerReceivesCommentEvent(t *testing.T) {
+	dbURL := testDatabaseURL()
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	sqlDB, err := sql.Open("pgx", dbURL)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := migrations.Up(sqlDB); err != nil {
+		t.Fatalf("migrations.Up: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	hub := NewHub()
+	listener := NewListener(dbURL, hub)
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	t.Cleanup(stopListener)
+	go listener.Run(listenerCtx)
+
+	time.Sleep(500 * time.Millisecond)
+
+	var projectID, issueID, authorID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
+	`, uniqueKey(t), "rt-comment").Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (email, name) VALUES ($1, 'Commenter') RETURNING id::text
+	`, "rt-comment-"+uniqueKey(t)+"@example.com").Scan(&authorID); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'A') RETURNING id::text
+	`, projectID).Scan(&issueID); err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+
+	issueSub := newTestClient(16)
+	projSub := newTestClient(16)
+	hub.Subscribe(issueSub, "issue:"+issueID)
+	hub.Subscribe(projSub, "project:"+projectID)
+
+	var commentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO comments (issue_id, author_id, body)
+		VALUES ($1, $2, 'hello')
+		RETURNING id::text
+	`, issueID, authorID).Scan(&commentID); err != nil {
+		t.Fatalf("insert comment: %v", err)
+	}
+
+	waitForCommentEvent(t, issueSub, commentID, issueID, projectID, OpInsert)
+	waitForCommentEvent(t, projSub, commentID, issueID, projectID, OpInsert)
+
+	commentSub := newTestClient(16)
+	hub.Subscribe(commentSub, "comment:"+commentID)
+	if _, err := pool.Exec(ctx, `
+		UPDATE comments SET body = 'edited' WHERE id = $1
+	`, commentID); err != nil {
+		t.Fatalf("update comment: %v", err)
+	}
+	waitForCommentEvent(t, commentSub, commentID, issueID, projectID, OpUpdate)
+
+	if _, err := pool.Exec(ctx, `DELETE FROM comments WHERE id = $1`, commentID); err != nil {
+		t.Fatalf("delete comment: %v", err)
+	}
+	waitForCommentEvent(t, commentSub, commentID, issueID, projectID, OpDelete)
+}
+
+func waitForCommentEvent(t *testing.T, c *Client, commentID, issueID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityComment || ev.Op != op {
+				continue
+			}
+			if ev.ID.String() != commentID {
+				t.Errorf("id = %s, want %s", ev.ID, commentID)
+			}
+			if ev.IssueID == nil || ev.IssueID.String() != issueID {
+				t.Errorf("issue_id = %v, want %s", ev.IssueID, issueID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive comment %s event within 3s", op)
 		}
 	}
 }

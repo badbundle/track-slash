@@ -79,8 +79,16 @@ func (s *Server) Router() http.Handler {
 			r.Get("/", s.batchIssues)
 			r.Get("/{id}", s.getIssue)
 			r.Patch("/{id}", s.updateIssue)
+			r.Post("/{id}/comments", s.createComment)
+			r.Get("/{id}/comments", s.listComments)
 			r.Post("/{id}/links", s.createIssueLink)
 			r.Get("/{id}/links", s.listIssueLinks)
+		})
+
+		r.Route("/comments", func(r chi.Router) {
+			r.Get("/{id}", s.getComment)
+			r.Patch("/{id}", s.updateComment)
+			r.Delete("/{id}", s.deleteComment)
 		})
 
 		r.Route("/sprints", func(r chi.Router) {

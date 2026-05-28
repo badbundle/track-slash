@@ -96,6 +96,15 @@ type IssueLink struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Comment struct {
+	ID        uuid.UUID `json:"id"`
+	IssueID   uuid.UUID `json:"issue_id"`
+	AuthorID  uuid.UUID `json:"author_id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Sprint struct {
 	ID          uuid.UUID    `json:"id"`
 	ProjectID   uuid.UUID    `json:"project_id"`

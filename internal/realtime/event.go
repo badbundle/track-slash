@@ -23,6 +23,7 @@ const (
 	EntityProject   Entity = "project"
 	EntitySprint    Entity = "sprint"
 	EntityIssueLink Entity = "issue_link"
+	EntityComment   Entity = "comment"
 )
 
 // Event is the wire envelope sent over both pg_notify and the WebSocket.
@@ -32,6 +33,7 @@ type Event struct {
 	Op        Op         `json:"op"`
 	Entity    Entity     `json:"entity"`
 	ID        uuid.UUID  `json:"id"`
+	IssueID   *uuid.UUID `json:"issue_id,omitempty"`
 	ProjectID *uuid.UUID `json:"project_id,omitempty"`
 	Version   int64      `json:"version"`
 	Ts        string     `json:"ts"`
@@ -61,6 +63,15 @@ func (e Event) Topics() []string {
 			topics = append(topics, ProjectTopic(*e.ProjectID))
 		}
 		return topics
+	case EntityComment:
+		topics := []string{CommentTopic(e.ID)}
+		if e.IssueID != nil {
+			topics = append(topics, IssueTopic(*e.IssueID))
+		}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		return topics
 	}
 	return nil
 }
@@ -69,11 +80,12 @@ func IssueTopic(id uuid.UUID) string     { return "issue:" + id.String() }
 func ProjectTopic(id uuid.UUID) string   { return "project:" + id.String() }
 func SprintTopic(id uuid.UUID) string    { return "sprint:" + id.String() }
 func IssueLinkTopic(id uuid.UUID) string { return "issue_link:" + id.String() }
+func CommentTopic(id uuid.UUID) string   { return "comment:" + id.String() }
 
 // ParseTopic validates a client-supplied topic string and returns its
 // prefix and uuid component.
 func ParseTopic(t string) (kind string, id uuid.UUID, err error) {
-	for _, prefix := range []string{"issue_link:", "issue:", "project:", "sprint:"} {
+	for _, prefix := range []string{"issue_link:", "comment:", "issue:", "project:", "sprint:"} {
 		if len(t) > len(prefix) && t[:len(prefix)] == prefix {
 			id, err = uuid.Parse(t[len(prefix):])
 			if err != nil {
@@ -82,5 +94,5 @@ func ParseTopic(t string) (kind string, id uuid.UUID, err error) {
 			return prefix[:len(prefix)-1], id, nil
 		}
 	}
-	return "", uuid.Nil, fmt.Errorf("unknown topic format %q (want issue:<uuid>, project:<uuid>, sprint:<uuid>, or issue_link:<uuid>)", t)
+	return "", uuid.Nil, fmt.Errorf("unknown topic format %q (want issue:<uuid>, project:<uuid>, sprint:<uuid>, issue_link:<uuid>, or comment:<uuid>)", t)
 }

@@ -86,6 +86,45 @@ func TestSprintEventFansOutToProjectAndSprintTopics(t *testing.T) {
 	}
 }
 
+func TestCommentEventFansOutToCommentIssueAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	issueID := uuid.New()
+	commentID := uuid.New()
+
+	commentSub := newTestClient(4)
+	issueSub := newTestClient(4)
+	projSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(commentSub, CommentTopic(commentID))
+	hub.Subscribe(issueSub, IssueTopic(issueID))
+	hub.Subscribe(projSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, CommentTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpInsert,
+		Entity:    EntityComment,
+		ID:        commentID,
+		IssueID:   &issueID,
+		ProjectID: &projectID,
+		Version:   1,
+	})
+
+	if _, ok := recv(t, commentSub, time.Second); !ok {
+		t.Fatal("comment subscriber did not receive event")
+	}
+	if _, ok := recv(t, issueSub, time.Second); !ok {
+		t.Fatal("issue subscriber did not receive comment event")
+	}
+	if _, ok := recv(t, projSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive comment event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated comment subscriber received event")
+	}
+}
+
 func TestHubDeduplicatesAcrossTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
@@ -143,10 +182,10 @@ func TestHubUnsubscribe(t *testing.T) {
 	hub.Unsubscribe(c, topic)
 
 	hub.Publish(Event{
-		Op:        OpUpdate,
-		Entity:    EntityProject,
-		ID:        projectID,
-		Version:   1,
+		Op:      OpUpdate,
+		Entity:  EntityProject,
+		ID:      projectID,
+		Version: 1,
 	})
 
 	if _, ok := recv(t, c, 100*time.Millisecond); ok {
@@ -190,9 +229,11 @@ func TestParseTopic(t *testing.T) {
 		{"issue:" + id.String(), "issue", false},
 		{"project:" + id.String(), "project", false},
 		{"sprint:" + id.String(), "sprint", false},
+		{"comment:" + id.String(), "comment", false},
 		{"user:" + id.String(), "", true},
 		{"issue:not-a-uuid", "", true},
 		{"sprint:not-a-uuid", "", true},
+		{"comment:not-a-uuid", "", true},
 		{"", "", true},
 	}
 	for _, tc := range cases {
