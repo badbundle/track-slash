@@ -17,6 +17,7 @@ import (
 
 	"github.com/bradleymackey/track-slash/internal/config"
 	"github.com/bradleymackey/track-slash/internal/migrations"
+	"github.com/bradleymackey/track-slash/internal/realtime"
 	"github.com/bradleymackey/track-slash/internal/server"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
@@ -52,7 +53,12 @@ func main() {
 	}
 
 	st := store.New(pool)
-	srv := server.New(st)
+
+	hub := realtime.NewHub()
+	listener := realtime.NewListener(cfg.DatabaseURL, hub)
+	go listener.Run(ctx)
+
+	srv := server.New(st, hub)
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.Port,
