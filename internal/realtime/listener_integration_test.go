@@ -65,8 +65,9 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 		t.Fatalf("insert project: %v", err)
 	}
 
-	// The project insert itself fires an event; subscribe after creating it
-	// so we only observe the subsequent issue insert.
+	// Subscribe after the project insert. The project event may still be
+	// in flight inside the listener at this moment, so we loop and discard
+	// anything that isn't the issue insert we care about.
 	c := newTestClient(8)
 	hub.Subscribe(c, "project:"+projectID)
 
@@ -76,19 +77,23 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 		t.Fatalf("insert issue: %v", err)
 	}
 
-	select {
-	case ev := <-c.send:
-		if ev.Op != OpInsert {
-			t.Errorf("op = %s, want insert", ev.Op)
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityIssue {
+				continue
+			}
+			if ev.Op != OpInsert {
+				t.Errorf("op = %s, want insert", ev.Op)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatal("did not receive issue event within 3s")
 		}
-		if ev.Entity != EntityIssue {
-			t.Errorf("entity = %s, want issue", ev.Entity)
-		}
-		if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
-			t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("did not receive event within 3s")
 	}
 }
 
