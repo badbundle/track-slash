@@ -199,6 +199,9 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 		t.Fatalf("users page2 items empty; cursor didn't advance")
 	}
 
+	if _, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "p2", ""); err != nil {
+		t.Fatalf("CreateProject p2: %v", err)
+	}
 	code, body = e.do(t, http.MethodGet, "/projects?limit=1", nil)
 	if code != http.StatusOK {
 		t.Fatalf("projects code = %d", code)
@@ -206,12 +209,6 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 	pp := decodePage[model.Project](t, body)
 	if len(pp.Items) != 1 || pp.NextCursor == nil {
 		t.Fatalf("projects page = %+v", pp)
-	}
-	// projects page 2 — there are 2 projects (e.projectID + the one newHTTPEnv
-	// creates per test, but envs are isolated so only 1 exists here). Create
-	// another so the cursor path is exercised.
-	if _, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "p2", ""); err != nil {
-		t.Fatalf("CreateProject p2: %v", err)
 	}
 	code, body = e.do(t, http.MethodGet, "/projects?limit=1&cursor="+url.QueryEscape(*pp.NextCursor), nil)
 	if code != http.StatusOK {

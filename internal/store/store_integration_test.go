@@ -7,14 +7,15 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/bradleymackey/track-slash/internal/testutil"
 )
 
-// testDatabaseURL returns DATABASE_URL or TEST_DATABASE_URL.
+// testDatabaseURL returns TEST_DATABASE_URL first, falling back to DATABASE_URL.
 // Returns "" if neither is set — the test will skip.
 func testDatabaseURL() string {
 	if v := os.Getenv("TEST_DATABASE_URL"); v != "" {
@@ -42,6 +43,8 @@ func TestStoreConnectsAndMigrates(t *testing.T) {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {

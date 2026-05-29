@@ -11,6 +11,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/migrations"
+	"github.com/bradleymackey/track-slash/internal/testutil"
 )
 
 func testDatabaseURL() string {
@@ -40,6 +41,8 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -117,6 +120,8 @@ func TestListenerReceivesSprintEvent(t *testing.T) {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -196,6 +201,8 @@ func TestListenerReceivesIssueLinkEvent(t *testing.T) {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -307,6 +314,8 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -390,6 +399,8 @@ func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
