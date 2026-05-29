@@ -41,7 +41,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   s.corsAllowedOrigins,
 			AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Content-Type", "If-Match"},
+			AllowedHeaders:   []string{"Authorization", "Content-Type", "If-Match"},
 			ExposedHeaders:   []string{"X-Request-ID"},
 			AllowCredentials: false,
 			MaxAge:           300,
@@ -53,17 +53,23 @@ func (s *Server) Router() http.Handler {
 	// WebSocket endpoint sits outside the request-timeout group: the
 	// connection is long-lived and would otherwise be killed mid-stream.
 	if s.hub != nil {
-		r.Method(http.MethodGet, "/ws", s.hub.Handler(s.corsAllowedOrigins))
+		r.Method(http.MethodGet, "/ws", s.authMiddleware(s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic)))
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Use(s.authMiddleware)
 		r.Use(middleware.Timeout(15 * time.Second))
+
+		r.Get("/me", s.getMe)
+		r.Delete("/tokens/{id}", s.revokeToken)
 
 		r.Route("/users", func(r chi.Router) {
 			r.Post("/", s.createUser)
 			r.Get("/", s.listUsers)
 			r.Get("/{id}", s.getUser)
 			r.Delete("/{id}", s.deleteUser)
+			r.Post("/{id}/tokens", s.createUserToken)
+			r.Get("/{id}/tokens", s.listUserTokens)
 		})
 
 		r.Route("/projects", func(r chi.Router) {
@@ -71,6 +77,9 @@ func (s *Server) Router() http.Handler {
 			r.Get("/", s.listProjects)
 			r.Get("/{id}", s.getProject)
 			r.Delete("/{id}", s.deleteProject)
+			r.Get("/{projectID}/members", s.listProjectMembers)
+			r.Put("/{projectID}/members/{userID}", s.grantProjectMember)
+			r.Delete("/{projectID}/members/{userID}", s.revokeProjectMember)
 			r.Post("/{projectID}/issues", s.createIssue)
 			r.Get("/{projectID}/issues", s.listIssues)
 			r.Post("/{projectID}/sprints", s.createSprint)

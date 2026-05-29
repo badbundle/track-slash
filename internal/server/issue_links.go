@@ -30,6 +30,14 @@ func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid issue id")
 		return
 	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), sourceID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	var req createIssueLinkReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -60,6 +68,14 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 	issueID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid issue id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 
@@ -116,6 +132,14 @@ func (s *Server) getIssueLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	projectID, err := s.store.ProjectIDForIssueLink(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	link, err := s.store.GetIssueLink(r.Context(), id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -128,6 +152,14 @@ func (s *Server) deleteIssueLink(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssueLink(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	if err := s.store.DeleteIssueLink(r.Context(), id); err != nil {

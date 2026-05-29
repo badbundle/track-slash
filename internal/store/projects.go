@@ -55,8 +55,9 @@ type ProjectsCursor struct {
 }
 
 type ListProjectsParams struct {
-	Cursor *ProjectsCursor
-	Limit  int
+	Cursor        *ProjectsCursor
+	Limit         int
+	VisibleToUser *uuid.UUID
 }
 
 func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model.Project, bool, error) {
@@ -66,9 +67,16 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 		FROM projects
 		WHERE deleted_at IS NULL
 	`
+	if p.VisibleToUser != nil {
+		args = append(args, *p.VisibleToUser)
+		q += fmt.Sprintf(` AND EXISTS (
+			SELECT 1 FROM project_members pm
+			WHERE pm.project_id = projects.id AND pm.user_id = $%d
+		)`, len(args))
+	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += ` AND (created_at, id) > ($1, $2)`
+		q += fmt.Sprintf(` AND (created_at, id) > ($%d, $%d)`, len(args)-1, len(args))
 	}
 	args = append(args, p.Limit+1)
 	q += fmt.Sprintf(` ORDER BY created_at ASC, id ASC LIMIT $%d`, len(args))

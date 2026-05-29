@@ -45,3 +45,23 @@ func TestSprintStatusValid(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthTokenKindValid(t *testing.T) {
+	cases := []struct {
+		in   AuthTokenKind
+		want bool
+	}{
+		{AuthTokenKindAPI, true},
+		{AuthTokenKindSession, true},
+		{"", false},
+		{"jwt", false},
+		{"API", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.in), func(t *testing.T) {
+			if got := c.in.Valid(); got != c.want {
+				t.Fatalf("AuthTokenKind(%q).Valid() = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}

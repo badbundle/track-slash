@@ -16,6 +16,9 @@ type createUserReq struct {
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	var req createUserReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -41,6 +44,9 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -74,6 +80,9 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -88,6 +97,9 @@ func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")

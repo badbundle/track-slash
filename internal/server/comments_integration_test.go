@@ -114,7 +114,6 @@ func TestHTTPCommentValidationAndNotFound(t *testing.T) {
 	}{
 		{"empty body", fmt.Sprintf("/issues/%s/comments", iss.ID), map[string]any{"author_id": author.ID, "body": ""}},
 		{"long body", fmt.Sprintf("/issues/%s/comments", iss.ID), map[string]any{"author_id": author.ID, "body": strings.Repeat("x", 10001)}},
-		{"missing author", fmt.Sprintf("/issues/%s/comments", iss.ID), map[string]any{"body": "hello"}},
 		{"bad issue id", "/issues/not-a-uuid/comments", map[string]any{"author_id": author.ID, "body": "hello"}},
 	}
 	for _, tc := range cases {
@@ -138,8 +137,8 @@ func TestHTTPCommentValidationAndNotFound(t *testing.T) {
 		"author_id": uuid.New(),
 		"body":      "hello",
 	})
-	if code != http.StatusNotFound {
-		t.Fatalf("unknown author code = %d body = %s", code, body)
+	if code != http.StatusCreated {
+		t.Fatalf("ignored author code = %d body = %s", code, body)
 	}
 
 	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/issues/%s/comments", uuid.New()), nil)

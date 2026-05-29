@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
@@ -20,6 +21,9 @@ type createProjectReq struct {
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	var req createProjectReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -61,8 +65,9 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, hasMore, err := s.store.ListProjects(r.Context(), store.ListProjectsParams{
-		Cursor: cursor,
-		Limit:  limit,
+		Cursor:        cursor,
+		Limit:         limit,
+		VisibleToUser: visibleProjectUser(currentUser(r)),
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -83,6 +88,9 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	if !s.requireProjectAccess(w, r, id) {
+		return
+	}
 	p, err := s.store.GetProject(r.Context(), id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -92,6 +100,9 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -102,4 +113,11 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func visibleProjectUser(u model.User) *uuid.UUID {
+	if u.IsAdmin {
+		return nil
+	}
+	return &u.ID
 }

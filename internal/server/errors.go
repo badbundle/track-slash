@@ -17,6 +17,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrUnauthorized):
+		writeUnauthorized(w)
 	case errors.Is(err, store.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, store.ErrConflict):
