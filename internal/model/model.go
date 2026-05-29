@@ -42,6 +42,39 @@ type User struct {
 	ID        uuid.UUID `json:"id"`
 	Email     string    `json:"email"`
 	Name      string    `json:"name"`
+	IsAdmin   bool      `json:"is_admin"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type AuthTokenKind string
+
+const (
+	AuthTokenKindAPI     AuthTokenKind = "api"
+	AuthTokenKindSession AuthTokenKind = "session"
+)
+
+func (k AuthTokenKind) Valid() bool {
+	switch k {
+	case AuthTokenKindAPI, AuthTokenKindSession:
+		return true
+	}
+	return false
+}
+
+type AuthToken struct {
+	ID         uuid.UUID     `json:"id"`
+	UserID     uuid.UUID     `json:"user_id"`
+	Kind       AuthTokenKind `json:"kind"`
+	Name       string        `json:"name"`
+	CreatedAt  time.Time     `json:"created_at"`
+	LastUsedAt *time.Time    `json:"last_used_at,omitempty"`
+	ExpiresAt  *time.Time    `json:"expires_at,omitempty"`
+	RevokedAt  *time.Time    `json:"revoked_at,omitempty"`
+}
+
+type ProjectMember struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

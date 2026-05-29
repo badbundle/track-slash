@@ -35,6 +35,9 @@ func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 
 	var req createSprintReq
 	if err := decodeJSON(r, &req); err != nil {
@@ -85,6 +88,9 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 
@@ -138,6 +144,14 @@ func (s *Server) getSprint(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	sp, err := s.store.GetSprint(r.Context(), id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -150,6 +164,14 @@ func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	var req updateSprintReq
@@ -217,6 +239,14 @@ func (s *Server) completeSprint(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	sp, err := s.store.CompleteSprint(r.Context(), id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -229,6 +259,14 @@ func (s *Server) deleteSprint(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	if err := s.store.DeleteSprint(r.Context(), id); err != nil {

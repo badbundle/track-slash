@@ -11,7 +11,7 @@ import (
 )
 
 type createCommentReq struct {
-	AuthorID uuid.UUID `json:"author_id"`
+	AuthorID uuid.UUID `json:"author_id,omitempty"`
 	Body     string    `json:"body"`
 }
 
@@ -25,6 +25,14 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid issue id")
 		return
 	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	var req createCommentReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -35,14 +43,10 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "body required, max 10000 chars")
 		return
 	}
-	if req.AuthorID == uuid.Nil {
-		writeError(w, http.StatusBadRequest, "author_id required")
-		return
-	}
 
 	c, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
 		IssueID:  issueID,
-		AuthorID: req.AuthorID,
+		AuthorID: currentUser(r).ID,
 		Body:     body,
 	})
 	if err != nil {
@@ -56,6 +60,14 @@ func (s *Server) listComments(w http.ResponseWriter, r *http.Request) {
 	issueID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid issue id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -97,6 +109,14 @@ func (s *Server) getComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
+	projectID, err := s.store.ProjectIDForComment(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	c, err := s.store.GetComment(r.Context(), id)
 	if err != nil {
 		writeStoreError(w, err)
@@ -121,6 +141,14 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "body required, max 10000 chars")
 		return
 	}
+	projectID, err := s.store.ProjectIDForComment(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	c, err := s.store.UpdateComment(r.Context(), id, body)
 	if err != nil {
 		writeStoreError(w, err)
@@ -133,6 +161,14 @@ func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForComment(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	if err := s.store.DeleteComment(r.Context(), id); err != nil {

@@ -24,6 +24,9 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
 	var req createIssueReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -34,13 +37,21 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title required, max 200 chars")
 		return
 	}
+	reporterID := req.ReporterID
+	if reporterID == nil {
+		id := currentUser(r).ID
+		reporterID = &id
+	} else if !currentUser(r).IsAdmin && *reporterID != currentUser(r).ID {
+		writeForbidden(w)
+		return
+	}
 
 	iss, err := s.store.CreateIssue(r.Context(), store.CreateIssueParams{
 		ProjectID:   projectID,
 		Title:       req.Title,
 		Description: req.Description,
 		AssigneeID:  req.AssigneeID,
-		ReporterID:  req.ReporterID,
+		ReporterID:  reporterID,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -53,6 +64,9 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 
@@ -158,6 +172,11 @@ func (s *Server) batchIssues(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	for _, iss := range out {
+		if !s.requireProjectAccess(w, r, iss.ProjectID) {
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -165,6 +184,14 @@ func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	iss, err := s.store.GetIssue(r.Context(), id)
@@ -191,6 +218,14 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	var req updateIssueReq
@@ -231,6 +266,14 @@ func (s *Server) deleteIssue(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
 		return
 	}
 	if err := s.store.DeleteIssue(r.Context(), id); err != nil {

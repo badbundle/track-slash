@@ -34,7 +34,7 @@ func TestOriginAllowed(t *testing.T) {
 // Accept.
 func TestHandlerRejectsDisallowedOrigin(t *testing.T) {
 	hub := NewHub()
-	h := hub.Handler([]string{"https://app.example.com"})
+	h := hub.Handler([]string{"https://app.example.com"}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.Header.Set("Origin", "https://evil.com")
@@ -52,7 +52,7 @@ func TestHandlerAcceptsAllowedOriginPreUpgrade(t *testing.T) {
 	// downstream Accept will fail to upgrade, which is fine: nothing
 	// writes a body and the handler returns.
 	hub := NewHub()
-	h := hub.Handler([]string{"https://app.example.com"})
+	h := hub.Handler([]string{"https://app.example.com"}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.Header.Set("Origin", "https://app.example.com")

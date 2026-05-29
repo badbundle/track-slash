@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -36,6 +36,8 @@ type httpEnv struct {
 	store     *store.Store
 	projectID uuid.UUID
 	projKey   string
+	adminID   uuid.UUID
+	authToken string
 }
 
 func newHTTPEnv(t *testing.T) *httpEnv {
@@ -74,8 +76,23 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
+	admin, err := s.CreateOrUpdateAdminUser(ctx, "admin-"+key+"@example.com", "Admin")
+	if err != nil {
+		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	token, err := s.CreateAuthToken(ctx, store.CreateAuthTokenParams{
+		UserID: admin.ID,
+		Kind:   model.AuthTokenKindAPI,
+		Name:   "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
 
-	return &httpEnv{ctx: ctx, ts: ts, store: s, projectID: proj.ID, projKey: key}
+	return &httpEnv{
+		ctx: ctx, ts: ts, store: s, projectID: proj.ID, projKey: key,
+		adminID: admin.ID, authToken: token.RawToken,
+	}
 }
 
 func uniqueProjectKey(t *testing.T) string {
@@ -92,6 +109,16 @@ func uniqueProjectKey(t *testing.T) string {
 // do performs a request against the test server and returns status + body.
 func (e *httpEnv) do(t *testing.T, method, path string, body any) (int, []byte) {
 	t.Helper()
+	return e.doWithToken(t, e.authToken, method, path, body)
+}
+
+func (e *httpEnv) doUnauth(t *testing.T, method, path string, body any) (int, []byte) {
+	t.Helper()
+	return e.doWithToken(t, "", method, path, body)
+}
+
+func (e *httpEnv) doWithToken(t *testing.T, token, method, path string, body any) (int, []byte) {
+	t.Helper()
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -106,6 +133,9 @@ func (e *httpEnv) do(t *testing.T, method, path string, body any) (int, []byte) 
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	res, err := e.ts.Client().Do(req)
 	if err != nil {
@@ -160,6 +190,7 @@ func TestHTTPCreateSprintBadJSON(t *testing.T) {
 		fmt.Sprintf("%s/projects/%s/sprints", e.ts.URL, e.projectID),
 		bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e.authToken)
 	res, err := e.ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("do: %v", err)
@@ -408,6 +439,7 @@ func TestHTTPUpdateSprintBadJSON(t *testing.T) {
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPatch,
 		e.ts.URL+"/sprints/"+sp.ID.String(), bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e.authToken)
 	res, err := e.ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("do: %v", err)

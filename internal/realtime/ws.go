@@ -1,10 +1,14 @@
 package realtime
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/coder/websocket"
+	"github.com/google/uuid"
 )
+
+type TopicAuthorizer func(context.Context, string, uuid.UUID) error
 
 // Handler returns an http.Handler that upgrades incoming requests to a
 // WebSocket and binds them to the hub.
@@ -12,7 +16,7 @@ import (
 // allowedOrigins is matched exactly against the request's Origin header.
 // An empty slice disables the origin check entirely — appropriate for dev
 // but not for public deployments.
-func (h *Hub) Handler(allowedOrigins []string) http.Handler {
+func (h *Hub) Handler(allowedOrigins []string, authorize TopicAuthorizer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !originAllowed(r.Header.Get("Origin"), allowedOrigins) {
 			http.Error(w, "origin not allowed", http.StatusForbidden)
@@ -28,7 +32,7 @@ func (h *Hub) Handler(allowedOrigins []string) http.Handler {
 		}
 		defer func() { _ = conn.CloseNow() }()
 
-		c := newClient(conn, h)
+		c := newClient(conn, h, authorize)
 		c.run(r.Context())
 	})
 }

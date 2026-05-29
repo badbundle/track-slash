@@ -76,6 +76,7 @@ func TestHTTPCreateIssueLinkBadJSON(t *testing.T) {
 		e.ts.URL+"/issues/"+a.ID.String()+"/links",
 		bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e.authToken)
 	res, err := e.ts.Client().Do(req)
 	if err != nil {
 		t.Fatalf("do: %v", err)
@@ -388,4 +389,3 @@ func TestHTTPDeleteIssueLinkBadID(t *testing.T) {
 		t.Fatalf("code = %d", code)
 	}
 }
-

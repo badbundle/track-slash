@@ -20,17 +20,19 @@ const (
 // subscribe/unsubscribe control frames; the write pump drains events
 // that the Hub publishes into the bounded send channel.
 type Client struct {
-	conn *websocket.Conn
-	hub  *Hub
-	send chan Event
+	conn      *websocket.Conn
+	hub       *Hub
+	authorize TopicAuthorizer
+	send      chan Event
 }
 
-func newClient(conn *websocket.Conn, hub *Hub) *Client {
+func newClient(conn *websocket.Conn, hub *Hub, authorize TopicAuthorizer) *Client {
 	conn.SetReadLimit(readMessageLimit)
 	return &Client{
-		conn: conn,
-		hub:  hub,
-		send: make(chan Event, sendBuffer),
+		conn:      conn,
+		hub:       hub,
+		authorize: authorize,
+		send:      make(chan Event, sendBuffer),
 	}
 }
 
@@ -68,13 +70,19 @@ func (c *Client) readPump(ctx context.Context) {
 			c.writeError(ctx, "invalid json")
 			continue
 		}
-		_, _, terr := ParseTopic(msg.Topic)
+		kind, id, terr := ParseTopic(msg.Topic)
 		if terr != nil {
 			c.writeError(ctx, terr.Error())
 			continue
 		}
 		switch msg.Action {
 		case "subscribe":
+			if c.authorize != nil {
+				if err := c.authorize(ctx, kind, id); err != nil {
+					c.writeError(ctx, "forbidden")
+					continue
+				}
+			}
 			c.hub.Subscribe(c, msg.Topic)
 		case "unsubscribe":
 			c.hub.Unsubscribe(c, msg.Topic)

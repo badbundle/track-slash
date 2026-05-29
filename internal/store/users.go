@@ -16,10 +16,10 @@ func (s *Store) CreateUser(ctx context.Context, email, name string) (model.User,
 	const q = `
 		INSERT INTO users (email, name)
 		VALUES ($1, $2)
-		RETURNING id, email, name, created_at
+		RETURNING id, email, name, is_admin, created_at
 	`
 	var u model.User
-	err := s.db.QueryRow(ctx, q, email, name).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
+	err := s.db.QueryRow(ctx, q, email, name).Scan(&u.ID, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -31,13 +31,28 @@ func (s *Store) CreateUser(ctx context.Context, email, name string) (model.User,
 }
 
 func (s *Store) GetUser(ctx context.Context, id uuid.UUID) (model.User, error) {
-	const q = `SELECT id, email, name, created_at FROM users WHERE id = $1 AND deleted_at IS NULL`
+	const q = `SELECT id, email, name, is_admin, created_at FROM users WHERE id = $1 AND deleted_at IS NULL`
 	var u model.User
-	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
+	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
 	if err != nil {
 		if isNoRows(err) {
 			return model.User{}, ErrNotFound
 		}
+		return model.User{}, err
+	}
+	return u, nil
+}
+
+func (s *Store) CreateOrUpdateAdminUser(ctx context.Context, email, name string) (model.User, error) {
+	const q = `
+		INSERT INTO users (email, name, is_admin)
+		VALUES ($1, $2, true)
+		ON CONFLICT (email) DO UPDATE
+		SET name = EXCLUDED.name, is_admin = true, deleted_at = NULL
+		RETURNING id, email, name, is_admin, created_at
+	`
+	var u model.User
+	if err := s.db.QueryRow(ctx, q, email, name).Scan(&u.ID, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt); err != nil {
 		return model.User{}, err
 	}
 	return u, nil
@@ -60,7 +75,7 @@ type ListUsersParams struct {
 // strictly monotonic.
 func (s *Store) ListUsers(ctx context.Context, p ListUsersParams) ([]model.User, bool, error) {
 	args := []any{}
-	q := `SELECT id, email, name, created_at FROM users WHERE deleted_at IS NULL`
+	q := `SELECT id, email, name, is_admin, created_at FROM users WHERE deleted_at IS NULL`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
 		q += ` AND (created_at, id) > ($1, $2)`
@@ -77,7 +92,7 @@ func (s *Store) ListUsers(ctx context.Context, p ListUsersParams) ([]model.User,
 	users := make([]model.User, 0, p.Limit)
 	for rows.Next() {
 		var u model.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt); err != nil {
 			return nil, false, err
 		}
 		users = append(users, u)
