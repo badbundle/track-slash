@@ -27,6 +27,7 @@ var errUIForbidden = errors.New("forbidden")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":    uiInitials,
+	"projectIcon": uiProjectIcon,
 	"sprintDate":  uiSprintDate,
 	"statusLabel": uiStatusLabel,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
@@ -358,6 +359,17 @@ func uiInitials(name, email string) string {
 	first := []rune(parts[0])
 	last := []rune(parts[len(parts)-1])
 	return strings.ToUpper(string(first[0]) + string(last[0]))
+}
+
+func uiProjectIcon(name, key string) string {
+	source := strings.TrimSpace(name)
+	if source == "" {
+		source = strings.TrimSpace(key)
+	}
+	if source == "" {
+		return "?"
+	}
+	return strings.ToUpper(string([]rune(source)[0]))
 }
 
 func uiSprintDate(t time.Time) string {
