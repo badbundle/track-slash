@@ -49,6 +49,7 @@ func (s *Server) Router() http.Handler {
 	}
 
 	r.Get("/healthz", s.healthz)
+	s.mountUIRoutes(r)
 
 	// WebSocket endpoint sits outside the request-timeout group: the
 	// connection is long-lived and would otherwise be killed mid-stream.

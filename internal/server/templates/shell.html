@@ -1,0 +1,71 @@
+{{define "shell"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>track-slash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    #sidebar-toggle:checked ~ .app-shell aside { width: 4.75rem; }
+    #sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }
+  </style>
+</head>
+<body class="h-screen overflow-hidden bg-zinc-950 text-zinc-100 antialiased">
+  <input id="sidebar-toggle" type="checkbox" class="hidden">
+  <div class="app-shell flex h-screen">
+    <aside class="flex w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-all">
+      <div class="flex h-14 items-center gap-2 border-b border-zinc-800 px-3">
+        <label for="sidebar-toggle" class="grid h-8 w-8 cursor-pointer place-items-center rounded border border-zinc-700 text-zinc-300 hover:bg-zinc-800" title="Toggle sidebar">&#9776;</label>
+        <div class="wide-only min-w-0">
+          <div class="truncate text-sm font-semibold">track-slash</div>
+          <div class="truncate text-xs text-zinc-500">Projects</div>
+        </div>
+      </div>
+
+      <nav class="min-h-0 flex-1 overflow-y-auto p-2">
+        {{range .Projects}}
+        <a href="/app/projects/{{.ID}}" hx-get="/app/projects/{{.ID}}/panel" hx-target="#main" hx-push-url="/app/projects/{{.ID}}" class="mb-1 flex items-center gap-3 rounded px-2 py-2 text-sm hover:bg-zinc-800 {{if eq .ID $.CurrentProjectID}}bg-zinc-800 text-emerald-200{{else}}text-zinc-300{{end}}">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded border border-zinc-700 bg-zinc-950 text-xs font-semibold">{{.Key}}</span>
+          <span class="wide-only min-w-0">
+            <span class="block truncate font-medium">{{.Name}}</span>
+            {{if .Description}}<span class="block truncate text-xs text-zinc-500">{{.Description}}</span>{{end}}
+          </span>
+        </a>
+        {{else}}
+        <div class="wide-only px-2 py-3 text-sm text-zinc-500">No projects yet.</div>
+        {{end}}
+      </nav>
+
+      <details class="relative border-t border-zinc-800 p-2">
+        <summary class="flex cursor-pointer list-none items-center gap-3 rounded px-2 py-2 hover:bg-zinc-800">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded bg-emerald-500 text-xs font-bold text-zinc-950">{{initials .User.Name .User.Email}}</span>
+          <span class="wide-only min-w-0">
+            <span class="block truncate text-sm font-medium">{{.User.Name}}</span>
+            <span class="block truncate text-xs text-zinc-500">{{.User.Email}}</span>
+          </span>
+        </summary>
+        <div class="wide-only absolute bottom-16 left-2 right-2 rounded border border-zinc-800 bg-zinc-950 p-2 shadow-xl">
+          <div class="px-2 py-1 text-xs text-zinc-500">{{if .User.IsAdmin}}Admin{{else}}Member{{end}}</div>
+          <form method="post" action="/app/logout">
+            <button type="submit" class="w-full rounded px-2 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800">Sign out</button>
+          </form>
+        </div>
+      </details>
+    </aside>
+
+    <main id="main" class="min-w-0 flex-1 overflow-y-auto bg-zinc-950">
+      {{if .ProjectPanel}}
+      {{template "project-panel" .ProjectPanel}}
+      {{else}}
+      <section class="mx-auto max-w-5xl px-6 py-8">
+        <h1 class="text-xl font-semibold">No projects</h1>
+        <p class="mt-2 text-sm text-zinc-500">No accessible projects found.</p>
+      </section>
+      {{end}}
+    </main>
+  </div>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,28 @@
+{{define "login"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>track-slash</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
+  <main class="flex min-h-screen items-center justify-center px-4">
+    <form method="post" action="/app/login" class="w-full max-w-sm space-y-4 rounded border border-zinc-800 bg-zinc-900 p-5 shadow-sm">
+      <input type="hidden" name="next" value="{{.Next}}">
+      <div>
+        <h1 class="text-lg font-semibold tracking-normal">track-slash</h1>
+        <p class="mt-1 text-sm text-zinc-400">Enter an existing API or session token.</p>
+      </div>
+      {{if .Error}}
+      <div class="rounded border border-red-900 bg-red-950 px-3 py-2 text-sm text-red-200">{{.Error}}</div>
+      {{end}}
+      <label class="block text-sm font-medium text-zinc-300" for="token">Token</label>
+      <input id="token" name="token" type="password" autofocus autocomplete="current-password" class="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500" required>
+      <button type="submit" class="w-full rounded bg-emerald-500 px-3 py-2 text-sm font-semibold text-zinc-950 hover:bg-emerald-400">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>
+{{end}}
