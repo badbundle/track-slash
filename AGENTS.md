@@ -1,5 +1,9 @@
 # Agent guide — track-slash
 
+## Product manifesto
+
+Read `MANIFESTO.md` before making product, API, data model, or frontend decisions. It defines the long-term direction for track-slash.
+
 ## Test coverage policy
 
 **Aim for 100% branch coverage on business logic.** Branch coverage, not just line coverage — every condition, every error mapping, every state transition must be exercised.
