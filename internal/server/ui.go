@@ -41,7 +41,31 @@ type uiShellData struct {
 	User             model.User
 	Projects         []model.Project
 	CurrentProjectID uuid.UUID
+	CurrentView      string
+	WorkPanel        *uiWorkPanelData
 	ProjectPanel     *uiProjectPanelData
+}
+
+type uiIssueItem struct {
+	Issue   model.Issue
+	Project model.Project
+	Sprint  *model.Sprint
+}
+
+type uiIssueColumn struct {
+	Status model.Status
+	Label  string
+	Issues []uiIssueItem
+}
+
+type uiWorkPanelData struct {
+	View         string
+	Title        string
+	Subtitle     string
+	Issues       []uiIssueItem
+	Columns      []uiIssueColumn
+	HasMore      bool
+	ProjectCount int
 }
 
 type uiProjectPanelData struct {
@@ -64,6 +88,12 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Route("/app", func(r chi.Router) {
 		r.Use(s.uiAuthMiddleware)
 		r.Get("/", s.uiHome)
+		r.Get("/me", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "me") })
+		r.Get("/me/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "me") })
+		r.Get("/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "sprint") })
+		r.Get("/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "sprint") })
+		r.Get("/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "backlog") })
+		r.Get("/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "backlog") })
 		r.Get("/projects/{id}", s.uiProjectPage)
 		r.Get("/projects/{id}/panel", s.uiProjectPanel)
 	})
@@ -157,19 +187,29 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	http.Redirect(w, r, "/app/sprint", http.StatusSeeOther)
+}
+
+func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
+	panel, err := s.uiBuildWorkPanel(r.Context(), currentUser(r), view)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if len(projects) > 0 {
-		http.Redirect(w, r, "/app/projects/"+projects[0].ID.String(), http.StatusSeeOther)
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:        currentUser(r),
+		CurrentView: view,
+		WorkPanel:   panel,
+	})
+}
+
+func (s *Server) uiWorkPanel(w http.ResponseWriter, r *http.Request, view string) {
+	panel, err := s.uiBuildWorkPanel(r.Context(), currentUser(r), view)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
-		User:     currentUser(r),
-		Projects: projects,
-	})
+	renderUITemplate(w, http.StatusOK, "work-panel", panel)
 }
 
 func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
@@ -206,6 +246,113 @@ func (s *Server) uiProjectPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiBuildWorkPanel(ctx context.Context, user model.User, view string) (*uiWorkPanelData, error) {
+	projects, err := s.uiVisibleProjects(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	panel := &uiWorkPanelData{
+		View:         view,
+		ProjectCount: len(projects),
+	}
+	switch view {
+	case "me":
+		panel.Title = "Me"
+		panel.Subtitle = "Issues assigned to you across accessible projects."
+		panel.Issues, panel.HasMore, err = s.uiAssignedIssues(ctx, projects, user.ID)
+	case "sprint":
+		panel.Title = "Sprint"
+		panel.Subtitle = "Active sprint issues across accessible projects."
+		panel.Columns, panel.HasMore, err = s.uiActiveSprintColumns(ctx, projects)
+	case "backlog":
+		panel.Title = "Backlog"
+		panel.Subtitle = "Backlog issues across accessible projects."
+		panel.Issues, panel.HasMore, err = s.uiBacklogIssues(ctx, projects)
+	default:
+		return nil, store.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return panel, nil
+}
+
+func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project, userID uuid.UUID) ([]uiIssueItem, bool, error) {
+	var out []uiIssueItem
+	var hasMore bool
+	for _, project := range projects {
+		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{ProjectID: project.ID, Limit: MaxLimit})
+		if err != nil {
+			return nil, false, err
+		}
+		hasMore = hasMore || more
+		for _, issue := range issues {
+			if issue.AssigneeID != nil && *issue.AssigneeID == userID {
+				out = append(out, uiIssueItem{Issue: issue, Project: project})
+			}
+		}
+	}
+	return out, hasMore, nil
+}
+
+func (s *Server) uiBacklogIssues(ctx context.Context, projects []model.Project) ([]uiIssueItem, bool, error) {
+	var out []uiIssueItem
+	var hasMore bool
+	for _, project := range projects {
+		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{ProjectID: project.ID, Backlog: true, Limit: MaxLimit})
+		if err != nil {
+			return nil, false, err
+		}
+		hasMore = hasMore || more
+		for _, issue := range issues {
+			out = append(out, uiIssueItem{Issue: issue, Project: project})
+		}
+	}
+	return out, hasMore, nil
+}
+
+func (s *Server) uiActiveSprintColumns(ctx context.Context, projects []model.Project) ([]uiIssueColumn, bool, error) {
+	columns := []uiIssueColumn{
+		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
+		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
+		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+	}
+	var hasMore bool
+	for _, project := range projects {
+		sprints, more, err := s.store.ListSprints(ctx, store.ListSprintsParams{
+			ProjectID: project.ID,
+			Status:    model.SprintStatusActive,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		hasMore = hasMore || more
+		for _, sprint := range sprints {
+			sprintIssues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
+				ProjectID: project.ID,
+				SprintID:  &sprint.ID,
+				Limit:     MaxLimit,
+			})
+			if err != nil {
+				return nil, false, err
+			}
+			hasMore = hasMore || more
+			sp := sprint
+			for _, issue := range sprintIssues {
+				item := uiIssueItem{Issue: issue, Project: project, Sprint: &sp}
+				for i := range columns {
+					if columns[i].Status == issue.Status {
+						columns[i].Issues = append(columns[i].Issues, item)
+						break
+					}
+				}
+			}
+		}
+	}
+	return columns, hasMore, nil
 }
 
 func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, projectID uuid.UUID) (*uiProjectPanelData, error) {
