@@ -16,6 +16,7 @@ import (
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/bradleymackey/track-slash/internal/testutil"
 )
 
 // sprintsTestEnv prepares a Store backed by a real Postgres and returns it
@@ -45,6 +46,8 @@ func newSprintsEnv(t *testing.T) *sprintsTestEnv {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {

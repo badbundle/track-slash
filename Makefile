@@ -3,6 +3,8 @@ export
 
 POSTGRES_PORT ?= 5432
 DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/track?sslmode=disable
+TEST_DATABASE_NAME ?= track_test
+TEST_DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/$(TEST_DATABASE_NAME)?sslmode=disable
 PORT ?= 8080
 
 .PHONY: run migrate up down db-logs test tidy build vet
@@ -17,7 +19,7 @@ vet:
 	go vet ./...
 
 test:
-	go test ./...
+	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' go test -p 1 ./...
 
 tidy:
 	go mod tidy
@@ -29,7 +31,11 @@ up:
 	docker compose up -d
 	@echo "Waiting for postgres..."
 	@until docker compose exec -T postgres pg_isready -U track -d track >/dev/null 2>&1; do sleep 1; done
-	@echo "Postgres ready."
+	@if ! docker compose exec -T postgres psql -U track -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$(TEST_DATABASE_NAME)'" | grep -q 1; then \
+		echo "Creating test database $(TEST_DATABASE_NAME)..."; \
+		docker compose exec -T postgres createdb -U track '$(TEST_DATABASE_NAME)'; \
+	fi
+	@echo "Postgres ready. Databases: track, $(TEST_DATABASE_NAME)."
 
 down:
 	docker compose down

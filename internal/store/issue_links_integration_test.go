@@ -14,6 +14,7 @@ import (
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/bradleymackey/track-slash/internal/testutil"
 )
 
 type linksTestEnv struct {
@@ -41,6 +42,8 @@ func newLinksEnv(t *testing.T) *linksTestEnv {
 	if err := migrations.Up(sqlDB); err != nil {
 		t.Fatalf("migrations.Up: %v", err)
 	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
