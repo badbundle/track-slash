@@ -66,6 +66,7 @@ func (s *Server) Router() http.Handler {
 			r.Use(middleware.Timeout(15 * time.Second))
 
 			r.Get("/me", s.getMe)
+			r.Patch("/me/settings", s.updateMySettings)
 			r.Get("/me/tokens", s.listMyTokens)
 			r.Post("/me/tokens", s.createMyToken)
 			r.Delete("/me/tokens/{id}", s.revokeMyToken)

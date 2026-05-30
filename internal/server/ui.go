@@ -51,6 +51,7 @@ type uiShellData struct {
 	WorkPanel        *uiWorkPanelData
 	ProjectPanel     *uiProjectPanelData
 	TokenPanel       *uiTokenPanelData
+	SettingsPanel    *uiSettingsPanelData
 }
 
 type uiIssueItem struct {
@@ -90,6 +91,14 @@ type uiTokenPanelData struct {
 	Created string
 }
 
+type uiSettingsPanelData struct {
+	User            model.User
+	ProfileError    string
+	ProfileSaved    bool
+	PasswordError   string
+	PasswordChanged bool
+}
+
 func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Get("/login", s.uiLoginPage)
 	r.Post("/login", s.uiLogin)
@@ -106,6 +115,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "sprint") })
 		r.Get("/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "backlog") })
 		r.Get("/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "backlog") })
+		r.Get("/settings", s.uiSettingsPage)
+		r.Post("/settings/profile", s.uiUpdateProfile)
+		r.Post("/settings/password", s.uiUpdatePassword)
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
@@ -258,6 +270,53 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) uiTokensPage(w http.ResponseWriter, r *http.Request) {
 	s.renderUITokens(w, r, "", "")
+}
+
+func (s *Server) uiSettingsPage(w http.ResponseWriter, r *http.Request) {
+	s.renderUISettings(w, r, currentUser(r), "", false, "", false)
+}
+
+func (s *Server) uiUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderUISettings(w, r, currentUser(r), "Unable to read form.", false, "", false)
+		return
+	}
+	user, err := s.store.UpdateUserProfile(r.Context(), currentUser(r).ID, r.Form.Get("name"), r.Form.Get("email"))
+	if err != nil {
+		s.renderUISettings(w, r, currentUser(r), err.Error(), false, "", false)
+		return
+	}
+	s.renderUISettings(w, r, user, "", true, "", false)
+}
+
+func (s *Server) uiUpdatePassword(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderUISettings(w, r, currentUser(r), "", false, "Unable to read form.", false)
+		return
+	}
+	if err := s.store.ChangePassword(r.Context(), currentUser(r).ID, r.Form.Get("current_password"), r.Form.Get("new_password")); err != nil {
+		if errors.Is(err, store.ErrUnauthorized) {
+			s.renderUISettings(w, r, currentUser(r), "", false, "Current password not accepted.", false)
+			return
+		}
+		s.renderUISettings(w, r, currentUser(r), "", false, err.Error(), false)
+		return
+	}
+	s.renderUISettings(w, r, currentUser(r), "", false, "", true)
+}
+
+func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user model.User, profileError string, profileSaved bool, passwordError string, passwordChanged bool) {
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:        user,
+		CurrentView: "settings",
+		SettingsPanel: &uiSettingsPanelData{
+			User:            user,
+			ProfileError:    profileError,
+			ProfileSaved:    profileSaved,
+			PasswordError:   passwordError,
+			PasswordChanged: passwordChanged,
+		},
+	})
 }
 
 func (s *Server) uiCreateToken(w http.ResponseWriter, r *http.Request) {
@@ -595,7 +654,7 @@ func safeUINext(raw string) string {
 	}
 	path, _, _ := strings.Cut(raw, "?")
 	switch {
-	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel", path == "/tokens":
+	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel", path == "/settings", path == "/tokens":
 		return raw
 	case strings.HasPrefix(path, "/projects/"):
 		return raw

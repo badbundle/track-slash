@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -253,6 +254,78 @@ func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
 	code, body = e.doWithToken(t, apiToken.Token, http.MethodGet, "/me", nil)
 	if code != http.StatusUnauthorized {
 		t.Fatalf("revoked my token /me code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPUpdateMySettings(t *testing.T) {
+	e := newHTTPEnv(t)
+	username := "settings" + strings.ToLower(uniqueProjectKey(t))
+	oldPassword := "correct-horse-battery"
+	newPassword := "new-correct-horse"
+	u, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{
+		Username: username,
+		Password: oldPassword,
+		Name:     "Old Name",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	session, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "session",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken session: %v", err)
+	}
+
+	code, body := e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"name":  "New Name",
+		"email": "new@example.com",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("profile settings code = %d body = %s", code, body)
+	}
+	updated := decode[model.User](t, body)
+	if updated.Name != "New Name" || updated.Email != "new@example.com" || updated.Username != username {
+		t.Fatalf("updated = %+v", updated)
+	}
+
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"current_password": "wrong-password",
+		"new_password":     newPassword,
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("wrong password code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"current_password": oldPassword,
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("missing new password code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"name": "",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("blank name code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{})
+	if code != http.StatusBadRequest {
+		t.Fatalf("empty settings code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"current_password": oldPassword,
+		"new_password":     newPassword,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("password settings code = %d body = %s", code, body)
+	}
+	if _, err := e.store.AuthenticatePassword(e.ctx, username, oldPassword); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("old password err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := e.store.AuthenticatePassword(e.ctx, username, newPassword); err != nil {
+		t.Fatalf("new password auth: %v", err)
 	}
 }
 

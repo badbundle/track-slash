@@ -214,6 +214,63 @@ func TestRevokeAuthTokenForUser(t *testing.T) {
 	}
 }
 
+func TestUserSettingsProfileAndPassword(t *testing.T) {
+	env := newSprintsEnv(t)
+	oldPassword := "correct-horse-battery"
+	newPassword := "new-correct-horse"
+	u, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username: "settings" + strings.ToLower(uniqueProjectKey(t)),
+		Password: oldPassword,
+		Name:     "Old Name",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	updated, err := env.store.UpdateUserProfile(env.ctx, u.ID, "New Name", "new@example.com")
+	if err != nil {
+		t.Fatalf("UpdateUserProfile: %v", err)
+	}
+	if updated.Name != "New Name" || updated.Email != "new@example.com" || updated.Username != u.Username {
+		t.Fatalf("updated = %+v", updated)
+	}
+	updated, err = env.store.UpdateUserProfile(env.ctx, u.ID, "New Name", "")
+	if err != nil {
+		t.Fatalf("UpdateUserProfile clear email: %v", err)
+	}
+	if updated.Email != "" {
+		t.Fatalf("email = %q, want empty", updated.Email)
+	}
+	if _, err := env.store.UpdateUserProfile(env.ctx, u.ID, "", "ok@example.com"); err == nil {
+		t.Fatal("blank name err = nil")
+	}
+	if _, err := env.store.UpdateUserProfile(env.ctx, u.ID, "Name", "bad-email"); err == nil {
+		t.Fatal("bad email err = nil")
+	}
+	if err := env.store.ChangePassword(env.ctx, u.ID, "wrong-password", newPassword); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("wrong password err = %v, want ErrUnauthorized", err)
+	}
+	if err := env.store.ChangePassword(env.ctx, u.ID, oldPassword, "short"); err == nil {
+		t.Fatal("short new password err = nil")
+	}
+	if err := env.store.ChangePassword(env.ctx, u.ID, oldPassword, newPassword); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, oldPassword); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("old password err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, newPassword); err != nil {
+		t.Fatalf("new password auth: %v", err)
+	}
+
+	legacy, err := env.store.CreateUser(env.ctx, "settings-legacy-"+uuid.NewString()+"@example.com", "Legacy")
+	if err != nil {
+		t.Fatalf("CreateUser legacy: %v", err)
+	}
+	if err := env.store.ChangePassword(env.ctx, legacy.ID, oldPassword, newPassword); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("legacy change password err = %v, want ErrUnauthorized", err)
+	}
+}
+
 func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateUser(env.ctx, "member-"+uniqueProjectKey(t)+"@example.com", "Member")

@@ -22,6 +22,69 @@ func (s *Server) getMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, meResp{User: auth.User, TokenKind: auth.Token.Kind})
 }
 
+type updateMySettingsReq struct {
+	Name            *string `json:"name,omitempty"`
+	Email           *string `json:"email,omitempty"`
+	CurrentPassword string  `json:"current_password,omitempty"`
+	NewPassword     string  `json:"new_password,omitempty"`
+}
+
+func (s *Server) updateMySettings(w http.ResponseWriter, r *http.Request) {
+	var req updateMySettingsReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	auth := currentAuth(r)
+	changed := false
+	user := auth.User
+	if req.Name != nil || req.Email != nil {
+		name := user.Name
+		email := user.Email
+		if req.Name != nil {
+			name = *req.Name
+		}
+		if req.Email != nil {
+			email = *req.Email
+		}
+		if strings.TrimSpace(name) == "" {
+			writeError(w, http.StatusBadRequest, "name required")
+			return
+		}
+		if err := store.ValidateEmail(email); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		var err error
+		user, err = s.store.UpdateUserProfile(r.Context(), user.ID, name, email)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		changed = true
+	}
+	if req.CurrentPassword != "" || req.NewPassword != "" {
+		if req.CurrentPassword == "" || req.NewPassword == "" {
+			writeError(w, http.StatusBadRequest, "current_password and new_password required")
+			return
+		}
+		if err := store.ValidatePassword(req.NewPassword); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.store.ChangePassword(r.Context(), auth.User.ID, req.CurrentPassword, req.NewPassword); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		changed = true
+	}
+	if !changed {
+		writeError(w, http.StatusBadRequest, "settings change required")
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}
+
 type createAccountReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
