@@ -70,7 +70,7 @@ func (s *Store) AuthenticateToken(ctx context.Context, raw string) (Authenticate
 	hash := tokenHash(raw)
 	const q = `
 		SELECT
-			u.id, u.email, u.name, u.is_admin, u.created_at,
+			u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
 			t.id, t.user_id, t.kind, t.name, t.created_at, t.last_used_at, t.expires_at, t.revoked_at
 		FROM auth_tokens t
 		JOIN users u ON u.id = t.user_id
@@ -81,7 +81,7 @@ func (s *Store) AuthenticateToken(ctx context.Context, raw string) (Authenticate
 	`
 	var out AuthenticatedToken
 	err := s.db.QueryRow(ctx, q, hash[:]).Scan(
-		&out.User.ID, &out.User.Email, &out.User.Name, &out.User.IsAdmin, &out.User.CreatedAt,
+		&out.User.ID, &out.User.Username, &out.User.Email, &out.User.Name, &out.User.IsAdmin, &out.User.CreatedAt,
 		&out.Token.ID, &out.Token.UserID, &out.Token.Kind, &out.Token.Name,
 		&out.Token.CreatedAt, &out.Token.LastUsedAt, &out.Token.ExpiresAt, &out.Token.RevokedAt,
 	)
@@ -130,6 +130,20 @@ func (s *Store) RevokeAuthToken(ctx context.Context, id uuid.UUID) error {
 		UPDATE auth_tokens SET revoked_at = now()
 		WHERE id = $1 AND revoked_at IS NULL
 	`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) RevokeAuthTokenForUser(ctx context.Context, userID, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE auth_tokens SET revoked_at = now()
+		WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+	`, id, userID)
 	if err != nil {
 		return err
 	}

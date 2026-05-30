@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,6 +88,129 @@ func TestAuthTokenExpiryAndKind(t *testing.T) {
 		UserID: u.ID, Kind: model.AuthTokenKind("bogus"), Name: "bad",
 	}); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("invalid kind err = %v, want ErrConflict", err)
+	}
+}
+
+func TestAccountPasswordLifecycle(t *testing.T) {
+	env := newSprintsEnv(t)
+	password := "correct-horse-battery"
+	u, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username: " Member_" + uniqueProjectKey(t),
+		Password: password,
+		Name:     "",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if u.ID == uuid.Nil || u.Username == "" || u.Email != "" || u.Name != u.Username || u.IsAdmin {
+		t.Fatalf("user = %+v", u)
+	}
+
+	var storedHash string
+	if err := env.pool.QueryRow(env.ctx, `
+		SELECT secret_hash FROM auth_credentials
+		WHERE user_id = $1 AND kind = 'password' AND identifier = $2
+	`, u.ID, u.Username).Scan(&storedHash); err != nil {
+		t.Fatalf("query password credential: %v", err)
+	}
+	if storedHash == password || !strings.HasPrefix(storedHash, "$2") {
+		t.Fatalf("stored password hash = %q", storedHash)
+	}
+
+	got, err := env.store.AuthenticatePassword(env.ctx, strings.ToUpper(u.Username), password)
+	if err != nil {
+		t.Fatalf("AuthenticatePassword: %v", err)
+	}
+	if got.ID != u.ID {
+		t.Fatalf("authenticated user = %+v, want %s", got, u.ID)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, "wrong-password"); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("bad password err = %v, want ErrUnauthorized", err)
+	}
+
+	if _, err := env.pool.Exec(env.ctx, `
+		INSERT INTO auth_credentials (user_id, kind, identifier, public_key)
+		VALUES ($1, 'passkey', $2, '\x01')
+	`, u.ID, u.Username); err != nil {
+		t.Fatalf("insert passkey credential: %v", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, password); err != nil {
+		t.Fatalf("AuthenticatePassword with passkey row present: %v", err)
+	}
+
+	if _, err := env.pool.Exec(env.ctx, `
+		UPDATE auth_credentials SET revoked_at = now()
+		WHERE user_id = $1 AND kind = 'password'
+	`, u.ID); err != nil {
+		t.Fatalf("revoke password credential: %v", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, password); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("revoked credential err = %v, want ErrUnauthorized", err)
+	}
+}
+
+func TestAccountValidationAndLegacyTokenOnlyUser(t *testing.T) {
+	env := newSprintsEnv(t)
+	for _, tc := range []struct {
+		name     string
+		username string
+		password string
+	}{
+		{name: "short username", username: "ab", password: "correct-horse-battery"},
+		{name: "bad start", username: "_abc", password: "correct-horse-battery"},
+		{name: "bad char", username: "abc!", password: "correct-horse-battery"},
+		{name: "short password", username: "validname", password: "short"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{Username: tc.username, Password: tc.password}); err == nil {
+				t.Fatal("CreateAccount err = nil")
+			}
+		})
+	}
+
+	u, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{Username: "dup" + strings.ToLower(uniqueProjectKey(t)), Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatalf("CreateAccount unique: %v", err)
+	}
+	if _, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{Username: strings.ToUpper(u.Username), Password: "correct-horse-battery"}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("duplicate account err = %v, want ErrConflict", err)
+	}
+
+	legacy, err := env.store.CreateUser(env.ctx, "legacy-"+uuid.NewString()+"@example.com", "Legacy")
+	if err != nil {
+		t.Fatalf("CreateUser legacy: %v", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, legacy.Username, "correct-horse-battery"); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("legacy password err = %v, want ErrUnauthorized", err)
+	}
+}
+
+func TestRevokeAuthTokenForUser(t *testing.T) {
+	env := newSprintsEnv(t)
+	u, err := env.store.CreateUser(env.ctx, "self-revoke-"+uuid.NewString()+"@example.com", "Self")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	other, err := env.store.CreateUser(env.ctx, "other-revoke-"+uuid.NewString()+"@example.com", "Other")
+	if err != nil {
+		t.Fatalf("CreateUser other: %v", err)
+	}
+	created, err := env.store.CreateAuthToken(env.ctx, store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindAPI,
+		Name:   "self",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+	if err := env.store.RevokeAuthTokenForUser(env.ctx, other.ID, created.Token.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("wrong user revoke err = %v, want ErrNotFound", err)
+	}
+	if err := env.store.RevokeAuthTokenForUser(env.ctx, u.ID, created.Token.ID); err != nil {
+		t.Fatalf("RevokeAuthTokenForUser: %v", err)
+	}
+	if _, err := env.store.AuthenticateToken(env.ctx, created.RawToken); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("revoked auth err = %v, want ErrUnauthorized", err)
 	}
 }
 

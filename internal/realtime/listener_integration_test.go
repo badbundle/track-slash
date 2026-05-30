@@ -337,9 +337,10 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 	`, uniqueKey(t), "rt-comment").Scan(&projectID); err != nil {
 		t.Fatalf("insert project: %v", err)
 	}
+	userKey := uniqueKey(t)
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO users (email, name) VALUES ($1, 'Commenter') RETURNING id::text
-	`, "rt-comment-"+uniqueKey(t)+"@example.com").Scan(&authorID); err != nil {
+		INSERT INTO users (username, email, name) VALUES ($1, $2, 'Commenter') RETURNING id::text
+	`, "rtcomment"+userKey, "rt-comment-"+userKey+"@example.com").Scan(&authorID); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
