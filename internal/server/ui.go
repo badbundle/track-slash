@@ -49,6 +49,7 @@ type uiShellData struct {
 	CurrentProjectID uuid.UUID
 	CurrentView      string
 	WorkPanel        *uiWorkPanelData
+	ProjectsPanel    *uiProjectsPanelData
 	ProjectPanel     *uiProjectPanelData
 	TokenPanel       *uiTokenPanelData
 	SettingsPanel    *uiSettingsPanelData
@@ -85,6 +86,15 @@ type uiProjectPanelData struct {
 	BacklogHasMore      bool
 }
 
+type uiProjectsPanelData struct {
+	Projects    []model.Project
+	HasMore     bool
+	Error       string
+	Key         string
+	Name        string
+	Description string
+}
+
 type uiTokenPanelData struct {
 	Tokens  []model.AuthToken
 	Error   string
@@ -115,6 +125,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "sprint") })
 		r.Get("/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "backlog") })
 		r.Get("/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "backlog") })
+		r.Get("/projects", s.uiProjectsPage)
+		r.Get("/projects/panel", s.uiProjectsPanel)
+		r.Post("/projects", s.uiCreateProject)
 		r.Get("/settings", s.uiSettingsPage)
 		r.Post("/settings/profile", s.uiUpdateProfile)
 		r.Post("/settings/password", s.uiUpdatePassword)
@@ -398,6 +411,60 @@ func (s *Server) uiWorkPanel(w http.ResponseWriter, r *http.Request, view string
 	renderUITemplate(w, http.StatusOK, "work-panel", panel)
 }
 
+func (s *Server) uiProjectsPage(w http.ResponseWriter, r *http.Request) {
+	s.renderUIProjects(w, r, http.StatusOK, "", "", "", "")
+}
+
+func (s *Server) uiProjectsPanel(w http.ResponseWriter, r *http.Request) {
+	panel, err := s.uiBuildProjectsPanel(r.Context(), currentUser(r), "", "", "", "")
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "projects-panel", panel)
+}
+
+func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderUIProjects(w, r, http.StatusBadRequest, "Unable to read form.", "", "", "")
+		return
+	}
+	key := strings.TrimSpace(r.Form.Get("key"))
+	name := strings.TrimSpace(r.Form.Get("name"))
+	description := r.Form.Get("description")
+	if !projectKeyRe.MatchString(key) {
+		s.renderUIProjects(w, r, http.StatusBadRequest, "Key must match ^[A-Z][A-Z0-9]{1,9}$.", key, name, description)
+		return
+	}
+	if name == "" {
+		s.renderUIProjects(w, r, http.StatusBadRequest, "Name required.", key, name, description)
+		return
+	}
+	project, err := s.store.CreateProjectForUser(r.Context(), currentUser(r).ID, key, name, description)
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIProjects(w, r, http.StatusConflict, "Project key already exists.", key, name, description)
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	http.Redirect(w, r, "/projects/"+project.ID.String(), http.StatusSeeOther)
+}
+
+func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
+	panel, err := s.uiBuildProjectsPanel(r.Context(), currentUser(r), message, key, name, description)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, status, "shell", uiShellData{
+		User:          currentUser(r),
+		CurrentView:   "projects",
+		ProjectsPanel: panel,
+	})
+}
+
 func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := uiProjectID(w, r)
 	if !ok {
@@ -417,6 +484,7 @@ func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: projectID,
+		CurrentView:      "projects",
 		ProjectPanel:     panel,
 	})
 }
@@ -463,6 +531,37 @@ func (s *Server) uiBuildWorkPanel(ctx context.Context, user model.User, view str
 		return nil, err
 	}
 	return panel, nil
+}
+
+func (s *Server) uiBuildProjectsPanel(ctx context.Context, user model.User, message, key, name, description string) (*uiProjectsPanelData, error) {
+	var all []model.Project
+	var hasMore bool
+	var cursor *store.ProjectsCursor
+	for {
+		projects, more, err := s.store.ListProjects(ctx, store.ListProjectsParams{
+			Cursor:        cursor,
+			Limit:         MaxLimit,
+			VisibleToUser: visibleProjectUser(user),
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, projects...)
+		hasMore = hasMore || more
+		if !more {
+			break
+		}
+		last := projects[len(projects)-1]
+		cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+	return &uiProjectsPanelData{
+		Projects:    all,
+		HasMore:     hasMore,
+		Error:       message,
+		Key:         key,
+		Name:        name,
+		Description: description,
+	}, nil
 }
 
 func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project, userID uuid.UUID) ([]uiIssueItem, bool, error) {
@@ -654,7 +753,7 @@ func safeUINext(raw string) string {
 	}
 	path, _, _ := strings.Cut(raw, "?")
 	switch {
-	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel", path == "/settings", path == "/tokens":
+	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel", path == "/projects", path == "/projects/panel", path == "/settings", path == "/tokens":
 		return raw
 	case strings.HasPrefix(path, "/projects/"):
 		return raw

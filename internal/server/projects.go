@@ -21,9 +21,6 @@ type createProjectReq struct {
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
 	var req createProjectReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -40,7 +37,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := s.store.CreateProject(r.Context(), req.Key, req.Name, req.Description)
+	p, err := s.store.CreateProjectForUser(r.Context(), currentUser(r).ID, req.Key, req.Name, req.Description)
 	if err != nil {
 		writeStoreError(w, err)
 		return

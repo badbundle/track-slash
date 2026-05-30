@@ -35,6 +35,8 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "root", raw: "/", want: "/"},
 		{name: "work", raw: "/sprint", want: "/sprint"},
 		{name: "work panel with query", raw: "/sprint/panel?x=1", want: "/sprint/panel?x=1"},
+		{name: "projects", raw: "/projects", want: "/projects"},
+		{name: "projects panel", raw: "/projects/panel", want: "/projects/panel"},
 		{name: "project", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16"},
 		{name: "api", raw: "/api/v1/projects", want: "/"},
 		{name: "legacy app", raw: "/app/sprint", want: "/"},

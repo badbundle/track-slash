@@ -91,6 +91,72 @@ func TestHTTPAdminCanCreateUsersAndProjects(t *testing.T) {
 	}
 }
 
+func TestHTTPMemberCanCreateProjectAndGetsAccess(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustUserToken(t, "project-creator")
+	key := uniqueProjectKey(t)
+	code, body := e.doWithToken(t, token, http.MethodPost, "/projects/", map[string]any{
+		"key":         key,
+		"name":        "Member Project",
+		"description": "via member API",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create project code = %d body = %s", code, body)
+	}
+	p := decode[model.Project](t, body)
+	if p.ID == uuid.Nil || p.Key != key || p.Description != "via member API" {
+		t.Fatalf("project = %+v", p)
+	}
+
+	code, body = e.doWithToken(t, token, http.MethodGet, "/projects", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list projects code = %d body = %s", code, body)
+	}
+	page := decodePage[model.Project](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != p.ID {
+		t.Fatalf("visible projects = %+v", page.Items)
+	}
+
+	code, body = e.doWithToken(t, token, http.MethodGet, fmt.Sprintf("/projects/%s", p.ID), nil)
+	if code != http.StatusOK {
+		t.Fatalf("get created project code = %d body = %s", code, body)
+	}
+	got := decode[model.Project](t, body)
+	if got.ID != p.ID {
+		t.Fatalf("got project = %+v, want %s", got, p.ID)
+	}
+
+	members, err := e.store.ListProjectMembers(e.ctx, p.ID)
+	if err != nil {
+		t.Fatalf("ListProjectMembers: %v", err)
+	}
+	if len(members) != 1 || members[0].UserID != user.ID {
+		t.Fatalf("members = %+v", members)
+	}
+
+	code, body = e.doWithToken(t, token, http.MethodPost, "/projects/", map[string]any{
+		"key":  "bad",
+		"name": "Bad",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad key code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, token, http.MethodPost, "/projects/", map[string]any{
+		"key":  key,
+		"name": "Duplicate",
+	})
+	if code != http.StatusConflict {
+		t.Fatalf("duplicate key code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, token, http.MethodPost, "/projects/", map[string]any{
+		"key":  uniqueProjectKey(t),
+		"name": " ",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("blank name code = %d body = %s", code, body)
+	}
+}
+
 func TestHTTPProjectMembershipFiltersAndForbids(t *testing.T) {
 	e := newHTTPEnv(t)
 	user, token := e.mustUserToken(t, "member")
