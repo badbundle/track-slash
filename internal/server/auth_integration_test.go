@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -157,6 +158,174 @@ func TestHTTPTokenAdminEndpoints(t *testing.T) {
 	code, body = e.doWithToken(t, created.Token, http.MethodGet, "/me", nil)
 	if code != http.StatusUnauthorized {
 		t.Fatalf("revoked token /me code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
+	e := newHTTPEnv(t)
+	username := "acct" + strings.ToLower(uniqueProjectKey(t))
+	password := "correct-horse-battery"
+	code, body := e.doUnauth(t, http.MethodPost, "/accounts", map[string]any{
+		"username": username,
+		"password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create account code = %d body = %s", code, body)
+	}
+	u := decode[model.User](t, body)
+	if u.Username != username || u.Email != "" || u.IsAdmin {
+		t.Fatalf("created account = %+v", u)
+	}
+
+	code, body = e.doUnauth(t, http.MethodPost, "/accounts", map[string]any{
+		"username": strings.ToUpper(username),
+		"password": password,
+	})
+	if code != http.StatusConflict {
+		t.Fatalf("duplicate account code = %d body = %s", code, body)
+	}
+	code, body = e.doUnauth(t, http.MethodPost, "/accounts", map[string]any{
+		"username": "bad!",
+		"password": password,
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad account code = %d body = %s", code, body)
+	}
+
+	code, body = e.doUnauth(t, http.MethodPost, "/session", map[string]any{
+		"username": username,
+		"password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("session code = %d body = %s", code, body)
+	}
+	session := decode[struct {
+		model.AuthToken
+		Token string `json:"token"`
+	}](t, body)
+	if session.Token == "" || session.Kind != model.AuthTokenKindSession || session.UserID != u.ID {
+		t.Fatalf("session = %+v", session)
+	}
+	code, body = e.doWithToken(t, session.Token, http.MethodGet, "/me", nil)
+	if code != http.StatusOK {
+		t.Fatalf("session /me code = %d body = %s", code, body)
+	}
+
+	code, body = e.doWithToken(t, session.Token, http.MethodPost, "/me/tokens", map[string]any{
+		"name": "self api",
+		"kind": "api",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create my token code = %d body = %s", code, body)
+	}
+	apiToken := decode[struct {
+		model.AuthToken
+		Token string `json:"token"`
+	}](t, body)
+	if apiToken.Token == "" || apiToken.Kind != model.AuthTokenKindAPI || apiToken.UserID != u.ID {
+		t.Fatalf("api token = %+v", apiToken)
+	}
+	code, body = e.doWithToken(t, session.Token, http.MethodGet, "/me/tokens", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list my tokens code = %d body = %s", code, body)
+	}
+	tokens := decode[[]model.AuthToken](t, body)
+	if len(tokens) < 2 {
+		t.Fatalf("tokens = %+v", tokens)
+	}
+
+	other, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: e.adminID,
+		Kind:   model.AuthTokenKindAPI,
+		Name:   "other",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken other: %v", err)
+	}
+	code, body = e.doWithToken(t, session.Token, http.MethodDelete, fmt.Sprintf("/me/tokens/%s", other.Token.ID), nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("revoke other code = %d body = %s", code, body)
+	}
+
+	code, body = e.doWithToken(t, session.Token, http.MethodDelete, fmt.Sprintf("/me/tokens/%s", apiToken.ID), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("revoke my token code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, apiToken.Token, http.MethodGet, "/me", nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("revoked my token /me code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPUpdateMySettings(t *testing.T) {
+	e := newHTTPEnv(t)
+	username := "settings" + strings.ToLower(uniqueProjectKey(t))
+	oldPassword := "correct-horse-battery"
+	newPassword := "new-correct-horse"
+	u, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{
+		Username: username,
+		Password: oldPassword,
+		Name:     "Old Name",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	session, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "session",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken session: %v", err)
+	}
+
+	code, body := e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"name":  "New Name",
+		"email": "new@example.com",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("profile settings code = %d body = %s", code, body)
+	}
+	updated := decode[model.User](t, body)
+	if updated.Name != "New Name" || updated.Email != "new@example.com" || updated.Username != username {
+		t.Fatalf("updated = %+v", updated)
+	}
+
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"current_password": "wrong-password",
+		"new_password":     newPassword,
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("wrong password code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"current_password": oldPassword,
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("missing new password code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"name": "",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("blank name code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{})
+	if code != http.StatusBadRequest {
+		t.Fatalf("empty settings code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/settings", map[string]any{
+		"current_password": oldPassword,
+		"new_password":     newPassword,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("password settings code = %d body = %s", code, body)
+	}
+	if _, err := e.store.AuthenticatePassword(e.ctx, username, oldPassword); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("old password err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := e.store.AuthenticatePassword(e.ctx, username, newPassword); err != nil {
+		t.Fatalf("new password auth: %v", err)
 	}
 }
 

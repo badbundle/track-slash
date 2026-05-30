@@ -40,10 +40,26 @@ func (s SprintStatus) Valid() bool {
 
 type User struct {
 	ID        uuid.UUID `json:"id"`
-	Email     string    `json:"email"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email,omitempty"`
 	Name      string    `json:"name"`
 	IsAdmin   bool      `json:"is_admin"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type AuthCredentialKind string
+
+const (
+	AuthCredentialKindPassword AuthCredentialKind = "password"
+	AuthCredentialKindPasskey  AuthCredentialKind = "passkey"
+)
+
+func (k AuthCredentialKind) Valid() bool {
+	switch k {
+	case AuthCredentialKindPassword, AuthCredentialKindPasskey:
+		return true
+	}
+	return false
 }
 
 type AuthTokenKind string

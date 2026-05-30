@@ -52,6 +52,8 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/healthz", s.healthz)
+		r.Post("/accounts", s.createAccount)
+		r.Post("/session", s.createSession)
 
 		// WebSocket endpoint sits outside the request-timeout group: the
 		// connection is long-lived and would otherwise be killed mid-stream.
@@ -64,6 +66,10 @@ func (s *Server) Router() http.Handler {
 			r.Use(middleware.Timeout(15 * time.Second))
 
 			r.Get("/me", s.getMe)
+			r.Patch("/me/settings", s.updateMySettings)
+			r.Get("/me/tokens", s.listMyTokens)
+			r.Post("/me/tokens", s.createMyToken)
+			r.Delete("/me/tokens/{id}", s.revokeMyToken)
 			r.Delete("/tokens/{id}", s.revokeToken)
 
 			r.Route("/users", func(r chi.Router) {

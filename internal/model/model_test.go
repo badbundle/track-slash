@@ -65,3 +65,23 @@ func TestAuthTokenKindValid(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthCredentialKindValid(t *testing.T) {
+	cases := []struct {
+		in   AuthCredentialKind
+		want bool
+	}{
+		{AuthCredentialKindPassword, true},
+		{AuthCredentialKindPasskey, true},
+		{"", false},
+		{"totp", false},
+		{"PASSWORD", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.in), func(t *testing.T) {
+			if got := c.in.Valid(); got != c.want {
+				t.Fatalf("AuthCredentialKind(%q).Valid() = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}

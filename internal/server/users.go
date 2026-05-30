@@ -11,8 +11,9 @@ import (
 )
 
 type createUserReq struct {
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	Username string `json:"username,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Name     string `json:"name"`
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
@@ -25,8 +26,20 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Email = strings.TrimSpace(req.Email)
+	req.Username = strings.TrimSpace(req.Username)
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Email == "" || !strings.Contains(req.Email, "@") {
+	if req.Username == "" && req.Email == "" {
+		writeError(w, http.StatusBadRequest, "username required")
+		return
+	}
+	if req.Username == "" {
+		req.Username = store.UsernameFromEmail(req.Email)
+	}
+	if _, err := store.NormalizeUsername(req.Username); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Email != "" && !strings.Contains(req.Email, "@") {
 		writeError(w, http.StatusBadRequest, "invalid email")
 		return
 	}
@@ -35,7 +48,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := s.store.CreateUser(r.Context(), req.Email, req.Name)
+	u, err := s.store.CreateUserProfile(r.Context(), req.Username, req.Email, req.Name)
 	if err != nil {
 		writeStoreError(w, err)
 		return

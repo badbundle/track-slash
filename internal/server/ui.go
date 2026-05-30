@@ -30,9 +30,15 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectIcon": uiProjectIcon,
 	"sprintDate":  uiSprintDate,
 	"statusLabel": uiStatusLabel,
+	"tokenTime":   uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
+	Error string
+	Next  string
+}
+
+type uiSignupData struct {
 	Error string
 	Next  string
 }
@@ -44,6 +50,8 @@ type uiShellData struct {
 	CurrentView      string
 	WorkPanel        *uiWorkPanelData
 	ProjectPanel     *uiProjectPanelData
+	TokenPanel       *uiTokenPanelData
+	SettingsPanel    *uiSettingsPanelData
 }
 
 type uiIssueItem struct {
@@ -77,9 +85,25 @@ type uiProjectPanelData struct {
 	BacklogHasMore      bool
 }
 
+type uiTokenPanelData struct {
+	Tokens  []model.AuthToken
+	Error   string
+	Created string
+}
+
+type uiSettingsPanelData struct {
+	User            model.User
+	ProfileError    string
+	ProfileSaved    bool
+	PasswordError   string
+	PasswordChanged bool
+}
+
 func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Get("/login", s.uiLoginPage)
 	r.Post("/login", s.uiLogin)
+	r.Get("/signup", s.uiSignupPage)
+	r.Post("/signup", s.uiSignup)
 	r.Post("/logout", s.uiLogout)
 
 	r.Group(func(r chi.Router) {
@@ -91,6 +115,12 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "sprint") })
 		r.Get("/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "backlog") })
 		r.Get("/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "backlog") })
+		r.Get("/settings", s.uiSettingsPage)
+		r.Post("/settings/profile", s.uiUpdateProfile)
+		r.Post("/settings/password", s.uiUpdatePassword)
+		r.Get("/tokens", s.uiTokensPage)
+		r.Post("/tokens", s.uiCreateToken)
+		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
 		r.Get("/projects/{id}", s.uiProjectPage)
 		r.Get("/projects/{id}/panel", s.uiProjectPanel)
 	})
@@ -107,22 +137,79 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		renderUITemplate(w, http.StatusBadRequest, "login", uiLoginData{Error: "Unable to read form."})
 		return
 	}
-	raw := strings.TrimSpace(r.Form.Get("token"))
+	username := strings.TrimSpace(r.Form.Get("username"))
+	password := r.Form.Get("password")
 	next := safeUINext(r.Form.Get("next"))
-	if raw == "" {
-		renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Token required.", Next: next})
+	if username == "" || password == "" {
+		renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Username and password required.", Next: next})
 		return
 	}
-	auth, err := s.store.AuthenticateToken(r.Context(), raw)
+	u, err := s.store.AuthenticatePassword(r.Context(), username, password)
 	if err != nil {
 		if errors.Is(err, store.ErrUnauthorized) {
-			renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Token not accepted.", Next: next})
+			renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Username or password not accepted.", Next: next})
 			return
 		}
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "web session",
+	})
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
 
+func (s *Server) uiSignupPage(w http.ResponseWriter, r *http.Request) {
+	renderUITemplate(w, http.StatusOK, "signup", uiSignupData{
+		Next: safeUINext(r.URL.Query().Get("next")),
+	})
+}
+
+func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		renderUITemplate(w, http.StatusBadRequest, "signup", uiSignupData{Error: "Unable to read form."})
+		return
+	}
+	next := safeUINext(r.Form.Get("next"))
+	u, err := s.store.CreateAccount(r.Context(), store.CreateAccountParams{
+		Username: r.Form.Get("username"),
+		Password: r.Form.Get("password"),
+		Name:     r.Form.Get("name"),
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			renderUITemplate(w, http.StatusConflict, "signup", uiSignupData{Error: "Username already exists.", Next: next})
+			return
+		}
+		renderUITemplate(w, http.StatusBadRequest, "signup", uiSignupData{Error: err.Error(), Next: next})
+		return
+	}
+	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "web session",
+	})
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
+	clearUISessionCookie(w, r)
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func setUISessionCookie(w http.ResponseWriter, r *http.Request, raw string, expiresAt *time.Time) {
 	cookie := &http.Cookie{
 		Name:     uiAuthCookieName,
 		Value:    raw,
@@ -131,14 +218,13 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil,
 	}
-	if auth.Token.ExpiresAt != nil {
-		cookie.Expires = *auth.Token.ExpiresAt
+	if expiresAt != nil {
+		cookie.Expires = *expiresAt
 	}
 	http.SetCookie(w, cookie)
-	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
-func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
+func clearUISessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     uiAuthCookieName,
 		Value:    "",
@@ -149,7 +235,6 @@ func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil,
 	})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
@@ -180,6 +265,110 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 		}
 		ctx := context.WithValue(r.Context(), authContextKey{}, authContext{User: auth.User, Token: auth.Token})
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (s *Server) uiTokensPage(w http.ResponseWriter, r *http.Request) {
+	s.renderUITokens(w, r, "", "")
+}
+
+func (s *Server) uiSettingsPage(w http.ResponseWriter, r *http.Request) {
+	s.renderUISettings(w, r, currentUser(r), "", false, "", false)
+}
+
+func (s *Server) uiUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderUISettings(w, r, currentUser(r), "Unable to read form.", false, "", false)
+		return
+	}
+	user, err := s.store.UpdateUserProfile(r.Context(), currentUser(r).ID, r.Form.Get("name"), r.Form.Get("email"))
+	if err != nil {
+		s.renderUISettings(w, r, currentUser(r), err.Error(), false, "", false)
+		return
+	}
+	s.renderUISettings(w, r, user, "", true, "", false)
+}
+
+func (s *Server) uiUpdatePassword(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderUISettings(w, r, currentUser(r), "", false, "Unable to read form.", false)
+		return
+	}
+	if err := s.store.ChangePassword(r.Context(), currentUser(r).ID, r.Form.Get("current_password"), r.Form.Get("new_password")); err != nil {
+		if errors.Is(err, store.ErrUnauthorized) {
+			s.renderUISettings(w, r, currentUser(r), "", false, "Current password not accepted.", false)
+			return
+		}
+		s.renderUISettings(w, r, currentUser(r), "", false, err.Error(), false)
+		return
+	}
+	s.renderUISettings(w, r, currentUser(r), "", false, "", true)
+}
+
+func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user model.User, profileError string, profileSaved bool, passwordError string, passwordChanged bool) {
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:        user,
+		CurrentView: "settings",
+		SettingsPanel: &uiSettingsPanelData{
+			User:            user,
+			ProfileError:    profileError,
+			ProfileSaved:    profileSaved,
+			PasswordError:   passwordError,
+			PasswordChanged: passwordChanged,
+		},
+	})
+}
+
+func (s *Server) uiCreateToken(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderUITokens(w, r, "Unable to read form.", "")
+		return
+	}
+	name := strings.TrimSpace(r.Form.Get("name"))
+	if name == "" || len(name) > 200 {
+		s.renderUITokens(w, r, "Name required, max 200 chars.", "")
+		return
+	}
+	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
+		UserID: currentUser(r).ID,
+		Kind:   model.AuthTokenKindAPI,
+		Name:   name,
+	})
+	if err != nil {
+		s.renderUITokens(w, r, "Unable to create token.", "")
+		return
+	}
+	s.renderUITokens(w, r, "", created.RawToken)
+}
+
+func (s *Server) uiRevokeToken(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid token id", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.RevokeAuthTokenForUser(r.Context(), currentUser(r).ID, id); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if currentAuth(r).Token.ID == id {
+		clearUISessionCookie(w, r)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/tokens", http.StatusSeeOther)
+}
+
+func (s *Server) renderUITokens(w http.ResponseWriter, r *http.Request, message, created string) {
+	tokens, err := s.store.ListAuthTokens(r.Context(), currentUser(r).ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:        currentUser(r),
+		CurrentView: "tokens",
+		TokenPanel:  &uiTokenPanelData{Tokens: tokens, Error: message, Created: created},
 	})
 }
 
@@ -465,7 +654,7 @@ func safeUINext(raw string) string {
 	}
 	path, _, _ := strings.Cut(raw, "?")
 	switch {
-	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel":
+	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel", path == "/settings", path == "/tokens":
 		return raw
 	case strings.HasPrefix(path, "/projects/"):
 		return raw
@@ -538,5 +727,22 @@ func uiStatusLabel(s model.Status) string {
 		return "Done"
 	default:
 		return string(s)
+	}
+}
+
+func uiTokenTime(v any) string {
+	if v == nil {
+		return "-"
+	}
+	switch t := v.(type) {
+	case time.Time:
+		return t.Format("Jan 2, 2006 15:04")
+	case *time.Time:
+		if t == nil {
+			return "-"
+		}
+		return t.Format("Jan 2, 2006 15:04")
+	default:
+		return "-"
 	}
 }
