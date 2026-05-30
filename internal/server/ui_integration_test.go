@@ -14,13 +14,13 @@ import (
 
 func TestUIRedirectsUnauthenticatedApp(t *testing.T) {
 	e := newHTTPEnv(t)
-	res := e.uiDoNoRedirect(t, http.MethodGet, "/app", "", nil)
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/", "", nil)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); !strings.HasPrefix(loc, "/app/login?next=") {
+	if loc := res.Header.Get("Location"); !strings.HasPrefix(loc, "/login?next=") {
 		t.Fatalf("Location = %q", loc)
 	}
 }
@@ -28,7 +28,7 @@ func TestUIRedirectsUnauthenticatedApp(t *testing.T) {
 func TestUILoginRejectsBadToken(t *testing.T) {
 	e := newHTTPEnv(t)
 	form := url.Values{"token": {"not-a-token"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/app/login", "", strings.NewReader(form.Encode()))
+	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 
 	body := readBody(t, res)
@@ -45,21 +45,21 @@ func TestUILoginRejectsBadToken(t *testing.T) {
 
 func TestUILoginSetsCookie(t *testing.T) {
 	e := newHTTPEnv(t)
-	form := url.Values{"token": {e.authToken}, "next": {"/app/sprint"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/app/login", "", strings.NewReader(form.Encode()))
+	form := url.Values{"token": {e.authToken}, "next": {"/sprint"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/app/sprint" {
+	if loc := res.Header.Get("Location"); loc != "/sprint" {
 		t.Fatalf("Location = %q", loc)
 	}
 	cookie := findUICookie(t, res.Cookies())
 	if !cookie.HttpOnly {
 		t.Fatal("ui auth cookie is not HttpOnly")
 	}
-	if cookie.Path != "/app" {
+	if cookie.Path != "/" {
 		t.Fatalf("cookie Path = %q", cookie.Path)
 	}
 	if cookie.SameSite != http.SameSiteLaxMode {
@@ -71,7 +71,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
-	body := e.uiGet(t, "/app/sprint", token)
+	body := e.uiGet(t, "/sprint", token)
 	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, "data-nav-loader"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
@@ -84,6 +84,9 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	}
 	if !strings.Contains(body, user.Name) {
 		t.Fatalf("body missing current user: %s", body)
+	}
+	if strings.Contains(body, "/app") {
+		t.Fatalf("body contains legacy /app path: %s", body)
 	}
 }
 
@@ -102,7 +105,7 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 		t.Fatalf("CreateIssue unassigned: %v", err)
 	}
 
-	meBody := e.uiGet(t, "/app/me", token)
+	meBody := e.uiGet(t, "/me", token)
 	if !strings.Contains(meBody, assigned.Title) {
 		t.Fatalf("me body missing assigned issue: %s", meBody)
 	}
@@ -110,7 +113,7 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 		t.Fatalf("me body included unassigned issue: %s", meBody)
 	}
 
-	backlogBody := e.uiGet(t, "/app/backlog", token)
+	backlogBody := e.uiGet(t, "/backlog", token)
 	if !strings.Contains(backlogBody, assigned.Title) || !strings.Contains(backlogBody, "Backlog issues across accessible projects.") {
 		t.Fatalf("backlog body missing expected issue/header: %s", backlogBody)
 	}
@@ -148,7 +151,7 @@ func TestUIRendersActiveSprintBoardAcrossAccessibleProjects(t *testing.T) {
 		t.Fatalf("assign progress: %v", err)
 	}
 
-	body := e.uiGet(t, "/app/sprint", token)
+	body := e.uiGet(t, "/sprint", token)
 	for _, want := range []string{"Active sprint issues across accessible projects.", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
@@ -183,7 +186,7 @@ func TestUIRendersCurrentSprintAndBacklogSeparately(t *testing.T) {
 		t.Fatalf("CreateIssue backlog: %v", err)
 	}
 
-	body := e.uiGet(t, "/app/projects/"+e.projectID.String(), token)
+	body := e.uiGet(t, "/projects/"+e.projectID.String(), token)
 	currentIdx := strings.Index(body, "Current sprint")
 	inSprintIdx := strings.Index(body, "issue inside active sprint")
 	backlogIdx := strings.Index(body, ">Backlog</h2>")
@@ -199,7 +202,7 @@ func TestUIRendersCurrentSprintAndBacklogSeparately(t *testing.T) {
 func TestUIRendersNoActiveSprintState(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-empty")
-	body := e.uiGet(t, "/app/projects/"+e.projectID.String(), token)
+	body := e.uiGet(t, "/projects/"+e.projectID.String(), token)
 	if !strings.Contains(body, "No active sprint.") {
 		t.Fatalf("body missing no-active-sprint state: %s", body)
 	}
@@ -207,13 +210,13 @@ func TestUIRendersNoActiveSprintState(t *testing.T) {
 
 func TestUILogoutClearsCookie(t *testing.T) {
 	e := newHTTPEnv(t)
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/app/logout", e.authToken, nil)
+	res := e.uiDoNoRedirect(t, http.MethodPost, "/logout", e.authToken, nil)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/app/login" {
+	if loc := res.Header.Get("Location"); loc != "/login" {
 		t.Fatalf("Location = %q", loc)
 	}
 	setCookie := res.Header.Get("Set-Cookie")
@@ -245,7 +248,7 @@ func (e *httpEnv) uiDoNoRedirect(t *testing.T, method, path, token string, body 
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	if token != "" {
-		req.AddCookie(&http.Cookie{Name: uiCookieNameForTest, Value: token, Path: "/app"})
+		req.AddCookie(&http.Cookie{Name: uiCookieNameForTest, Value: token, Path: "/"})
 	}
 	client := *e.ts.Client()
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -281,13 +284,13 @@ func readBody(t *testing.T, res *http.Response) string {
 func TestUIHomeRedirectsToFirstProject(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-home")
-	res := e.uiDoNoRedirect(t, http.MethodGet, "/app", token, nil)
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/", token, nil)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/app/sprint" {
+	if loc := res.Header.Get("Location"); loc != "/sprint" {
 		t.Fatalf("Location = %q", loc)
 	}
 }

@@ -73,7 +73,7 @@ func TestHTTPCreateIssueLinkBadJSON(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost,
-		e.ts.URL+"/issues/"+a.ID.String()+"/links",
+		e.ts.URL+apiPath("/issues/"+a.ID.String()+"/links"),
 		bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)

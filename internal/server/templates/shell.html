@@ -32,7 +32,7 @@
       </div>
 
       <nav class="scrollbar-none min-h-0 flex-1 overflow-y-auto p-2">
-        <a data-nav-link href="/app/me" hx-get="/app/me/panel" hx-target="#main" hx-push-url="/app/me" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link href="/me" hx-get="/me/panel" hx-target="#main" hx-push-url="/me" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="user" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -41,7 +41,7 @@
             <span class="block truncate font-medium">Me</span>
           </span>
         </a>
-        <a data-nav-link href="/app/sprint" hx-get="/app/sprint/panel" hx-target="#main" hx-push-url="/app/sprint" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "sprint"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link href="/sprint" hx-get="/sprint/panel" hx-target="#main" hx-push-url="/sprint" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "sprint"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="kanban" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -50,7 +50,7 @@
             <span class="block truncate font-medium">Sprint</span>
           </span>
         </a>
-        <a data-nav-link href="/app/backlog" hx-get="/app/backlog/panel" hx-target="#main" hx-push-url="/app/backlog" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "backlog"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link href="/backlog" hx-get="/backlog/panel" hx-target="#main" hx-push-url="/backlog" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "backlog"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="archive" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -71,7 +71,7 @@
         </summary>
         <div class="wide-only absolute bottom-16 left-2 right-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950">
           <div class="px-2 py-1 text-xs text-slate-500 dark:text-slate-400">{{if .User.IsAdmin}}Admin{{else}}Member{{end}}</div>
-          <form method="post" action="/app/logout">
+          <form method="post" action="/logout">
             <button type="submit" class="w-full rounded-md px-2 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Sign out</button>
           </form>
         </div>

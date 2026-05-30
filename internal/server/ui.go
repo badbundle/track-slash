@@ -78,14 +78,11 @@ type uiProjectPanelData struct {
 }
 
 func (s *Server) mountUIRoutes(r chi.Router) {
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/app", http.StatusSeeOther)
-	})
-	r.Get("/app/login", s.uiLoginPage)
-	r.Post("/app/login", s.uiLogin)
-	r.Post("/app/logout", s.uiLogout)
+	r.Get("/login", s.uiLoginPage)
+	r.Post("/login", s.uiLogin)
+	r.Post("/logout", s.uiLogout)
 
-	r.Route("/app", func(r chi.Router) {
+	r.Group(func(r chi.Router) {
 		r.Use(s.uiAuthMiddleware)
 		r.Get("/", s.uiHome)
 		r.Get("/me", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "me") })
@@ -129,7 +126,7 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 	cookie := &http.Cookie{
 		Name:     uiAuthCookieName,
 		Value:    raw,
-		Path:     "/app",
+		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil,
@@ -145,14 +142,14 @@ func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     uiAuthCookieName,
 		Value:    "",
-		Path:     "/app",
+		Path:     "/",
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil,
 	})
-	http.Redirect(w, r, "/app/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
@@ -168,7 +165,7 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 				http.SetCookie(w, &http.Cookie{
 					Name:     uiAuthCookieName,
 					Value:    "",
-					Path:     "/app",
+					Path:     "/",
 					MaxAge:   -1,
 					Expires:  time.Unix(0, 0),
 					HttpOnly: true,
@@ -187,7 +184,7 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/app/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/sprint", http.StatusSeeOther)
 }
 
 func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -456,17 +453,25 @@ func uiProjectID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 
 func redirectUILogin(w http.ResponseWriter, r *http.Request) {
 	next := url.QueryEscape(safeUINext(r.URL.RequestURI()))
-	http.Redirect(w, r, "/app/login?next="+next, http.StatusSeeOther)
+	http.Redirect(w, r, "/login?next="+next, http.StatusSeeOther)
 }
 
 func safeUINext(raw string) string {
 	if raw == "" {
-		return "/app"
+		return "/"
 	}
-	if !strings.HasPrefix(raw, "/app") || strings.HasPrefix(raw, "//") {
-		return "/app"
+	if strings.HasPrefix(raw, "//") || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "/api/v1") {
+		return "/"
 	}
-	return raw
+	path, _, _ := strings.Cut(raw, "?")
+	switch {
+	case path == "/", path == "/me", path == "/me/panel", path == "/sprint", path == "/sprint/panel", path == "/backlog", path == "/backlog/panel":
+		return raw
+	case strings.HasPrefix(path, "/projects/"):
+		return raw
+	default:
+		return "/"
+	}
 }
 
 func renderUITemplate(w http.ResponseWriter, status int, name string, data any) {

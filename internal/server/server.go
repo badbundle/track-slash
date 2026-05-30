@@ -48,72 +48,75 @@ func (s *Server) Router() http.Handler {
 		}))
 	}
 
-	r.Get("/healthz", s.healthz)
 	s.mountUIRoutes(r)
 
-	// WebSocket endpoint sits outside the request-timeout group: the
-	// connection is long-lived and would otherwise be killed mid-stream.
-	if s.hub != nil {
-		r.Method(http.MethodGet, "/ws", s.authMiddleware(s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic)))
-	}
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/healthz", s.healthz)
 
-	r.Group(func(r chi.Router) {
-		r.Use(s.authMiddleware)
-		r.Use(middleware.Timeout(15 * time.Second))
+		// WebSocket endpoint sits outside the request-timeout group: the
+		// connection is long-lived and would otherwise be killed mid-stream.
+		if s.hub != nil {
+			r.Method(http.MethodGet, "/ws", s.authMiddleware(s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic)))
+		}
 
-		r.Get("/me", s.getMe)
-		r.Delete("/tokens/{id}", s.revokeToken)
+		r.Group(func(r chi.Router) {
+			r.Use(s.authMiddleware)
+			r.Use(middleware.Timeout(15 * time.Second))
 
-		r.Route("/users", func(r chi.Router) {
-			r.Post("/", s.createUser)
-			r.Get("/", s.listUsers)
-			r.Get("/{id}", s.getUser)
-			r.Delete("/{id}", s.deleteUser)
-			r.Post("/{id}/tokens", s.createUserToken)
-			r.Get("/{id}/tokens", s.listUserTokens)
-		})
+			r.Get("/me", s.getMe)
+			r.Delete("/tokens/{id}", s.revokeToken)
 
-		r.Route("/projects", func(r chi.Router) {
-			r.Post("/", s.createProject)
-			r.Get("/", s.listProjects)
-			r.Get("/{id}", s.getProject)
-			r.Delete("/{id}", s.deleteProject)
-			r.Get("/{projectID}/members", s.listProjectMembers)
-			r.Put("/{projectID}/members/{userID}", s.grantProjectMember)
-			r.Delete("/{projectID}/members/{userID}", s.revokeProjectMember)
-			r.Post("/{projectID}/issues", s.createIssue)
-			r.Get("/{projectID}/issues", s.listIssues)
-			r.Post("/{projectID}/sprints", s.createSprint)
-			r.Get("/{projectID}/sprints", s.listProjectSprints)
-		})
+			r.Route("/users", func(r chi.Router) {
+				r.Post("/", s.createUser)
+				r.Get("/", s.listUsers)
+				r.Get("/{id}", s.getUser)
+				r.Delete("/{id}", s.deleteUser)
+				r.Post("/{id}/tokens", s.createUserToken)
+				r.Get("/{id}/tokens", s.listUserTokens)
+			})
 
-		r.Route("/issues", func(r chi.Router) {
-			r.Get("/", s.batchIssues)
-			r.Get("/{id}", s.getIssue)
-			r.Patch("/{id}", s.updateIssue)
-			r.Delete("/{id}", s.deleteIssue)
-			r.Post("/{id}/comments", s.createComment)
-			r.Get("/{id}/comments", s.listComments)
-			r.Post("/{id}/links", s.createIssueLink)
-			r.Get("/{id}/links", s.listIssueLinks)
-		})
+			r.Route("/projects", func(r chi.Router) {
+				r.Post("/", s.createProject)
+				r.Get("/", s.listProjects)
+				r.Get("/{id}", s.getProject)
+				r.Delete("/{id}", s.deleteProject)
+				r.Get("/{projectID}/members", s.listProjectMembers)
+				r.Put("/{projectID}/members/{userID}", s.grantProjectMember)
+				r.Delete("/{projectID}/members/{userID}", s.revokeProjectMember)
+				r.Post("/{projectID}/issues", s.createIssue)
+				r.Get("/{projectID}/issues", s.listIssues)
+				r.Post("/{projectID}/sprints", s.createSprint)
+				r.Get("/{projectID}/sprints", s.listProjectSprints)
+			})
 
-		r.Route("/comments", func(r chi.Router) {
-			r.Get("/{id}", s.getComment)
-			r.Patch("/{id}", s.updateComment)
-			r.Delete("/{id}", s.deleteComment)
-		})
+			r.Route("/issues", func(r chi.Router) {
+				r.Get("/", s.batchIssues)
+				r.Get("/{id}", s.getIssue)
+				r.Patch("/{id}", s.updateIssue)
+				r.Delete("/{id}", s.deleteIssue)
+				r.Post("/{id}/comments", s.createComment)
+				r.Get("/{id}/comments", s.listComments)
+				r.Post("/{id}/links", s.createIssueLink)
+				r.Get("/{id}/links", s.listIssueLinks)
+			})
 
-		r.Route("/sprints", func(r chi.Router) {
-			r.Get("/{id}", s.getSprint)
-			r.Patch("/{id}", s.updateSprint)
-			r.Delete("/{id}", s.deleteSprint)
-			r.Post("/{id}/complete", s.completeSprint)
-		})
+			r.Route("/comments", func(r chi.Router) {
+				r.Get("/{id}", s.getComment)
+				r.Patch("/{id}", s.updateComment)
+				r.Delete("/{id}", s.deleteComment)
+			})
 
-		r.Route("/issue-links", func(r chi.Router) {
-			r.Get("/{id}", s.getIssueLink)
-			r.Delete("/{id}", s.deleteIssueLink)
+			r.Route("/sprints", func(r chi.Router) {
+				r.Get("/{id}", s.getSprint)
+				r.Patch("/{id}", s.updateSprint)
+				r.Delete("/{id}", s.deleteSprint)
+				r.Post("/{id}/complete", s.completeSprint)
+			})
+
+			r.Route("/issue-links", func(r chi.Router) {
+				r.Get("/{id}", s.getIssueLink)
+				r.Delete("/{id}", s.deleteIssueLink)
+			})
 		})
 	})
 

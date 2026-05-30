@@ -237,6 +237,18 @@ func TestHTTPAuthenticatedAttribution(t *testing.T) {
 	}
 }
 
+func TestHTTPHealthzIsUnderAPINamespace(t *testing.T) {
+	e := newHTTPEnv(t)
+	res, err := http.Get(e.ts.URL + apiPath("/healthz"))
+	if err != nil {
+		t.Fatalf("get /api/v1/healthz: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("/api/v1/healthz code = %d", res.StatusCode)
+	}
+}
+
 func TestWebSocketAuthAndTopicPermission(t *testing.T) {
 	e := newHTTPEnv(t)
 	hub := realtime.NewHub()
@@ -244,13 +256,13 @@ func TestWebSocketAuthAndTopicPermission(t *testing.T) {
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 
-	res, err := http.Get(ts.URL + "/ws")
+	res, err := http.Get(ts.URL + apiPath("/ws"))
 	if err != nil {
-		t.Fatalf("get /ws: %v", err)
+		t.Fatalf("get /api/v1/ws: %v", err)
 	}
 	_ = res.Body.Close()
 	if res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauth /ws code = %d, want 401", res.StatusCode)
+		t.Fatalf("unauth /api/v1/ws code = %d, want 401", res.StatusCode)
 	}
 
 	user, token := e.mustUserToken(t, "ws")
@@ -264,7 +276,7 @@ func TestWebSocketAuthAndTopicPermission(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/ws", &websocket.DialOptions{
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+apiPath("/ws"), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}},
 	})
 	if err != nil {

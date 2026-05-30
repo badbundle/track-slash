@@ -9,7 +9,7 @@ import (
 )
 
 // nilStore satisfies the *store.Store positional arg of server.New for tests
-// that never hit a DB-backed handler. /healthz pings the DB, so we avoid that
+// that never hit a DB-backed handler. /api/v1/healthz pings the DB, so we avoid that
 // path; OPTIONS preflights are handled by the cors middleware before any
 // route handler runs, and X-Request-ID is emitted by middleware regardless.
 
@@ -26,7 +26,7 @@ func newCORSServer(t *testing.T, origins []string) *httptest.Server {
 func TestCORSDisabledWhenAllowListEmpty(t *testing.T) {
 	ts := newCORSServer(t, nil)
 
-	req, _ := http.NewRequest(http.MethodOptions, ts.URL+"/users", nil)
+	req, _ := http.NewRequest(http.MethodOptions, ts.URL+apiPath("/users"), nil)
 	req.Header.Set("Origin", "https://app.example.com")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 	res, err := ts.Client().Do(req)
@@ -43,7 +43,7 @@ func TestCORSDisabledWhenAllowListEmpty(t *testing.T) {
 func TestCORSPreflightFromAllowedOrigin(t *testing.T) {
 	ts := newCORSServer(t, []string{"https://app.example.com"})
 
-	req, _ := http.NewRequest(http.MethodOptions, ts.URL+"/users", nil)
+	req, _ := http.NewRequest(http.MethodOptions, ts.URL+apiPath("/users"), nil)
 	req.Header.Set("Origin", "https://app.example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
@@ -67,7 +67,7 @@ func TestCORSPreflightFromAllowedOrigin(t *testing.T) {
 func TestCORSPreflightFromDisallowedOrigin(t *testing.T) {
 	ts := newCORSServer(t, []string{"https://app.example.com"})
 
-	req, _ := http.NewRequest(http.MethodOptions, ts.URL+"/users", nil)
+	req, _ := http.NewRequest(http.MethodOptions, ts.URL+apiPath("/users"), nil)
 	req.Header.Set("Origin", "https://evil.com")
 	req.Header.Set("Access-Control-Request-Method", "GET")
 	res, err := ts.Client().Do(req)
@@ -96,5 +96,33 @@ func TestRequestIDExposedOnResponse(t *testing.T) {
 
 	if got := res.Header.Get("X-Request-ID"); got == "" {
 		t.Errorf("X-Request-ID missing")
+	}
+}
+
+func TestRouteNamespaceBoundaries(t *testing.T) {
+	ts := newCORSServer(t, nil)
+
+	for _, path := range []string{"/app", "/app/login", "/users", "/projects", "/ws", "/healthz"} {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+		res, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("GET %s status = %d, want 404", path, res.StatusCode)
+		}
+	}
+
+	for _, path := range []string{"/users", "/projects"} {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+apiPath(path), nil)
+		res, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET %s: %v", apiPath(path), err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("GET %s status = %d, want 401", apiPath(path), res.StatusCode)
+		}
 	}
 }

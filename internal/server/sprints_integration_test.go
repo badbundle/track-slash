@@ -68,8 +68,8 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	t.Cleanup(pool.Close)
 
 	s := store.New(pool)
-	// Hub is nil — none of these handlers need realtime fanout; /ws route
-	// is just skipped when hub == nil (see server.go:35).
+	// Hub is nil — none of these handlers need realtime fanout; /api/v1/ws route
+	// is just skipped when hub == nil.
 	srv := server.New(s, nil, nil)
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
@@ -130,7 +130,7 @@ func (e *httpEnv) doWithToken(t *testing.T, token, method, path string, body any
 		}
 		rdr = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(e.ctx, method, e.ts.URL+path, rdr)
+	req, err := http.NewRequestWithContext(e.ctx, method, e.ts.URL+apiPath(path), rdr)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -150,6 +150,10 @@ func (e *httpEnv) doWithToken(t *testing.T, token, method, path string, body any
 		t.Fatalf("read body: %v", err)
 	}
 	return res.StatusCode, out
+}
+
+func apiPath(path string) string {
+	return "/api/v1" + path
 }
 
 func decode[T any](t *testing.T, body []byte) T {
@@ -190,7 +194,7 @@ func TestHTTPCreateSprintBadProjectID(t *testing.T) {
 func TestHTTPCreateSprintBadJSON(t *testing.T) {
 	e := newHTTPEnv(t)
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost,
-		fmt.Sprintf("%s/projects/%s/sprints", e.ts.URL, e.projectID),
+		e.ts.URL+apiPath(fmt.Sprintf("/projects/%s/sprints", e.projectID)),
 		bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)
@@ -440,7 +444,7 @@ func TestHTTPUpdateSprintBadJSON(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPatch,
-		e.ts.URL+"/sprints/"+sp.ID.String(), bytes.NewReader([]byte("nope")))
+		e.ts.URL+apiPath("/sprints/"+sp.ID.String()), bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)
 	res, err := e.ts.Client().Do(req)
