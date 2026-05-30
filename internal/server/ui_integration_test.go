@@ -72,7 +72,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/app/sprint", token)
-	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`} {
+	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, "data-nav-loader"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
