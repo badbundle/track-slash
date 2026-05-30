@@ -100,7 +100,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/sprint", token)
-	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, "data-nav-loader"} {
+	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, `data-lucide="folder"`, "data-nav-loader"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -118,6 +118,57 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, "/app") {
 		t.Fatalf("body contains legacy /app path: %s", body)
+	}
+}
+
+func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-projects")
+	hidden, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Hidden UI Project", "")
+	if err != nil {
+		t.Fatalf("CreateProject hidden: %v", err)
+	}
+
+	body := e.uiGet(t, "/projects", token)
+	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("projects body missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, hidden.Name) {
+		t.Fatalf("projects body included inaccessible project: %s", body)
+	}
+
+	form := url.Values{"key": {"bad"}, "name": {"Bad"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, "/projects", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(body, "Key must match") {
+		t.Fatalf("bad key code = %d body = %s", res.StatusCode, body)
+	}
+
+	form = url.Values{"key": {e.projKey}, "name": {"Duplicate"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, "/projects", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusConflict || !strings.Contains(body, "Project key already exists.") {
+		t.Fatalf("duplicate code = %d body = %s", res.StatusCode, body)
+	}
+
+	key := uniqueProjectKey(t)
+	form = url.Values{"key": {key}, "name": {"Created UI Project"}, "description": {"from UI"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, "/projects", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("create code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	loc := res.Header.Get("Location")
+	if !strings.HasPrefix(loc, "/projects/") {
+		t.Fatalf("Location = %q", loc)
+	}
+	body = e.uiGet(t, loc, token)
+	if !strings.Contains(body, "Created UI Project") || !strings.Contains(body, "from UI") {
+		t.Fatalf("created project page missing values: %s", body)
 	}
 }
 

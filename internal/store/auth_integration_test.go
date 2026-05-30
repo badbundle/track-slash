@@ -324,6 +324,60 @@ func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 	}
 }
 
+func TestCreateProjectForUserGrantsAccess(t *testing.T) {
+	env := newSprintsEnv(t)
+	u, err := env.store.CreateUser(env.ctx, "creator-"+uniqueProjectKey(t)+"@example.com", "Creator")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	key := uniqueProjectKey(t)
+	project, err := env.store.CreateProjectForUser(env.ctx, u.ID, key, "Created by user", "user-created")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
+	}
+	if project.ID == uuid.Nil || project.Key != key || project.Description != "user-created" {
+		t.Fatalf("project = %+v", project)
+	}
+	members, err := env.store.ListProjectMembers(env.ctx, project.ID)
+	if err != nil {
+		t.Fatalf("ListProjectMembers: %v", err)
+	}
+	if len(members) != 1 || members[0].UserID != u.ID {
+		t.Fatalf("members = %+v", members)
+	}
+	projects, _, err := env.store.ListProjects(env.ctx, store.ListProjectsParams{
+		Limit:         100,
+		VisibleToUser: &u.ID,
+	})
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	found := false
+	for _, got := range projects {
+		if got.ID == project.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("created project missing from visible projects: %+v", projects)
+	}
+	if _, err := env.store.CreateProjectForUser(env.ctx, u.ID, key, "duplicate", ""); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("duplicate project err = %v, want ErrConflict", err)
+	}
+
+	missingKey := uniqueProjectKey(t)
+	if _, err := env.store.CreateProjectForUser(env.ctx, uuid.New(), missingKey, "missing user", ""); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing user err = %v, want ErrNotFound", err)
+	}
+	var count int
+	if err := env.pool.QueryRow(env.ctx, `SELECT count(*) FROM projects WHERE key = $1`, missingKey).Scan(&count); err != nil {
+		t.Fatalf("count missing-user project: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("missing-user project count = %d, want 0", count)
+	}
+}
+
 func TestProjectOwnershipLookupHelpers(t *testing.T) {
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "owned")

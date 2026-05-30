@@ -102,7 +102,7 @@ func TestRequestIDExposedOnResponse(t *testing.T) {
 func TestRouteNamespaceBoundaries(t *testing.T) {
 	ts := newCORSServer(t, nil)
 
-	for _, path := range []string{"/app", "/app/login", "/users", "/projects", "/ws", "/healthz"} {
+	for _, path := range []string{"/app", "/app/login", "/users", "/ws", "/healthz"} {
 		req, _ := http.NewRequest(http.MethodGet, ts.URL+path, nil)
 		res, err := ts.Client().Do(req)
 		if err != nil {
@@ -112,6 +112,20 @@ func TestRouteNamespaceBoundaries(t *testing.T) {
 		if res.StatusCode != http.StatusNotFound {
 			t.Fatalf("GET %s status = %d, want 404", path, res.StatusCode)
 		}
+	}
+
+	client := *ts.Client()
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/projects", nil)
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET /projects: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("GET /projects status = %d, want 303", res.StatusCode)
 	}
 
 	for _, path := range []string{"/users", "/projects"} {

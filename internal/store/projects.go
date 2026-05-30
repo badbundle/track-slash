@@ -32,6 +32,44 @@ func (s *Store) CreateProject(ctx context.Context, key, name, description string
 	return p, nil
 }
 
+func (s *Store) CreateProjectForUser(ctx context.Context, userID uuid.UUID, key, name, description string) (model.Project, error) {
+	var p model.Project
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		const projectQ = `
+			INSERT INTO projects (key, name, description)
+			VALUES ($1, $2, $3)
+			RETURNING id, key, name, description, created_at, updated_at
+		`
+		if err := tx.QueryRow(ctx, projectQ, key, name, description).
+			Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return ErrConflict
+			}
+			// Defensive: insert has no other expected pgcode mapping here.
+			return err
+		}
+
+		tag, err := tx.Exec(ctx, `
+			INSERT INTO project_members (project_id, user_id)
+			SELECT $1, id FROM users WHERE id = $2 AND deleted_at IS NULL
+			ON CONFLICT (project_id, user_id) DO NOTHING
+		`, p.ID, userID)
+		if err != nil {
+			// Defensive: project row exists and user is selected from users; failure is a DB/runtime fault.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return model.Project{}, err
+	}
+	return p, nil
+}
+
 func (s *Store) GetProject(ctx context.Context, id uuid.UUID) (model.Project, error) {
 	const q = `
 		SELECT id, key, name, description, created_at, updated_at
