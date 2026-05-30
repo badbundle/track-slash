@@ -99,10 +99,13 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/sprint", token)
-	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", ">Tokens<", `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, `data-lucide="key-round"`, "data-nav-loader"} {
+	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", `href="/tokens"`, `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, "data-nav-loader"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `data-lucide="key-round"`) {
+		t.Fatalf("body still has tokens sidebar icon: %s", body)
 	}
 	for _, notWant := range []string{"Assigned to me", "Active work board", "Across projects"} {
 		if strings.Contains(body, notWant) {
