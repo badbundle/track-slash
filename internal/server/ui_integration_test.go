@@ -136,10 +136,13 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", `href="/projects/` + e.projectID.String() + `/sprint"`, `href="/projects/` + e.projectID.String() + `/backlog"`} {
+	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", `href="/projects/` + e.projectID.String() + `/sprint"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `href="/projects/`+e.projectID.String()+`/backlog"`) {
+		t.Fatalf("projects body included backlog row action: %s", body)
 	}
 	if strings.Contains(body, hidden.Name) {
 		t.Fatalf("projects body included inaccessible project: %s", body)
