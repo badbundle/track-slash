@@ -51,14 +51,15 @@ func TestUILoginSetsCookie(t *testing.T) {
 	if _, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{Username: username, Password: password, Name: "UI Login"}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
-	form := url.Values{"username": {username}, "password": {password}, "next": {"/sprint"}}
+	next := "/projects/" + e.projectID.String() + "/sprint"
+	form := url.Values{"username": {username}, "password": {password}, "next": {next}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/sprint" {
+	if loc := res.Header.Get("Location"); loc != next {
 		t.Fatalf("Location = %q", loc)
 	}
 	cookie := findUICookie(t, res.Cookies())
@@ -99,8 +100,8 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
-	body := e.uiGet(t, "/sprint", token)
-	for _, want := range []string{">Me<", ">Sprint<", ">Backlog<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="kanban"`, `data-lucide="archive"`, `data-lucide="folder"`, "data-nav-loader"} {
+	body := e.uiGet(t, "/me", token)
+	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -111,6 +112,11 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	for _, notWant := range []string{"Assigned to me", "Active work board", "Across projects"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("body still has sidebar subtitle %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{">Sprint<", ">Backlog<", e.projKey, `href="/sprint"`, `href="/backlog"`, `href="/projects/` + e.projectID.String() + `/sprint"`, `href="/projects/` + e.projectID.String() + `/backlog"`, `hx-get="/sprint/panel"`, `hx-get="/backlog/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("body still has global work link %q: %s", notWant, body)
 		}
 	}
 	if !strings.Contains(body, user.Name) {
@@ -130,10 +136,13 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test"} {
+	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", `href="/projects/` + e.projectID.String() + `/sprint"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `href="/projects/`+e.projectID.String()+`/backlog"`) {
+		t.Fatalf("projects body included backlog row action: %s", body)
 	}
 	if strings.Contains(body, hidden.Name) {
 		t.Fatalf("projects body included inaccessible project: %s", body)
@@ -163,7 +172,7 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 		t.Fatalf("create code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	loc := res.Header.Get("Location")
-	if !strings.HasPrefix(loc, "/projects/") {
+	if !strings.HasPrefix(loc, "/projects/") || !strings.HasSuffix(loc, "/sprint") {
 		t.Fatalf("Location = %q", loc)
 	}
 	body = e.uiGet(t, loc, token)
@@ -306,16 +315,11 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	if strings.Contains(meBody, "not assigned to current user") {
 		t.Fatalf("me body included unassigned issue: %s", meBody)
 	}
-
-	backlogBody := e.uiGet(t, "/backlog", token)
-	if !strings.Contains(backlogBody, assigned.Title) || !strings.Contains(backlogBody, "Backlog issues across accessible projects.") {
-		t.Fatalf("backlog body missing expected issue/header: %s", backlogBody)
-	}
 }
 
-func TestUIRendersActiveSprintBoardAcrossAccessibleProjects(t *testing.T) {
+func TestUIRendersProjectSprintBoard(t *testing.T) {
 	e := newHTTPEnv(t)
-	_, token := e.mustProjectMemberToken(t, "ui-board")
+	user, token := e.mustProjectMemberToken(t, "ui-board")
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Board Sprint",
@@ -344,16 +348,116 @@ func TestUIRendersActiveSprintBoardAcrossAccessibleProjects(t *testing.T) {
 	if _, err := e.store.UpdateIssue(e.ctx, inProgress.ID, store.UpdateIssueParams{SprintID: &sp.ID, Status: &inProgressStatus}); err != nil {
 		t.Fatalf("assign progress: %v", err)
 	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other UI Project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, otherProject.ID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess other: %v", err)
+	}
+	otherSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: otherProject.ID,
+		Name:      "Other Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint other: %v", err)
+	}
+	if _, err := e.store.UpdateSprint(e.ctx, otherSprint.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("UpdateSprint other active: %v", err)
+	}
+	otherIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: otherProject.ID, Title: "other project sprint issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue other: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, otherIssue.ID, store.UpdateIssueParams{SprintID: &otherSprint.ID}); err != nil {
+		t.Fatalf("assign other: %v", err)
+	}
 
-	body := e.uiGet(t, "/sprint", token)
-	for _, want := range []string{"Active sprint issues across accessible projects.", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint"} {
+	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/sprint", token)
+	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}
 	}
+	if strings.Contains(body, "other project sprint issue") || strings.Contains(body, "Active sprint issues across accessible projects.") {
+		t.Fatalf("sprint body included wrong scope/copy: %s", body)
+	}
 }
 
-func TestUIRendersCurrentSprintAndBacklogSeparately(t *testing.T) {
+func TestUIRendersProjectBacklog(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-backlog")
+	backlogIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "issue still in backlog"})
+	if err != nil {
+		t.Fatalf("CreateIssue backlog: %v", err)
+	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other Backlog Project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, otherProject.ID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess other: %v", err)
+	}
+	if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: otherProject.ID, Title: "other project backlog issue"}); err != nil {
+		t.Fatalf("CreateIssue other backlog: %v", err)
+	}
+
+	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/backlog", token)
+	if !strings.Contains(body, "Backlog") || !strings.Contains(body, backlogIssue.Title) {
+		t.Fatalf("backlog body missing expected issue/header: %s", body)
+	}
+	if strings.Contains(body, "other project backlog issue") || strings.Contains(body, "Backlog issues across accessible projects.") {
+		t.Fatalf("backlog body included wrong scope/copy: %s", body)
+	}
+}
+
+func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-routes")
+
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/projects/"+e.projectID.String(), token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("project root code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/sprint" {
+		t.Fatalf("project root Location = %q", loc)
+	}
+
+	for _, path := range []string{"/sprint", "/sprint/panel", "/backlog", "/backlog/panel"} {
+		res := e.uiDoNoRedirect(t, http.MethodGet, path, token, nil)
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s code = %d body = %s", path, res.StatusCode, readBody(t, res))
+		}
+	}
+}
+
+func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustUserToken(t, "ui-no-project")
+
+	for _, path := range []string{"/projects/" + e.projectID.String() + "/sprint", "/projects/" + e.projectID.String() + "/backlog"} {
+		res := e.uiDoNoRedirect(t, http.MethodGet, path, token, nil)
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s code = %d body = %s", path, res.StatusCode, readBody(t, res))
+		}
+	}
+}
+
+func TestUIRendersProjectSprintEmptyState(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-empty")
+	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/sprint", token)
+	if !strings.Contains(body, "No active sprint.") {
+		t.Fatalf("body missing no-active-sprint state: %s", body)
+	}
+}
+
+func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sprint")
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
@@ -380,25 +484,12 @@ func TestUIRendersCurrentSprintAndBacklogSeparately(t *testing.T) {
 		t.Fatalf("CreateIssue backlog: %v", err)
 	}
 
-	body := e.uiGet(t, "/projects/"+e.projectID.String(), token)
-	currentIdx := strings.Index(body, "Current sprint")
-	inSprintIdx := strings.Index(body, "issue inside active sprint")
-	backlogIdx := strings.Index(body, ">Backlog</h2>")
-	backlogIssueIdx := strings.Index(body, "issue still in backlog")
-	if currentIdx < 0 || inSprintIdx < 0 || backlogIdx < 0 || backlogIssueIdx < 0 {
-		t.Fatalf("body missing expected sections/issues: %s", body)
+	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/sprint", token)
+	if !strings.Contains(body, "issue inside active sprint") {
+		t.Fatalf("sprint body missing sprint issue: %s", body)
 	}
-	if !(currentIdx < inSprintIdx && inSprintIdx < backlogIdx && backlogIdx < backlogIssueIdx) {
-		t.Fatalf("unexpected section ordering: current=%d inSprint=%d backlog=%d backlogIssue=%d", currentIdx, inSprintIdx, backlogIdx, backlogIssueIdx)
-	}
-}
-
-func TestUIRendersNoActiveSprintState(t *testing.T) {
-	e := newHTTPEnv(t)
-	_, token := e.mustProjectMemberToken(t, "ui-empty")
-	body := e.uiGet(t, "/projects/"+e.projectID.String(), token)
-	if !strings.Contains(body, "No active sprint.") {
-		t.Fatalf("body missing no-active-sprint state: %s", body)
+	if strings.Contains(body, "issue still in backlog") {
+		t.Fatalf("sprint body included backlog issue: %s", body)
 	}
 }
 
@@ -484,7 +575,21 @@ func TestUIHomeRedirectsToFirstProject(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/sprint" {
+	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/sprint" {
+		t.Fatalf("Location = %q", loc)
+	}
+}
+
+func TestUIHomeRedirectsToProjectsWithoutAccessibleProject(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustUserToken(t, "ui-home-empty")
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/", token, nil)
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("code = %d", res.StatusCode)
+	}
+	if loc := res.Header.Get("Location"); loc != "/projects" {
 		t.Fatalf("Location = %q", loc)
 	}
 }

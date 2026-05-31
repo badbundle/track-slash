@@ -6,14 +6,27 @@
         <div class="text-xs font-semibold uppercase text-indigo-600 dark:text-indigo-300">{{.Project.Key}}</div>
         <h1 class="mt-1 truncate text-2xl font-semibold tracking-normal">{{.Project.Name}}</h1>
       </div>
-      {{if .Project.Description}}<p class="max-w-xl text-sm text-slate-500 dark:text-slate-400">{{.Project.Description}}</p>{{end}}
+      <div class="flex flex-wrap items-center justify-end gap-3">
+        {{if .Project.Description}}<p class="max-w-xl text-sm text-slate-500 dark:text-slate-400">{{.Project.Description}}</p>{{end}}
+        <nav class="flex items-center gap-2">
+          <a href="/projects/{{.Project.ID}}/sprint" hx-get="/projects/{{.Project.ID}}/sprint/panel" hx-target="#main" hx-push-url="/projects/{{.Project.ID}}/sprint" class="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium {{if eq .View "sprint"}}border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800{{end}}">
+            <i data-lucide="kanban" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            Sprint
+          </a>
+          <a href="/projects/{{.Project.ID}}/backlog" hx-get="/projects/{{.Project.ID}}/backlog/panel" hx-target="#main" hx-push-url="/projects/{{.Project.ID}}/backlog" class="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium {{if eq .View "backlog"}}border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800{{end}}">
+            <i data-lucide="archive" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            Backlog
+          </a>
+        </nav>
+      </div>
     </div>
   </header>
 
+  {{if eq .View "sprint"}}
   <section class="py-6">
     <div class="mb-3 flex items-center justify-between gap-3">
       <div>
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Current sprint</h2>
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sprint</h2>
         {{if .ActiveSprint}}
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.ActiveSprint.Name}} · {{sprintDate .ActiveSprint.StartDate}}-{{sprintDate .ActiveSprint.EndDate}}</p>
         {{else}}
@@ -23,19 +36,31 @@
       {{if .SprintIssuesHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
     </div>
     {{if .ActiveSprint}}
-    {{template "issue-list" .SprintIssues}}
+    <section class="grid gap-4 lg:grid-cols-3">
+      {{range .SprintColumns}}
+      <div class="min-w-0">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{.Label}}</h3>
+          <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Issues}}</span>
+        </div>
+        {{template "issue-card-list" .Issues}}
+      </div>
+      {{end}}
+    </section>
     {{else}}
     <div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No active sprint issues.</div>
     {{end}}
   </section>
+  {{else if eq .View "backlog"}}
 
-  <section class="border-t border-slate-200 py-6 dark:border-slate-800">
+  <section class="py-6">
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Backlog</h2>
       {{if .BacklogHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
     </div>
     {{template "issue-list" .BacklogIssues}}
   </section>
+  {{end}}
 </section>
 {{end}}
 
