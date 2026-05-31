@@ -41,24 +41,6 @@
             <span class="block truncate font-medium">Me</span>
           </span>
         </a>
-        <a data-nav-link href="/sprint" hx-get="/sprint/panel" hx-target="#main" hx-push-url="/sprint" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "sprint"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
-          <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
-            <i data-nav-icon data-lucide="kanban" class="h-3.5 w-3.5" aria-hidden="true"></i>
-            <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
-          </span>
-          <span class="wide-only min-w-0">
-            <span class="block truncate font-medium">Sprint</span>
-          </span>
-        </a>
-        <a data-nav-link href="/backlog" hx-get="/backlog/panel" hx-target="#main" hx-push-url="/backlog" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "backlog"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
-          <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
-            <i data-nav-icon data-lucide="archive" class="h-3.5 w-3.5" aria-hidden="true"></i>
-            <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
-          </span>
-          <span class="wide-only min-w-0">
-            <span class="block truncate font-medium">Backlog</span>
-          </span>
-        </a>
         <a data-nav-link href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "projects"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="folder" class="h-3.5 w-3.5" aria-hidden="true"></i>
