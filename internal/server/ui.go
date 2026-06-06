@@ -27,6 +27,7 @@ var errUIForbidden = errors.New("forbidden")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":    uiInitials,
+	"linkLabel":   uiIssueLinkLabel,
 	"projectIcon": uiProjectIcon,
 	"sprintDate":  uiSprintDate,
 	"statusLabel": uiStatusLabel,
@@ -51,6 +52,7 @@ type uiShellData struct {
 	WorkPanel        *uiWorkPanelData
 	ProjectsPanel    *uiProjectsPanelData
 	ProjectPanel     *uiProjectPanelData
+	IssuePanel       *uiIssuePanelData
 	TokenPanel       *uiTokenPanelData
 	SettingsPanel    *uiSettingsPanelData
 }
@@ -71,6 +73,18 @@ type uiPlannedSprint struct {
 	Sprint  model.Sprint
 	Issues  []model.Issue
 	HasMore bool
+}
+
+type uiIssueCommentItem struct {
+	Comment     model.Comment
+	AuthorName  string
+	AuthorEmail string
+}
+
+type uiIssueLinkItem struct {
+	Link        model.IssueLink
+	LinkedIssue model.Issue
+	HasIssue    bool
 }
 
 type uiTabBarData struct {
@@ -109,6 +123,21 @@ type uiProjectPanelData struct {
 	SprintIssuesHasMore bool
 	PlannedHasMore      bool
 	BacklogHasMore      bool
+}
+
+type uiIssuePanelData struct {
+	Issue           model.Issue
+	Project         model.Project
+	Sprint          *model.Sprint
+	Assignee        *model.User
+	Reporter        *model.User
+	Comments        []uiIssueCommentItem
+	CommentsHasMore bool
+	Links           []uiIssueLinkItem
+	LinksHasMore    bool
+	BackHref        string
+	BackHXGet       string
+	BackLabel       string
 }
 
 type uiProjectsPanelData struct {
@@ -155,6 +184,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
+		r.Get("/issues/{id}", s.uiIssuePage)
+		r.Get("/issues/{id}/panel", s.uiIssuePanel)
 		r.Get("/projects/{id}", s.uiProjectPage)
 		r.Get("/projects/{id}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/projects/{id}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
@@ -566,6 +597,43 @@ func (s *Server) uiProjectWorkPanel(w http.ResponseWriter, r *http.Request, view
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
 }
 
+func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
+	issueID, ok := uiIssueID(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:             currentUser(r),
+		Projects:         projects,
+		CurrentProjectID: panel.Project.ID,
+		CurrentView:      "projects",
+		IssuePanel:       panel,
+	})
+}
+
+func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
+	issueID, ok := uiIssueID(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiBuildWorkPanel(ctx context.Context, user model.User, view string) (*uiWorkPanelData, error) {
 	projects, err := s.uiVisibleProjects(ctx, user)
 	if err != nil {
@@ -732,6 +800,162 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	return panel, nil
 }
 
+func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID uuid.UUID) (*uiIssuePanelData, error) {
+	projectID, err := s.store.ProjectIDForIssue(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
+		return nil, err
+	}
+	issue, err := s.store.GetIssue(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.store.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	assignee, err := s.uiOptionalUser(ctx, issue.AssigneeID)
+	if err != nil {
+		return nil, err
+	}
+	reporter, err := s.uiOptionalUser(ctx, issue.ReporterID)
+	if err != nil {
+		return nil, err
+	}
+	sprint, err := s.uiOptionalSprint(ctx, issue.SprintID)
+	if err != nil {
+		return nil, err
+	}
+	comments, commentsHasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{
+		IssueID: issueID,
+		Limit:   MaxLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	commentItems := make([]uiIssueCommentItem, 0, len(comments))
+	for _, comment := range comments {
+		author, err := s.uiOptionalUser(ctx, &comment.AuthorID)
+		if err != nil {
+			return nil, err
+		}
+		item := uiIssueCommentItem{Comment: comment, AuthorName: "Unknown user"}
+		if author != nil {
+			item.AuthorName = author.Name
+			item.AuthorEmail = author.Email
+		}
+		commentItems = append(commentItems, item)
+	}
+	links, linksHasMore, err := s.store.ListIssueLinksForIssue(ctx, store.ListIssueLinksForIssueParams{
+		IssueID: issueID,
+		Limit:   MaxLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	linkedIssues, err := s.uiLinkedIssues(ctx, issueID, links)
+	if err != nil {
+		return nil, err
+	}
+	linkItems := make([]uiIssueLinkItem, 0, len(links))
+	for _, link := range links {
+		otherID := link.SourceID
+		if otherID == issueID {
+			otherID = link.TargetID
+		}
+		item := uiIssueLinkItem{Link: link}
+		if linked, ok := linkedIssues[otherID]; ok {
+			item.LinkedIssue = linked
+			item.HasIssue = true
+		}
+		linkItems = append(linkItems, item)
+	}
+
+	backHref, backHXGet, backLabel := uiIssueBackLink(projectID, issue, sprint)
+	return &uiIssuePanelData{
+		Issue:           issue,
+		Project:         project,
+		Sprint:          sprint,
+		Assignee:        assignee,
+		Reporter:        reporter,
+		Comments:        commentItems,
+		CommentsHasMore: commentsHasMore,
+		Links:           linkItems,
+		LinksHasMore:    linksHasMore,
+		BackHref:        backHref,
+		BackHXGet:       backHXGet,
+		BackLabel:       backLabel,
+	}, nil
+}
+
+func (s *Server) uiOptionalUser(ctx context.Context, id *uuid.UUID) (*model.User, error) {
+	if id == nil {
+		return nil, nil
+	}
+	user, err := s.store.GetUser(ctx, *id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (s *Server) uiOptionalSprint(ctx context.Context, id *uuid.UUID) (*model.Sprint, error) {
+	if id == nil {
+		return nil, nil
+	}
+	sprint, err := s.store.GetSprint(ctx, *id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &sprint, nil
+}
+
+func (s *Server) uiLinkedIssues(ctx context.Context, issueID uuid.UUID, links []model.IssueLink) (map[uuid.UUID]model.Issue, error) {
+	seen := map[uuid.UUID]struct{}{}
+	ids := make([]uuid.UUID, 0, len(links))
+	for _, link := range links {
+		otherID := link.SourceID
+		if otherID == issueID {
+			otherID = link.TargetID
+		}
+		if _, ok := seen[otherID]; ok {
+			continue
+		}
+		seen[otherID] = struct{}{}
+		ids = append(ids, otherID)
+	}
+	issues, err := s.store.ListIssuesByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]model.Issue, len(issues))
+	for _, issue := range issues {
+		out[issue.ID] = issue
+	}
+	return out, nil
+}
+
+func uiIssueBackLink(projectID uuid.UUID, issue model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+	view := "sprint"
+	if issue.SprintID == nil || (sprint != nil && sprint.Status == model.SprintStatusPlanned) {
+		view = "backlog"
+	}
+	base := "/projects/" + projectID.String() + "/" + view
+	label = "Sprint"
+	if view == "backlog" {
+		label = "Backlog"
+	}
+	return base, base + "/panel", label
+}
+
 func uiProjectTabs(projectID uuid.UUID, view string) uiTabBarData {
 	base := "/projects/" + projectID.String()
 	return uiTabBarData{
@@ -806,6 +1030,15 @@ func uiProjectID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	return projectID, true
 }
 
+func uiIssueID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	issueID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid issue id", http.StatusBadRequest)
+		return uuid.Nil, false
+	}
+	return issueID, true
+}
+
 func redirectUILogin(w http.ResponseWriter, r *http.Request) {
 	next := url.QueryEscape(safeUINext(r.URL.RequestURI()))
 	http.Redirect(w, r, "/login?next="+next, http.StatusSeeOther)
@@ -821,6 +1054,8 @@ func safeUINext(raw string) string {
 	path, _, _ := strings.Cut(raw, "?")
 	switch {
 	case path == "/", path == "/me", path == "/me/panel", path == "/projects", path == "/projects/panel", path == "/settings", path == "/tokens":
+		return raw
+	case safeUIIssuePath(path):
 		return raw
 	case safeUIProjectPath(path):
 		return raw
@@ -851,6 +1086,24 @@ func safeUIProjectPath(path string) bool {
 		return true
 	}
 	return parts[2] == "panel"
+}
+
+func safeUIIssuePath(path string) bool {
+	rest, ok := strings.CutPrefix(path, "/issues/")
+	if !ok || rest == "" {
+		return false
+	}
+	parts := strings.Split(rest, "/")
+	if len(parts) != 1 && len(parts) != 2 {
+		return false
+	}
+	if _, err := uuid.Parse(parts[0]); err != nil {
+		return false
+	}
+	if len(parts) == 1 {
+		return true
+	}
+	return parts[1] == "panel"
 }
 
 func renderUITemplate(w http.ResponseWriter, status int, name string, data any) {
@@ -925,6 +1178,31 @@ func uiIssueColumns() []uiIssueColumn {
 		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
 		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
 		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+	}
+}
+
+func uiIssueLinkLabel(link model.IssueLink, issueID uuid.UUID) string {
+	outgoing := link.SourceID == issueID
+	switch link.LinkType {
+	case model.LinkTypeBlocks:
+		if outgoing {
+			return "Blocks"
+		}
+		return "Blocked by"
+	case model.LinkTypeDuplicates:
+		if outgoing {
+			return "Duplicates"
+		}
+		return "Duplicated by"
+	case model.LinkTypeRelatesTo:
+		return "Relates to"
+	case model.LinkTypeClones:
+		if outgoing {
+			return "Clones"
+		}
+		return "Cloned by"
+	default:
+		return string(link.LinkType)
 	}
 }
 
