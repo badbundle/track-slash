@@ -8,13 +8,32 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script>
+    try {
+      if (window.localStorage.getItem("track-slash.sidebar.collapsed") === "true") {
+        document.documentElement.setAttribute("data-sidebar-collapsed", "");
+      }
+    } catch (_) {}
+  </script>
   <style>
+    html[data-sidebar-collapsed] .app-shell > aside,
     #sidebar-toggle:checked ~ .app-shell > aside { width: 4.25rem; }
+    html[data-sidebar-collapsed] .app-shell .wide-only,
     #sidebar-toggle:checked ~ .app-shell .wide-only { opacity: 0; pointer-events: none; }
+    html[data-sidebar-collapsed] .app-shell .sidebar-head,
     #sidebar-toggle:checked ~ .app-shell .sidebar-head { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
+    html[data-sidebar-collapsed] .app-shell [data-nav-link],
     #sidebar-toggle:checked ~ .app-shell [data-nav-link] { justify-content: center; gap: 0; }
+    html[data-sidebar-collapsed] .app-shell [data-nav-link] .wide-only,
+    html[data-sidebar-collapsed] .app-shell .sidebar-head .wide-only,
+    html[data-sidebar-collapsed] .app-shell [data-member-label],
     #sidebar-toggle:checked ~ .app-shell [data-nav-link] .wide-only,
-    #sidebar-toggle:checked ~ .app-shell .sidebar-head .wide-only { width: 0; overflow: hidden; }
+    #sidebar-toggle:checked ~ .app-shell .sidebar-head .wide-only,
+    #sidebar-toggle:checked ~ .app-shell [data-member-label] { width: 0; overflow: hidden; }
+    html[data-sidebar-collapsed] .app-shell [data-member-summary],
+    #sidebar-toggle:checked ~ .app-shell [data-member-summary] { justify-content: center; gap: 0; padding-left: 0.25rem; padding-right: 0.25rem; }
+    html[data-sidebar-collapsed] .app-shell [data-member-menu],
+    #sidebar-toggle:checked ~ .app-shell [data-member-menu] { bottom: 0.5rem; left: calc(100% + 0.5rem); right: auto; width: 12rem; }
     .wide-only { transition: opacity 120ms ease; }
     .scrollbar-none { scrollbar-width: none; }
     .scrollbar-none::-webkit-scrollbar { display: none; }
@@ -23,7 +42,7 @@
 <body class="h-screen overflow-hidden bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
   <input id="sidebar-toggle" type="checkbox" class="hidden">
   <div class="app-shell flex h-screen">
-    <aside class="flex w-72 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-all dark:border-slate-800 dark:bg-slate-900">
+    <aside class="flex w-72 shrink-0 flex-col overflow-visible border-r border-slate-200 bg-white transition-all dark:border-slate-800 dark:bg-slate-900">
       <div class="sidebar-head flex h-14 items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-800">
         <label for="sidebar-toggle" class="grid h-6 w-6 shrink-0 cursor-pointer place-items-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" title="Toggle sidebar"><i data-lucide="menu" class="h-3.5 w-3.5" aria-hidden="true"></i></label>
         <div class="wide-only min-w-0">
@@ -53,14 +72,14 @@
       </nav>
 
       <details class="relative border-t border-slate-200 p-2 dark:border-slate-800">
-        <summary class="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+        <summary data-member-summary class="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800" title="Account menu">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-indigo-600 text-xs font-bold text-white">{{initials .User.Name .User.Email}}</span>
-          <span class="wide-only min-w-0">
+          <span data-member-label class="wide-only min-w-0">
             <span class="block truncate text-sm font-medium">{{.User.Name}}</span>
             <span class="block truncate text-xs text-slate-500 dark:text-slate-400">{{.User.Email}}</span>
           </span>
         </summary>
-        <div class="wide-only absolute bottom-16 left-2 right-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950">
+        <div data-member-menu class="absolute bottom-16 left-2 right-2 z-20 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
           <div class="px-2 py-1 text-xs text-slate-500 dark:text-slate-400">{{if .User.IsAdmin}}Admin{{else}}Member{{end}}</div>
           <a href="/settings" class="block rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Settings</a>
           <a href="/tokens" class="block rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">Tokens</a>
@@ -99,6 +118,25 @@
       const inactive = ["text-slate-600", "dark:text-slate-300"];
       const links = () => document.querySelectorAll("[data-nav-link]");
       const navForView = (view) => document.querySelector(`[data-nav-link][href="/${view}"]`);
+      const sidebarToggle = document.getElementById("sidebar-toggle");
+      const sidebarStorageKey = "track-slash.sidebar.collapsed";
+      const applySidebarCollapsed = (collapsed) => {
+        document.documentElement.toggleAttribute("data-sidebar-collapsed", collapsed);
+        if (sidebarToggle) sidebarToggle.checked = collapsed;
+      };
+      if (sidebarToggle) {
+        let collapsed = false;
+        try {
+          collapsed = window.localStorage.getItem(sidebarStorageKey) === "true";
+        } catch (_) {}
+        applySidebarCollapsed(collapsed);
+        sidebarToggle.addEventListener("change", () => {
+          applySidebarCollapsed(sidebarToggle.checked);
+          try {
+            window.localStorage.setItem(sidebarStorageKey, sidebarToggle.checked ? "true" : "false");
+          } catch (_) {}
+        });
+      }
       const setNavLoading = (link, loading) => {
         const icon = link.querySelector("[data-nav-icon]");
         const loader = link.querySelector("[data-nav-loader]");
