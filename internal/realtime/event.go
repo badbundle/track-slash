@@ -30,13 +30,14 @@ const (
 // Kept minimal so it always fits inside Postgres' 8000-byte NOTIFY limit
 // and so clients are responsible for refetching the full row via REST.
 type Event struct {
-	Op        Op         `json:"op"`
-	Entity    Entity     `json:"entity"`
-	ID        uuid.UUID  `json:"id"`
-	IssueID   *uuid.UUID `json:"issue_id,omitempty"`
-	ProjectID *uuid.UUID `json:"project_id,omitempty"`
-	Version   int64      `json:"version"`
-	Ts        string     `json:"ts"`
+	Op            Op         `json:"op"`
+	Entity        Entity     `json:"entity"`
+	ID            uuid.UUID  `json:"id"`
+	IssueID       *uuid.UUID `json:"issue_id,omitempty"`
+	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
+	ProjectID     *uuid.UUID `json:"project_id,omitempty"`
+	Version       int64      `json:"version"`
+	Ts            string     `json:"ts"`
 }
 
 // Topics returns the topic names this event should be fanned out on.
@@ -45,6 +46,9 @@ func (e Event) Topics() []string {
 	switch e.Entity {
 	case EntityIssue:
 		topics := []string{IssueTopic(e.ID)}
+		if e.ParentIssueID != nil {
+			topics = append(topics, IssueTopic(*e.ParentIssueID))
+		}
 		if e.ProjectID != nil {
 			topics = append(topics, ProjectTopic(*e.ProjectID))
 		}

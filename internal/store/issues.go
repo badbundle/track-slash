@@ -21,6 +21,14 @@ type CreateIssueParams struct {
 	ReporterID  *uuid.UUID
 }
 
+type CreateSubIssueParams struct {
+	ParentIssueID uuid.UUID
+	Title         string
+	Description   string
+	AssigneeID    *uuid.UUID
+	ReporterID    *uuid.UUID
+}
+
 func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Issue, error) {
 	var out model.Issue
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
@@ -44,10 +52,10 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 			INSERT INTO issues (project_id, number, title, description, assignee_id, reporter_id)
 			VALUES ($1, $2, $3, $4, $5, $6)
 			RETURNING id, project_id, number, title, description, status,
-			          assignee_id, reporter_id, sprint_id, created_at, updated_at
+			          assignee_id, reporter_id, sprint_id, parent_issue_id, created_at, updated_at
 		`, p.ProjectID, number, p.Title, p.Description, p.AssigneeID, p.ReporterID).
 			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status,
-				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.CreatedAt, &out.UpdatedAt)
+				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -75,10 +83,71 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 	return out, nil
 }
 
+func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (model.Issue, error) {
+	var out model.Issue
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var (
+			number        int
+			projectKey    string
+			projectID     uuid.UUID
+			parentIssueID *uuid.UUID
+		)
+		err := tx.QueryRow(ctx, `
+			SELECT pr.next_issue_number, pr.key, i.project_id, i.parent_issue_id
+			FROM issues i
+			JOIN projects pr ON pr.id = i.project_id
+			WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+			FOR UPDATE OF i, pr
+		`, p.ParentIssueID).Scan(&number, &projectKey, &projectID, &parentIssueID)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if parentIssueID != nil {
+			return fmt.Errorf("sub-issues cannot have sub-issues: %w", ErrConflict)
+		}
+
+		err = tx.QueryRow(ctx, `
+			INSERT INTO issues (project_id, number, title, description, assignee_id, reporter_id, parent_issue_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING id, project_id, number, title, description, status,
+			          assignee_id, reporter_id, sprint_id, parent_issue_id, created_at, updated_at
+		`, projectID, number, p.Title, p.Description, p.AssigneeID, p.ReporterID, p.ParentIssueID).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status,
+				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &out.CreatedAt, &out.UpdatedAt)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				return fmt.Errorf("invalid assignee/reporter: %w", ErrConflict)
+			}
+			return err
+		}
+
+		_, err = tx.Exec(ctx, `
+			UPDATE projects
+			SET next_issue_number = next_issue_number + 1,
+			    updated_at = now()
+			WHERE id = $1
+		`, projectID)
+		if err != nil {
+			return err
+		}
+
+		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
+		return nil
+	})
+	if err != nil {
+		return model.Issue{}, err
+	}
+	return out, nil
+}
+
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
 		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		WHERE i.id = $1 AND i.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -87,7 +156,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 	var key string
 	err := s.db.QueryRow(ctx, q, id).Scan(
 		&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-		&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
+		&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
 		if isNoRows(err) {
@@ -108,6 +177,9 @@ type ListIssuesParams struct {
 	Backlog  bool
 	Cursor   *IssuesCursor
 	Limit    int
+	// IncludeSubIssues is for personal/work views that should surface assigned
+	// child work. Project planning lists keep the default top-level-only shape.
+	IncludeSubIssues bool
 }
 
 // IssuesCursor keys off (project_id, number). Number is monotonic per project
@@ -126,7 +198,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 	}
 	const q = `
 		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		WHERE i.id = ANY($1) AND i.deleted_at IS NULL AND p.deleted_at IS NULL
@@ -143,7 +215,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		var key string
 		if err := rows.Scan(
 			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
+			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -157,11 +229,14 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	args := []any{p.ProjectID}
 	q := `
 		SELECT i.id, i.project_id, i.number, pr.key, i.title, i.description, i.status,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		WHERE i.project_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
 	`
+	if !p.IncludeSubIssues {
+		q += " AND i.parent_issue_id IS NULL"
+	}
 	if p.Status != "" {
 		args = append(args, string(p.Status))
 		q += fmt.Sprintf(" AND i.status = $%d", len(args))
@@ -192,7 +267,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		var key string
 		if err := rows.Scan(
 			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.CreatedAt, &iss.UpdatedAt,
+			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
 		); err != nil {
 			return nil, false, err
 		}
@@ -200,6 +275,77 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		out = append(out, iss)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
+}
+
+type ListSubIssuesForIssueParams struct {
+	ParentIssueID uuid.UUID
+	Cursor        *IssuesCursor
+	Limit         int
+}
+
+func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIssueParams) ([]model.Issue, bool, error) {
+	var parentIssueID *uuid.UUID
+	if err := s.db.QueryRow(ctx, `
+		SELECT i.parent_issue_id
+		FROM issues i
+		JOIN projects pr ON pr.id = i.project_id
+		WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+	`, p.ParentIssueID).Scan(&parentIssueID); err != nil {
+		if isNoRows(err) {
+			return nil, false, ErrNotFound
+		}
+		// Defensive: only no-rows has a domain mapping here.
+		return nil, false, err
+	}
+	if parentIssueID != nil {
+		return nil, false, fmt.Errorf("sub-issues cannot have sub-issues: %w", ErrConflict)
+	}
+
+	args := []any{p.ParentIssueID}
+	q := `
+		SELECT i.id, i.project_id, i.number, pr.key, i.title, i.description, i.status,
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		FROM issues i
+		JOIN projects pr ON pr.id = i.project_id
+		WHERE i.parent_issue_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+	`
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.Number)
+		q += fmt.Sprintf(" AND i.number > $%d", len(args))
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(" ORDER BY i.number ASC LIMIT $%d", len(args))
+
+	rows, err := s.db.Query(ctx, q, args...)
+	if err != nil {
+		// Defensive: list query has no expected constraint mapping.
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	out := make([]model.Issue, 0, p.Limit)
+	for rows.Next() {
+		var iss model.Issue
+		var key string
+		if err := rows.Scan(
+			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
+			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
+		); err != nil {
+			// Defensive: selected columns match model fields.
+			return nil, false, err
+		}
+		iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
+		out = append(out, iss)
+	}
+	if err := rows.Err(); err != nil {
+		// Defensive: scan/query failures after setup are DB/runtime faults.
 		return nil, false, err
 	}
 	hasMore := len(out) > p.Limit
@@ -269,12 +415,16 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.SprintID != nil && !p.ClearSprint {
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			var issueProject, sprintProject uuid.UUID
+			var parentIssueID *uuid.UUID
 			var sprintStatus model.SprintStatus
-			if err := tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id, parent_issue_id FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject, &parentIssueID); err != nil {
 				if isNoRows(err) {
 					return ErrNotFound
 				}
 				return err
+			}
+			if parentIssueID != nil {
+				return fmt.Errorf("sub-issues cannot be assigned to sprints: %w", ErrConflict)
 			}
 			if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
 				if isNoRows(err) {
@@ -318,7 +468,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 func (s *Store) DeleteIssue(ctx context.Context, id uuid.UUID) error {
 	tag, err := s.db.Exec(ctx, `
 		UPDATE issues SET deleted_at = now(), updated_at = now()
-		WHERE id = $1 AND deleted_at IS NULL
+		WHERE (id = $1 OR parent_issue_id = $1) AND deleted_at IS NULL
 	`, id)
 	if err != nil {
 		// Defensive: soft-delete has no expected FK/check mapping.

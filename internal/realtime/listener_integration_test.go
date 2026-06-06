@@ -100,6 +100,73 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 	}
 }
 
+// TestListenerReceivesSubIssueEvent verifies child issue events include
+// parent_issue_id so the hub can fan them out on the parent issue topic.
+func TestListenerReceivesSubIssueEvent(t *testing.T) {
+	dbURL := testDatabaseURL()
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	sqlDB, err := sql.Open("pgx", dbURL)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := migrations.Up(sqlDB); err != nil {
+		t.Fatalf("migrations.Up: %v", err)
+	}
+	testutil.CleanDatabase(t, sqlDB)
+	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	hub := NewHub()
+	listener := NewListener(dbURL, hub)
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	t.Cleanup(stopListener)
+	go listener.Run(listenerCtx)
+
+	time.Sleep(500 * time.Millisecond)
+
+	var projectID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
+	`, uniqueKey(t), "rt-sub-issue").Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	var parentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'parent') RETURNING id::text
+	`, projectID).Scan(&parentID); err != nil {
+		t.Fatalf("insert parent: %v", err)
+	}
+
+	parentSub := newTestClient(16)
+	projSub := newTestClient(16)
+	hub.Subscribe(parentSub, "issue:"+parentID)
+	hub.Subscribe(projSub, "project:"+projectID)
+
+	var childID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title, parent_issue_id)
+		VALUES ($1, 2, 'child', $2)
+		RETURNING id::text
+	`, projectID, parentID).Scan(&childID); err != nil {
+		t.Fatalf("insert child: %v", err)
+	}
+
+	waitForSubIssueEvent(t, parentSub, childID, parentID, projectID, OpInsert)
+	waitForSubIssueEvent(t, projSub, childID, parentID, projectID, OpInsert)
+}
+
 // TestListenerReceivesSprintEvent verifies sprint INSERT fires the
 // sprints_events trigger, the listener decodes the payload, and the hub fans
 // it out on both the project topic and the sprint topic.
@@ -480,6 +547,28 @@ func waitForCommentEvent(t *testing.T, c *Client, commentID, issueID, projectID 
 			return
 		case <-deadline:
 			t.Fatalf("did not receive comment %s event within 3s", op)
+		}
+	}
+}
+
+func waitForSubIssueEvent(t *testing.T, c *Client, childID, parentID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityIssue || ev.Op != op || ev.ID.String() != childID {
+				continue
+			}
+			if ev.ParentIssueID == nil || ev.ParentIssueID.String() != parentID {
+				t.Errorf("parent_issue_id = %v, want %s", ev.ParentIssueID, parentID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive sub-issue %s event within 3s", op)
 		}
 	}
 }

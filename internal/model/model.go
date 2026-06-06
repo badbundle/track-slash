@@ -104,18 +104,19 @@ type Project struct {
 }
 
 type Issue struct {
-	ID          uuid.UUID  `json:"id"`
-	ProjectID   uuid.UUID  `json:"project_id"`
-	Number      int        `json:"number"`
-	Identifier  string     `json:"identifier"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Status      Status     `json:"status"`
-	AssigneeID  *uuid.UUID `json:"assignee_id,omitempty"`
-	ReporterID  *uuid.UUID `json:"reporter_id,omitempty"`
-	SprintID    *uuid.UUID `json:"sprint_id,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	Number        int        `json:"number"`
+	Identifier    string     `json:"identifier"`
+	Title         string     `json:"title"`
+	Description   string     `json:"description"`
+	Status        Status     `json:"status"`
+	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
+	ReporterID    *uuid.UUID `json:"reporter_id,omitempty"`
+	SprintID      *uuid.UUID `json:"sprint_id,omitempty"`
+	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type LinkType string

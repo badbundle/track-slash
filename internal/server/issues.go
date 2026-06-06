@@ -60,6 +60,53 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, iss)
 }
 
+func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
+	parentID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid issue id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), parentID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
+	var req createIssueReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	req.Title = strings.TrimSpace(req.Title)
+	if req.Title == "" || len(req.Title) > 200 {
+		writeError(w, http.StatusBadRequest, "title required, max 200 chars")
+		return
+	}
+	reporterID := req.ReporterID
+	if reporterID == nil {
+		id := currentUser(r).ID
+		reporterID = &id
+	} else if !currentUser(r).IsAdmin && *reporterID != currentUser(r).ID {
+		writeForbidden(w)
+		return
+	}
+
+	iss, err := s.store.CreateSubIssue(r.Context(), store.CreateSubIssueParams{
+		ParentIssueID: parentID,
+		Title:         req.Title,
+		Description:   req.Description,
+		AssigneeID:    req.AssigneeID,
+		ReporterID:    reporterID,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, iss)
+}
+
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
 	if err != nil {
@@ -120,6 +167,54 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, hasMore, err := s.store.ListIssues(r.Context(), params)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var next *string
+	if hasMore {
+		last := out[len(out)-1]
+		enc := encodeCursor(store.IssuesCursor{Number: last.Number})
+		next = &enc
+	}
+	writePage(w, out, next)
+}
+
+func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
+	parentID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid issue id")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), parentID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
+
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
+	out, hasMore, err := s.store.ListSubIssuesForIssue(r.Context(), store.ListSubIssuesForIssueParams{
+		ParentIssueID: parentID,
+		Cursor:        cursor,
+		Limit:         limit,
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return

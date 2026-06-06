@@ -129,20 +129,25 @@ type uiProjectPanelData struct {
 }
 
 type uiIssuePanelData struct {
-	Issue           model.Issue
-	Project         model.Project
-	Sprint          *model.Sprint
-	Assignee        *model.User
-	Reporter        *model.User
-	Comments        []uiIssueCommentItem
-	CommentsHasMore bool
-	CommentBody     string
-	CommentError    string
-	Links           []uiIssueLinkItem
-	LinksHasMore    bool
-	BackHref        string
-	BackHXGet       string
-	BackLabel       string
+	Issue            model.Issue
+	Project          model.Project
+	ParentIssue      *model.Issue
+	Sprint           *model.Sprint
+	Assignee         *model.User
+	Reporter         *model.User
+	SubIssues        []model.Issue
+	SubIssuesHasMore bool
+	SubIssueTitle    string
+	SubIssueError    string
+	Comments         []uiIssueCommentItem
+	CommentsHasMore  bool
+	CommentBody      string
+	CommentError     string
+	Links            []uiIssueLinkItem
+	LinksHasMore     bool
+	BackHref         string
+	BackHXGet        string
+	BackLabel        string
 }
 
 type uiProjectsPanelData struct {
@@ -191,6 +196,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
 		r.Get("/issues/{id}", s.uiIssuePage)
 		r.Get("/issues/{id}/panel", s.uiIssuePanel)
+		r.Post("/issues/{id}/sub-issues", s.uiCreateSubIssue)
 		r.Post("/issues/{id}/comments", s.uiCreateComment)
 		r.Get("/projects/{id}", s.uiProjectPage)
 		r.Get("/projects/{id}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
@@ -642,6 +648,50 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
+	parentID, ok := uiIssueID(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	title := strings.TrimSpace(r.Form.Get("title"))
+	if title == "" || len(title) > 200 {
+		s.renderUIIssuePanelWithSubIssueError(w, r, parentID, r.Form.Get("title"), "Title required, max 200 chars.")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), parentID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), projectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	reporterID := currentUser(r).ID
+	if _, err := s.store.CreateSubIssue(r.Context(), store.CreateSubIssueParams{
+		ParentIssueID: parentID,
+		Title:         title,
+		ReporterID:    &reporterID,
+	}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithSubIssueError(w, r, parentID, r.Form.Get("title"), "Sub-issue could not be created for this issue.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, parentID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 	issueID, ok := uiIssueID(w, r)
 	if !ok {
@@ -678,6 +728,17 @@ func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithSubIssueError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, title, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.SubIssueTitle = title
+	panel.SubIssueError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -750,7 +811,11 @@ func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project,
 	var out []uiIssueItem
 	var hasMore bool
 	for _, project := range projects {
-		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{ProjectID: project.ID, Limit: MaxLimit})
+		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
+			ProjectID:        project.ID,
+			Limit:            MaxLimit,
+			IncludeSubIssues: true,
+		})
 		if err != nil {
 			return nil, false, err
 		}
@@ -884,9 +949,34 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	if err != nil {
 		return nil, err
 	}
-	sprint, err := s.uiOptionalSprint(ctx, issue.SprintID)
-	if err != nil {
-		return nil, err
+	var parentIssue *model.Issue
+	if issue.ParentIssueID != nil {
+		parent, err := s.store.GetIssue(ctx, *issue.ParentIssueID)
+		if err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				return nil, err
+			}
+		} else {
+			parentIssue = &parent
+		}
+	}
+	var sprint *model.Sprint
+	if issue.ParentIssueID == nil {
+		sprint, err = s.uiOptionalSprint(ctx, issue.SprintID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var subIssues []model.Issue
+	var subIssuesHasMore bool
+	if issue.ParentIssueID == nil {
+		subIssues, subIssuesHasMore, err = s.store.ListSubIssuesForIssue(ctx, store.ListSubIssuesForIssueParams{
+			ParentIssueID: issueID,
+			Limit:         MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	comments, commentsHasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{
 		IssueID: issueID,
@@ -933,20 +1023,23 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		linkItems = append(linkItems, item)
 	}
 
-	backHref, backHXGet, backLabel := uiIssueBackLink(projectID, issue, sprint)
+	backHref, backHXGet, backLabel := uiIssueBackLink(projectID, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
-		Issue:           issue,
-		Project:         project,
-		Sprint:          sprint,
-		Assignee:        assignee,
-		Reporter:        reporter,
-		Comments:        commentItems,
-		CommentsHasMore: commentsHasMore,
-		Links:           linkItems,
-		LinksHasMore:    linksHasMore,
-		BackHref:        backHref,
-		BackHXGet:       backHXGet,
-		BackLabel:       backLabel,
+		Issue:            issue,
+		Project:          project,
+		ParentIssue:      parentIssue,
+		Sprint:           sprint,
+		Assignee:         assignee,
+		Reporter:         reporter,
+		SubIssues:        subIssues,
+		SubIssuesHasMore: subIssuesHasMore,
+		Comments:         commentItems,
+		CommentsHasMore:  commentsHasMore,
+		Links:            linkItems,
+		LinksHasMore:     linksHasMore,
+		BackHref:         backHref,
+		BackHXGet:        backHXGet,
+		BackLabel:        backLabel,
 	}, nil
 }
 
@@ -1003,7 +1096,11 @@ func (s *Server) uiLinkedIssues(ctx context.Context, issueID uuid.UUID, links []
 	return out, nil
 }
 
-func uiIssueBackLink(projectID uuid.UUID, issue model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+func uiIssueBackLink(projectID uuid.UUID, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+	if parent != nil {
+		base := "/issues/" + parent.ID.String()
+		return base, base + "/panel", "Parent issue"
+	}
 	view := "sprint"
 	if issue.SprintID == nil || (sprint != nil && sprint.Status == model.SprintStatusPlanned) {
 		view = "backlog"

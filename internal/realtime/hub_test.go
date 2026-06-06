@@ -54,6 +54,45 @@ func TestHubFanoutToSubscribers(t *testing.T) {
 	}
 }
 
+func TestSubIssueEventFansOutToChildParentAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	parentID := uuid.New()
+	childID := uuid.New()
+
+	childSub := newTestClient(4)
+	parentSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(childSub, IssueTopic(childID))
+	hub.Subscribe(parentSub, IssueTopic(parentID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, IssueTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:            OpInsert,
+		Entity:        EntityIssue,
+		ID:            childID,
+		ParentIssueID: &parentID,
+		ProjectID:     &projectID,
+		Version:       1,
+	})
+
+	if _, ok := recv(t, childSub, time.Second); !ok {
+		t.Fatal("child issue subscriber did not receive event")
+	}
+	if _, ok := recv(t, parentSub, time.Second); !ok {
+		t.Fatal("parent issue subscriber did not receive child event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive child event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated issue subscriber received event")
+	}
+}
+
 func TestSprintEventFansOutToProjectAndSprintTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
