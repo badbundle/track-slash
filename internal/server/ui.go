@@ -67,6 +67,12 @@ type uiIssueColumn struct {
 	Issues []uiIssueItem
 }
 
+type uiPlannedSprint struct {
+	Sprint  model.Sprint
+	Issues  []model.Issue
+	HasMore bool
+}
+
 type uiWorkPanelData struct {
 	View         string
 	Title        string
@@ -82,8 +88,10 @@ type uiProjectPanelData struct {
 	View                string
 	ActiveSprint        *model.Sprint
 	SprintColumns       []uiIssueColumn
+	PlannedSprints      []uiPlannedSprint
 	BacklogIssues       []model.Issue
 	SprintIssuesHasMore bool
+	PlannedHasMore      bool
 	BacklogHasMore      bool
 }
 
@@ -663,6 +671,33 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			}
 		}
 	case "backlog":
+		plannedStatus := model.SprintStatusPlanned
+		planned, plannedHasMore, err := s.store.ListSprints(ctx, store.ListSprintsParams{
+			ProjectID: projectID,
+			Status:    plannedStatus,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		panel.PlannedHasMore = plannedHasMore
+		panel.PlannedSprints = make([]uiPlannedSprint, 0, len(planned))
+		for _, sprint := range planned {
+			issues, issuesHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
+				ProjectID: projectID,
+				SprintID:  &sprint.ID,
+				Limit:     MaxLimit,
+			})
+			if err != nil {
+				return nil, err
+			}
+			panel.PlannedSprints = append(panel.PlannedSprints, uiPlannedSprint{
+				Sprint:  sprint,
+				Issues:  issues,
+				HasMore: issuesHasMore,
+			})
+		}
+
 		backlog, backlogHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 			ProjectID: projectID,
 			Backlog:   true,
