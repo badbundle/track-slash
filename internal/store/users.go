@@ -52,6 +52,23 @@ func (s *Store) GetUser(ctx context.Context, id uuid.UUID) (model.User, error) {
 	return u, nil
 }
 
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (model.User, error) {
+	username, err := NormalizeUsername(username)
+	if err != nil {
+		return model.User{}, err
+	}
+	const q = `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at FROM users WHERE username = $1 AND deleted_at IS NULL`
+	var u model.User
+	err = s.db.QueryRow(ctx, q, username).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	if err != nil {
+		if isNoRows(err) {
+			return model.User{}, ErrNotFound
+		}
+		return model.User{}, err
+	}
+	return u, nil
+}
+
 func (s *Store) CreateOrUpdateAdminUser(ctx context.Context, email, name string) (model.User, error) {
 	username := UsernameFromEmail(email)
 	const q = `

@@ -29,7 +29,7 @@ func decodePage[T any](t *testing.T, body []byte) pageDecoded[T] {
 	return p
 }
 
-// ---------- pagination wiring on /projects/{id}/issues ----------
+// ---------- pagination wiring on /{owner}/projects/{key}/issues ----------
 
 func TestPaginationIssuesRoundTrip(t *testing.T) {
 	e := newHTTPEnv(t)
@@ -45,7 +45,7 @@ func TestPaginationIssuesRoundTrip(t *testing.T) {
 		created[i] = iss.ID
 	}
 
-	path := fmt.Sprintf("/projects/%s/issues?limit=2", e.projectID)
+	path := e.projectIssuesPath() + "?limit=2"
 	code, body := e.do(t, http.MethodGet, path, nil)
 	if code != http.StatusOK {
 		t.Fatalf("page 1 code = %d body = %s", code, body)
@@ -61,8 +61,7 @@ func TestPaginationIssuesRoundTrip(t *testing.T) {
 		t.Fatalf("page 1 items = %+v, want first two created", p1.Items)
 	}
 
-	path = fmt.Sprintf("/projects/%s/issues?limit=2&cursor=%s",
-		e.projectID, url.QueryEscape(*p1.NextCursor))
+	path = e.projectIssuesPath() + "?limit=2&cursor=" + url.QueryEscape(*p1.NextCursor)
 	code, body = e.do(t, http.MethodGet, path, nil)
 	if code != http.StatusOK {
 		t.Fatalf("page 2 code = %d body = %s", code, body)
@@ -75,8 +74,7 @@ func TestPaginationIssuesRoundTrip(t *testing.T) {
 		t.Fatalf("page 2 items = %+v, want issues 3..4", p2.Items)
 	}
 
-	path = fmt.Sprintf("/projects/%s/issues?limit=2&cursor=%s",
-		e.projectID, url.QueryEscape(*p2.NextCursor))
+	path = e.projectIssuesPath() + "?limit=2&cursor=" + url.QueryEscape(*p2.NextCursor)
 	code, body = e.do(t, http.MethodGet, path, nil)
 	if code != http.StatusOK {
 		t.Fatalf("page 3 code = %d body = %s", code, body)
@@ -100,7 +98,7 @@ func TestPaginationIssuesExactLimitNoCursor(t *testing.T) {
 		}
 	}
 	code, body := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?limit=3", e.projectID), nil)
+		e.projectIssuesPath()+"?limit=3", nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -116,7 +114,7 @@ func TestPaginationIssuesExactLimitNoCursor(t *testing.T) {
 func TestPaginationEmptyEnvelope(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues", e.projectID), nil)
+		e.projectIssuesPath(), nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -129,7 +127,7 @@ func TestPaginationEmptyEnvelope(t *testing.T) {
 func TestPaginationBadCursor(t *testing.T) {
 	e := newHTTPEnv(t)
 	for _, raw := range []string{"not-base64!!!", "Zm9v"} { // second decodes to "foo" — invalid JSON
-		path := fmt.Sprintf("/projects/%s/issues?cursor=%s", e.projectID, raw)
+		path := e.projectIssuesPath() + "?cursor=" + raw
 		code, _ := e.do(t, http.MethodGet, path, nil)
 		if code != http.StatusBadRequest {
 			t.Fatalf("cursor %q: code = %d, want 400", raw, code)
@@ -140,7 +138,7 @@ func TestPaginationBadCursor(t *testing.T) {
 func TestPaginationBadLimit(t *testing.T) {
 	e := newHTTPEnv(t)
 	for _, raw := range []string{"0", "-1", "abc"} {
-		path := fmt.Sprintf("/projects/%s/issues?limit=%s", e.projectID, raw)
+		path := e.projectIssuesPath() + "?limit=" + raw
 		code, _ := e.do(t, http.MethodGet, path, nil)
 		if code != http.StatusBadRequest {
 			t.Fatalf("limit=%s: code = %d, want 400", raw, code)
@@ -159,7 +157,7 @@ func TestPaginationLimitClampedAboveMax(t *testing.T) {
 		}
 	}
 	code, body := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?limit=500", e.projectID), nil)
+		e.projectIssuesPath()+"?limit=500", nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -221,7 +219,7 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		e.do(t, http.MethodPost,
-			fmt.Sprintf("/projects/%s/sprints", e.projectID),
+			e.projectSprintsPath(),
 			map[string]any{
 				"name":       fmt.Sprintf("S%d", i),
 				"start_date": fmt.Sprintf("2026-06-%02d", 1+i*7),
@@ -229,7 +227,7 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 			})
 	}
 	code, body = e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/sprints?limit=2", e.projectID), nil)
+		e.projectSprintsPath()+"?limit=2", nil)
 	if code != http.StatusOK {
 		t.Fatalf("sprints code = %d", code)
 	}
@@ -238,8 +236,7 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 		t.Fatalf("sprints page = %+v", sp)
 	}
 	code, body = e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/sprints?limit=2&cursor=%s",
-			e.projectID, url.QueryEscape(*sp.NextCursor)), nil)
+		e.projectSprintsPath()+"?limit=2&cursor="+url.QueryEscape(*sp.NextCursor), nil)
 	if code != http.StatusOK {
 		t.Fatalf("sprints page2 code = %d", code)
 	}
@@ -251,14 +248,14 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 	a := e.mustCreateIssue(t, "A")
 	for i := 0; i < 3; i++ {
 		b := e.mustCreateIssue(t, fmt.Sprintf("B%d", i))
-		code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-			map[string]any{"target_id": b.ID.String(), "link_type": "blocks"})
+		code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+			map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
 		if code != http.StatusCreated {
 			t.Fatalf("create link %d: %d", i, code)
 		}
 	}
 	code, body = e.do(t, http.MethodGet,
-		"/issues/"+a.ID.String()+"/links?limit=2", nil)
+		e.issueLinksPath(a)+"?limit=2", nil)
 	if code != http.StatusOK {
 		t.Fatalf("links code = %d", code)
 	}
@@ -267,7 +264,7 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 		t.Fatalf("links page = %+v", lp)
 	}
 	code, body = e.do(t, http.MethodGet,
-		"/issues/"+a.ID.String()+"/links?limit=2&cursor="+url.QueryEscape(*lp.NextCursor), nil)
+		e.issueLinksPath(a)+"?limit=2&cursor="+url.QueryEscape(*lp.NextCursor), nil)
 	if code != http.StatusOK {
 		t.Fatalf("links page2 code = %d", code)
 	}
@@ -287,9 +284,9 @@ func TestPaginationBadCursorOnAllListEndpoints(t *testing.T) {
 	paths := []string{
 		"/users?cursor=" + bad,
 		"/projects?cursor=" + bad,
-		fmt.Sprintf("/projects/%s/issues?cursor=%s", e.projectID, bad),
-		fmt.Sprintf("/projects/%s/sprints?cursor=%s", e.projectID, bad),
-		"/issues/" + a.ID.String() + "/links?cursor=" + bad,
+		e.projectIssuesPath() + "?cursor=" + bad,
+		e.projectSprintsPath() + "?cursor=" + bad,
+		e.issueLinksPath(a) + "?cursor=" + bad,
 	}
 	for _, p := range paths {
 		code, _ := e.do(t, http.MethodGet, p, nil)
@@ -306,9 +303,9 @@ func TestPaginationBadLimitOnAllListEndpoints(t *testing.T) {
 	paths := []string{
 		"/users?limit=0",
 		"/projects?limit=-1",
-		fmt.Sprintf("/projects/%s/issues?limit=abc", e.projectID),
-		fmt.Sprintf("/projects/%s/sprints?limit=0", e.projectID),
-		"/issues/" + a.ID.String() + "/links?limit=-5",
+		e.projectIssuesPath() + "?limit=abc",
+		e.projectSprintsPath() + "?limit=0",
+		e.issueLinksPath(a) + "?limit=-5",
 	}
 	for _, p := range paths {
 		code, _ := e.do(t, http.MethodGet, p, nil)

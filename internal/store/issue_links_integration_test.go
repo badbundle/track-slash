@@ -52,9 +52,13 @@ func newLinksEnv(t *testing.T) *linksTestEnv {
 	t.Cleanup(pool.Close)
 
 	s := store.New(pool)
-	proj, err := s.CreateProject(ctx, uniqueProjectKey(t), "links-test", "")
+	owner, err := s.CreateOrUpdateAdminUser(ctx, "owner-"+uniqueProjectKey(t)+"@example.com", "Owner")
 	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
+		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	proj, err := s.CreateProjectForUser(ctx, owner.ID, uniqueProjectKey(t), "links-test", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
 	}
 	return &linksTestEnv{ctx: ctx, store: s, pool: pool, projectID: proj.ID}
 }

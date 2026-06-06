@@ -3,7 +3,6 @@ package server
 import (
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -11,8 +10,8 @@ import (
 )
 
 type createIssueLinkReq struct {
-	TargetID uuid.UUID      `json:"target_id"`
-	LinkType model.LinkType `json:"link_type"`
+	TargetIssue string         `json:"target_issue"`
+	LinkType    model.LinkType `json:"link_type"`
 }
 
 // issueLinkView wraps a stored link with direction-aware fields so clients
@@ -25,17 +24,11 @@ type issueLinkView struct {
 }
 
 func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
-	sourceID, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+	source, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), sourceID)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, source.ProjectID) {
 		return
 	}
 	var req createIssueLinkReq
@@ -43,18 +36,24 @@ func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.TargetID == uuid.Nil {
-		writeError(w, http.StatusBadRequest, "target_id required")
+	targetRef, err := parseIssueRef(req.TargetIssue)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !req.LinkType.Valid() {
 		writeError(w, http.StatusBadRequest, "invalid link_type")
 		return
 	}
+	target, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), source.OwnerUsername, targetRef.ProjectKey, targetRef.Number)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 
 	link, err := s.store.CreateIssueLink(r.Context(), store.CreateIssueLinkParams{
-		SourceID: sourceID,
-		TargetID: req.TargetID,
+		SourceID: source.ID,
+		TargetID: target.ID,
 		LinkType: req.LinkType,
 	})
 	if err != nil {
@@ -65,17 +64,11 @@ func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
-	issueID, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+	issue, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, issue.ProjectID) {
 		return
 	}
 
@@ -95,7 +88,7 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	links, hasMore, err := s.store.ListIssueLinksForIssue(r.Context(), store.ListIssueLinksForIssueParams{
-		IssueID: issueID,
+		IssueID: issue.ID,
 		Cursor:  cursor,
 		Limit:   limit,
 	})
@@ -106,7 +99,7 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 	out := make([]issueLinkView, 0, len(links))
 	for _, l := range links {
 		v := issueLinkView{IssueLink: l}
-		if l.SourceID == issueID {
+		if l.SourceID == issue.ID {
 			v.Direction = "outgoing"
 			v.DisplayType = outgoingDisplayName(l.LinkType)
 			v.OtherIssueID = l.TargetID
@@ -127,46 +120,46 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getIssueLink(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, link, ok := s.issueLinkFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssueLink(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	link, err := s.store.GetIssueLink(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 	writeJSON(w, http.StatusOK, link)
 }
 
 func (s *Server) deleteIssueLink(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, link, ok := s.issueLinkFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssueLink(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	if err := s.store.DeleteIssueLink(r.Context(), id); err != nil {
+	if err := s.store.DeleteIssueLink(r.Context(), link.ID); err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) issueLinkFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.IssueLink, bool) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return model.Project{}, model.IssueLink{}, false
+	}
+	number, ok := parseTypedRefParam(w, r, "linkRef", "link")
+	if !ok {
+		return model.Project{}, model.IssueLink{}, false
+	}
+	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), project.ID, number)
+	if err != nil {
+		writeStoreError(w, err)
+		return model.Project{}, model.IssueLink{}, false
+	}
+	return project, link, true
 }
 
 func outgoingDisplayName(t model.LinkType) string {

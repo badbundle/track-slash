@@ -56,9 +56,13 @@ func newSprintsEnv(t *testing.T) *sprintsTestEnv {
 	t.Cleanup(pool.Close)
 
 	s := store.New(pool)
-	proj, err := s.CreateProject(ctx, uniqueProjectKey(t), "sprints-test", "")
+	owner, err := s.CreateOrUpdateAdminUser(ctx, "owner-"+uniqueProjectKey(t)+"@example.com", "Owner")
 	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
+		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	proj, err := s.CreateProjectForUser(ctx, owner.ID, uniqueProjectKey(t), "sprints-test", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
 	}
 	return &sprintsTestEnv{ctx: ctx, pool: pool, store: s, projectID: proj.ID}
 }

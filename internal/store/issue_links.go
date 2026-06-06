@@ -19,6 +19,20 @@ type CreateIssueLinkParams struct {
 	LinkType model.LinkType
 }
 
+type issueLinkScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanIssueLink(row issueLinkScanner) (model.IssueLink, error) {
+	var out model.IssueLink
+	err := row.Scan(&out.ID, &out.ProjectID, &out.Number, &out.SourceID, &out.TargetID, &out.LinkType, &out.CreatedAt, &out.UpdatedAt)
+	if err != nil {
+		return model.IssueLink{}, err
+	}
+	out.Ref = model.IssueLinkRef(out.Number)
+	return out, nil
+}
+
 // CreateIssueLink inserts a typed link between two issues in the same project.
 // A 'duplicates' link atomically closes the source issue (status=done) so the
 // canonical JIRA "this is a dup of X" flow is one round trip.
@@ -28,10 +42,15 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 		var (
 			sourceProject uuid.UUID
 			sourceStatus  model.Status
+			number        int
 		)
 		err := tx.QueryRow(ctx, `
-			SELECT project_id, status FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
-		`, p.SourceID).Scan(&sourceProject, &sourceStatus)
+			SELECT i.project_id, i.status, pr.next_issue_link_number
+			FROM issues i
+			JOIN projects pr ON pr.id = i.project_id
+			WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+			FOR UPDATE OF i, pr
+		`, p.SourceID).Scan(&sourceProject, &sourceStatus, &number)
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -51,14 +70,11 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 			return fmt.Errorf("issues belong to different projects: %w", ErrConflict)
 		}
 
-		err = tx.QueryRow(ctx, `
-			INSERT INTO issue_links (project_id, source_id, target_id, link_type)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id, project_id, source_id, target_id, link_type, created_at, updated_at
-		`, sourceProject, p.SourceID, p.TargetID, string(p.LinkType)).Scan(
-			&out.ID, &out.ProjectID, &out.SourceID, &out.TargetID, &out.LinkType,
-			&out.CreatedAt, &out.UpdatedAt,
-		)
+		out, err = scanIssueLink(tx.QueryRow(ctx, `
+			INSERT INTO issue_links (project_id, number, source_id, target_id, link_type)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, project_id, number, source_id, target_id, link_type, created_at, updated_at
+		`, sourceProject, number, p.SourceID, p.TargetID, string(p.LinkType)))
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) {
@@ -75,6 +91,13 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 				}
 			}
 			return err // defensive: non-pg or unmapped pg error
+		}
+
+		if _, err := tx.Exec(ctx, `
+			UPDATE projects SET next_issue_link_number = next_issue_link_number + 1, updated_at = now()
+			WHERE id = $1
+		`, sourceProject); err != nil {
+			return err
 		}
 
 		if p.LinkType == model.LinkTypeDuplicates && sourceStatus != model.StatusDone {
@@ -94,14 +117,26 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 
 func (s *Store) GetIssueLink(ctx context.Context, id uuid.UUID) (model.IssueLink, error) {
 	const q = `
-		SELECT id, project_id, source_id, target_id, link_type, created_at, updated_at
+		SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
 		FROM issue_links WHERE id = $1
 	`
-	var out model.IssueLink
-	err := s.db.QueryRow(ctx, q, id).Scan(
-		&out.ID, &out.ProjectID, &out.SourceID, &out.TargetID, &out.LinkType,
-		&out.CreatedAt, &out.UpdatedAt,
-	)
+	out, err := scanIssueLink(s.db.QueryRow(ctx, q, id))
+	if err != nil {
+		if isNoRows(err) {
+			return model.IssueLink{}, ErrNotFound
+		}
+		return model.IssueLink{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetIssueLinkByProjectNumber(ctx context.Context, projectID uuid.UUID, number int) (model.IssueLink, error) {
+	const q = `
+		SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
+		FROM issue_links
+		WHERE project_id = $1 AND number = $2
+	`
+	out, err := scanIssueLink(s.db.QueryRow(ctx, q, projectID, number))
 	if err != nil {
 		if isNoRows(err) {
 			return model.IssueLink{}, ErrNotFound
@@ -139,7 +174,7 @@ func (s *Store) ListIssueLinksForIssue(ctx context.Context, p ListIssueLinksForI
 
 	args := []any{p.IssueID}
 	q := `
-		SELECT id, project_id, source_id, target_id, link_type, created_at, updated_at
+		SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
 		FROM issue_links
 		WHERE (source_id = $1 OR target_id = $1)
 	`
@@ -158,11 +193,8 @@ func (s *Store) ListIssueLinksForIssue(ctx context.Context, p ListIssueLinksForI
 
 	out := make([]model.IssueLink, 0, p.Limit)
 	for rows.Next() {
-		var l model.IssueLink
-		if err := rows.Scan(
-			&l.ID, &l.ProjectID, &l.SourceID, &l.TargetID, &l.LinkType,
-			&l.CreatedAt, &l.UpdatedAt,
-		); err != nil {
+		l, err := scanIssueLink(rows)
+		if err != nil {
 			return nil, false, err
 		}
 		out = append(out, l)

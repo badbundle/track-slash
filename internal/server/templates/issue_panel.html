@@ -13,7 +13,7 @@
         </div>
         <h1 class="mt-2 break-words text-3xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">{{.Issue.Title}}</h1>
         {{if .ParentIssue}}
-        <a data-main-view="projects" href="/issues/{{.ParentIssue.ID}}" hx-get="/issues/{{.ParentIssue.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.ParentIssue.ID}}" class="mt-1 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
+        <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="mt-1 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
           <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
           <span class="shrink-0">Sub-issue of</span>
           {{template "issue-key" .ParentIssue.Identifier}}
@@ -59,7 +59,7 @@
         {{if .SubIssues}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
-          <a data-main-view="projects" href="/issues/{{.ID}}" hx-get="/issues/{{.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.ID}}" class="grid grid-cols-[7rem_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[7rem_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
             {{template "issue-key" .Identifier}}
             <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
             {{template "status-badge" .Status}}
@@ -69,7 +69,7 @@
         {{else}}
         <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No sub-issues.</div>
         {{end}}
-        <form method="post" action="/issues/{{.Issue.ID}}/sub-issues" hx-post="/issues/{{.Issue.ID}}/sub-issues" hx-target="#main" hx-push-url="/issues/{{.Issue.ID}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
+        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
           <div class="flex items-center gap-2">
             <input name="title" value="{{.SubIssueTitle}}" placeholder="Title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <button type="submit" aria-label="Create sub-issue" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
@@ -97,7 +97,7 @@
           <div class="grid grid-cols-[5.5rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
             <span class="text-xs font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
             {{if .HasIssue}}
-            <a data-main-view="projects" href="/issues/{{.LinkedIssue.ID}}" hx-get="/issues/{{.LinkedIssue.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.LinkedIssue.ID}}" class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
+            <a data-main-view="projects" href="{{issueHref .LinkedIssue}}" hx-get="{{issuePanel .LinkedIssue}}" hx-target="#main" hx-push-url="{{issueHref .LinkedIssue}}" class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
               {{template "issue-key" .LinkedIssue.Identifier}}
               <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.LinkedIssue.Title}}</span>
             </a>
@@ -144,7 +144,7 @@
         {{else}}
         <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No comments.</div>
         {{end}}
-        <form method="post" action="/issues/{{.Issue.ID}}/comments" hx-post="/issues/{{.Issue.ID}}/comments" hx-target="#main" hx-push-url="/issues/{{.Issue.ID}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
+        <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
           <div class="flex items-start gap-2">
             <textarea name="body" rows="3" placeholder="Add a comment" data-submit-shortcut="meta-enter" class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
             <button type="submit" aria-label="Post comment" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
@@ -174,7 +174,7 @@
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Parent</dt>
             <dd class="mt-1">
-              <a data-main-view="projects" href="/issues/{{.ParentIssue.ID}}" hx-get="/issues/{{.ParentIssue.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.ParentIssue.ID}}" class="inline-flex max-w-full items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
+              <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="inline-flex max-w-full items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
                 {{template "issue-key" .ParentIssue.Identifier}}
                 <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.ParentIssue.Title}}</span>
               </a>

@@ -31,12 +31,13 @@ func scanSprint(row sprintScanner) (model.Sprint, error) {
 	var out model.Sprint
 	var plannedOrder sql.NullInt64
 	err := row.Scan(
-		&out.ID, &out.ProjectID, &out.Name, &out.Goal, &out.Status, &plannedOrder,
+		&out.ID, &out.ProjectID, &out.Number, &out.Name, &out.Goal, &out.Status, &plannedOrder,
 		&out.StartDate, &out.EndDate, &out.CompletedAt, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
 		return model.Sprint{}, err
 	}
+	out.Ref = model.SprintRef(out.Number)
 	if plannedOrder.Valid {
 		order := plannedOrder.Int64
 		out.PlannedOrder = &order
@@ -47,10 +48,13 @@ func scanSprint(row sprintScanner) (model.Sprint, error) {
 func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.Sprint, error) {
 	var out model.Sprint
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		var projectID uuid.UUID
+		var (
+			projectID uuid.UUID
+			number    int
+		)
 		if err := tx.QueryRow(ctx, `
-			SELECT id FROM projects WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
-		`, p.ProjectID).Scan(&projectID); err != nil {
+			SELECT id, next_sprint_number FROM projects WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+		`, p.ProjectID).Scan(&projectID, &number); err != nil {
 			if isNoRows(err) {
 				return fmt.Errorf("project not found: %w", ErrNotFound)
 			}
@@ -68,11 +72,18 @@ func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.S
 
 		var err error
 		out, err = scanSprint(tx.QueryRow(ctx, `
-			INSERT INTO sprints (project_id, name, goal, start_date, end_date, planned_order)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, project_id, name, goal, status, planned_order, start_date, end_date,
+			INSERT INTO sprints (project_id, number, name, goal, start_date, end_date, planned_order)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 			          completed_at, created_at, updated_at
-		`, projectID, p.Name, p.Goal, p.StartDate, p.EndDate, plannedOrder))
+		`, projectID, number, p.Name, p.Goal, p.StartDate, p.EndDate, plannedOrder))
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE projects SET next_sprint_number = next_sprint_number + 1, updated_at = now()
+			WHERE id = $1
+		`, projectID)
 		return err
 	})
 	if err != nil {
@@ -92,11 +103,28 @@ func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.S
 
 func (s *Store) GetSprint(ctx context.Context, id uuid.UUID) (model.Sprint, error) {
 	const q = `
-		SELECT id, project_id, name, goal, status, planned_order, start_date, end_date,
+		SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 		       completed_at, created_at, updated_at
 		FROM sprints WHERE id = $1 AND deleted_at IS NULL
 	`
 	out, err := scanSprint(s.db.QueryRow(ctx, q, id))
+	if err != nil {
+		if isNoRows(err) {
+			return model.Sprint{}, ErrNotFound
+		}
+		return model.Sprint{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetSprintByProjectNumber(ctx context.Context, projectID uuid.UUID, number int) (model.Sprint, error) {
+	const q = `
+		SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
+		       completed_at, created_at, updated_at
+		FROM sprints
+		WHERE project_id = $1 AND number = $2 AND deleted_at IS NULL
+	`
+	out, err := scanSprint(s.db.QueryRow(ctx, q, projectID, number))
 	if err != nil {
 		if isNoRows(err) {
 			return model.Sprint{}, ErrNotFound
@@ -125,7 +153,7 @@ type SprintsCursor struct {
 func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.Sprint, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT id, project_id, name, goal, status, planned_order, start_date, end_date,
+		SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 		       completed_at, created_at, updated_at
 		FROM sprints
 		WHERE project_id = $1 AND deleted_at IS NULL
@@ -240,7 +268,7 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 		if len(sets) == 0 {
 			var err error
 			out, err = scanSprint(tx.QueryRow(ctx, `
-				SELECT id, project_id, name, goal, status, planned_order, start_date, end_date,
+				SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 				       completed_at, created_at, updated_at
 				FROM sprints WHERE id = $1 AND deleted_at IS NULL
 			`, id))
@@ -251,9 +279,9 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 		args = append(args, id)
 		q := fmt.Sprintf(`
 			UPDATE sprints SET %s WHERE id = $%d AND deleted_at IS NULL
-			RETURNING id, project_id, name, goal, status, planned_order, start_date, end_date,
+			RETURNING id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 			          completed_at, created_at, updated_at
-		`, strings.Join(sets, ", "), i)
+	`, strings.Join(sets, ", "), i)
 
 		out, err = scanSprint(tx.QueryRow(ctx, q, args...))
 		if err != nil {
@@ -284,7 +312,7 @@ func validateSprintTransition(from, to model.SprintStatus) error {
 		return nil
 	}
 	if to == model.SprintStatusCompleted {
-		return fmt.Errorf("complete via POST /sprints/{id}/complete: %w", ErrConflict)
+		return fmt.Errorf("complete via POST /sprints/sprint-N/complete: %w", ErrConflict)
 	}
 	return fmt.Errorf("invalid sprint transition %s -> %s: %w", from, to, ErrConflict)
 }
@@ -319,7 +347,7 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 			UPDATE sprints
 			SET status = 'completed', planned_order = NULL, completed_at = now(), updated_at = now()
 			WHERE id = $1 AND deleted_at IS NULL
-			RETURNING id, project_id, name, goal, status, planned_order, start_date, end_date,
+			RETURNING id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 			          completed_at, created_at, updated_at
 		`, id))
 		return err
@@ -402,15 +430,15 @@ func (s *Store) ReorderPlannedSprints(ctx context.Context, p ReorderPlannedSprin
 		}
 
 		if len(p.SprintIDs) != len(current) {
-			return fmt.Errorf("sprint_ids must include every planned sprint exactly once: %w", ErrConflict)
+			return fmt.Errorf("sprint_refs must include every planned sprint exactly once: %w", ErrConflict)
 		}
 		seen := map[uuid.UUID]struct{}{}
 		for _, id := range p.SprintIDs {
 			if _, ok := current[id]; !ok {
-				return fmt.Errorf("sprint_ids must include only planned sprints from this project: %w", ErrConflict)
+				return fmt.Errorf("sprint_refs must include only planned sprints from this project: %w", ErrConflict)
 			}
 			if _, dup := seen[id]; dup {
-				return fmt.Errorf("sprint_ids must not contain duplicates: %w", ErrConflict)
+				return fmt.Errorf("sprint_refs must not contain duplicates: %w", ErrConflict)
 			}
 			seen[id] = struct{}{}
 		}
@@ -439,7 +467,7 @@ func (s *Store) ReorderPlannedSprints(ctx context.Context, p ReorderPlannedSprin
 		}
 
 		rows, err = tx.Query(ctx, `
-			SELECT id, project_id, name, goal, status, planned_order, start_date, end_date,
+			SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 			       completed_at, created_at, updated_at
 			FROM sprints
 			WHERE project_id = $1 AND status = 'planned' AND deleted_at IS NULL

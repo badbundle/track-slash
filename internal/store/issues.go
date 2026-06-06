@@ -29,18 +29,39 @@ type CreateSubIssueParams struct {
 	ReporterID    *uuid.UUID
 }
 
+type issueScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanIssue(row issueScanner) (model.Issue, error) {
+	var iss model.Issue
+	err := row.Scan(
+		&iss.ID, &iss.ProjectID, &iss.OwnerUsername, &iss.ProjectKey, &iss.Number,
+		&iss.Title, &iss.Description, &iss.Status, &iss.AssigneeID, &iss.ReporterID,
+		&iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
+	)
+	if err != nil {
+		return model.Issue{}, err
+	}
+	iss.Identifier = fmt.Sprintf("%s-%d", iss.ProjectKey, iss.Number)
+	return iss, nil
+}
+
 func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Issue, error) {
 	var out model.Issue
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var (
-			number     int
-			projectKey string
+			number        int
+			projectKey    string
+			ownerUsername string
 		)
 		err := tx.QueryRow(ctx, `
-			SELECT next_issue_number, key
-			FROM projects WHERE id = $1 AND deleted_at IS NULL
-			FOR UPDATE
-		`, p.ProjectID).Scan(&number, &projectKey)
+			SELECT p.next_issue_number, p.key, u.username
+			FROM projects p
+			JOIN users u ON u.id = p.owner_id
+			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+			FOR UPDATE OF p
+		`, p.ProjectID).Scan(&number, &projectKey, &ownerUsername)
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -74,6 +95,8 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 			return err
 		}
 
+		out.ProjectKey = projectKey
+		out.OwnerUsername = ownerUsername
 		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
 		return nil
 	})
@@ -89,16 +112,19 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		var (
 			number        int
 			projectKey    string
+			ownerUsername string
 			projectID     uuid.UUID
 			parentIssueID *uuid.UUID
 		)
 		err := tx.QueryRow(ctx, `
-			SELECT pr.next_issue_number, pr.key, i.project_id, i.parent_issue_id
+			SELECT pr.next_issue_number, pr.key, u.username, i.project_id, i.parent_issue_id
 			FROM issues i
 			JOIN projects pr ON pr.id = i.project_id
+			JOIN users u ON u.id = pr.owner_id
 			WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+			  AND u.deleted_at IS NULL
 			FOR UPDATE OF i, pr
-		`, p.ParentIssueID).Scan(&number, &projectKey, &projectID, &parentIssueID)
+		`, p.ParentIssueID).Scan(&number, &projectKey, &ownerUsername, &projectID, &parentIssueID)
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -135,6 +161,8 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 			return err
 		}
 
+		out.ProjectKey = projectKey
+		out.OwnerUsername = ownerUsername
 		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
 		return nil
 	})
@@ -146,25 +174,40 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
-		WHERE i.id = $1 AND i.deleted_at IS NULL AND p.deleted_at IS NULL
+		JOIN users u ON u.id = p.owner_id
+		WHERE i.id = $1 AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
-	var iss model.Issue
-	var key string
-	err := s.db.QueryRow(ctx, q, id).Scan(
-		&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-		&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
-	)
+	iss, err := scanIssue(s.db.QueryRow(ctx, q, id))
 	if err != nil {
 		if isNoRows(err) {
 			return model.Issue{}, ErrNotFound
 		}
 		return model.Issue{}, err
 	}
-	iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
+	return iss, nil
+}
+
+func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
+	const q = `
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status,
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		FROM issues i
+		JOIN projects p ON p.id = i.project_id
+		JOIN users u ON u.id = p.owner_id
+		WHERE u.username = $1 AND p.key = $2 AND i.number = $3
+		  AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+	`
+	iss, err := scanIssue(s.db.QueryRow(ctx, q, ownerUsername, projectKey, number))
+	if err != nil {
+		if isNoRows(err) {
+			return model.Issue{}, ErrNotFound
+		}
+		return model.Issue{}, err
+	}
 	return iss, nil
 }
 
@@ -197,11 +240,12 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		return []model.Issue{}, nil
 	}
 	const q = `
-		SELECT i.id, i.project_id, i.number, p.key, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
-		WHERE i.id = ANY($1) AND i.deleted_at IS NULL AND p.deleted_at IS NULL
+		JOIN users u ON u.id = p.owner_id
+		WHERE i.id = ANY($1) AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
 	rows, err := s.db.Query(ctx, q, ids)
 	if err != nil {
@@ -211,15 +255,10 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 
 	out := make([]model.Issue, 0, len(ids))
 	for rows.Next() {
-		var iss model.Issue
-		var key string
-		if err := rows.Scan(
-			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
-		); err != nil {
+		iss, err := scanIssue(rows)
+		if err != nil {
 			return nil, err
 		}
-		iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
 		out = append(out, iss)
 	}
 	return out, rows.Err()
@@ -228,11 +267,12 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, i.number, pr.key, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
-		WHERE i.project_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+		JOIN users u ON u.id = pr.owner_id
+		WHERE i.project_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
 	if !p.IncludeSubIssues {
 		q += " AND i.parent_issue_id IS NULL"
@@ -263,15 +303,10 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 
 	out := make([]model.Issue, 0, p.Limit)
 	for rows.Next() {
-		var iss model.Issue
-		var key string
-		if err := rows.Scan(
-			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
-		); err != nil {
+		iss, err := scanIssue(rows)
+		if err != nil {
 			return nil, false, err
 		}
-		iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
 		out = append(out, iss)
 	}
 	if err := rows.Err(); err != nil {
@@ -310,11 +345,12 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 
 	args := []any{p.ParentIssueID}
 	q := `
-		SELECT i.id, i.project_id, i.number, pr.key, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
-		WHERE i.parent_issue_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+		JOIN users u ON u.id = pr.owner_id
+		WHERE i.parent_issue_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)
@@ -332,16 +368,11 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 
 	out := make([]model.Issue, 0, p.Limit)
 	for rows.Next() {
-		var iss model.Issue
-		var key string
-		if err := rows.Scan(
-			&iss.ID, &iss.ProjectID, &iss.Number, &key, &iss.Title, &iss.Description, &iss.Status,
-			&iss.AssigneeID, &iss.ReporterID, &iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
-		); err != nil {
+		iss, err := scanIssue(rows)
+		if err != nil {
 			// Defensive: selected columns match model fields.
 			return nil, false, err
 		}
-		iss.Identifier = fmt.Sprintf("%s-%d", key, iss.Number)
 		out = append(out, iss)
 	}
 	if err := rows.Err(); err != nil {

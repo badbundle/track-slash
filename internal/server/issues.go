@@ -1,10 +1,11 @@
 package server
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -19,12 +20,11 @@ type createIssueReq struct {
 }
 
 func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 	var req createIssueReq
@@ -47,7 +47,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	iss, err := s.store.CreateIssue(r.Context(), store.CreateIssueParams{
-		ProjectID:   projectID,
+		ProjectID:   project.ID,
 		Title:       req.Title,
 		Description: req.Description,
 		AssigneeID:  req.AssigneeID,
@@ -61,17 +61,11 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
-	parentID, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+	parent, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), parentID)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, parent.ProjectID) {
 		return
 	}
 	var req createIssueReq
@@ -94,7 +88,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	iss, err := s.store.CreateSubIssue(r.Context(), store.CreateSubIssueParams{
-		ParentIssueID: parentID,
+		ParentIssueID: parent.ID,
 		Title:         req.Title,
 		Description:   req.Description,
 		AssigneeID:    req.AssigneeID,
@@ -108,12 +102,11 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 
@@ -139,7 +132,7 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := store.ListIssuesParams{
-		ProjectID: projectID,
+		ProjectID: project.ID,
 		Status:    statusFilter,
 		Cursor:    cursor,
 		Limit:     limit,
@@ -147,23 +140,25 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 
 	sprintParam := r.URL.Query().Get("sprint")
 	sprintIDParam := r.URL.Query().Get("sprint_id")
-	if sprintParam != "" && sprintIDParam != "" {
-		writeError(w, http.StatusBadRequest, "specify either sprint or sprint_id, not both")
+	if sprintIDParam != "" {
+		writeError(w, http.StatusBadRequest, "use sprint=sprint-N")
 		return
 	}
 	switch {
 	case sprintParam == "backlog":
 		params.Backlog = true
 	case sprintParam != "":
-		writeError(w, http.StatusBadRequest, "sprint must be 'backlog'")
-		return
-	case sprintIDParam != "":
-		sid, err := uuid.Parse(sprintIDParam)
+		number, err := parseTypedRef(sprintParam, "sprint")
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid sprint_id")
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		params.SprintID = &sid
+		sprint, err := s.store.GetSprintByProjectNumber(r.Context(), project.ID, number)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		params.SprintID = &sprint.ID
 	}
 
 	out, hasMore, err := s.store.ListIssues(r.Context(), params)
@@ -181,17 +176,11 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
-	parentID, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid issue id")
+	parent, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), parentID)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, parent.ProjectID) {
 		return
 	}
 
@@ -211,7 +200,7 @@ func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, hasMore, err := s.store.ListSubIssuesForIssue(r.Context(), store.ListSubIssuesForIssueParams{
-		ParentIssueID: parentID,
+		ParentIssueID: parent.ID,
 		Cursor:        cursor,
 		Limit:         limit,
 	})
@@ -228,70 +217,64 @@ func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
 	writePage(w, out, next)
 }
 
-// maxBatchIssues caps the number of ids accepted by /issues?ids= to keep
+// maxBatchIssues caps the number of refs accepted by /{owner}/issues?refs= to keep
 // query cost bounded and prevent unbounded URL length abuse.
 const maxBatchIssues = 200
 
 func (s *Server) batchIssues(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("ids")
+	owner, ok := normalizeOwnerParam(w, r)
+	if !ok {
+		return
+	}
+	raw := r.URL.Query().Get("refs")
 	if raw == "" {
-		writeError(w, http.StatusBadRequest, "ids query param required (comma-separated uuids)")
+		writeError(w, http.StatusBadRequest, "refs query param required (comma-separated issue refs)")
 		return
 	}
 	parts := strings.Split(raw, ",")
 	if len(parts) > maxBatchIssues {
-		writeError(w, http.StatusBadRequest, "too many ids (max 200)")
+		writeError(w, http.StatusBadRequest, "too many refs (max 200)")
 		return
 	}
-	ids := make([]uuid.UUID, 0, len(parts))
-	seen := make(map[uuid.UUID]struct{}, len(parts))
+	out := make([]model.Issue, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		id, err := uuid.Parse(p)
+		ref, err := parseIssueRef(p)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid uuid: "+p)
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if _, dup := seen[id]; dup {
+		key := ref.ProjectKey + "-" + strconv.Itoa(ref.Number)
+		if _, dup := seen[key]; dup {
 			continue
 		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
-	}
-
-	out, err := s.store.ListIssuesByIDs(r.Context(), ids)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	for _, iss := range out {
+		seen[key] = struct{}{}
+		iss, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				continue
+			}
+			writeStoreError(w, err)
+			return
+		}
 		if !s.requireProjectAccess(w, r, iss.ProjectID) {
 			return
 		}
+		out = append(out, iss)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	iss, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	iss, err := s.store.GetIssue(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, iss.ProjectID) {
 		return
 	}
 	writeJSON(w, http.StatusOK, iss)
@@ -305,22 +288,16 @@ type updateIssueReq struct {
 	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
 	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
 	ClearAssignee bool       `json:"clear_assignee,omitempty"`
-	SprintID      *uuid.UUID `json:"sprint_id,omitempty"`
+	Sprint        *string    `json:"sprint,omitempty"`
 	ClearSprint   bool       `json:"clear_sprint,omitempty"`
 }
 
 func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	issue, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, issue.ProjectID) {
 		return
 	}
 	var req updateIssueReq
@@ -340,14 +317,28 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	var sprintID *uuid.UUID
+	if req.Sprint != nil && !req.ClearSprint {
+		number, err := parseTypedRef(*req.Sprint, "sprint")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		sprint, err := s.store.GetSprintByProjectNumber(r.Context(), issue.ProjectID, number)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		sprintID = &sprint.ID
+	}
 
-	iss, err := s.store.UpdateIssue(r.Context(), id, store.UpdateIssueParams{
+	iss, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
 		Title:         req.Title,
 		Description:   req.Description,
 		Status:        req.Status,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,
-		SprintID:      req.SprintID,
+		SprintID:      sprintID,
 		ClearSprint:   req.ClearSprint,
 	})
 	if err != nil {
@@ -358,20 +349,14 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteIssue(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	issue, ok := s.issueFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, issue.ProjectID) {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	if err := s.store.DeleteIssue(r.Context(), id); err != nil {
+	if err := s.store.DeleteIssue(r.Context(), issue.ID); err != nil {
 		writeStoreError(w, err)
 		return
 	}

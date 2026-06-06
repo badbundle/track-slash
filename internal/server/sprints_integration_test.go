@@ -32,13 +32,14 @@ func testDatabaseURL() string {
 }
 
 type httpEnv struct {
-	ctx       context.Context
-	ts        *httptest.Server
-	store     *store.Store
-	projectID uuid.UUID
-	projKey   string
-	adminID   uuid.UUID
-	authToken string
+	ctx           context.Context
+	ts            *httptest.Server
+	store         *store.Store
+	projectID     uuid.UUID
+	projKey       string
+	ownerUsername string
+	adminID       uuid.UUID
+	authToken     string
 }
 
 func newHTTPEnv(t *testing.T) *httpEnv {
@@ -75,13 +76,13 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	t.Cleanup(ts.Close)
 
 	key := uniqueProjectKey(t)
-	proj, err := s.CreateProject(ctx, key, "http-test", "")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
 	admin, err := s.CreateOrUpdateAdminUser(ctx, "admin-"+key+"@example.com", "Admin")
 	if err != nil {
 		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	proj, err := s.CreateProjectForUser(ctx, admin.ID, key, "http-test", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
 	}
 	token, err := s.CreateAuthToken(ctx, store.CreateAuthTokenParams{
 		UserID: admin.ID,
@@ -93,9 +94,45 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	}
 
 	return &httpEnv{
-		ctx: ctx, ts: ts, store: s, projectID: proj.ID, projKey: key,
+		ctx: ctx, ts: ts, store: s, projectID: proj.ID, projKey: key, ownerUsername: admin.Username,
 		adminID: admin.ID, authToken: token.RawToken,
 	}
+}
+
+func (e *httpEnv) projectPath() string {
+	return "/" + e.ownerUsername + "/projects/" + e.projKey
+}
+
+func (e *httpEnv) projectIssuesPath() string {
+	return e.projectPath() + "/issues"
+}
+
+func (e *httpEnv) projectSprintsPath() string {
+	return e.projectPath() + "/sprints"
+}
+
+func (e *httpEnv) issuePath(iss model.Issue) string {
+	return "/" + iss.OwnerUsername + "/issues/" + iss.Identifier
+}
+
+func (e *httpEnv) issueCommentsPath(iss model.Issue) string {
+	return e.issuePath(iss) + "/comments"
+}
+
+func (e *httpEnv) issueLinksPath(iss model.Issue) string {
+	return e.issuePath(iss) + "/links"
+}
+
+func (e *httpEnv) issueSubIssuesPath(iss model.Issue) string {
+	return e.issuePath(iss) + "/sub-issues"
+}
+
+func (e *httpEnv) sprintPath(sp model.Sprint) string {
+	return e.projectSprintsPath() + "/" + sp.Ref
+}
+
+func (e *httpEnv) projectLinkPath(link model.IssueLink) string {
+	return e.projectPath() + "/links/" + link.Ref
 }
 
 func uniqueProjectKey(t *testing.T) string {
@@ -170,7 +207,7 @@ func decode[T any](t *testing.T, body []byte) T {
 func TestHTTPCreateSprintHappy(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/sprints", e.projectID),
+		e.projectSprintsPath(),
 		map[string]any{"name": "S1", "start_date": "2026-06-01", "end_date": "2026-06-14"},
 	)
 	if code != http.StatusCreated {
@@ -184,7 +221,7 @@ func TestHTTPCreateSprintHappy(t *testing.T) {
 
 func TestHTTPCreateSprintBadProjectID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPost, "/projects/not-a-uuid/sprints",
+	code, _ := e.do(t, http.MethodPost, "/bad!/projects/TRACK/sprints",
 		map[string]any{"name": "S", "start_date": "2026-06-01", "end_date": "2026-06-14"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -194,7 +231,7 @@ func TestHTTPCreateSprintBadProjectID(t *testing.T) {
 func TestHTTPCreateSprintBadJSON(t *testing.T) {
 	e := newHTTPEnv(t)
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost,
-		e.ts.URL+apiPath(fmt.Sprintf("/projects/%s/sprints", e.projectID)),
+		e.ts.URL+apiPath(e.projectSprintsPath()),
 		bytes.NewReader([]byte("not json")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)
@@ -217,7 +254,7 @@ func TestHTTPCreateSprintBadDateFormat(t *testing.T) {
 	for _, body := range cases {
 		body["name"] = "x"
 		code, _ := e.do(t, http.MethodPost,
-			fmt.Sprintf("/projects/%s/sprints", e.projectID), body)
+			e.projectSprintsPath(), body)
 		if code != http.StatusBadRequest {
 			t.Fatalf("body=%v code=%d", body, code)
 		}
@@ -227,7 +264,7 @@ func TestHTTPCreateSprintBadDateFormat(t *testing.T) {
 func TestHTTPCreateSprintEndBeforeStart(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/sprints", e.projectID),
+		e.projectSprintsPath(),
 		map[string]any{"name": "x", "start_date": "2026-06-14", "end_date": "2026-06-01"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -241,7 +278,7 @@ func TestHTTPCreateSprintNameTooLong(t *testing.T) {
 		long[i] = 'a'
 	}
 	code, _ := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/sprints", e.projectID),
+		e.projectSprintsPath(),
 		map[string]any{"name": string(long), "start_date": "2026-06-01", "end_date": "2026-06-14"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -255,7 +292,7 @@ func TestHTTPCreateSprintGoalTooLong(t *testing.T) {
 		long[i] = 'g'
 	}
 	code, _ := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/sprints", e.projectID),
+		e.projectSprintsPath(),
 		map[string]any{"name": "x", "goal": string(long), "start_date": "2026-06-01", "end_date": "2026-06-14"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -265,7 +302,7 @@ func TestHTTPCreateSprintGoalTooLong(t *testing.T) {
 func TestHTTPCreateSprintProjectNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/sprints", uuid.New()),
+		"/"+e.ownerUsername+"/projects/"+uniqueProjectKey(t)+"/sprints",
 		map[string]any{"name": "x", "start_date": "2026-06-01", "end_date": "2026-06-14"})
 	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
@@ -277,14 +314,14 @@ func TestHTTPCreateSprintProjectNotFound(t *testing.T) {
 func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
 	e := newHTTPEnv(t)
 	for i, name := range []string{"S1", "S2"} {
-		e.do(t, http.MethodPost, fmt.Sprintf("/projects/%s/sprints", e.projectID),
+		e.do(t, http.MethodPost, e.projectSprintsPath(),
 			map[string]any{
 				"name":       name,
 				"start_date": fmt.Sprintf("2026-06-%02d", 1+i*14),
 				"end_date":   fmt.Sprintf("2026-06-%02d", 14+i*14),
 			})
 	}
-	code, body := e.do(t, http.MethodGet, fmt.Sprintf("/projects/%s/sprints", e.projectID), nil)
+	code, body := e.do(t, http.MethodGet, e.projectSprintsPath(), nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -294,7 +331,7 @@ func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
 	}
 
 	code, _ = e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/sprints?status=completed", e.projectID), nil)
+		e.projectSprintsPath()+"?status=completed", nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -303,7 +340,7 @@ func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
 func TestHTTPListSprintsBadStatus(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/sprints?status=banana", e.projectID), nil)
+		e.projectSprintsPath()+"?status=banana", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -311,7 +348,7 @@ func TestHTTPListSprintsBadStatus(t *testing.T) {
 
 func TestHTTPListSprintsBadProjectID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/projects/zzz/sprints", nil)
+	code, _ := e.do(t, http.MethodGet, "/bad!/projects/TRACK/sprints", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -326,8 +363,8 @@ func TestHTTPReorderPlannedSprints(t *testing.T) {
 	c := createSprintFor(t, e, "C", "2026-06-29", "2026-07-12")
 
 	code, body := e.do(t, http.MethodPatch,
-		fmt.Sprintf("/projects/%s/sprints/planned-order", e.projectID),
-		map[string]any{"sprint_ids": []string{c.ID.String(), a.ID.String(), b.ID.String()}},
+		e.projectSprintsPath()+"/planned-order",
+		map[string]any{"sprint_refs": []string{c.Ref, a.Ref, b.Ref}},
 	)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d body = %s", code, body)
@@ -349,26 +386,27 @@ func TestHTTPReorderPlannedSprintsRejectsBadRequests(t *testing.T) {
 	a := createSprintFor(t, e, "A", "2026-06-01", "2026-06-14")
 	b := createSprintFor(t, e, "B", "2026-06-15", "2026-06-28")
 	active := createSprintFor(t, e, "active", "2026-06-29", "2026-07-12")
-	if code, _ := e.do(t, http.MethodPatch, "/sprints/"+active.ID.String(), map[string]any{"status": "active"}); code != http.StatusOK {
+	if code, _ := e.do(t, http.MethodPatch, e.sprintPath(active), map[string]any{"status": "active"}); code != http.StatusOK {
 		t.Fatalf("activate code = %d", code)
 	}
 
 	cases := []struct {
 		name string
 		body map[string]any
+		want int
 	}{
-		{name: "missing", body: map[string]any{"sprint_ids": []string{a.ID.String()}}},
-		{name: "duplicate", body: map[string]any{"sprint_ids": []string{a.ID.String(), a.ID.String()}}},
-		{name: "active", body: map[string]any{"sprint_ids": []string{a.ID.String(), active.ID.String()}}},
-		{name: "unknown", body: map[string]any{"sprint_ids": []string{a.ID.String(), uuid.New().String()}}},
-		{name: "extra", body: map[string]any{"sprint_ids": []string{a.ID.String(), b.ID.String(), uuid.New().String()}}},
+		{name: "missing", body: map[string]any{"sprint_refs": []string{a.Ref}}, want: http.StatusConflict},
+		{name: "duplicate", body: map[string]any{"sprint_refs": []string{a.Ref, a.Ref}}, want: http.StatusConflict},
+		{name: "active", body: map[string]any{"sprint_refs": []string{a.Ref, active.Ref}}, want: http.StatusConflict},
+		{name: "unknown", body: map[string]any{"sprint_refs": []string{a.Ref, "sprint-999999"}}, want: http.StatusNotFound},
+		{name: "extra", body: map[string]any{"sprint_refs": []string{a.Ref, b.Ref, "sprint-999999"}}, want: http.StatusNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			code, _ := e.do(t, http.MethodPatch,
-				fmt.Sprintf("/projects/%s/sprints/planned-order", e.projectID), tc.body)
-			if code != http.StatusConflict {
-				t.Fatalf("code = %d", code)
+				e.projectSprintsPath()+"/planned-order", tc.body)
+			if code != tc.want {
+				t.Fatalf("code = %d, want %d", code, tc.want)
 			}
 		})
 	}
@@ -376,14 +414,14 @@ func TestHTTPReorderPlannedSprintsRejectsBadRequests(t *testing.T) {
 
 func TestHTTPReorderPlannedSprintsBadIDAndBody(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPatch, "/projects/not-a-uuid/sprints/planned-order",
-		map[string]any{"sprint_ids": []string{}})
+	code, _ := e.do(t, http.MethodPatch, "/bad!/projects/TRACK/sprints/planned-order",
+		map[string]any{"sprint_refs": []string{}})
 	if code != http.StatusBadRequest {
 		t.Fatalf("bad id code = %d", code)
 	}
 
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPatch,
-		e.ts.URL+apiPath(fmt.Sprintf("/projects/%s/sprints/planned-order", e.projectID)),
+		e.ts.URL+apiPath(e.projectSprintsPath()+"/planned-order"),
 		bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)
@@ -396,8 +434,8 @@ func TestHTTPReorderPlannedSprintsBadIDAndBody(t *testing.T) {
 		t.Fatalf("bad body code = %d", res.StatusCode)
 	}
 
-	code, _ = e.do(t, http.MethodPatch, fmt.Sprintf("/projects/%s/sprints/planned-order", uuid.New()),
-		map[string]any{"sprint_ids": []string{}})
+	code, _ = e.do(t, http.MethodPatch, "/"+e.ownerUsername+"/projects/"+uniqueProjectKey(t)+"/sprints/planned-order",
+		map[string]any{"sprint_refs": []string{}})
 	if code != http.StatusNotFound {
 		t.Fatalf("not found code = %d", code)
 	}
@@ -407,11 +445,11 @@ func TestHTTPReorderPlannedSprintsBadIDAndBody(t *testing.T) {
 
 func TestHTTPGetSprint(t *testing.T) {
 	e := newHTTPEnv(t)
-	_, body := e.do(t, http.MethodPost, fmt.Sprintf("/projects/%s/sprints", e.projectID),
+	_, body := e.do(t, http.MethodPost, e.projectSprintsPath(),
 		map[string]any{"name": "S", "start_date": "2026-06-01", "end_date": "2026-06-14"})
 	sp := decode[model.Sprint](t, body)
 
-	code, body := e.do(t, http.MethodGet, "/sprints/"+sp.ID.String(), nil)
+	code, body := e.do(t, http.MethodGet, e.sprintPath(sp), nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -423,7 +461,7 @@ func TestHTTPGetSprint(t *testing.T) {
 
 func TestHTTPGetSprintBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/sprints/not-uuid", nil)
+	code, _ := e.do(t, http.MethodGet, e.projectSprintsPath()+"/not-a-sprint", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -431,7 +469,7 @@ func TestHTTPGetSprintBadID(t *testing.T) {
 
 func TestHTTPGetSprintNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/sprints/"+uuid.New().String(), nil)
+	code, _ := e.do(t, http.MethodGet, e.projectSprintsPath()+"/sprint-999999", nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
 	}
@@ -441,7 +479,7 @@ func TestHTTPGetSprintNotFound(t *testing.T) {
 
 func createSprintFor(t *testing.T, e *httpEnv, name, start, end string) model.Sprint {
 	t.Helper()
-	_, body := e.do(t, http.MethodPost, fmt.Sprintf("/projects/%s/sprints", e.projectID),
+	_, body := e.do(t, http.MethodPost, e.projectSprintsPath(),
 		map[string]any{"name": name, "start_date": start, "end_date": end})
 	return decode[model.Sprint](t, body)
 }
@@ -449,7 +487,7 @@ func createSprintFor(t *testing.T, e *httpEnv, name, start, end string) model.Sp
 func TestHTTPUpdateSprintAllFields(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	code, body := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), map[string]any{
+	code, body := e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{
 		"name":       "renamed",
 		"goal":       "ship",
 		"start_date": "2026-06-08",
@@ -467,7 +505,7 @@ func TestHTTPUpdateSprintAllFields(t *testing.T) {
 func TestHTTPUpdateSprintActivate(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	code, body := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(),
+	code, body := e.do(t, http.MethodPatch, e.sprintPath(sp),
 		map[string]any{"status": "active"})
 	if code != http.StatusOK {
 		t.Fatalf("code = %d body = %s", code, body)
@@ -480,7 +518,7 @@ func TestHTTPUpdateSprintActivate(t *testing.T) {
 func TestHTTPUpdateSprintRejectsCompleted(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	code, _ := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(),
+	code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp),
 		map[string]any{"status": "completed"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -490,7 +528,7 @@ func TestHTTPUpdateSprintRejectsCompleted(t *testing.T) {
 func TestHTTPUpdateSprintInvalidStatus(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	code, _ := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(),
+	code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp),
 		map[string]any{"status": "potato"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -505,7 +543,7 @@ func TestHTTPUpdateSprintBadDate(t *testing.T) {
 		{"end_date": "tomorrow"},
 	}
 	for _, body := range cases {
-		code, _ := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), body)
+		code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp), body)
 		if code != http.StatusBadRequest {
 			t.Fatalf("body=%v code=%d", body, code)
 		}
@@ -519,7 +557,7 @@ func TestHTTPUpdateSprintNameAndGoalTooLong(t *testing.T) {
 	bigName := string(bytes.Repeat([]byte("a"), 201))
 	bigGoal := string(bytes.Repeat([]byte("g"), 2001))
 	for _, body := range []map[string]any{{"name": bigName}, {"goal": bigGoal}} {
-		code, _ := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), body)
+		code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp), body)
 		if code != http.StatusBadRequest {
 			t.Fatalf("body=%v code=%d", body, code)
 		}
@@ -530,7 +568,7 @@ func TestHTTPUpdateSprintBadJSON(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPatch,
-		e.ts.URL+apiPath("/sprints/"+sp.ID.String()), bytes.NewReader([]byte("nope")))
+		e.ts.URL+apiPath(e.sprintPath(sp)), bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)
 	res, err := e.ts.Client().Do(req)
@@ -545,7 +583,7 @@ func TestHTTPUpdateSprintBadJSON(t *testing.T) {
 
 func TestHTTPUpdateSprintBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPatch, "/sprints/not-uuid",
+	code, _ := e.do(t, http.MethodPatch, e.projectSprintsPath()+"/not-a-sprint",
 		map[string]any{"name": "x"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -554,7 +592,7 @@ func TestHTTPUpdateSprintBadID(t *testing.T) {
 
 func TestHTTPUpdateSprintNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPatch, "/sprints/"+uuid.New().String(),
+	code, _ := e.do(t, http.MethodPatch, e.projectSprintsPath()+"/sprint-999999",
 		map[string]any{"name": "x"})
 	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
@@ -565,11 +603,11 @@ func TestHTTPUpdateSprintActivationConflict(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := createSprintFor(t, e, "A", "2026-06-01", "2026-06-14")
 	b := createSprintFor(t, e, "B", "2026-06-15", "2026-06-28")
-	if code, _ := e.do(t, http.MethodPatch, "/sprints/"+a.ID.String(),
+	if code, _ := e.do(t, http.MethodPatch, e.sprintPath(a),
 		map[string]any{"status": "active"}); code != http.StatusOK {
 		t.Fatalf("activate A code = %d", code)
 	}
-	code, _ := e.do(t, http.MethodPatch, "/sprints/"+b.ID.String(),
+	code, _ := e.do(t, http.MethodPatch, e.sprintPath(b),
 		map[string]any{"status": "active"})
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
@@ -581,9 +619,9 @@ func TestHTTPUpdateSprintActivationConflict(t *testing.T) {
 func TestHTTPCompleteSprintHappy(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), map[string]any{"status": "active"})
+	e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"status": "active"})
 
-	code, body := e.do(t, http.MethodPost, "/sprints/"+sp.ID.String()+"/complete", nil)
+	code, body := e.do(t, http.MethodPost, e.sprintPath(sp)+"/complete", nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d body = %s", code, body)
 	}
@@ -596,10 +634,10 @@ func TestHTTPCompleteSprintHappy(t *testing.T) {
 func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), map[string]any{"status": "active"})
-	e.do(t, http.MethodPost, "/sprints/"+sp.ID.String()+"/complete", nil)
+	e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"status": "active"})
+	e.do(t, http.MethodPost, e.sprintPath(sp)+"/complete", nil)
 
-	code, body := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), map[string]any{"name": "renamed"})
+	code, body := e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"name": "renamed"})
 	if code != http.StatusOK {
 		t.Fatalf("rename code = %d body = %s", code, body)
 	}
@@ -613,7 +651,7 @@ func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
 		{"end_date": "2026-06-15"},
 		{"status": "active"},
 	} {
-		code, _ := e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), body)
+		code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp), body)
 		if code != http.StatusConflict {
 			t.Fatalf("body=%v code=%d", body, code)
 		}
@@ -623,7 +661,7 @@ func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
 func TestHTTPCompleteSprintConflictNonActive(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	code, _ := e.do(t, http.MethodPost, "/sprints/"+sp.ID.String()+"/complete", nil)
+	code, _ := e.do(t, http.MethodPost, e.sprintPath(sp)+"/complete", nil)
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
 	}
@@ -631,7 +669,7 @@ func TestHTTPCompleteSprintConflictNonActive(t *testing.T) {
 
 func TestHTTPCompleteSprintBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPost, "/sprints/zzz/complete", nil)
+	code, _ := e.do(t, http.MethodPost, e.projectSprintsPath()+"/zzz/complete", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -639,7 +677,7 @@ func TestHTTPCompleteSprintBadID(t *testing.T) {
 
 func TestHTTPCompleteSprintNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPost, "/sprints/"+uuid.New().String()+"/complete", nil)
+	code, _ := e.do(t, http.MethodPost, e.projectSprintsPath()+"/sprint-999999/complete", nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
 	}
@@ -658,8 +696,8 @@ func TestHTTPPatchIssueSetSprint(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 
-	code, body := e.do(t, http.MethodPatch, "/issues/"+iss.ID.String(),
-		map[string]any{"sprint_id": sp.ID.String()})
+	code, body := e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"sprint": sp.Ref})
 	if code != http.StatusOK {
 		t.Fatalf("code = %d body = %s", code, body)
 	}
@@ -668,7 +706,7 @@ func TestHTTPPatchIssueSetSprint(t *testing.T) {
 		t.Fatalf("sprint_id = %v", got.SprintID)
 	}
 
-	code, body = e.do(t, http.MethodPatch, "/issues/"+iss.ID.String(),
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss),
 		map[string]any{"clear_sprint": true})
 	if code != http.StatusOK {
 		t.Fatalf("clear code = %d body = %s", code, body)
@@ -700,9 +738,9 @@ func TestHTTPPatchIssueCrossProjectSprint(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 
-	code, _ := e.do(t, http.MethodPatch, "/issues/"+iss.ID.String(),
-		map[string]any{"sprint_id": otherSp.ID.String()})
-	if code != http.StatusConflict {
+	code, _ := e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"sprint": otherSp.Ref})
+	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
 	}
 }
@@ -710,8 +748,8 @@ func TestHTTPPatchIssueCrossProjectSprint(t *testing.T) {
 func TestHTTPPatchIssueCompletedSprintRejected(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	e.do(t, http.MethodPatch, "/sprints/"+sp.ID.String(), map[string]any{"status": "active"})
-	e.do(t, http.MethodPost, "/sprints/"+sp.ID.String()+"/complete", nil)
+	e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"status": "active"})
+	e.do(t, http.MethodPost, e.sprintPath(sp)+"/complete", nil)
 	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
 		ProjectID: e.projectID,
 		Title:     "task",
@@ -720,8 +758,8 @@ func TestHTTPPatchIssueCompletedSprintRejected(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 
-	code, _ := e.do(t, http.MethodPatch, "/issues/"+iss.ID.String(),
-		map[string]any{"sprint_id": sp.ID.String()})
+	code, _ := e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"sprint": sp.Ref})
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
 	}
@@ -744,7 +782,7 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 	}
 
 	code, body := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?sprint=backlog", e.projectID), nil)
+		e.projectIssuesPath()+"?sprint=backlog", nil)
 	if code != http.StatusOK {
 		t.Fatalf("backlog code = %d", code)
 	}
@@ -754,7 +792,7 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 	}
 
 	code, body = e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?sprint_id=%s", e.projectID, sp.ID), nil)
+		e.projectIssuesPath()+"?sprint="+sp.Ref, nil)
 	if code != http.StatusOK {
 		t.Fatalf("by sprint code = %d", code)
 	}
@@ -768,7 +806,7 @@ func TestHTTPListIssuesMutuallyExclusive(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, _ := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?sprint=backlog&sprint_id=%s", e.projectID, sp.ID), nil)
+		e.projectIssuesPath()+"?sprint=backlog&sprint_id="+sp.ID.String(), nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -777,7 +815,7 @@ func TestHTTPListIssuesMutuallyExclusive(t *testing.T) {
 func TestHTTPListIssuesBadSprintParam(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?sprint=potato", e.projectID), nil)
+		e.projectIssuesPath()+"?sprint=potato", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -786,7 +824,7 @@ func TestHTTPListIssuesBadSprintParam(t *testing.T) {
 func TestHTTPListIssuesBadSprintID(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?sprint_id=zzz", e.projectID), nil)
+		e.projectIssuesPath()+"?sprint_id=zzz", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -798,7 +836,7 @@ func TestHTTPListIssuesBadSprintID(t *testing.T) {
 func TestHTTPCreateIssueAndGet(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/issues", e.projectID),
+		e.projectIssuesPath(),
 		map[string]any{"title": "first"})
 	if code != http.StatusCreated {
 		t.Fatalf("create code = %d body = %s", code, body)
@@ -808,7 +846,7 @@ func TestHTTPCreateIssueAndGet(t *testing.T) {
 		t.Fatalf("new issue should default to backlog, got sprint_id %v", iss.SprintID)
 	}
 
-	code, body = e.do(t, http.MethodGet, "/issues/"+iss.ID.String(), nil)
+	code, body = e.do(t, http.MethodGet, e.issuePath(iss), nil)
 	if code != http.StatusOK {
 		t.Fatalf("get code = %d", code)
 	}
@@ -820,7 +858,7 @@ func TestHTTPCreateIssueAndGet(t *testing.T) {
 
 func TestHTTPCreateIssueBadProject(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPost, "/projects/not-uuid/issues",
+	code, _ := e.do(t, http.MethodPost, "/bad!/projects/TRACK/issues",
 		map[string]any{"title": "x"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -830,7 +868,7 @@ func TestHTTPCreateIssueBadProject(t *testing.T) {
 func TestHTTPCreateIssueMissingTitle(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/issues", e.projectID),
+		e.projectIssuesPath(),
 		map[string]any{"title": ""})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -839,7 +877,7 @@ func TestHTTPCreateIssueMissingTitle(t *testing.T) {
 
 func TestHTTPUpdateIssueBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPatch, "/issues/not-uuid",
+	code, _ := e.do(t, http.MethodPatch, "/"+e.ownerUsername+"/issues/not-uuid",
 		map[string]any{"title": "x"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -852,7 +890,7 @@ func TestHTTPUpdateIssueBadStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
-	code, _ := e.do(t, http.MethodPatch, "/issues/"+iss.ID.String(),
+	code, _ := e.do(t, http.MethodPatch, e.issuePath(iss),
 		map[string]any{"status": "blocked"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -866,7 +904,7 @@ func TestHTTPUpdateIssueTitleTooLong(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 	long := string(bytes.Repeat([]byte("a"), 201))
-	code, _ := e.do(t, http.MethodPatch, "/issues/"+iss.ID.String(),
+	code, _ := e.do(t, http.MethodPatch, e.issuePath(iss),
 		map[string]any{"title": long})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -875,7 +913,7 @@ func TestHTTPUpdateIssueTitleTooLong(t *testing.T) {
 
 func TestHTTPGetIssueBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/issues/zzz", nil)
+	code, _ := e.do(t, http.MethodGet, "/"+e.ownerUsername+"/issues/zzz", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -883,7 +921,7 @@ func TestHTTPGetIssueBadID(t *testing.T) {
 
 func TestHTTPListIssuesBadProjectID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/projects/not-uuid/issues", nil)
+	code, _ := e.do(t, http.MethodGet, "/bad!/projects/TRACK/issues", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -892,7 +930,7 @@ func TestHTTPListIssuesBadProjectID(t *testing.T) {
 func TestHTTPListIssuesBadStatus(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
-		fmt.Sprintf("/projects/%s/issues?status=banana", e.projectID), nil)
+		e.projectIssuesPath()+"?status=banana", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}

@@ -2,13 +2,10 @@ package server_test
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
@@ -19,7 +16,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 	assignee := mustHTTPUser(t, e)
 
 	code, body := e.do(t, http.MethodPost,
-		fmt.Sprintf("/projects/%s/issues", e.projectID),
+		e.projectIssuesPath(),
 		map[string]any{"title": "parent", "description": "parent body"})
 	if code != http.StatusCreated {
 		t.Fatalf("create parent code = %d body = %s", code, body)
@@ -27,7 +24,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 	parent := decode[model.Issue](t, body)
 
 	code, body = e.do(t, http.MethodPost,
-		fmt.Sprintf("/issues/%s/sub-issues", parent.ID),
+		e.issueSubIssuesPath(parent),
 		map[string]any{
 			"title":       "child",
 			"description": "child body",
@@ -47,7 +44,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 		t.Fatalf("child assignee = %v, want %s", child.AssigneeID, assignee.ID)
 	}
 
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/issues/%s/sub-issues", parent.ID), nil)
+	code, body = e.do(t, http.MethodGet, e.issueSubIssuesPath(parent), nil)
 	if code != http.StatusOK {
 		t.Fatalf("list children code = %d body = %s", code, body)
 	}
@@ -56,7 +53,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 		t.Fatalf("children = %+v, want %s", children, child.ID)
 	}
 
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/issues/%s", child.ID), nil)
+	code, body = e.do(t, http.MethodGet, e.issuePath(child), nil)
 	if code != http.StatusOK {
 		t.Fatalf("get child code = %d body = %s", code, body)
 	}
@@ -65,7 +62,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 		t.Fatalf("get child mismatch: %+v", got)
 	}
 
-	code, body = e.do(t, http.MethodPatch, fmt.Sprintf("/issues/%s", child.ID),
+	code, body = e.do(t, http.MethodPatch, e.issuePath(child),
 		map[string]any{"status": "in_progress"})
 	if code != http.StatusOK {
 		t.Fatalf("patch child status code = %d body = %s", code, body)
@@ -75,20 +72,20 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 		t.Fatalf("child status = %s, want in_progress", updated.Status)
 	}
 
-	code, body = e.do(t, http.MethodPost, fmt.Sprintf("/issues/%s/comments", child.ID),
+	code, body = e.do(t, http.MethodPost, e.issueCommentsPath(child),
 		map[string]any{"body": "child comment"})
 	if code != http.StatusCreated {
 		t.Fatalf("comment child code = %d body = %s", code, body)
 	}
 
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
-	code, body = e.do(t, http.MethodPatch, fmt.Sprintf("/issues/%s", child.ID),
-		map[string]any{"sprint_id": sp.ID.String()})
+	code, body = e.do(t, http.MethodPatch, e.issuePath(child),
+		map[string]any{"sprint": sp.Ref})
 	if code != http.StatusConflict {
 		t.Fatalf("patch child sprint code = %d body = %s", code, body)
 	}
 
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/projects/%s/issues", e.projectID), nil)
+	code, body = e.do(t, http.MethodGet, e.projectIssuesPath(), nil)
 	if code != http.StatusOK {
 		t.Fatalf("list project issues code = %d body = %s", code, body)
 	}
@@ -119,15 +116,15 @@ func TestHTTPSubIssueValidation(t *testing.T) {
 		body   any
 		want   int
 	}{
-		{"bad create id", http.MethodPost, "/issues/not-a-uuid/sub-issues", map[string]any{"title": "x"}, http.StatusBadRequest},
-		{"bad list id", http.MethodGet, "/issues/not-a-uuid/sub-issues", nil, http.StatusBadRequest},
-		{"missing title", http.MethodPost, fmt.Sprintf("/issues/%s/sub-issues", parent.ID), map[string]any{"title": "  "}, http.StatusBadRequest},
-		{"long title", http.MethodPost, fmt.Sprintf("/issues/%s/sub-issues", parent.ID), map[string]any{"title": strings.Repeat("x", 201)}, http.StatusBadRequest},
-		{"unknown parent", http.MethodPost, fmt.Sprintf("/issues/%s/sub-issues", uuid.New()), map[string]any{"title": "x"}, http.StatusNotFound},
-		{"nested create", http.MethodPost, fmt.Sprintf("/issues/%s/sub-issues", child.ID), map[string]any{"title": "nested"}, http.StatusConflict},
-		{"nested list", http.MethodGet, fmt.Sprintf("/issues/%s/sub-issues", child.ID), nil, http.StatusConflict},
-		{"bad cursor", http.MethodGet, fmt.Sprintf("/issues/%s/sub-issues?cursor=bad", parent.ID), nil, http.StatusBadRequest},
-		{"bad limit", http.MethodGet, fmt.Sprintf("/issues/%s/sub-issues?limit=0", parent.ID), nil, http.StatusBadRequest},
+		{"bad create ref", http.MethodPost, "/" + e.ownerUsername + "/issues/not-a-ref/sub-issues", map[string]any{"title": "x"}, http.StatusBadRequest},
+		{"bad list ref", http.MethodGet, "/" + e.ownerUsername + "/issues/not-a-ref/sub-issues", nil, http.StatusBadRequest},
+		{"missing title", http.MethodPost, e.issueSubIssuesPath(parent), map[string]any{"title": "  "}, http.StatusBadRequest},
+		{"long title", http.MethodPost, e.issueSubIssuesPath(parent), map[string]any{"title": strings.Repeat("x", 201)}, http.StatusBadRequest},
+		{"unknown parent", http.MethodPost, "/" + e.ownerUsername + "/issues/" + e.projKey + "-999999/sub-issues", map[string]any{"title": "x"}, http.StatusNotFound},
+		{"nested create", http.MethodPost, e.issueSubIssuesPath(child), map[string]any{"title": "nested"}, http.StatusConflict},
+		{"nested list", http.MethodGet, e.issueSubIssuesPath(child), nil, http.StatusConflict},
+		{"bad cursor", http.MethodGet, e.issueSubIssuesPath(parent) + "?cursor=bad", nil, http.StatusBadRequest},
+		{"bad limit", http.MethodGet, e.issueSubIssuesPath(parent) + "?limit=0", nil, http.StatusBadRequest},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -139,7 +136,7 @@ func TestHTTPSubIssueValidation(t *testing.T) {
 	}
 
 	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost,
-		e.ts.URL+apiPath(fmt.Sprintf("/issues/%s/sub-issues", parent.ID)),
+		e.ts.URL+apiPath(e.issueSubIssuesPath(parent)),
 		bytes.NewReader([]byte("not json")))
 	if err != nil {
 		t.Fatalf("new bad json request: %v", err)
@@ -166,14 +163,14 @@ func TestHTTPSubIssuesRequireProjectAccess(t *testing.T) {
 	_, token := e.mustUserToken(t, "sub-denied")
 
 	code, body := e.doWithToken(t, token, http.MethodPost,
-		fmt.Sprintf("/issues/%s/sub-issues", parent.ID),
+		e.issueSubIssuesPath(parent),
 		map[string]any{"title": "denied"})
 	if code != http.StatusForbidden {
 		t.Fatalf("create denied code = %d body = %s", code, body)
 	}
 
 	code, body = e.doWithToken(t, token, http.MethodGet,
-		fmt.Sprintf("/issues/%s/sub-issues", parent.ID), nil)
+		e.issueSubIssuesPath(parent), nil)
 	if code != http.StatusForbidden {
 		t.Fatalf("list denied code = %d body = %s", code, body)
 	}

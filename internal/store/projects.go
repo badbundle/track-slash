@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,35 +14,47 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 )
 
-func (s *Store) CreateProject(ctx context.Context, key, name, description string) (model.Project, error) {
-	const q = `
-		INSERT INTO projects (key, name, description)
-		VALUES ($1, $2, $3)
-		RETURNING id, key, name, description, created_at, updated_at
-	`
+type projectScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanProject(row projectScanner) (model.Project, error) {
 	var p model.Project
-	err := s.db.QueryRow(ctx, q, key, name, description).
-		Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.OwnerID, &p.OwnerUsername, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	return p, err
+}
+
+func (s *Store) CreateProject(ctx context.Context, key, name, description string) (model.Project, error) {
+	ownerID, err := s.firstProjectOwner(ctx)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return model.Project{}, ErrConflict
-		}
 		return model.Project{}, err
 	}
-	return p, nil
+	return s.CreateProjectForUser(ctx, ownerID, key, name, description)
 }
 
 func (s *Store) CreateProjectForUser(ctx context.Context, userID uuid.UUID, key, name, description string) (model.Project, error) {
 	var p model.Project
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		const projectQ = `
-			INSERT INTO projects (key, name, description)
-			VALUES ($1, $2, $3)
-			RETURNING id, key, name, description, created_at, updated_at
+			WITH owner AS (
+				SELECT id, username FROM users WHERE id = $1 AND deleted_at IS NULL
+			),
+			inserted AS (
+				INSERT INTO projects (owner_id, key, name, description)
+				SELECT id, $2, $3, $4 FROM owner
+				RETURNING id, owner_id, key, name, description, created_at, updated_at
+			)
+			SELECT inserted.id, inserted.owner_id, owner.username, inserted.key,
+			       inserted.name, inserted.description, inserted.created_at, inserted.updated_at
+			FROM inserted
+			JOIN owner ON owner.id = inserted.owner_id
 		`
-		if err := tx.QueryRow(ctx, projectQ, key, name, description).
-			Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var err error
+		p, err = scanProject(tx.QueryRow(ctx, projectQ, userID, key, name, description))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 				return ErrConflict
@@ -72,12 +85,34 @@ func (s *Store) CreateProjectForUser(ctx context.Context, userID uuid.UUID, key,
 
 func (s *Store) GetProject(ctx context.Context, id uuid.UUID) (model.Project, error) {
 	const q = `
-		SELECT id, key, name, description, created_at, updated_at
-		FROM projects WHERE id = $1 AND deleted_at IS NULL
+		SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+		FROM projects p
+		JOIN users u ON u.id = p.owner_id
+		WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
-	var p model.Project
-	err := s.db.QueryRow(ctx, q, id).
-		Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	p, err := scanProject(s.db.QueryRow(ctx, q, id))
+	if err != nil {
+		if isNoRows(err) {
+			return model.Project{}, ErrNotFound
+		}
+		return model.Project{}, err
+	}
+	return p, nil
+}
+
+func (s *Store) GetProjectByOwnerKey(ctx context.Context, ownerUsername, key string) (model.Project, error) {
+	ownerUsername = strings.ToLower(strings.TrimSpace(ownerUsername))
+	key = strings.ToUpper(strings.TrimSpace(key))
+	const q = `
+		SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+		FROM projects p
+		JOIN users u ON u.id = p.owner_id
+		WHERE u.username = $1
+		  AND p.key = $2
+		  AND p.deleted_at IS NULL
+		  AND u.deleted_at IS NULL
+	`
+	p, err := scanProject(s.db.QueryRow(ctx, q, ownerUsername, key))
 	if err != nil {
 		if isNoRows(err) {
 			return model.Project{}, ErrNotFound
@@ -101,9 +136,11 @@ type ListProjectsParams struct {
 func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model.Project, bool, error) {
 	args := []any{}
 	q := `
-		SELECT id, key, name, description, created_at, updated_at
+		SELECT projects.id, projects.owner_id, u.username, projects.key,
+		       projects.name, projects.description, projects.created_at, projects.updated_at
 		FROM projects
-		WHERE deleted_at IS NULL
+		JOIN users u ON u.id = projects.owner_id
+		WHERE projects.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
 	if p.VisibleToUser != nil {
 		args = append(args, *p.VisibleToUser)
@@ -114,10 +151,10 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += fmt.Sprintf(` AND (created_at, id) > ($%d, $%d)`, len(args)-1, len(args))
+		q += fmt.Sprintf(` AND (projects.created_at, projects.id) > ($%d, $%d)`, len(args)-1, len(args))
 	}
 	args = append(args, p.Limit+1)
-	q += fmt.Sprintf(` ORDER BY created_at ASC, id ASC LIMIT $%d`, len(args))
+	q += fmt.Sprintf(` ORDER BY projects.created_at ASC, projects.id ASC LIMIT $%d`, len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
@@ -127,8 +164,8 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 
 	out := make([]model.Project, 0, p.Limit)
 	for rows.Next() {
-		var pr model.Project
-		if err := rows.Scan(&pr.ID, &pr.Key, &pr.Name, &pr.Description, &pr.CreatedAt, &pr.UpdatedAt); err != nil {
+		pr, err := scanProject(rows)
+		if err != nil {
 			return nil, false, err
 		}
 		out = append(out, pr)
@@ -141,6 +178,24 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 		out = out[:p.Limit]
 	}
 	return out, hasMore, nil
+}
+
+func (s *Store) firstProjectOwner(ctx context.Context) (uuid.UUID, error) {
+	var ownerID uuid.UUID
+	err := s.db.QueryRow(ctx, `
+		SELECT id
+		FROM users
+		WHERE deleted_at IS NULL
+		ORDER BY is_admin DESC, created_at ASC, id ASC
+		LIMIT 1
+	`).Scan(&ownerID)
+	if err != nil {
+		if isNoRows(err) {
+			return uuid.Nil, ErrNotFound
+		}
+		return uuid.Nil, err
+	}
+	return ownerID, nil
 }
 
 func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {

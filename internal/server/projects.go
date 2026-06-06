@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -80,32 +79,25 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, id) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	p, err := s.store.GetProject(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, p)
+	writeJSON(w, http.StatusOK, project)
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdmin(w, r) {
 		return
 	}
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if err := s.store.DeleteProject(r.Context(), id); err != nil {
+	if err := s.store.DeleteProject(r.Context(), project.ID); err != nil {
 		writeStoreError(w, err)
 		return
 	}

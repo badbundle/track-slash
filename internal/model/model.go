@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -95,17 +96,21 @@ type ProjectMember struct {
 }
 
 type Project struct {
-	ID          uuid.UUID `json:"id"`
-	Key         string    `json:"key"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            uuid.UUID `json:"id"`
+	OwnerID       uuid.UUID `json:"owner_id"`
+	OwnerUsername string    `json:"owner_username"`
+	Key           string    `json:"key"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Issue struct {
 	ID            uuid.UUID  `json:"id"`
 	ProjectID     uuid.UUID  `json:"project_id"`
+	OwnerUsername string     `json:"owner_username"`
+	ProjectKey    string     `json:"project_key"`
 	Number        int        `json:"number"`
 	Identifier    string     `json:"identifier"`
 	Title         string     `json:"title"`
@@ -139,6 +144,8 @@ func (t LinkType) Valid() bool {
 type IssueLink struct {
 	ID        uuid.UUID `json:"id"`
 	ProjectID uuid.UUID `json:"project_id"`
+	Number    int       `json:"number"`
+	Ref       string    `json:"ref"`
 	SourceID  uuid.UUID `json:"source_id"`
 	TargetID  uuid.UUID `json:"target_id"`
 	LinkType  LinkType  `json:"link_type"`
@@ -146,9 +153,23 @@ type IssueLink struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+func SprintRef(number int) string {
+	return fmt.Sprintf("sprint-%d", number)
+}
+
+func IssueLinkRef(number int) string {
+	return fmt.Sprintf("link-%d", number)
+}
+
+func CommentRef(number int) string {
+	return fmt.Sprintf("comment-%d", number)
+}
+
 type Comment struct {
 	ID        uuid.UUID `json:"id"`
 	IssueID   uuid.UUID `json:"issue_id"`
+	Number    int       `json:"number"`
+	Ref       string    `json:"ref"`
 	AuthorID  uuid.UUID `json:"author_id"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
@@ -158,6 +179,8 @@ type Comment struct {
 type Sprint struct {
 	ID           uuid.UUID    `json:"id"`
 	ProjectID    uuid.UUID    `json:"project_id"`
+	Number       int          `json:"number"`
+	Ref          string       `json:"ref"`
 	Name         string       `json:"name"`
 	Goal         string       `json:"goal"`
 	Status       SprintStatus `json:"status"`

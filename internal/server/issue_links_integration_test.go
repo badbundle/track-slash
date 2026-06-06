@@ -29,8 +29,8 @@ func TestHTTPCreateIssueLinkHappy(t *testing.T) {
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
 
-	code, body := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "blocks"})
+	code, body := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
 	if code != http.StatusCreated {
 		t.Fatalf("code = %d body = %s", code, body)
 	}
@@ -45,13 +45,13 @@ func TestHTTPCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	a := e.mustCreateIssue(t, "dup")
 	b := e.mustCreateIssue(t, "canon")
 
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "duplicates"})
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "duplicates"})
 	if code != http.StatusCreated {
 		t.Fatalf("code = %d", code)
 	}
 
-	code, body := e.do(t, http.MethodGet, "/issues/"+a.ID.String(), nil)
+	code, body := e.do(t, http.MethodGet, e.issuePath(a), nil)
 	if code != http.StatusOK {
 		t.Fatalf("get code = %d", code)
 	}
@@ -62,8 +62,8 @@ func TestHTTPCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 
 func TestHTTPCreateIssueLinkBadSourceID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodPost, "/issues/not-uuid/links",
-		map[string]any{"target_id": uuid.New().String(), "link_type": "blocks"})
+	code, _ := e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/not-a-ref/links",
+		map[string]any{"target_issue": e.projKey + "-999999", "link_type": "blocks"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -73,7 +73,7 @@ func TestHTTPCreateIssueLinkBadJSON(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost,
-		e.ts.URL+apiPath("/issues/"+a.ID.String()+"/links"),
+		e.ts.URL+apiPath(e.issueLinksPath(a)),
 		bytes.NewReader([]byte("nope")))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.authToken)
@@ -90,7 +90,7 @@ func TestHTTPCreateIssueLinkBadJSON(t *testing.T) {
 func TestHTTPCreateIssueLinkMissingTarget(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
 		map[string]any{"link_type": "blocks"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
@@ -101,8 +101,8 @@ func TestHTTPCreateIssueLinkInvalidType(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "explodes"})
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "explodes"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -111,8 +111,8 @@ func TestHTTPCreateIssueLinkInvalidType(t *testing.T) {
 func TestHTTPCreateIssueLinkSelfRejected(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": a.ID.String(), "link_type": "blocks"})
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": a.Identifier, "link_type": "blocks"})
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
 	}
@@ -122,11 +122,11 @@ func TestHTTPCreateIssueLinkDuplicateRejected(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
-	body := map[string]any{"target_id": b.ID.String(), "link_type": "blocks"}
-	if code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links", body); code != http.StatusCreated {
+	body := map[string]any{"target_issue": b.Identifier, "link_type": "blocks"}
+	if code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a), body); code != http.StatusCreated {
 		t.Fatalf("first code = %d", code)
 	}
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links", body)
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a), body)
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
 	}
@@ -144,8 +144,8 @@ func TestHTTPCreateIssueLinkCrossProject(t *testing.T) {
 		t.Fatalf("CreateIssue other: %v", err)
 	}
 
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "blocks"})
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
 	}
@@ -154,8 +154,8 @@ func TestHTTPCreateIssueLinkCrossProject(t *testing.T) {
 func TestHTTPCreateIssueLinkSourceNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
 	b := e.mustCreateIssue(t, "B")
-	code, _ := e.do(t, http.MethodPost, "/issues/"+uuid.New().String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "blocks"})
+	code, _ := e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/"+e.projKey+"-999999/links",
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
 	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
 	}
@@ -164,9 +164,9 @@ func TestHTTPCreateIssueLinkSourceNotFound(t *testing.T) {
 func TestHTTPCreateIssueLinkTargetNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
-	code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": uuid.New().String(), "link_type": "blocks"})
-	if code != http.StatusConflict {
+	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": e.projKey + "-999999", "link_type": "blocks"})
+	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
 	}
 }
@@ -204,8 +204,8 @@ func TestHTTPListIssueLinksDirectionalView(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateIssue: %v", err)
 		}
-		code, _ := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-			map[string]any{"target_id": target.ID.String(), "link_type": string(c.linkType)})
+		code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
+			map[string]any{"target_issue": target.Identifier, "link_type": string(c.linkType)})
 		if code != http.StatusCreated {
 			t.Fatalf("create %s: code = %d", c.linkType, code)
 		}
@@ -213,12 +213,12 @@ func TestHTTPListIssueLinksDirectionalView(t *testing.T) {
 	}
 
 	// Incoming on A: C -> A (relates_to so the inverse-display path is exercised)
-	if code, _ := e.do(t, http.MethodPost, "/issues/"+c.ID.String()+"/links",
-		map[string]any{"target_id": a.ID.String(), "link_type": "blocks"}); code != http.StatusCreated {
+	if code, _ := e.do(t, http.MethodPost, e.issueLinksPath(c),
+		map[string]any{"target_issue": a.Identifier, "link_type": "blocks"}); code != http.StatusCreated {
 		t.Fatalf("inbound: code = %d", code)
 	}
 
-	code, body := e.do(t, http.MethodGet, "/issues/"+a.ID.String()+"/links", nil)
+	code, body := e.do(t, http.MethodGet, e.issueLinksPath(a), nil)
 	if code != http.StatusOK {
 		t.Fatalf("list code = %d", code)
 	}
@@ -283,14 +283,14 @@ func TestHTTPListIssueLinksIncomingDisplayNames(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateIssue: %v", err)
 		}
-		code, _ := e.do(t, http.MethodPost, "/issues/"+src.ID.String()+"/links",
-			map[string]any{"target_id": target.ID.String(), "link_type": string(c.linkType)})
+		code, _ := e.do(t, http.MethodPost, e.issueLinksPath(src),
+			map[string]any{"target_issue": target.Identifier, "link_type": string(c.linkType)})
 		if code != http.StatusCreated {
 			t.Fatalf("create %s: code = %d", c.linkType, code)
 		}
 	}
 
-	code, body := e.do(t, http.MethodGet, "/issues/"+target.ID.String()+"/links", nil)
+	code, body := e.do(t, http.MethodGet, e.issueLinksPath(target), nil)
 	if code != http.StatusOK {
 		t.Fatalf("list code = %d", code)
 	}
@@ -311,7 +311,7 @@ func TestHTTPListIssueLinksIncomingDisplayNames(t *testing.T) {
 
 func TestHTTPListIssueLinksBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/issues/not-uuid/links", nil)
+	code, _ := e.do(t, http.MethodGet, "/"+e.ownerUsername+"/issues/not-a-ref/links", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -320,7 +320,7 @@ func TestHTTPListIssueLinksBadID(t *testing.T) {
 func TestHTTPListIssueLinksEmpty(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "lone")
-	code, body := e.do(t, http.MethodGet, "/issues/"+a.ID.String()+"/links", nil)
+	code, body := e.do(t, http.MethodGet, e.issueLinksPath(a), nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -334,11 +334,11 @@ func TestHTTPGetIssueLinkHappy(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
-	_, createBody := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "blocks"})
+	_, createBody := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
 	link := decode[model.IssueLink](t, createBody)
 
-	code, body := e.do(t, http.MethodGet, "/issue-links/"+link.ID.String(), nil)
+	code, body := e.do(t, http.MethodGet, e.projectLinkPath(link), nil)
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
@@ -350,7 +350,7 @@ func TestHTTPGetIssueLinkHappy(t *testing.T) {
 
 func TestHTTPGetIssueLinkBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/issue-links/zzz", nil)
+	code, _ := e.do(t, http.MethodGet, e.projectPath()+"/links/zzz", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
@@ -358,7 +358,7 @@ func TestHTTPGetIssueLinkBadID(t *testing.T) {
 
 func TestHTTPGetIssueLinkNotFound(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet, "/issue-links/"+uuid.New().String(), nil)
+	code, _ := e.do(t, http.MethodGet, e.projectPath()+"/links/link-999999", nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("code = %d", code)
 	}
@@ -368,15 +368,15 @@ func TestHTTPDeleteIssueLink(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
-	_, createBody := e.do(t, http.MethodPost, "/issues/"+a.ID.String()+"/links",
-		map[string]any{"target_id": b.ID.String(), "link_type": "blocks"})
+	_, createBody := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
 	link := decode[model.IssueLink](t, createBody)
 
-	code, _ := e.do(t, http.MethodDelete, "/issue-links/"+link.ID.String(), nil)
+	code, _ := e.do(t, http.MethodDelete, e.projectLinkPath(link), nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("code = %d", code)
 	}
-	code, _ = e.do(t, http.MethodDelete, "/issue-links/"+link.ID.String(), nil)
+	code, _ = e.do(t, http.MethodDelete, e.projectLinkPath(link), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("second delete code = %d", code)
 	}
@@ -384,7 +384,7 @@ func TestHTTPDeleteIssueLink(t *testing.T) {
 
 func TestHTTPDeleteIssueLinkBadID(t *testing.T) {
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodDelete, "/issue-links/nope", nil)
+	code, _ := e.do(t, http.MethodDelete, e.projectPath()+"/links/nope", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
 	}
