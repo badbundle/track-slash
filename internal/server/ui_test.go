@@ -76,7 +76,8 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 			Name:        "Track Slash",
 			Description: "Fast issue tracking.",
 		},
-		View: "sprint",
+		View:        "sprint",
+		ProjectTabs: uiProjectTabs(projectID, "sprint"),
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -114,9 +115,32 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "Sprints", "Backlog", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
+		}
+	}
+}
+
+func TestUITabBarComponentRendersReusableTabs(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "tab-bar", uiTabBarData{
+		Label: "Example views",
+		Items: []uiTabItem{
+			{Label: "One", Icon: "circle", Href: "/one", HXGet: "/one/panel", HXTarget: "#main", HXPushURL: "/one", Active: true},
+			{Label: "Two", Icon: "square", Href: "/two", HXGet: "/two/panel", HXTarget: "#main", HXPushURL: "/two"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{`aria-label="Example views"`, "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("tab bar missing markup %q: %s", want, body)
 		}
 	}
 }
