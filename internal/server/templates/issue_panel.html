@@ -16,13 +16,8 @@
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</p>
       </div>
       <div class="flex shrink-0 flex-wrap items-center gap-2">
-        <button type="button" disabled class="inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
-          <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-          Edit issue
-        </button>
-        <button type="button" disabled class="inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
-          <i data-lucide="list-check" class="h-4 w-4" aria-hidden="true"></i>
-          Change status
+        <button type="button" disabled aria-label="Issue settings" class="grid h-9 w-9 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+          <i data-lucide="settings" class="h-4 w-4" aria-hidden="true"></i>
         </button>
       </div>
     </div>
@@ -31,7 +26,12 @@
   <section class="grid gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
     <div class="min-w-0 space-y-6">
       <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
+        <header class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
+          <button type="button" disabled aria-label="Edit description" class="grid h-8 w-8 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+            <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+        </header>
         {{if .Issue.Description}}
         <div class="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-200">{{.Issue.Description}}</div>
         {{else}}
@@ -45,15 +45,14 @@
             <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>
             {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
           </div>
-          <button type="button" disabled class="inline-flex cursor-not-allowed items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm font-medium text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+          <button type="button" disabled aria-label="Add link" class="grid h-8 w-8 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
             <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
-            Add link
           </button>
         </header>
         {{if .Links}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .Links}}
-          <div class="grid grid-cols-[8rem_1fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800">
+          <div class="grid grid-cols-[8rem_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800">
             <span class="text-xs font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
             {{if .HasIssue}}
             <a data-main-view="projects" href="/issues/{{.LinkedIssue.ID}}" hx-get="/issues/{{.LinkedIssue.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.LinkedIssue.ID}}" class="min-w-0 hover:text-indigo-700 dark:hover:text-indigo-200">
@@ -63,6 +62,9 @@
             {{else}}
             <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
             {{end}}
+            <button type="button" disabled aria-label="Edit link" class="grid h-8 w-8 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
           </div>
           {{end}}
         </div>
@@ -91,6 +93,9 @@
               </div>
               <div class="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-200">{{.Comment.Body}}</div>
             </div>
+            <button type="button" disabled aria-label="Edit comment" class="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
           </article>
           {{end}}
         </div>
@@ -115,21 +120,41 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>
             <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>
           </div>
-          <div>
-            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Status</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{statusLabel .Issue.Status}}</dd>
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Status</dt>
+              <dd class="mt-1 text-slate-900 dark:text-slate-100">{{statusLabel .Issue.Status}}</dd>
+            </div>
+            <button type="button" disabled aria-label="Edit status" class="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
           </div>
-          <div>
-            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .Assignee}}{{.Assignee.Name}}{{else}}Unassigned{{end}}</dd>
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</dt>
+              <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .Assignee}}{{.Assignee.Name}}{{else}}Unassigned{{end}}</dd>
+            </div>
+            <button type="button" disabled aria-label="Edit assignee" class="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
           </div>
-          <div>
-            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reporter</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .Reporter}}{{.Reporter.Name}}{{else}}No reporter{{end}}</dd>
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reporter</dt>
+              <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .Reporter}}{{.Reporter.Name}}{{else}}No reporter{{end}}</dd>
+            </div>
+            <button type="button" disabled aria-label="Edit reporter" class="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
           </div>
-          <div>
-            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
-            <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</dd>
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
+              <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</dd>
+            </div>
+            <button type="button" disabled aria-label="Edit sprint" class="grid h-8 w-8 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Created</dt>

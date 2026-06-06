@@ -103,10 +103,13 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/me", token)
-	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader"} {
+	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader", "#sidebar-toggle:checked ~ .app-shell > aside"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
+		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
 	}
 	if strings.Contains(body, `data-lucide="key-round"`) {
 		t.Fatalf("body still has tokens sidebar icon: %s", body)
@@ -553,9 +556,15 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		"Blocks",
 		"linked detail issue",
 		"detail comment body",
-		"Edit issue",
-		"Change status",
-		"Add link",
+		`aria-label="Issue settings"`,
+		`aria-label="Edit description"`,
+		`aria-label="Edit link"`,
+		`aria-label="Edit comment"`,
+		`aria-label="Edit status"`,
+		`aria-label="Edit assignee"`,
+		`aria-label="Edit reporter"`,
+		`aria-label="Edit sprint"`,
+		`aria-label="Add link"`,
 		`placeholder="Add a comment"`,
 		"disabled",
 		`href="/projects/` + e.projectID.String() + `/backlog"`,
@@ -565,6 +574,31 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue body missing %q: %s", want, body)
+		}
+	}
+	titleHeaderEnd := strings.Index(body, "</header>")
+	if titleHeaderEnd < 0 {
+		t.Fatalf("issue body missing title header: %s", body)
+	}
+	titleHeader := body[:titleHeaderEnd]
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status"} {
+		if strings.Contains(titleHeader, notWant) {
+			t.Fatalf("title card still contains section action %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{
+		`title="Issue settings"`,
+		`title="Edit description"`,
+		`title="Add link"`,
+		`title="Edit link"`,
+		`title="Edit comment"`,
+		`title="Edit status"`,
+		`title="Edit assignee"`,
+		`title="Edit reporter"`,
+		`title="Edit sprint"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body still renders native title tooltip %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {

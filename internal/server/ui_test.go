@@ -70,6 +70,27 @@ func TestSafeUINextRootPaths(t *testing.T) {
 	}
 }
 
+func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
+		User:        model.User{Name: "Demo User"},
+		CurrentView: "projects",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	if !strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell > aside") {
+		t.Fatalf("shell missing direct-child sidebar collapse selector: %s", body)
+	}
+	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
+		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
+	}
+}
+
 func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	t.Parallel()
 
@@ -139,15 +160,34 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/projects/` + projectID.String() + `/backlog/panel"`,
 		`href="/issues/` + linkedID.String() + `"`,
 		`hx-get="/issues/` + linkedID.String() + `/panel"`,
-		"Edit issue",
-		"Change status",
-		"Add link",
+		`aria-label="Issue settings"`,
+		`aria-label="Edit description"`,
+		`aria-label="Edit link"`,
+		`aria-label="Edit comment"`,
+		`aria-label="Edit status"`,
+		`aria-label="Edit assignee"`,
+		`aria-label="Edit reporter"`,
+		`aria-label="Edit sprint"`,
+		`aria-label="Add link"`,
 		`placeholder="Add a comment"`,
 		"disabled",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
 		}
+	}
+	titleHeaderEnd := strings.Index(body, "</header>")
+	if titleHeaderEnd < 0 {
+		t.Fatalf("issue panel missing title header: %s", body)
+	}
+	titleHeader := body[:titleHeaderEnd]
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status"} {
+		if strings.Contains(titleHeader, notWant) {
+			t.Fatalf("title card still contains section action %q: %s", notWant, body)
+		}
+	}
+	if strings.Contains(body, "title=") {
+		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
 	}
 }
 
