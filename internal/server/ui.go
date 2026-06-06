@@ -26,12 +26,15 @@ const uiAuthCookieName = "track_slash_ui_token"
 var errUIForbidden = errors.New("forbidden")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":    uiInitials,
-	"linkLabel":   uiIssueLinkLabel,
-	"projectIcon": uiProjectIcon,
-	"sprintDate":  uiSprintDate,
-	"statusLabel": uiStatusLabel,
-	"tokenTime":   uiTokenTime,
+	"initials":      uiInitials,
+	"linkLabel":     uiIssueLinkLabel,
+	"projectIcon":   uiProjectIcon,
+	"sprintDate":    uiSprintDate,
+	"statusClass":   uiStatusClass,
+	"statusLabel":   uiStatusLabel,
+	"statusRow":     uiStatusRowClass,
+	"statusSurface": uiStatusSurfaceClass,
+	"tokenTime":     uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -133,6 +136,8 @@ type uiIssuePanelData struct {
 	Reporter        *model.User
 	Comments        []uiIssueCommentItem
 	CommentsHasMore bool
+	CommentBody     string
+	CommentError    string
 	Links           []uiIssueLinkItem
 	LinksHasMore    bool
 	BackHref        string
@@ -186,7 +191,10 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
 		r.Get("/issues/{id}", s.uiIssuePage)
 		r.Get("/issues/{id}/panel", s.uiIssuePanel)
+		r.Post("/issues/{id}/comments", s.uiCreateComment)
 		r.Get("/projects/{id}", s.uiProjectPage)
+		r.Get("/projects/{id}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
+		r.Get("/projects/{id}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
 		r.Get("/projects/{id}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/projects/{id}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
 		r.Get("/projects/{id}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "backlog") })
@@ -462,7 +470,7 @@ func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/projects", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+projects[0].ID.String()+"/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/projects/"+projects[0].ID.String()+"/about", http.StatusSeeOther)
 }
 
 func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -531,7 +539,7 @@ func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+project.ID.String()+"/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/projects/"+project.ID.String()+"/about", http.StatusSeeOther)
 }
 
 func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
@@ -557,7 +565,7 @@ func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+projectID.String()+"/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/projects/"+projectID.String()+"/about", http.StatusSeeOther)
 }
 
 func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -631,6 +639,56 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
+	issueID, ok := uiIssueID(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	body := strings.TrimSpace(r.Form.Get("body"))
+	if body == "" || len(body) > 10000 {
+		s.renderUIIssuePanelWithCommentError(w, r, issueID, r.Form.Get("body"), "Comment required, max 10000 chars.")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), projectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if _, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
+		IssueID:  issueID,
+		AuthorID: currentUser(r).ID,
+		Body:     body,
+	}); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithCommentError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, body, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.CommentBody = body
+	panel.CommentError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -722,6 +780,8 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	switch view {
+	case "about":
+		return panel, nil
 	case "sprint":
 		activeStatus := model.SprintStatusActive
 		activeSprints, _, err := s.store.ListSprints(ctx, store.ListSprintsParams{
@@ -962,6 +1022,15 @@ func uiProjectTabs(projectID uuid.UUID, view string) uiTabBarData {
 		Label: "Project views",
 		Items: []uiTabItem{
 			{
+				Label:     "About",
+				Icon:      "info",
+				Href:      base + "/about",
+				HXGet:     base + "/about/panel",
+				HXTarget:  "#main",
+				HXPushURL: base + "/about",
+				Active:    view == "about",
+			},
+			{
 				Label:     "Sprints",
 				Icon:      "kanban",
 				Href:      base + "/sprint",
@@ -1079,7 +1148,7 @@ func safeUIProjectPath(path string) bool {
 	if len(parts) == 1 {
 		return true
 	}
-	if parts[1] != "sprint" && parts[1] != "backlog" {
+	if parts[1] != "about" && parts[1] != "sprint" && parts[1] != "backlog" {
 		return false
 	}
 	if len(parts) == 2 {
@@ -1170,6 +1239,45 @@ func uiStatusLabel(s model.Status) string {
 		return "Done"
 	default:
 		return string(s)
+	}
+}
+
+func uiStatusClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+	case model.StatusInProgress:
+		return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200"
+	case model.StatusDone:
+		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
+	default:
+		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+	}
+}
+
+func uiStatusRowClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"
+	case model.StatusInProgress:
+		return "bg-amber-50/45 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/30"
+	case model.StatusDone:
+		return "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"
+	default:
+		return "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"
+	}
+}
+
+func uiStatusSurfaceClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "bg-slate-50/70 dark:bg-slate-900/30"
+	case model.StatusInProgress:
+		return "bg-amber-50/45 dark:bg-amber-950/15"
+	case model.StatusDone:
+		return "bg-emerald-50/45 dark:bg-emerald-950/15"
+	default:
+		return "bg-white dark:bg-slate-900"
 	}
 }
 

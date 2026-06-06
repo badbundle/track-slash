@@ -32,6 +32,66 @@ func TestUIProjectIcon(t *testing.T) {
 	}
 }
 
+func TestUIStatusClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"},
+		{status: model.StatusInProgress, want: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200"},
+		{status: model.StatusDone, want: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"},
+		{status: model.Status("custom"), want: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+func TestUIStatusRowClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"},
+		{status: model.StatusInProgress, want: "bg-amber-50/45 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/30"},
+		{status: model.StatusDone, want: "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"},
+		{status: model.Status("custom"), want: "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusRowClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusRowClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+func TestUIStatusSurfaceClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "bg-slate-50/70 dark:bg-slate-900/30"},
+		{status: model.StatusInProgress, want: "bg-amber-50/45 dark:bg-amber-950/15"},
+		{status: model.StatusDone, want: "bg-emerald-50/45 dark:bg-emerald-950/15"},
+		{status: model.Status("custom"), want: "bg-white dark:bg-slate-900"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusSurfaceClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusSurfaceClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
 func TestSafeUINextRootPaths(t *testing.T) {
 	t.Parallel()
 
@@ -52,7 +112,9 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "bad issue child", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/activity", want: "/"},
 		{name: "bad issue nested panel", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/panel/extra", want: "/"},
 		{name: "project", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16"},
+		{name: "project about", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about"},
 		{name: "project sprint", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint"},
+		{name: "project about panel with query", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about/panel?x=1", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about/panel?x=1"},
 		{name: "project backlog panel with query", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/backlog/panel?x=1", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/backlog/panel?x=1"},
 		{name: "bad project id", raw: "/projects/nope/sprint", want: "/"},
 		{name: "bad project child", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/issues", want: "/"},
@@ -88,6 +150,41 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
 		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
+	}
+	for _, want := range []string{`[data-submit-shortcut='meta-enter']`, `event.metaKey`, `event.ctrlKey`, `form.requestSubmit()`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
+		}
+	}
+}
+
+func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		path      string
+		wantClass string
+	}{
+		{name: "work", path: "templates/work_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "projects", path: "templates/projects_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "project", path: "templates/project_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "issue", path: "templates/issue_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "settings", path: "templates/settings.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "tokens", path: "templates/tokens.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "empty shell", path: "templates/shell.html", wantClass: `class="mx-auto max-w-6xl px-6 py-8"`},
+	} {
+		src, err := uiTemplateFS.ReadFile(tt.path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", tt.name, err)
+		}
+		body := string(src)
+		if !strings.Contains(body, tt.wantClass) {
+			t.Fatalf("%s panel missing shared page width %q: %s", tt.name, tt.wantClass, body)
+		}
+		if strings.Contains(body, "max-w-5xl") {
+			t.Fatalf("%s panel still uses narrower page width: %s", tt.name, body)
+		}
 	}
 }
 
@@ -130,7 +227,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		}},
 		Links: []uiIssueLinkItem{{
 			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
-			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, Identifier: "TRACK-8", Title: "Linked work"},
+			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
 			HasIssue:    true,
 		}},
 		BackHref:  "/projects/" + projectID.String() + "/backlog",
@@ -144,6 +241,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	body := buf.String()
 	for _, want := range []string{
 		"TRACK-7",
+		"text-3xl",
 		"Design issue detail",
 		"Readonly description",
 		"In progress",
@@ -164,26 +262,83 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit description"`,
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
-		`aria-label="Edit status"`,
+		`aria-label="Change status"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`aria-label="Post comment"`,
+		`aria-haspopup="listbox"`,
+		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
+		`method="post" action="/issues/` + issueID.String() + `/comments"`,
+		`hx-post="/issues/` + issueID.String() + `/comments"`,
+		`hx-target="#main"`,
+		`hx-push-url="/issues/` + issueID.String() + `"`,
+		`data-submit-shortcut="meta-enter"`,
+		`class="flex items-start gap-2"`,
+		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
+		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
+		`class="flex items-start gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 dark:border-slate-800"`,
+		`inline-flex w-fit justify-self-start items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
+		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
+		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
+		`h-6 w-6`,
+		`h-3.5 w-3.5`,
+		`border-amber-300 bg-amber-50 text-amber-800`,
+		`bg-amber-50/45 dark:bg-amber-950/15`,
+		`bg-emerald-50/45 hover:bg-emerald-50`,
 		"disabled",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
 		}
 	}
+	if got := strings.Count(body, "bg-amber-50/45 dark:bg-amber-950/15"); got != 1 {
+		t.Fatalf("issue panel should tint the title card only, got %d matches: %s", got, body)
+	}
+	detailsStart := strings.Index(body, ">Details</h2>")
+	if detailsStart < 0 {
+		t.Fatalf("issue panel missing Details heading: %s", body)
+	}
+	detailsBlock := body[detailsStart:]
+	statusIndex := strings.Index(detailsBlock, `aria-label="Change status"`)
+	projectIndex := strings.Index(detailsBlock, ">Project</dt>")
+	if statusIndex < 0 || projectIndex < 0 {
+		t.Fatalf("issue panel missing status control or project details row: %s", body)
+	}
+	if statusIndex > projectIndex {
+		t.Fatalf("status control should render before project detail: %s", body)
+	}
+	if strings.Contains(detailsBlock, ">Status</dt>") || strings.Contains(body, `aria-label="Edit status"`) {
+		t.Fatalf("status control should not render a separate title or edit button: %s", body)
+	}
+	commentMetaStart := strings.Index(body, "Ada Lovelace")
+	commentBodyStart := strings.Index(body, "Looks ready.")
+	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
+		t.Fatalf("issue panel missing comment metadata/body ordering: %s", body)
+	}
+	commentEditStart := strings.Index(body, `aria-label="Edit comment"`)
+	if commentEditStart < 0 || commentEditStart < commentBodyStart {
+		t.Fatalf("comment edit button should render at the right edge after comment body content: %s", body)
+	}
+	if strings.Contains(body[commentMetaStart:commentBodyStart], `aria-label="Edit comment"`) {
+		t.Fatalf("comment edit button should not render beside comment metadata: %s", body)
+	}
+	if strings.Contains(body, "\n            Comment\n") {
+		t.Fatalf("post comment button should be icon-only: %s", body)
+	}
+	if strings.Contains(body, "<textarea disabled") || strings.Contains(body, `aria-label="Post comment" class="grid h-9 w-9`) || strings.Contains(body, `aria-label="Post comment" class="grid h-7 w-7 shrink-0 cursor-not-allowed`) {
+		t.Fatalf("comment composer should be enabled: %s", body)
+	}
 	titleHeaderEnd := strings.Index(body, "</header>")
 	if titleHeaderEnd < 0 {
 		t.Fatalf("issue panel missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
-	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status"} {
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress"} {
 		if strings.Contains(titleHeader, notWant) {
-			t.Fatalf("title card still contains section action %q: %s", notWant, body)
+			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
 		}
 	}
 	if strings.Contains(body, "title=") {
@@ -283,7 +438,7 @@ func TestUIIssueLinkLabel(t *testing.T) {
 	}
 }
 
-func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
+func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
@@ -295,8 +450,8 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 			Name:        "Track Slash",
 			Description: "Fast issue tracking.",
 		},
-		View:        "sprint",
-		ProjectTabs: uiProjectTabs(projectID, "sprint"),
+		View:        "about",
+		ProjectTabs: uiProjectTabs(projectID, "about"),
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -326,17 +481,80 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 		t.Fatalf("project view tabs rendered inside title card: %s", body)
 	}
 	header := body[:headerEnd]
-	for _, notWant := range []string{"Sprints", "Backlog", `/sprint/panel`, `/backlog/panel`} {
+	for _, notWant := range []string{"About", "Sprints", "Backlog", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
 		}
 	}
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project panel missing about/title markup %q: %s", want, body)
+		}
+	}
+	aboutIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/about"`)
+	sprintsIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/sprint"`)
+	backlogIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/backlog"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || aboutIdx > sprintsIdx || sprintsIdx > backlogIdx {
+		t.Fatalf("project tabs not ordered about, sprints, backlog: about=%d sprints=%d backlog=%d body=%s", aboutIdx, sprintsIdx, backlogIdx, body)
+	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
+		}
+	}
+}
+
+func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
+	t.Parallel()
+
+	issue := model.Issue{
+		ID:         uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b"),
+		ProjectID:  uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"),
+		Identifier: "TRACK-7",
+		Title:      "Row issue",
+		Status:     model.StatusDone,
+	}
+	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
+
+	tests := []struct {
+		name     string
+		template string
+		data     any
+		hasBadge bool
+	}{
+		{name: "project issue list", template: "issue-list", data: []model.Issue{issue}, hasBadge: true},
+		{name: "project inset issue list", template: "issue-list-inset", data: []model.Issue{issue}, hasBadge: true},
+		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true},
+		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project}}},
+	}
+
+	for _, tt := range tests {
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, tt.template, tt.data); err != nil {
+			t.Fatalf("%s ExecuteTemplate: %v", tt.name, err)
+		}
+		body := buf.String()
+		for _, want := range []string{
+			"TRACK-7",
+			"inline-flex w-fit justify-self-start",
+			"bg-emerald-50/45 hover:bg-emerald-50",
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing markup %q: %s", tt.name, want, body)
+			}
+		}
+		if tt.hasBadge {
+			for _, want := range []string{"Done", "border-emerald-300 bg-emerald-50 text-emerald-800"} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s missing status badge markup %q: %s", tt.name, want, body)
+				}
+			}
+		}
+		if strings.Contains(body, "rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600") {
+			t.Fatalf("%s still renders neutral row status: %s", tt.name, body)
 		}
 	}
 }
@@ -357,9 +575,12 @@ func TestUITabBarComponentRendersReusableTabs(t *testing.T) {
 	}
 
 	body := buf.String()
-	for _, want := range []string{`aria-label="Example views"`, "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`} {
+	for _, want := range []string{`aria-label="Example views"`, "flex flex-wrap", "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("tab bar missing markup %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "overflow-x-auto") {
+		t.Fatalf("tab bar should not force horizontal scrolling: %s", body)
 	}
 }

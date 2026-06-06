@@ -85,7 +85,7 @@
       {{else if .SettingsPanel}}
       {{template "settings-panel" .SettingsPanel}}
       {{else}}
-      <section class="mx-auto max-w-5xl px-6 py-8">
+      <section class="mx-auto max-w-6xl px-6 py-8">
         <h1 class="text-xl font-semibold">No work</h1>
         <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No accessible work found.</p>
       </section>
@@ -132,6 +132,19 @@
         const link = event.target.closest("[data-nav-link]");
         if (link) {
           setNavLoading(link, false);
+        }
+      });
+      document.body.addEventListener("keydown", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const field = event.target.closest("[data-submit-shortcut='meta-enter']");
+        if (!field || event.key !== "Enter" || (!event.metaKey && !event.ctrlKey) || event.shiftKey || event.altKey) return;
+        const form = field.form || field.closest("form");
+        if (!form) return;
+        event.preventDefault();
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
         }
       });
       document.body.addEventListener("htmx:afterSwap", createIcons);
