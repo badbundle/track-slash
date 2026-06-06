@@ -4,18 +4,20 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 func (s *Server) grantProjectMember(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdmin(w, r) {
 		return
 	}
-	projectID, userID, ok := parseProjectUserIDs(w, r)
+	project, user, ok := s.parseProjectMemberRoute(w, r)
 	if !ok {
 		return
 	}
-	member, err := s.store.GrantProjectAccess(r.Context(), projectID, userID)
+	member, err := s.store.GrantProjectAccess(r.Context(), project.ID, user.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -27,11 +29,11 @@ func (s *Server) revokeProjectMember(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdmin(w, r) {
 		return
 	}
-	projectID, userID, ok := parseProjectUserIDs(w, r)
+	project, user, ok := s.parseProjectMemberRoute(w, r)
 	if !ok {
 		return
 	}
-	if err := s.store.RevokeProjectAccess(r.Context(), projectID, userID); err != nil {
+	if err := s.store.RevokeProjectAccess(r.Context(), project.ID, user.ID); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -42,12 +44,11 @@ func (s *Server) listProjectMembers(w http.ResponseWriter, r *http.Request) {
 	if !s.requireAdmin(w, r) {
 		return
 	}
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	members, err := s.store.ListProjectMembers(r.Context(), projectID)
+	members, err := s.store.ListProjectMembers(r.Context(), project.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -55,16 +56,20 @@ func (s *Server) listProjectMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, members)
 }
 
-func parseProjectUserIDs(w http.ResponseWriter, r *http.Request) (uuid.UUID, uuid.UUID, bool) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
-		return uuid.Nil, uuid.Nil, false
+func (s *Server) parseProjectMemberRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.User, bool) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return model.Project{}, model.User{}, false
 	}
-	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	username, err := store.NormalizeUsername(chi.URLParam(r, "username"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user id")
-		return uuid.Nil, uuid.Nil, false
+		writeError(w, http.StatusBadRequest, err.Error())
+		return model.Project{}, model.User{}, false
 	}
-	return projectID, userID, true
+	user, err := s.store.GetUserByUsername(r.Context(), username)
+	if err != nil {
+		writeStoreError(w, err)
+		return model.Project{}, model.User{}, false
+	}
+	return project, user, true
 }

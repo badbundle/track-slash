@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -62,11 +63,7 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	var projectID string
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
-	`, uniqueKey(t), "rt-test").Scan(&projectID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
+	projectID = insertRealtimeProject(ctx, t, pool, "rt-test")
 
 	// Subscribe after the project insert. The project event may still be
 	// in flight inside the listener at this moment, so we loop and discard
@@ -137,11 +134,7 @@ func TestListenerReceivesSubIssueEvent(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	var projectID string
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
-	`, uniqueKey(t), "rt-sub-issue").Scan(&projectID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
+	projectID = insertRealtimeProject(ctx, t, pool, "rt-sub-issue")
 	var parentID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'parent') RETURNING id::text
@@ -205,19 +198,15 @@ func TestListenerReceivesSprintEvent(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	var projectID string
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
-	`, uniqueKey(t), "rt-sprint").Scan(&projectID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
+	projectID = insertRealtimeProject(ctx, t, pool, "rt-sprint")
 
 	projSub := newTestClient(8)
 	hub.Subscribe(projSub, "project:"+projectID)
 
 	var sprintID string
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO sprints (project_id, name, start_date, end_date)
-		VALUES ($1, 'S1', DATE '2026-06-01', DATE '2026-06-14')
+		INSERT INTO sprints (project_id, number, name, start_date, end_date)
+		VALUES ($1, 1, 'S1', DATE '2026-06-01', DATE '2026-06-14')
 		RETURNING id::text
 	`, projectID).Scan(&sprintID); err != nil {
 		t.Fatalf("insert sprint: %v", err)
@@ -286,11 +275,7 @@ func TestListenerReceivesIssueLinkEvent(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	var projectID string
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
-	`, uniqueKey(t), "rt-link").Scan(&projectID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
+	projectID = insertRealtimeProject(ctx, t, pool, "rt-link")
 
 	var srcID, tgtID string
 	if err := pool.QueryRow(ctx, `
@@ -309,8 +294,8 @@ func TestListenerReceivesIssueLinkEvent(t *testing.T) {
 
 	var linkID string
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO issue_links (project_id, source_id, target_id, link_type)
-		VALUES ($1, $2, $3, 'blocks')
+		INSERT INTO issue_links (project_id, number, source_id, target_id, link_type)
+		VALUES ($1, 1, $2, $3, 'blocks')
 		RETURNING id::text
 	`, projectID, srcID, tgtID).Scan(&linkID); err != nil {
 		t.Fatalf("insert link: %v", err)
@@ -399,11 +384,7 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	var projectID, issueID, authorID string
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
-	`, uniqueKey(t), "rt-comment").Scan(&projectID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
+	projectID = insertRealtimeProject(ctx, t, pool, "rt-comment")
 	userKey := uniqueKey(t)
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO users (username, email, name) VALUES ($1, $2, 'Commenter') RETURNING id::text
@@ -423,8 +404,8 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 
 	var commentID string
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO comments (issue_id, author_id, body)
-		VALUES ($1, $2, 'hello')
+		INSERT INTO comments (issue_id, number, author_id, body)
+		VALUES ($1, 1, $2, 'hello')
 		RETURNING id::text
 	`, issueID, authorID).Scan(&commentID); err != nil {
 		t.Fatalf("insert comment: %v", err)
@@ -485,11 +466,7 @@ func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	var projectID, issueID string
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO projects (key, name) VALUES ($1, $2) RETURNING id::text
-	`, uniqueKey(t), "rt-soft-delete").Scan(&projectID); err != nil {
-		t.Fatalf("insert project: %v", err)
-	}
+	projectID = insertRealtimeProject(ctx, t, pool, "rt-soft-delete")
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'A') RETURNING id::text
 	`, projectID).Scan(&issueID); err != nil {
@@ -576,4 +553,26 @@ func waitForSubIssueEvent(t *testing.T, c *Client, childID, parentID, projectID 
 func uniqueKey(t *testing.T) string {
 	t.Helper()
 	return "rt_" + time.Now().Format("150405.000000")
+}
+
+func insertRealtimeProject(ctx context.Context, t *testing.T, pool *pgxpool.Pool, name string) string {
+	t.Helper()
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 10)
+	var ownerID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (username, email, name)
+		VALUES ($1, $2, 'Realtime Owner')
+		RETURNING id::text
+	`, "rtowner"+suffix, "rt-owner-"+suffix+"@example.com").Scan(&ownerID); err != nil {
+		t.Fatalf("insert owner: %v", err)
+	}
+	var projectID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO projects (owner_id, key, name)
+		VALUES ($1, $2, $3)
+		RETURNING id::text
+	`, ownerID, uniqueKey(t), name).Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+	return projectID
 }

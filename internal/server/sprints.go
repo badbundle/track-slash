@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -30,16 +29,15 @@ type updateSprintReq struct {
 }
 
 type reorderPlannedSprintsReq struct {
-	SprintIDs []uuid.UUID `json:"sprint_ids"`
+	SprintRefs []string `json:"sprint_refs"`
 }
 
 func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 
@@ -75,7 +73,7 @@ func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sp, err := s.store.CreateSprint(r.Context(), store.CreateSprintParams{
-		ProjectID: projectID,
+		ProjectID: project.ID,
 		Name:      req.Name,
 		Goal:      req.Goal,
 		StartDate: start,
@@ -89,12 +87,11 @@ func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 
@@ -120,7 +117,7 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, hasMore, err := s.store.ListSprints(r.Context(), store.ListSprintsParams{
-		ProjectID: projectID,
+		ProjectID: project.ID,
 		Status:    statusFilter,
 		Cursor:    cursor,
 		Limit:     limit,
@@ -147,12 +144,11 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) reorderPlannedSprints(w http.ResponseWriter, r *http.Request) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid project id")
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 
@@ -162,9 +158,24 @@ func (s *Server) reorderPlannedSprints(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sprintIDs := make([]uuid.UUID, 0, len(req.SprintRefs))
+	for _, ref := range req.SprintRefs {
+		number, err := parseTypedRef(ref, "sprint")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		sprint, err := s.store.GetSprintByProjectNumber(r.Context(), project.ID, number)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		sprintIDs = append(sprintIDs, sprint.ID)
+	}
+
 	out, err := s.store.ReorderPlannedSprints(r.Context(), store.ReorderPlannedSprintsParams{
-		ProjectID: projectID,
-		SprintIDs: req.SprintIDs,
+		ProjectID: project.ID,
+		SprintIDs: sprintIDs,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -174,39 +185,22 @@ func (s *Server) reorderPlannedSprints(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getSprint(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, sprint, ok := s.sprintFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	sp, err := s.store.GetSprint(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, sp)
+	writeJSON(w, http.StatusOK, sprint)
 }
 
 func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, sprint, ok := s.sprintFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	if !s.requireProjectAccess(w, r, projectID) {
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
 	var req updateSprintReq
@@ -254,13 +248,13 @@ func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if *req.Status == model.SprintStatusCompleted {
-			writeError(w, http.StatusBadRequest, "use POST /sprints/{id}/complete")
+			writeError(w, http.StatusBadRequest, "use POST /sprints/sprint-N/complete")
 			return
 		}
 		params.Status = req.Status
 	}
 
-	sp, err := s.store.UpdateSprint(r.Context(), id, params)
+	sp, err := s.store.UpdateSprint(r.Context(), sprint.ID, params)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -269,20 +263,14 @@ func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) completeSprint(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, sprint, ok := s.sprintFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	sp, err := s.store.CompleteSprint(r.Context(), id)
+	sp, err := s.store.CompleteSprint(r.Context(), sprint.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -291,22 +279,33 @@ func (s *Server) completeSprint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteSprint(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+	project, sprint, ok := s.sprintFromRoute(w, r)
+	if !ok {
 		return
 	}
-	projectID, err := s.store.ProjectIDForSprint(r.Context(), id)
-	if err != nil {
-		writeStoreError(w, err)
+	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	if !s.requireProjectAccess(w, r, projectID) {
-		return
-	}
-	if err := s.store.DeleteSprint(r.Context(), id); err != nil {
+	if err := s.store.DeleteSprint(r.Context(), sprint.ID); err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) sprintFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.Sprint, bool) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return model.Project{}, model.Sprint{}, false
+	}
+	number, ok := parseTypedRefParam(w, r, "sprintRef", "sprint")
+	if !ok {
+		return model.Project{}, model.Sprint{}, false
+	}
+	sprint, err := s.store.GetSprintByProjectNumber(r.Context(), project.ID, number)
+	if err != nil {
+		writeStoreError(w, err)
+		return model.Project{}, model.Sprint{}, false
+	}
+	return project, sprint, true
 }

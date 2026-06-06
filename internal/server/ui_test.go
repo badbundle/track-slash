@@ -106,19 +106,19 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "removed work panel with query", raw: "/sprint/panel?x=1", want: "/"},
 		{name: "projects", raw: "/projects", want: "/projects"},
 		{name: "projects panel", raw: "/projects/panel", want: "/projects/panel"},
-		{name: "issue", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16", want: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16"},
-		{name: "issue panel with query", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/panel?x=1", want: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/panel?x=1"},
-		{name: "bad issue id", raw: "/issues/nope", want: "/"},
-		{name: "bad issue child", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/activity", want: "/"},
-		{name: "bad issue nested panel", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/panel/extra", want: "/"},
-		{name: "project", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16"},
-		{name: "project about", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about"},
-		{name: "project sprint", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint"},
-		{name: "project about panel with query", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about/panel?x=1", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about/panel?x=1"},
-		{name: "project backlog panel with query", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/backlog/panel?x=1", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/backlog/panel?x=1"},
-		{name: "bad project id", raw: "/projects/nope/sprint", want: "/"},
-		{name: "bad project child", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/issues", want: "/"},
-		{name: "bad project panel", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint/card", want: "/"},
+		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
+		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
+		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
+		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
+		{name: "bad issue nested panel", raw: "/bradley/issues/TRACK-7/panel/extra", want: "/"},
+		{name: "project", raw: "/bradley/projects/TRACK", want: "/bradley/projects/TRACK"},
+		{name: "project about", raw: "/bradley/projects/TRACK/about", want: "/bradley/projects/TRACK/about"},
+		{name: "project sprint", raw: "/bradley/projects/TRACK/sprint", want: "/bradley/projects/TRACK/sprint"},
+		{name: "project about panel with query", raw: "/bradley/projects/TRACK/about/panel?x=1", want: "/bradley/projects/TRACK/about/panel?x=1"},
+		{name: "project backlog panel with query", raw: "/bradley/projects/TRACK/backlog/panel?x=1", want: "/bradley/projects/TRACK/backlog/panel?x=1"},
+		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},
+		{name: "bad project child", raw: "/bradley/projects/TRACK/issues", want: "/"},
+		{name: "bad project panel", raw: "/bradley/projects/TRACK/sprint/card", want: "/"},
 		{name: "api", raw: "/api/v1/projects", want: "/"},
 		{name: "legacy app", raw: "/app/sprint", want: "/"},
 		{name: "scheme relative", raw: "//evil.example/sprint", want: "/"},
@@ -228,19 +228,21 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
 		Issue: model.Issue{
-			ID:          issueID,
-			ProjectID:   projectID,
-			Identifier:  "TRACK-7",
-			Title:       "Design issue detail",
-			Description: "Readonly description",
-			Status:      model.StatusInProgress,
-			AssigneeID:  &userID,
-			ReporterID:  &userID,
-			SprintID:    &sprint.ID,
-			CreatedAt:   when,
-			UpdatedAt:   when,
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Description:   "Readonly description",
+			Status:        model.StatusInProgress,
+			AssigneeID:    &userID,
+			ReporterID:    &userID,
+			SprintID:      &sprint.ID,
+			CreatedAt:     when,
+			UpdatedAt:     when,
 		},
-		Project:  model.Project{ID: projectID, Key: "TRACK", Name: "Track Slash"},
+		Project:  model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
 		Sprint:   &sprint,
 		Assignee: &assignee,
 		Reporter: &reporter,
@@ -251,11 +253,11 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		}},
 		Links: []uiIssueLinkItem{{
 			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
-			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
+			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
 			HasIssue:    true,
 		}},
-		BackHref:  "/projects/" + projectID.String() + "/backlog",
-		BackHXGet: "/projects/" + projectID.String() + "/backlog/panel",
+		BackHref:  "/bradley/projects/TRACK/backlog",
+		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
 		BackLabel: "Backlog",
 	})
 	if err != nil {
@@ -278,10 +280,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Linked work",
 		"Comments",
 		"Looks ready.",
-		`href="/projects/` + projectID.String() + `/backlog"`,
-		`hx-get="/projects/` + projectID.String() + `/backlog/panel"`,
-		`href="/issues/` + linkedID.String() + `"`,
-		`hx-get="/issues/` + linkedID.String() + `/panel"`,
+		`href="/bradley/projects/TRACK/backlog"`,
+		`hx-get="/bradley/projects/TRACK/backlog/panel"`,
+		`href="/bradley/issues/TRACK-8"`,
+		`hx-get="/bradley/issues/TRACK-8/panel"`,
 		`aria-label="Issue settings"`,
 		`aria-label="Edit description"`,
 		`aria-label="Edit link"`,
@@ -295,10 +297,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
-		`method="post" action="/issues/` + issueID.String() + `/comments"`,
-		`hx-post="/issues/` + issueID.String() + `/comments"`,
+		`method="post" action="/bradley/issues/TRACK-7/comments"`,
+		`hx-post="/bradley/issues/TRACK-7/comments"`,
 		`hx-target="#main"`,
-		`hx-push-url="/issues/` + issueID.String() + `"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
 		`data-submit-shortcut="meta-enter"`,
 		`class="flex items-start gap-2"`,
 		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
@@ -376,7 +378,8 @@ func TestUIIssueBackLink(t *testing.T) {
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	sprintID := uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08")
 	parentID := uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c")
-	baseIssue := model.Issue{ProjectID: projectID, SprintID: &sprintID}
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	baseIssue := model.Issue{ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-7", SprintID: &sprintID}
 
 	tests := []struct {
 		name      string
@@ -391,52 +394,52 @@ func TestUIIssueBackLink(t *testing.T) {
 			name:      "active sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusActive},
-			wantHref:  "/projects/" + projectID.String() + "/sprint",
-			wantHXGet: "/projects/" + projectID.String() + "/sprint/panel",
+			wantHref:  "/bradley/projects/TRACK/sprint",
+			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
 			wantLabel: "Sprint",
 		},
 		{
 			name:      "planned sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusPlanned},
-			wantHref:  "/projects/" + projectID.String() + "/backlog",
-			wantHXGet: "/projects/" + projectID.String() + "/backlog/panel",
+			wantHref:  "/bradley/projects/TRACK/backlog",
+			wantHXGet: "/bradley/projects/TRACK/backlog/panel",
 			wantLabel: "Backlog",
 		},
 		{
 			name:      "backlog issue",
-			issue:     model.Issue{ProjectID: projectID},
-			wantHref:  "/projects/" + projectID.String() + "/backlog",
-			wantHXGet: "/projects/" + projectID.String() + "/backlog/panel",
+			issue:     model.Issue{ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8"},
+			wantHref:  "/bradley/projects/TRACK/backlog",
+			wantHXGet: "/bradley/projects/TRACK/backlog/panel",
 			wantLabel: "Backlog",
 		},
 		{
 			name:      "completed sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusCompleted},
-			wantHref:  "/projects/" + projectID.String() + "/sprint",
-			wantHXGet: "/projects/" + projectID.String() + "/sprint/panel",
+			wantHref:  "/bradley/projects/TRACK/sprint",
+			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
 			wantLabel: "Sprint",
 		},
 		{
 			name:      "missing sprint",
 			issue:     baseIssue,
-			wantHref:  "/projects/" + projectID.String() + "/sprint",
-			wantHXGet: "/projects/" + projectID.String() + "/sprint/panel",
+			wantHref:  "/bradley/projects/TRACK/sprint",
+			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
 			wantLabel: "Sprint",
 		},
 		{
 			name:      "parent issue",
-			issue:     model.Issue{ProjectID: projectID, ParentIssueID: &parentID},
-			parent:    &model.Issue{ID: parentID, ProjectID: projectID},
-			wantHref:  "/issues/" + parentID.String(),
-			wantHXGet: "/issues/" + parentID.String() + "/panel",
+			issue:     model.Issue{ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-9", ParentIssueID: &parentID},
+			parent:    &model.Issue{ID: parentID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-1"},
+			wantHref:  "/bradley/issues/TRACK-1",
+			wantHXGet: "/bradley/issues/TRACK-1/panel",
 			wantLabel: "Parent issue",
 		},
 	}
 
 	for _, tt := range tests {
-		href, hxGet, label := uiIssueBackLink(projectID, tt.issue, tt.parent, tt.sprint)
+		href, hxGet, label := uiIssueBackLink(project, tt.issue, tt.parent, tt.sprint)
 		if href != tt.wantHref || hxGet != tt.wantHXGet || label != tt.wantLabel {
 			t.Fatalf("%s: got (%q, %q, %q), want (%q, %q, %q)", tt.name, href, hxGet, label, tt.wantHref, tt.wantHXGet, tt.wantLabel)
 		}
@@ -476,16 +479,18 @@ func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	project := model.Project{
+		ID:            projectID,
+		OwnerUsername: "bradley",
+		Key:           "TRACK",
+		Name:          "Track Slash",
+		Description:   "Fast issue tracking.",
+	}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
-		Project: model.Project{
-			ID:          projectID,
-			Key:         "TRACK",
-			Name:        "Track Slash",
-			Description: "Fast issue tracking.",
-		},
+		Project:     project,
 		View:        "about",
-		ProjectTabs: uiProjectTabs(projectID, "about"),
+		ProjectTabs: uiProjectTabs(project, "about"),
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -525,16 +530,16 @@ func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 			t.Fatalf("project panel missing about/title markup %q: %s", want, body)
 		}
 	}
-	aboutIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/about"`)
-	sprintsIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/sprint"`)
-	backlogIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/backlog"`)
+	aboutIdx := strings.Index(body, `href="/bradley/projects/TRACK/about"`)
+	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
+	backlogIdx := strings.Index(body, `href="/bradley/projects/TRACK/backlog"`)
 	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || aboutIdx > sprintsIdx || sprintsIdx > backlogIdx {
 		t.Fatalf("project tabs not ordered about, sprints, backlog: about=%d sprints=%d backlog=%d body=%s", aboutIdx, sprintsIdx, backlogIdx, body)
 	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/about"`} {
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}

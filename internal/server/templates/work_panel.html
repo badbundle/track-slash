@@ -36,7 +36,7 @@
 {{if .}}
 <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
   {{range .}}
-  <a data-main-view="projects" href="/issues/{{.Issue.ID}}" hx-get="/issues/{{.Issue.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.Issue.ID}}" class="grid grid-cols-[7rem_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Issue.Status}}">
+  <a data-main-view="projects" href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid grid-cols-[7rem_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Issue.Status}}">
     {{template "issue-key" .Issue.Identifier}}
     <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Issue.Title}}</span>
     {{template "status-badge" .Issue.Status}}
@@ -52,7 +52,7 @@
 {{if .}}
 <div class="space-y-2">
   {{range .}}
-  <a data-main-view="projects" href="/issues/{{.Issue.ID}}" hx-get="/issues/{{.Issue.ID}}/panel" hx-target="#main" hx-push-url="/issues/{{.Issue.ID}}" class="block rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800 {{statusRow .Issue.Status}}">
+  <a data-main-view="projects" href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="block rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-800 {{statusRow .Issue.Status}}">
     <div class="flex items-center justify-between gap-3">
       {{template "issue-key" .Issue.Identifier}}
       <span class="truncate text-xs text-slate-500 dark:text-slate-400">{{.Project.Name}}</span>

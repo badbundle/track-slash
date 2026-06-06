@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -16,19 +15,19 @@ func TestHTTPSoftDeleteIssue(t *testing.T) {
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
 
-	code, body := e.do(t, http.MethodDelete, fmt.Sprintf("/issues/%s", iss.ID), nil)
+	code, body := e.do(t, http.MethodDelete, e.issuePath(iss), nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete issue code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/issues/%s", iss.ID), nil)
+	code, body = e.do(t, http.MethodGet, e.issuePath(iss), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("get deleted issue code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/issues/%s", iss.ID), nil)
+	code, body = e.do(t, http.MethodDelete, e.issuePath(iss), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("delete issue second code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodPatch, fmt.Sprintf("/issues/%s", iss.ID), map[string]any{"description": "nope"})
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"description": "nope"})
 	if code != http.StatusNotFound {
 		t.Fatalf("patch deleted issue code = %d body = %s", code, body)
 	}
@@ -47,21 +46,21 @@ func TestHTTPSoftDeleteProject(t *testing.T) {
 		t.Fatalf("CreateSprint: %v", err)
 	}
 
-	code, body := e.do(t, http.MethodDelete, fmt.Sprintf("/projects/%s", e.projectID), nil)
+	code, body := e.do(t, http.MethodDelete, e.projectPath(), nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete project code = %d body = %s", code, body)
 	}
 	for _, path := range []string{
-		fmt.Sprintf("/projects/%s", e.projectID),
-		fmt.Sprintf("/issues/%s", iss.ID),
-		fmt.Sprintf("/sprints/%s", sp.ID),
+		e.projectPath(),
+		e.issuePath(iss),
+		e.sprintPath(sp),
 	} {
 		code, body = e.do(t, http.MethodGet, path, nil)
 		if code != http.StatusNotFound {
 			t.Fatalf("GET %s code = %d body = %s", path, code, body)
 		}
 	}
-	code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/projects/%s", e.projectID), nil)
+	code, body = e.do(t, http.MethodDelete, e.projectPath(), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("delete project second code = %d body = %s", code, body)
 	}
@@ -71,15 +70,15 @@ func TestHTTPSoftDeleteUser(t *testing.T) {
 	e := newHTTPEnv(t)
 	u := mustHTTPUser(t, e)
 
-	code, body := e.do(t, http.MethodDelete, fmt.Sprintf("/users/%s", u.ID), nil)
+	code, body := e.do(t, http.MethodDelete, "/users/"+u.ID.String(), nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete user code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/users/%s", u.ID), nil)
+	code, body = e.do(t, http.MethodGet, "/users/"+u.ID.String(), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("get deleted user code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/users/%s", u.ID), nil)
+	code, body = e.do(t, http.MethodDelete, "/users/"+u.ID.String(), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("delete user second code = %d body = %s", code, body)
 	}
@@ -119,7 +118,7 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 		t.Fatalf("CreateSprint completed: %v", err)
 	}
 
-	code, body := e.do(t, http.MethodDelete, fmt.Sprintf("/sprints/%s", active.ID), nil)
+	code, body := e.do(t, http.MethodDelete, e.sprintPath(active), nil)
 	if code != http.StatusConflict {
 		t.Fatalf("delete active sprint code = %d body = %s", code, body)
 	}
@@ -132,17 +131,17 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 	if _, err := e.store.CompleteSprint(e.ctx, completed.ID); err != nil {
 		t.Fatalf("CompleteSprint completed: %v", err)
 	}
-	for _, id := range []uuid.UUID{active.ID, completed.ID} {
-		code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/sprints/%s", id), nil)
+	for _, sp := range []model.Sprint{active, completed} {
+		code, body = e.do(t, http.MethodDelete, e.sprintPath(sp), nil)
 		if code != http.StatusConflict {
-			t.Fatalf("delete completed sprint %s code = %d body = %s", id, code, body)
+			t.Fatalf("delete completed sprint %s code = %d body = %s", sp.ID, code, body)
 		}
 	}
-	code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/sprints/%s", planned.ID), nil)
+	code, body = e.do(t, http.MethodDelete, e.sprintPath(planned), nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete planned sprint code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/sprints/%s", planned.ID), nil)
+	code, body = e.do(t, http.MethodGet, e.sprintPath(planned), nil)
 	if code != http.StatusNotFound {
 		t.Fatalf("get deleted sprint code = %d body = %s", code, body)
 	}
@@ -150,21 +149,76 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 
 func TestHTTPSoftDeleteBadIDs(t *testing.T) {
 	e := newHTTPEnv(t)
-	for _, path := range []string{"/users/nope", "/projects/nope", "/issues/nope", "/sprints/nope"} {
+	for _, path := range []string{
+		"/users/nope",
+		"/bad!/projects/" + e.projKey,
+		"/" + e.ownerUsername + "/issues/nope",
+		e.projectPath() + "/sprints/nope",
+	} {
 		code, body := e.do(t, http.MethodDelete, path, nil)
 		if code != http.StatusBadRequest {
 			t.Fatalf("DELETE %s code = %d body = %s", path, code, body)
 		}
 	}
 	for _, path := range []string{
-		fmt.Sprintf("/users/%s", uuid.New()),
-		fmt.Sprintf("/projects/%s", uuid.New()),
-		fmt.Sprintf("/issues/%s", uuid.New()),
-		fmt.Sprintf("/sprints/%s", uuid.New()),
+		"/users/" + uuid.New().String(),
+		"/" + e.ownerUsername + "/projects/" + uniqueProjectKey(t),
+		"/" + e.ownerUsername + "/issues/" + e.projKey + "-999999",
+		e.projectPath() + "/sprints/sprint-999999",
 	} {
 		code, body := e.do(t, http.MethodDelete, path, nil)
 		if code != http.StatusNotFound {
 			t.Fatalf("DELETE %s code = %d body = %s", path, code, body)
+		}
+	}
+}
+
+func TestHTTPOldUUIDObjectRoutesRemoved(t *testing.T) {
+	e := newHTTPEnv(t)
+	issue := mustHTTPIssue(t, e)
+	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Old Route Sprint",
+		StartDate: dateHTTP(2026, 6, 1),
+		EndDate:   dateHTTP(2026, 6, 14),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	comment, err := e.store.CreateComment(e.ctx, store.CreateCommentParams{
+		IssueID:  issue.ID,
+		AuthorID: e.adminID,
+		Body:     "old route comment",
+	})
+	if err != nil {
+		t.Fatalf("CreateComment: %v", err)
+	}
+	target, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "old route target",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue target: %v", err)
+	}
+	link, err := e.store.CreateIssueLink(e.ctx, store.CreateIssueLinkParams{
+		SourceID: issue.ID,
+		TargetID: target.ID,
+		LinkType: model.LinkTypeBlocks,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+
+	for _, path := range []string{
+		"/projects/" + e.projectID.String(),
+		"/issues/" + issue.ID.String(),
+		"/sprints/" + sprint.ID.String(),
+		"/comments/" + comment.ID.String(),
+		"/issue-links/" + link.ID.String(),
+	} {
+		code, body := e.do(t, http.MethodGet, path, nil)
+		if code != http.StatusNotFound {
+			t.Fatalf("GET %s code = %d body = %s", path, code, body)
 		}
 	}
 }

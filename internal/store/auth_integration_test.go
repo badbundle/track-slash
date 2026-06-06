@@ -292,7 +292,11 @@ func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListProjectMembers: %v", err)
 	}
-	if len(members) != 1 || members[0].UserID != u.ID {
+	seenMembers := map[uuid.UUID]bool{}
+	for _, member := range members {
+		seenMembers[member.UserID] = true
+	}
+	if len(members) != 2 || !seenMembers[u.ID] {
 		t.Fatalf("members = %+v", members)
 	}
 	ok, err := env.store.UserCanAccessProject(env.ctx, u, env.projectID)

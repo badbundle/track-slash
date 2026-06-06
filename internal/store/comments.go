@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -18,20 +19,51 @@ type CreateCommentParams struct {
 	Body     string
 }
 
-func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model.Comment, error) {
-	const q = `
-		INSERT INTO comments (issue_id, author_id, body)
-		SELECT id, $2, $3 FROM issues WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, issue_id, author_id, body, created_at, updated_at
-	`
+type commentScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanComment(row commentScanner) (model.Comment, error) {
 	var out model.Comment
-	err := s.db.QueryRow(ctx, q, p.IssueID, p.AuthorID, p.Body).Scan(
-		&out.ID, &out.IssueID, &out.AuthorID, &out.Body, &out.CreatedAt, &out.UpdatedAt,
-	)
+	err := row.Scan(&out.ID, &out.IssueID, &out.Number, &out.AuthorID, &out.Body, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
-		if isNoRows(err) {
-			return model.Comment{}, fmt.Errorf("issue not found: %w", ErrNotFound)
+		return model.Comment{}, err
+	}
+	out.Ref = model.CommentRef(out.Number)
+	return out, nil
+}
+
+func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model.Comment, error) {
+	var out model.Comment
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var number int
+		if err := tx.QueryRow(ctx, `
+			SELECT next_comment_number
+			FROM issues
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR UPDATE
+		`, p.IssueID).Scan(&number); err != nil {
+			if isNoRows(err) {
+				return fmt.Errorf("issue not found: %w", ErrNotFound)
+			}
+			return err
 		}
+		var err error
+		out, err = scanComment(tx.QueryRow(ctx, `
+			INSERT INTO comments (issue_id, number, author_id, body)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id, issue_id, number, author_id, body, created_at, updated_at
+		`, p.IssueID, number, p.AuthorID, p.Body))
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE issues SET next_comment_number = next_comment_number + 1, updated_at = now()
+			WHERE id = $1
+		`, p.IssueID)
+		return err
+	})
+	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
@@ -49,18 +81,31 @@ func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model
 
 func (s *Store) GetComment(ctx context.Context, id uuid.UUID) (model.Comment, error) {
 	const q = `
-		SELECT id, issue_id, author_id, body, created_at, updated_at
+		SELECT id, issue_id, number, author_id, body, created_at, updated_at
 		FROM comments WHERE id = $1
 	`
-	var out model.Comment
-	err := s.db.QueryRow(ctx, q, id).Scan(
-		&out.ID, &out.IssueID, &out.AuthorID, &out.Body, &out.CreatedAt, &out.UpdatedAt,
-	)
+	out, err := scanComment(s.db.QueryRow(ctx, q, id))
 	if err != nil {
 		if isNoRows(err) {
 			return model.Comment{}, ErrNotFound
 		}
 		// Defensive: only no-rows has a domain mapping here.
+		return model.Comment{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) GetCommentForIssueByNumber(ctx context.Context, issueID uuid.UUID, number int) (model.Comment, error) {
+	const q = `
+		SELECT id, issue_id, number, author_id, body, created_at, updated_at
+		FROM comments
+		WHERE issue_id = $1 AND number = $2
+	`
+	out, err := scanComment(s.db.QueryRow(ctx, q, issueID, number))
+	if err != nil {
+		if isNoRows(err) {
+			return model.Comment{}, ErrNotFound
+		}
 		return model.Comment{}, err
 	}
 	return out, nil
@@ -89,7 +134,7 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 
 	args := []any{p.IssueID}
 	q := `
-		SELECT c.id, c.issue_id, c.author_id, c.body, c.created_at, c.updated_at
+		SELECT c.id, c.issue_id, c.number, c.author_id, c.body, c.created_at, c.updated_at
 		FROM comments c
 		WHERE c.issue_id = $1
 	`
@@ -109,8 +154,8 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 
 	out := make([]model.Comment, 0, p.Limit)
 	for rows.Next() {
-		var c model.Comment
-		if err := rows.Scan(&c.ID, &c.IssueID, &c.AuthorID, &c.Body, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		c, err := scanComment(rows)
+		if err != nil {
 			// Defensive: selected columns match model fields.
 			return nil, false, err
 		}
@@ -131,12 +176,9 @@ func (s *Store) UpdateComment(ctx context.Context, id uuid.UUID, body string) (m
 	const q = `
 		UPDATE comments SET body = $1, updated_at = now()
 		WHERE id = $2
-		RETURNING id, issue_id, author_id, body, created_at, updated_at
+		RETURNING id, issue_id, number, author_id, body, created_at, updated_at
 	`
-	var out model.Comment
-	err := s.db.QueryRow(ctx, q, body, id).Scan(
-		&out.ID, &out.IssueID, &out.AuthorID, &out.Body, &out.CreatedAt, &out.UpdatedAt,
-	)
+	out, err := scanComment(s.db.QueryRow(ctx, q, body, id))
 	if err != nil {
 		if isNoRows(err) {
 			return model.Comment{}, ErrNotFound

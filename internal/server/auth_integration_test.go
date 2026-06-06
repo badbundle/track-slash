@@ -45,19 +45,23 @@ func TestHTTPAuthRequiredAndAdminOnly(t *testing.T) {
 		t.Fatalf("me = %+v", me)
 	}
 
-	code, body = e.do(t, http.MethodPut, fmt.Sprintf("/projects/%s/members/%s", e.projectID, user.ID), nil)
+	code, body = e.do(t, http.MethodPut, e.projectPath()+"/members/"+user.Username, nil)
 	if code != http.StatusOK {
 		t.Fatalf("grant code = %d body = %s", code, body)
 	}
-	code, body = e.do(t, http.MethodGet, fmt.Sprintf("/projects/%s/members", e.projectID), nil)
+	code, body = e.do(t, http.MethodGet, e.projectPath()+"/members", nil)
 	if code != http.StatusOK {
 		t.Fatalf("list members code = %d body = %s", code, body)
 	}
 	members := decode[[]model.ProjectMember](t, body)
-	if len(members) != 1 || members[0].UserID != user.ID {
+	seenMembers := map[uuid.UUID]bool{}
+	for _, member := range members {
+		seenMembers[member.UserID] = true
+	}
+	if len(members) != 2 || !seenMembers[e.adminID] || !seenMembers[user.ID] {
 		t.Fatalf("members = %+v", members)
 	}
-	code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/projects/%s/members/%s", e.projectID, user.ID), nil)
+	code, body = e.do(t, http.MethodDelete, e.projectPath()+"/members/"+user.Username, nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("revoke member code = %d body = %s", code, body)
 	}
@@ -117,7 +121,7 @@ func TestHTTPMemberCanCreateProjectAndGetsAccess(t *testing.T) {
 		t.Fatalf("visible projects = %+v", page.Items)
 	}
 
-	code, body = e.doWithToken(t, token, http.MethodGet, fmt.Sprintf("/projects/%s", p.ID), nil)
+	code, body = e.doWithToken(t, token, http.MethodGet, "/"+p.OwnerUsername+"/projects/"+p.Key, nil)
 	if code != http.StatusOK {
 		t.Fatalf("get created project code = %d body = %s", code, body)
 	}
@@ -177,7 +181,7 @@ func TestHTTPProjectMembershipFiltersAndForbids(t *testing.T) {
 		t.Fatalf("visible projects = %+v", page.Items)
 	}
 
-	code, body = e.doWithToken(t, token, http.MethodGet, fmt.Sprintf("/projects/%s", other.ID), nil)
+	code, body = e.doWithToken(t, token, http.MethodGet, "/"+other.OwnerUsername+"/projects/"+other.Key, nil)
 	if code != http.StatusForbidden {
 		t.Fatalf("forbidden project code = %d body = %s", code, body)
 	}
@@ -414,15 +418,15 @@ func TestHTTPProjectScopedIDRoutesForbidOtherProjects(t *testing.T) {
 		t.Fatalf("CreateIssue other: %v", err)
 	}
 
-	code, body := e.doWithToken(t, token, http.MethodGet, fmt.Sprintf("/issues/%s", own.ID), nil)
+	code, body := e.doWithToken(t, token, http.MethodGet, e.issuePath(own), nil)
 	if code != http.StatusOK {
 		t.Fatalf("own issue code = %d body = %s", code, body)
 	}
-	code, body = e.doWithToken(t, token, http.MethodGet, fmt.Sprintf("/issues/%s", otherIssue.ID), nil)
+	code, body = e.doWithToken(t, token, http.MethodGet, e.issuePath(otherIssue), nil)
 	if code != http.StatusForbidden {
 		t.Fatalf("other issue code = %d body = %s", code, body)
 	}
-	code, body = e.doWithToken(t, token, http.MethodGet, fmt.Sprintf("/issues?ids=%s,%s", own.ID, otherIssue.ID), nil)
+	code, body = e.doWithToken(t, token, http.MethodGet, "/"+e.ownerUsername+"/issues?refs="+own.Identifier+","+otherIssue.Identifier, nil)
 	if code != http.StatusForbidden {
 		t.Fatalf("mixed batch code = %d body = %s", code, body)
 	}
@@ -435,7 +439,7 @@ func TestHTTPAuthenticatedAttribution(t *testing.T) {
 		t.Fatalf("GrantProjectAccess: %v", err)
 	}
 
-	code, body := e.doWithToken(t, token, http.MethodPost, fmt.Sprintf("/projects/%s/issues", e.projectID), map[string]any{
+	code, body := e.doWithToken(t, token, http.MethodPost, e.projectIssuesPath(), map[string]any{
 		"title": "reported by current user",
 	})
 	if code != http.StatusCreated {
@@ -446,7 +450,7 @@ func TestHTTPAuthenticatedAttribution(t *testing.T) {
 		t.Fatalf("reporter_id = %v, want %s", iss.ReporterID, user.ID)
 	}
 
-	code, body = e.doWithToken(t, token, http.MethodPost, fmt.Sprintf("/issues/%s/comments", iss.ID), map[string]any{
+	code, body = e.doWithToken(t, token, http.MethodPost, e.issueCommentsPath(iss), map[string]any{
 		"author_id": uuid.NewString(),
 		"body":      "current user wins",
 	})
@@ -459,7 +463,7 @@ func TestHTTPAuthenticatedAttribution(t *testing.T) {
 	}
 
 	override, _ := e.mustUserToken(t, "override")
-	code, body = e.do(t, http.MethodPost, fmt.Sprintf("/projects/%s/issues", e.projectID), map[string]any{
+	code, body = e.do(t, http.MethodPost, e.projectIssuesPath(), map[string]any{
 		"title":       "admin override",
 		"reporter_id": override.ID,
 	})

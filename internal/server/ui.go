@@ -26,15 +26,21 @@ const uiAuthCookieName = "track_slash_ui_token"
 var errUIForbidden = errors.New("forbidden")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":      uiInitials,
-	"linkLabel":     uiIssueLinkLabel,
-	"projectIcon":   uiProjectIcon,
-	"sprintDate":    uiSprintDate,
-	"statusClass":   uiStatusClass,
-	"statusLabel":   uiStatusLabel,
-	"statusRow":     uiStatusRowClass,
-	"statusSurface": uiStatusSurfaceClass,
-	"tokenTime":     uiTokenTime,
+	"initials":       uiInitials,
+	"issueComments":  uiIssueCommentsPath,
+	"issueHref":      uiIssuePath,
+	"issuePanel":     uiIssuePanelPath,
+	"issueSubIssues": uiIssueSubIssuesPath,
+	"linkLabel":      uiIssueLinkLabel,
+	"projectPanel":   uiProjectPanelPath,
+	"projectView":    uiProjectViewPath,
+	"projectIcon":    uiProjectIcon,
+	"sprintDate":     uiSprintDate,
+	"statusClass":    uiStatusClass,
+	"statusLabel":    uiStatusLabel,
+	"statusRow":      uiStatusRowClass,
+	"statusSurface":  uiStatusSurfaceClass,
+	"tokenTime":      uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -194,17 +200,17 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
-		r.Get("/issues/{id}", s.uiIssuePage)
-		r.Get("/issues/{id}/panel", s.uiIssuePanel)
-		r.Post("/issues/{id}/sub-issues", s.uiCreateSubIssue)
-		r.Post("/issues/{id}/comments", s.uiCreateComment)
-		r.Get("/projects/{id}", s.uiProjectPage)
-		r.Get("/projects/{id}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
-		r.Get("/projects/{id}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
-		r.Get("/projects/{id}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
-		r.Get("/projects/{id}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
-		r.Get("/projects/{id}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "backlog") })
-		r.Get("/projects/{id}/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "backlog") })
+		r.Get("/{owner}/issues/{issueRef}", s.uiIssuePage)
+		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
+		r.Post("/{owner}/issues/{issueRef}/sub-issues", s.uiCreateSubIssue)
+		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
+		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
+		r.Get("/{owner}/projects/{key}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
+		r.Get("/{owner}/projects/{key}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
+		r.Get("/{owner}/projects/{key}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
+		r.Get("/{owner}/projects/{key}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
+		r.Get("/{owner}/projects/{key}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "backlog") })
+		r.Get("/{owner}/projects/{key}/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "backlog") })
 	})
 }
 
@@ -476,7 +482,7 @@ func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/projects", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+projects[0].ID.String()+"/about", http.StatusSeeOther)
+	http.Redirect(w, r, uiProjectViewPath(projects[0], "about"), http.StatusSeeOther)
 }
 
 func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -545,7 +551,7 @@ func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+project.ID.String()+"/about", http.StatusSeeOther)
+	http.Redirect(w, r, uiProjectViewPath(project, "about"), http.StatusSeeOther)
 }
 
 func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
@@ -563,19 +569,19 @@ func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status
 }
 
 func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := uiProjectID(w, r)
+	project, ok := s.uiProjectFromRoute(w, r)
 	if !ok {
 		return
 	}
-	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), projectID); err != nil {
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+projectID.String()+"/about", http.StatusSeeOther)
+	http.Redirect(w, r, uiProjectViewPath(project, "about"), http.StatusSeeOther)
 }
 
 func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view string) {
-	projectID, ok := uiProjectID(w, r)
+	project, ok := s.uiProjectFromRoute(w, r)
 	if !ok {
 		return
 	}
@@ -584,7 +590,7 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	panel, err := s.uiBuildProjectPanel(r.Context(), r, projectID, view)
+	panel, err := s.uiBuildProjectPanel(r.Context(), r, project.ID, view)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -592,18 +598,18 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
-		CurrentProjectID: projectID,
+		CurrentProjectID: project.ID,
 		CurrentView:      "projects",
 		ProjectPanel:     panel,
 	})
 }
 
 func (s *Server) uiProjectWorkPanel(w http.ResponseWriter, r *http.Request, view string) {
-	projectID, ok := uiProjectID(w, r)
+	project, ok := s.uiProjectFromRoute(w, r)
 	if !ok {
 		return
 	}
-	panel, err := s.uiBuildProjectPanel(r.Context(), r, projectID, view)
+	panel, err := s.uiBuildProjectPanel(r.Context(), r, project.ID, view)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -612,11 +618,11 @@ func (s *Server) uiProjectWorkPanel(w http.ResponseWriter, r *http.Request, view
 }
 
 func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
-	issueID, ok := uiIssueID(w, r)
+	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
 		return
 	}
-	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -636,11 +642,11 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
-	issueID, ok := uiIssueID(w, r)
+	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
 		return
 	}
-	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -649,7 +655,7 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
-	parentID, ok := uiIssueID(w, r)
+	parent, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
 		return
 	}
@@ -659,32 +665,27 @@ func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	title := strings.TrimSpace(r.Form.Get("title"))
 	if title == "" || len(title) > 200 {
-		s.renderUIIssuePanelWithSubIssueError(w, r, parentID, r.Form.Get("title"), "Title required, max 200 chars.")
+		s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), "Title required, max 200 chars.")
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), parentID)
-	if err != nil {
-		writeUIStoreError(w, err)
-		return
-	}
-	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), projectID); err != nil {
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), parent.ProjectID); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
 	reporterID := currentUser(r).ID
 	if _, err := s.store.CreateSubIssue(r.Context(), store.CreateSubIssueParams{
-		ParentIssueID: parentID,
+		ParentIssueID: parent.ID,
 		Title:         title,
 		ReporterID:    &reporterID,
 	}); err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			s.renderUIIssuePanelWithSubIssueError(w, r, parentID, r.Form.Get("title"), "Sub-issue could not be created for this issue.")
+			s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), "Sub-issue could not be created for this issue.")
 			return
 		}
 		writeUIStoreError(w, err)
 		return
 	}
-	panel, err := s.uiBuildIssuePanel(r.Context(), r, parentID)
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, parent.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -693,7 +694,7 @@ func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
-	issueID, ok := uiIssueID(w, r)
+	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
 		return
 	}
@@ -703,27 +704,22 @@ func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 	}
 	body := strings.TrimSpace(r.Form.Get("body"))
 	if body == "" || len(body) > 10000 {
-		s.renderUIIssuePanelWithCommentError(w, r, issueID, r.Form.Get("body"), "Comment required, max 10000 chars.")
+		s.renderUIIssuePanelWithCommentError(w, r, issue.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")
 		return
 	}
-	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
-	if err != nil {
-		writeUIStoreError(w, err)
-		return
-	}
-	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), projectID); err != nil {
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
 	if _, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
-		IssueID:  issueID,
+		IssueID:  issue.ID,
 		AuthorID: currentUser(r).ID,
 		Body:     body,
 	}); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
-	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -841,7 +837,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	panel := &uiProjectPanelData{
 		Project:     project,
 		View:        view,
-		ProjectTabs: uiProjectTabs(projectID, view),
+		ProjectTabs: uiProjectTabs(project, view),
 	}
 
 	switch view {
@@ -1023,7 +1019,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		linkItems = append(linkItems, item)
 	}
 
-	backHref, backHXGet, backLabel := uiIssueBackLink(projectID, issue, parentIssue, sprint)
+	backHref, backHXGet, backLabel := uiIssueBackLink(project, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
 		Issue:            issue,
 		Project:          project,
@@ -1096,16 +1092,16 @@ func (s *Server) uiLinkedIssues(ctx context.Context, issueID uuid.UUID, links []
 	return out, nil
 }
 
-func uiIssueBackLink(projectID uuid.UUID, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
 	if parent != nil {
-		base := "/issues/" + parent.ID.String()
+		base := uiIssuePath(*parent)
 		return base, base + "/panel", "Parent issue"
 	}
 	view := "sprint"
 	if issue.SprintID == nil || (sprint != nil && sprint.Status == model.SprintStatusPlanned) {
 		view = "backlog"
 	}
-	base := "/projects/" + projectID.String() + "/" + view
+	base := uiProjectViewPath(project, view)
 	label = "Sprint"
 	if view == "backlog" {
 		label = "Backlog"
@@ -1113,8 +1109,8 @@ func uiIssueBackLink(projectID uuid.UUID, issue model.Issue, parent *model.Issue
 	return base, base + "/panel", label
 }
 
-func uiProjectTabs(projectID uuid.UUID, view string) uiTabBarData {
-	base := "/projects/" + projectID.String()
+func uiProjectTabs(project model.Project, view string) uiTabBarData {
+	base := uiProjectPath(project)
 	return uiTabBarData{
 		Label: "Project views",
 		Items: []uiTabItem{
@@ -1187,22 +1183,83 @@ func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, pr
 	return nil
 }
 
-func uiProjectID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	projectID, err := uuid.Parse(chi.URLParam(r, "id"))
+func (s *Server) uiProjectFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, bool) {
+	owner, err := store.NormalizeUsername(chi.URLParam(r, "owner"))
 	if err != nil {
-		http.Error(w, "invalid project id", http.StatusBadRequest)
-		return uuid.Nil, false
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return model.Project{}, false
 	}
-	return projectID, true
+	key := strings.ToUpper(strings.TrimSpace(chi.URLParam(r, "key")))
+	if !projectKeyRe.MatchString(key) {
+		http.Error(w, "invalid project key", http.StatusBadRequest)
+		return model.Project{}, false
+	}
+	project, err := s.store.GetProjectByOwnerKey(r.Context(), owner, key)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Project{}, false
+	}
+	return project, true
 }
 
-func uiIssueID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	issueID, err := uuid.Parse(chi.URLParam(r, "id"))
+func (s *Server) uiIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
+	owner, err := store.NormalizeUsername(chi.URLParam(r, "owner"))
 	if err != nil {
-		http.Error(w, "invalid issue id", http.StatusBadRequest)
-		return uuid.Nil, false
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return model.Issue{}, false
 	}
-	return issueID, true
+	ref, err := parseIssueRef(chi.URLParam(r, "issueRef"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return model.Issue{}, false
+	}
+	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Issue{}, false
+	}
+	return issue, true
+}
+
+func uiProjectPath(project model.Project) string {
+	return "/" + project.OwnerUsername + "/projects/" + project.Key
+}
+
+func uiProjectViewPath(project model.Project, view string) string {
+	return uiProjectPath(project) + "/" + view
+}
+
+func uiProjectPanelPath(project model.Project, view string) string {
+	return uiProjectViewPath(project, view) + "/panel"
+}
+
+func uiIssuePath(v any) string {
+	issue := uiIssueValue(v)
+	return "/" + issue.OwnerUsername + "/issues/" + issue.Identifier
+}
+
+func uiIssuePanelPath(issue any) string {
+	return uiIssuePath(issue) + "/panel"
+}
+
+func uiIssueCommentsPath(issue any) string {
+	return uiIssuePath(issue) + "/comments"
+}
+
+func uiIssueSubIssuesPath(issue any) string {
+	return uiIssuePath(issue) + "/sub-issues"
+}
+
+func uiIssueValue(v any) model.Issue {
+	switch issue := v.(type) {
+	case model.Issue:
+		return issue
+	case *model.Issue:
+		if issue != nil {
+			return *issue
+		}
+	}
+	return model.Issue{}
 }
 
 func redirectUILogin(w http.ResponseWriter, r *http.Request) {
@@ -1231,45 +1288,50 @@ func safeUINext(raw string) string {
 }
 
 func safeUIProjectPath(path string) bool {
-	rest, ok := strings.CutPrefix(path, "/projects/")
-	if !ok || rest == "" {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) != 3 && len(parts) != 4 && len(parts) != 5 {
 		return false
 	}
-	parts := strings.Split(rest, "/")
-	if len(parts) != 1 && len(parts) != 2 && len(parts) != 3 {
+	if _, err := store.NormalizeUsername(parts[0]); err != nil {
 		return false
 	}
-	if _, err := uuid.Parse(parts[0]); err != nil {
+	if parts[1] != "projects" {
 		return false
 	}
-	if len(parts) == 1 {
+	key := strings.ToUpper(parts[2])
+	if !projectKeyRe.MatchString(key) {
+		return false
+	}
+	if len(parts) == 3 {
 		return true
 	}
-	if parts[1] != "about" && parts[1] != "sprint" && parts[1] != "backlog" {
+	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "backlog" {
 		return false
 	}
-	if len(parts) == 2 {
+	if len(parts) == 4 {
 		return true
 	}
-	return parts[2] == "panel"
+	return parts[4] == "panel"
 }
 
 func safeUIIssuePath(path string) bool {
-	rest, ok := strings.CutPrefix(path, "/issues/")
-	if !ok || rest == "" {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) != 3 && len(parts) != 4 {
 		return false
 	}
-	parts := strings.Split(rest, "/")
-	if len(parts) != 1 && len(parts) != 2 {
+	if _, err := store.NormalizeUsername(parts[0]); err != nil {
 		return false
 	}
-	if _, err := uuid.Parse(parts[0]); err != nil {
+	if parts[1] != "issues" {
 		return false
 	}
-	if len(parts) == 1 {
+	if _, err := parseIssueRef(parts[2]); err != nil {
+		return false
+	}
+	if len(parts) == 3 {
 		return true
 	}
-	return parts[1] == "panel"
+	return parts[3] == "panel"
 }
 
 func renderUITemplate(w http.ResponseWriter, status int, name string, data any) {

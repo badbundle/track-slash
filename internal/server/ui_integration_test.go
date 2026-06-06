@@ -53,7 +53,7 @@ func TestUILoginSetsCookie(t *testing.T) {
 	if _, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{Username: username, Password: password, Name: "UI Login"}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
-	next := "/projects/" + e.projectID.String() + "/about"
+	next := e.projectPath() + "/about"
 	form := url.Values{"username": {username}, "password": {password}, "next": {next}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
 	defer res.Body.Close()
@@ -134,22 +134,22 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 
 func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	e := newHTTPEnv(t)
-	_, token := e.mustProjectMemberToken(t, "ui-projects")
+	user, token := e.mustProjectMemberToken(t, "ui-projects")
 	hidden, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Hidden UI Project", "")
 	if err != nil {
 		t.Fatalf("CreateProject hidden: %v", err)
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="/projects/` + e.projectID.String() + `/about"`, `hx-get="/projects/` + e.projectID.String() + `/about/panel"`} {
+	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/about"`, `hx-get="` + e.projectPath() + `/about/panel"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, `href="/projects/`+e.projectID.String()+`/sprint"`) {
+	if strings.Contains(body, `href="`+e.projectPath()+`/sprint"`) {
 		t.Fatalf("projects body included sprint row action: %s", body)
 	}
-	if strings.Contains(body, `href="/projects/`+e.projectID.String()+`/backlog"`) {
+	if strings.Contains(body, `href="`+e.projectPath()+`/backlog"`) {
 		t.Fatalf("projects body included backlog row action: %s", body)
 	}
 	if strings.Contains(body, hidden.Name) {
@@ -164,7 +164,11 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 		t.Fatalf("bad key code = %d body = %s", res.StatusCode, body)
 	}
 
-	form = url.Values{"key": {e.projKey}, "name": {"Duplicate"}}
+	dupKey := uniqueProjectKey(t)
+	if _, err := e.store.CreateProjectForUser(e.ctx, user.ID, dupKey, "Duplicate Source", ""); err != nil {
+		t.Fatalf("CreateProjectForUser duplicate source: %v", err)
+	}
+	form = url.Values{"key": {dupKey}, "name": {"Duplicate"}}
 	res = e.uiDoNoRedirect(t, http.MethodPost, "/projects", token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
@@ -180,7 +184,7 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 		t.Fatalf("create code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	loc := res.Header.Get("Location")
-	if !strings.HasPrefix(loc, "/projects/") || !strings.HasSuffix(loc, "/about") {
+	if loc != "/"+user.Username+"/projects/"+key+"/about" {
 		t.Fatalf("Location = %q", loc)
 	}
 	body = e.uiGet(t, loc, token)
@@ -398,7 +402,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 		t.Fatalf("assign other: %v", err)
 	}
 
-	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/sprint", token)
+	body := e.uiGet(t, e.projectPath()+"/sprint", token)
 	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
@@ -482,7 +486,7 @@ func TestUIRendersProjectBacklog(t *testing.T) {
 		t.Fatalf("assign other planned: %v", err)
 	}
 
-	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/backlog", token)
+	body := e.uiGet(t, e.projectPath()+"/backlog", token)
 	for _, want := range []string{"Planned sprints", "Second Planned Sprint", "First Planned Sprint", "scheduled second issue", "scheduled first issue", "Backlog", backlogIssue.Title} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("backlog body missing %q: %s", want, body)
@@ -574,7 +578,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		t.Fatalf("CreateComment other: %v", err)
 	}
 
-	body := e.uiGet(t, "/issues/"+issue.ID.String(), token)
+	body := e.uiGet(t, e.issuePath(issue), token)
 	for _, want := range []string{
 		"detail page issue",
 		"read only body",
@@ -599,18 +603,18 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
-		`method="post" action="/issues/` + issue.ID.String() + `/comments"`,
-		`hx-post="/issues/` + issue.ID.String() + `/comments"`,
+		`method="post" action="` + e.issueCommentsPath(issue) + `"`,
+		`hx-post="` + e.issueCommentsPath(issue) + `"`,
 		`data-submit-shortcut="meta-enter"`,
 		"disabled",
-		`href="/projects/` + e.projectID.String() + `/backlog"`,
-		`hx-get="/projects/` + e.projectID.String() + `/backlog/panel"`,
-		`href="/issues/` + linked.ID.String() + `"`,
-		`hx-get="/issues/` + linked.ID.String() + `/panel"`,
-		`href="/issues/` + subIssue.ID.String() + `"`,
-		`hx-get="/issues/` + subIssue.ID.String() + `/panel"`,
-		`method="post" action="/issues/` + issue.ID.String() + `/sub-issues"`,
-		`hx-post="/issues/` + issue.ID.String() + `/sub-issues"`,
+		`href="` + e.projectPath() + `/backlog"`,
+		`hx-get="` + e.projectPath() + `/backlog/panel"`,
+		`href="` + e.issuePath(linked) + `"`,
+		`hx-get="` + e.issuePath(linked) + `/panel"`,
+		`href="` + e.issuePath(subIssue) + `"`,
+		`hx-get="` + e.issuePath(subIssue) + `/panel"`,
+		`method="post" action="` + e.issueSubIssuesPath(issue) + `"`,
+		`hx-post="` + e.issueSubIssuesPath(issue) + `"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue body missing %q: %s", want, body)
@@ -661,7 +665,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		}
 	}
 
-	panel := e.uiGet(t, "/issues/"+issue.ID.String()+"/panel", token)
+	panel := e.uiGet(t, e.issuePath(issue)+"/panel", token)
 	if strings.Contains(panel, "<!doctype html>") {
 		t.Fatalf("panel returned shell: %s", panel)
 	}
@@ -679,7 +683,7 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	}
 
 	form := url.Values{"body": {"new ui comment"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+issue.ID.String()+"/comments", token, strings.NewReader(form.Encode()))
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issueCommentsPath(issue), token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	body := readBody(t, res)
 	if res.StatusCode != http.StatusOK {
@@ -699,7 +703,7 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	}
 
 	empty := url.Values{"body": {"   "}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+issue.ID.String()+"/comments", token, strings.NewReader(empty.Encode()))
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueCommentsPath(issue), token, strings.NewReader(empty.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
@@ -726,7 +730,7 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	}
 
 	form := url.Values{"title": {"new child from ui"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+parent.ID.String()+"/sub-issues", token, strings.NewReader(form.Encode()))
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issueSubIssuesPath(parent), token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	body := readBody(t, res)
 	if res.StatusCode != http.StatusOK {
@@ -749,7 +753,7 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	}
 
 	empty := url.Values{"title": {"   "}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+parent.ID.String()+"/sub-issues", token, strings.NewReader(empty.Encode()))
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueSubIssuesPath(parent), token, strings.NewReader(empty.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
@@ -781,15 +785,15 @@ func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing
 		t.Fatalf("CreateSubIssue: %v", err)
 	}
 
-	body := e.uiGet(t, "/issues/"+child.ID.String(), token)
+	body := e.uiGet(t, e.issuePath(child), token)
 	for _, want := range []string{
 		"child detail issue",
 		"child detail body",
 		"Sub-issue of",
 		"Parent",
 		"parent detail issue",
-		`href="/issues/` + parent.ID.String() + `"`,
-		`hx-get="/issues/` + parent.ID.String() + `/panel"`,
+		`href="` + e.issuePath(parent) + `"`,
+		`hx-get="` + e.issuePath(parent) + `/panel"`,
 		`data-lucide="corner-up-left"`,
 		user.Name,
 	} {
@@ -799,7 +803,7 @@ func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing
 	}
 	for _, notWant := range []string{
 		"Sub-issues",
-		`action="/issues/` + child.ID.String() + `/sub-issues"`,
+		`action="` + e.issueSubIssuesPath(child) + `"`,
 		`aria-label="Create sub-issue"`,
 		`aria-label="Edit sprint"`,
 		">Sprint</dt>",
@@ -817,24 +821,24 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 	_, token := e.mustUserToken(t, "ui-issue-denied")
-	res := e.uiDoNoRedirect(t, http.MethodGet, "/issues/"+issue.ID.String(), token, nil)
+	res := e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), token, nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue detail code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	form := url.Values{"body": {"denied comment"}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+issue.ID.String()+"/comments", token, strings.NewReader(form.Encode()))
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueCommentsPath(issue), token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue comment code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 
-	res = e.uiDoNoRedirect(t, http.MethodGet, "/issues/"+issue.ID.String(), "", nil)
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), "", nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("unauth issue code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	if loc := res.Header.Get("Location"); loc != "/login?next=%2Fissues%2F"+issue.ID.String() {
+	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issuePath(issue)) {
 		t.Fatalf("Location = %q", loc)
 	}
 
@@ -844,9 +848,9 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		path   string
 		body   io.Reader
 	}{
-		{method: http.MethodGet, path: "/issues/not-a-uuid"},
-		{method: http.MethodGet, path: "/issues/not-a-uuid/panel"},
-		{method: http.MethodPost, path: "/issues/not-a-uuid/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref"},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/panel"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
 	} {
 		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, tc.body)
 		defer res.Body.Close()
@@ -867,11 +871,11 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
-	wantHref := `href="/issues/` + issue.ID.String() + `"`
-	wantHXGet := `hx-get="/issues/` + issue.ID.String() + `/panel"`
-	wantHXPush := `hx-push-url="/issues/` + issue.ID.String() + `"`
+	wantHref := `href="` + e.issuePath(issue) + `"`
+	wantHXGet := `hx-get="` + e.issuePath(issue) + `/panel"`
+	wantHXPush := `hx-push-url="` + e.issuePath(issue) + `"`
 
-	for _, path := range []string{"/projects/" + e.projectID.String() + "/backlog", "/me"} {
+	for _, path := range []string{e.projectPath() + "/backlog", "/me"} {
 		body := e.uiGet(t, path, token)
 		for _, want := range []string{wantHref, wantHXGet, wantHXPush, `data-main-view="projects"`} {
 			if !strings.Contains(body, want) {
@@ -885,13 +889,19 @@ func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-routes")
 
-	res := e.uiDoNoRedirect(t, http.MethodGet, "/projects/"+e.projectID.String(), token, nil)
+	res := e.uiDoNoRedirect(t, http.MethodGet, e.projectPath(), token, nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("project root code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/about" {
+	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/about" {
 		t.Fatalf("project root Location = %q", loc)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, "/projects/"+e.projectID.String(), token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("old project UUID route code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 
 	for _, path := range []string{"/sprint", "/sprint/panel", "/backlog", "/backlog/panel"} {
@@ -907,7 +917,7 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustUserToken(t, "ui-no-project")
 
-	for _, path := range []string{"/projects/" + e.projectID.String() + "/about", "/projects/" + e.projectID.String() + "/sprint", "/projects/" + e.projectID.String() + "/backlog"} {
+	for _, path := range []string{e.projectPath() + "/about", e.projectPath() + "/sprint", e.projectPath() + "/backlog"} {
 		res := e.uiDoNoRedirect(t, http.MethodGet, path, token, nil)
 		defer res.Body.Close()
 		if res.StatusCode != http.StatusForbidden {
@@ -919,7 +929,7 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 func TestUIRendersProjectSprintEmptyState(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-empty")
-	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/sprint", token)
+	body := e.uiGet(t, e.projectPath()+"/sprint", token)
 	if !strings.Contains(body, "No active sprint.") {
 		t.Fatalf("body missing no-active-sprint state: %s", body)
 	}
@@ -952,7 +962,7 @@ func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 		t.Fatalf("CreateIssue backlog: %v", err)
 	}
 
-	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/sprint", token)
+	body := e.uiGet(t, e.projectPath()+"/sprint", token)
 	if !strings.Contains(body, "issue inside active sprint") {
 		t.Fatalf("sprint body missing sprint issue: %s", body)
 	}
@@ -1043,7 +1053,7 @@ func TestUIHomeRedirectsToFirstProject(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/about" {
+	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/about" {
 		t.Fatalf("Location = %q", loc)
 	}
 }
