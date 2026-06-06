@@ -151,6 +151,36 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	}
 }
 
+func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		path      string
+		wantClass string
+	}{
+		{name: "work", path: "templates/work_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "projects", path: "templates/projects_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "project", path: "templates/project_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "issue", path: "templates/issue_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "settings", path: "templates/settings.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "tokens", path: "templates/tokens.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "empty shell", path: "templates/shell.html", wantClass: `class="mx-auto max-w-6xl px-6 py-8"`},
+	} {
+		src, err := uiTemplateFS.ReadFile(tt.path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", tt.name, err)
+		}
+		body := string(src)
+		if !strings.Contains(body, tt.wantClass) {
+			t.Fatalf("%s panel missing shared page width %q: %s", tt.name, tt.wantClass, body)
+		}
+		if strings.Contains(body, "max-w-5xl") {
+			t.Fatalf("%s panel still uses narrower page width: %s", tt.name, body)
+		}
+	}
+}
+
 func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	t.Parallel()
 
