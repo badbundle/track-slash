@@ -29,6 +29,10 @@ type updateSprintReq struct {
 	Status    *model.SprintStatus `json:"status,omitempty"`
 }
 
+type reorderPlannedSprintsReq struct {
+	SprintIDs []uuid.UUID `json:"sprint_ids"`
+}
+
 func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
 	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
 	if err != nil {
@@ -128,14 +132,45 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 	var next *string
 	if hasMore {
 		last := out[len(out)-1]
-		enc := encodeCursor(store.SprintsCursor{
+		c := store.SprintsCursor{
 			StartDate: last.StartDate,
 			CreatedAt: last.CreatedAt,
 			ID:        last.ID,
-		})
+		}
+		if statusFilter == model.SprintStatusPlanned && last.PlannedOrder != nil {
+			c.PlannedOrder = *last.PlannedOrder
+		}
+		enc := encodeCursor(c)
 		next = &enc
 	}
 	writePage(w, out, next)
+}
+
+func (s *Server) reorderPlannedSprints(w http.ResponseWriter, r *http.Request) {
+	projectID, err := uuid.Parse(chi.URLParam(r, "projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	if !s.requireProjectAccess(w, r, projectID) {
+		return
+	}
+
+	var req reorderPlannedSprintsReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	out, err := s.store.ReorderPlannedSprints(r.Context(), store.ReorderPlannedSprintsParams{
+		ProjectID: projectID,
+		SprintIDs: req.SprintIDs,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) getSprint(w http.ResponseWriter, r *http.Request) {

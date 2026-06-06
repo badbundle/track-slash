@@ -109,10 +109,34 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 	if _, err := e.store.UpdateSprint(e.ctx, active.ID, store.UpdateSprintParams{Status: &st}); err != nil {
 		t.Fatalf("UpdateSprint active: %v", err)
 	}
+	completed, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "completed",
+		StartDate: dateHTTP(2026, 7, 29),
+		EndDate:   dateHTTP(2026, 8, 11),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint completed: %v", err)
+	}
 
 	code, body := e.do(t, http.MethodDelete, fmt.Sprintf("/sprints/%s", active.ID), nil)
 	if code != http.StatusConflict {
 		t.Fatalf("delete active sprint code = %d body = %s", code, body)
+	}
+	if _, err := e.store.CompleteSprint(e.ctx, active.ID); err != nil {
+		t.Fatalf("CompleteSprint active: %v", err)
+	}
+	if _, err := e.store.UpdateSprint(e.ctx, completed.ID, store.UpdateSprintParams{Status: &st}); err != nil {
+		t.Fatalf("UpdateSprint completed active: %v", err)
+	}
+	if _, err := e.store.CompleteSprint(e.ctx, completed.ID); err != nil {
+		t.Fatalf("CompleteSprint completed: %v", err)
+	}
+	for _, id := range []uuid.UUID{active.ID, completed.ID} {
+		code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/sprints/%s", id), nil)
+		if code != http.StatusConflict {
+			t.Fatalf("delete completed sprint %s code = %d body = %s", id, code, body)
+		}
 	}
 	code, body = e.do(t, http.MethodDelete, fmt.Sprintf("/sprints/%s", planned.ID), nil)
 	if code != http.StatusNoContent {
