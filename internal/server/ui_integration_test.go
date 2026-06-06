@@ -591,6 +591,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		"detail comment body",
 		`aria-label="Issue settings"`,
 		`aria-label="Edit description"`,
+		`hx-get="` + e.issuePath(issue) + `/description/edit"`,
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
 		`aria-label="Change status"`,
@@ -659,6 +660,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	if strings.Contains(body, `name="description"`) || strings.Contains(body, `placeholder="Description"`) {
 		t.Fatalf("sub-issue composer should be title-only: %s", body)
 	}
+	if strings.Contains(body, `aria-label="Save description"`) || strings.Contains(body, `<textarea name="description"`) {
+		t.Fatalf("issue detail should not start in description edit mode: %s", body)
+	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body included unrelated content %q: %s", notWant, body)
@@ -671,6 +675,93 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	}
 	if !strings.Contains(panel, "detail page issue") || !strings.Contains(panel, "detail comment body") {
 		t.Fatalf("panel missing issue context: %s", panel)
+	}
+}
+
+func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-description")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:   e.projectID,
+		Title:       "description target issue",
+		Description: "old description",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/description/edit", token)
+	for _, want := range []string{
+		"description target issue",
+		`method="post" action="` + e.issuePath(issue) + `/description"`,
+		`hx-post="` + e.issuePath(issue) + `/description"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="description"`,
+		`placeholder="Description"`,
+		`aria-label="Save description"`,
+		`aria-label="Cancel editing description"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		"old description",
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("description edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `<textarea disabled`) || strings.Contains(edit, `title="Save description"`) {
+		t.Fatalf("description edit response has disabled/editor tooltip state: %s", edit)
+	}
+
+	form := url.Values{"description": {"new description"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update description code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "new description") || strings.Contains(body, "old description") || strings.Contains(body, `name="description"`) {
+		t.Fatalf("update description response did not return read mode with new body: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after update: %v", err)
+	}
+	if updated.Description != "new description" {
+		t.Fatalf("Description = %q, want new description", updated.Description)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form description code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form description response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form: %v", err)
+	}
+	if updated.Description != "new description" {
+		t.Fatalf("bad form changed Description = %q, want new description", updated.Description)
+	}
+
+	blank := url.Values{"description": {" \n\t "}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(blank.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("blank description code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "No description.") || strings.Contains(body, "new description") {
+		t.Fatalf("blank description response missing empty state: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after blank update: %v", err)
+	}
+	if updated.Description != "" {
+		t.Fatalf("blank Description = %q, want empty string", updated.Description)
 	}
 }
 
@@ -832,6 +923,16 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue comment code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/description/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue description edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(url.Values{"description": {"denied"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue description update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), "", nil)
 	defer res.Body.Close()
@@ -850,6 +951,8 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref"},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/panel"},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/description/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/description", body: strings.NewReader(url.Values{"description": {"hello"}}.Encode())},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
 	} {
 		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, tc.body)

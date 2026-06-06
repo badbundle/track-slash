@@ -26,21 +26,23 @@ const uiAuthCookieName = "track_slash_ui_token"
 var errUIForbidden = errors.New("forbidden")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":       uiInitials,
-	"issueComments":  uiIssueCommentsPath,
-	"issueHref":      uiIssuePath,
-	"issuePanel":     uiIssuePanelPath,
-	"issueSubIssues": uiIssueSubIssuesPath,
-	"linkLabel":      uiIssueLinkLabel,
-	"projectPanel":   uiProjectPanelPath,
-	"projectView":    uiProjectViewPath,
-	"projectIcon":    uiProjectIcon,
-	"sprintDate":     uiSprintDate,
-	"statusClass":    uiStatusClass,
-	"statusLabel":    uiStatusLabel,
-	"statusRow":      uiStatusRowClass,
-	"statusSurface":  uiStatusSurfaceClass,
-	"tokenTime":      uiTokenTime,
+	"initials":             uiInitials,
+	"issueComments":        uiIssueCommentsPath,
+	"issueDescription":     uiIssueDescriptionPath,
+	"issueDescriptionEdit": uiIssueDescriptionEditPath,
+	"issueHref":            uiIssuePath,
+	"issuePanel":           uiIssuePanelPath,
+	"issueSubIssues":       uiIssueSubIssuesPath,
+	"linkLabel":            uiIssueLinkLabel,
+	"projectPanel":         uiProjectPanelPath,
+	"projectView":          uiProjectViewPath,
+	"projectIcon":          uiProjectIcon,
+	"sprintDate":           uiSprintDate,
+	"statusClass":          uiStatusClass,
+	"statusLabel":          uiStatusLabel,
+	"statusRow":            uiStatusRowClass,
+	"statusSurface":        uiStatusSurfaceClass,
+	"tokenTime":            uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -141,6 +143,7 @@ type uiIssuePanelData struct {
 	Sprint           *model.Sprint
 	Assignee         *model.User
 	Reporter         *model.User
+	EditDescription  bool
 	SubIssues        []model.Issue
 	SubIssuesHasMore bool
 	SubIssueTitle    string
@@ -202,6 +205,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
 		r.Get("/{owner}/issues/{issueRef}", s.uiIssuePage)
 		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
+		r.Get("/{owner}/issues/{issueRef}/description/edit", s.uiEditIssueDescription)
+		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Post("/{owner}/issues/{issueRef}/sub-issues", s.uiCreateSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
@@ -647,6 +652,52 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueDescription(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditDescription = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueDescription(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	description := r.Form.Get("description")
+	if strings.TrimSpace(description) == "" {
+		description = ""
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		Description: &description,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -1244,6 +1295,14 @@ func uiIssuePanelPath(issue any) string {
 
 func uiIssueCommentsPath(issue any) string {
 	return uiIssuePath(issue) + "/comments"
+}
+
+func uiIssueDescriptionPath(issue any) string {
+	return uiIssuePath(issue) + "/description"
+}
+
+func uiIssueDescriptionEditPath(issue any) string {
+	return uiIssueDescriptionPath(issue) + "/edit"
 }
 
 func uiIssueSubIssuesPath(issue any) string {
