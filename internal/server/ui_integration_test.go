@@ -53,7 +53,7 @@ func TestUILoginSetsCookie(t *testing.T) {
 	if _, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{Username: username, Password: password, Name: "UI Login"}); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
-	next := "/projects/" + e.projectID.String() + "/sprint"
+	next := "/projects/" + e.projectID.String() + "/about"
 	form := url.Values{"username": {username}, "password": {password}, "next": {next}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
 	defer res.Body.Close()
@@ -141,10 +141,13 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", `href="/projects/` + e.projectID.String() + `/sprint"`} {
+	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="/projects/` + e.projectID.String() + `/about"`, `hx-get="/projects/` + e.projectID.String() + `/about/panel"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `href="/projects/`+e.projectID.String()+`/sprint"`) {
+		t.Fatalf("projects body included sprint row action: %s", body)
 	}
 	if strings.Contains(body, `href="/projects/`+e.projectID.String()+`/backlog"`) {
 		t.Fatalf("projects body included backlog row action: %s", body)
@@ -177,7 +180,7 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 		t.Fatalf("create code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	loc := res.Header.Get("Location")
-	if !strings.HasPrefix(loc, "/projects/") || !strings.HasSuffix(loc, "/sprint") {
+	if !strings.HasPrefix(loc, "/projects/") || !strings.HasSuffix(loc, "/about") {
 		t.Fatalf("Location = %q", loc)
 	}
 	body = e.uiGet(t, loc, token)
@@ -760,7 +763,7 @@ func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("project root code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/sprint" {
+	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/about" {
 		t.Fatalf("project root Location = %q", loc)
 	}
 
@@ -777,7 +780,7 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustUserToken(t, "ui-no-project")
 
-	for _, path := range []string{"/projects/" + e.projectID.String() + "/sprint", "/projects/" + e.projectID.String() + "/backlog"} {
+	for _, path := range []string{"/projects/" + e.projectID.String() + "/about", "/projects/" + e.projectID.String() + "/sprint", "/projects/" + e.projectID.String() + "/backlog"} {
 		res := e.uiDoNoRedirect(t, http.MethodGet, path, token, nil)
 		defer res.Body.Close()
 		if res.StatusCode != http.StatusForbidden {
@@ -913,7 +916,7 @@ func TestUIHomeRedirectsToFirstProject(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/sprint" {
+	if loc := res.Header.Get("Location"); loc != "/projects/"+e.projectID.String()+"/about" {
 		t.Fatalf("Location = %q", loc)
 	}
 }

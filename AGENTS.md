@@ -15,7 +15,7 @@ track-slash UI should feel like a fast work tool: quiet, direct, and consistent 
 - Keep cards purposeful. Use them for bounded content like project headers, forms, lists, and repeated items; do not nest cards or add decorative wrappers.
 - Preserve dense, scannable layouts with clear hierarchy, restrained color, and readable spacing. Avoid marketing-style hero sections, gradients, and ornamental UI.
 - Keep page content widths consistent across sibling app views so navigation does not cause the main content column to jump.
-- Present ticket numbers consistently as compact bordered badges so issue keys remain visually distinct from titles and metadata.
+- Present ticket numbers and project keys consistently as compact bordered badges so keys remain visually distinct from titles and metadata.
 - Match dark-mode classes and interactive states (`hover`, active, focus) when adding or changing controls.
 
 ## Test coverage policy

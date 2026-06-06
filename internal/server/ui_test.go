@@ -112,7 +112,9 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "bad issue child", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/activity", want: "/"},
 		{name: "bad issue nested panel", raw: "/issues/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/panel/extra", want: "/"},
 		{name: "project", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16"},
+		{name: "project about", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about"},
 		{name: "project sprint", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/sprint"},
+		{name: "project about panel with query", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about/panel?x=1", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/about/panel?x=1"},
 		{name: "project backlog panel with query", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/backlog/panel?x=1", want: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/backlog/panel?x=1"},
 		{name: "bad project id", raw: "/projects/nope/sprint", want: "/"},
 		{name: "bad project child", raw: "/projects/8cc21ed4-2d69-4d43-9f0c-402736e4aa16/issues", want: "/"},
@@ -436,7 +438,7 @@ func TestUIIssueLinkLabel(t *testing.T) {
 	}
 }
 
-func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
+func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
@@ -448,8 +450,8 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 			Name:        "Track Slash",
 			Description: "Fast issue tracking.",
 		},
-		View:        "sprint",
-		ProjectTabs: uiProjectTabs(projectID, "sprint"),
+		View:        "about",
+		ProjectTabs: uiProjectTabs(projectID, "about"),
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -479,15 +481,26 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 		t.Fatalf("project view tabs rendered inside title card: %s", body)
 	}
 	header := body[:headerEnd]
-	for _, notWant := range []string{"Sprints", "Backlog", `/sprint/panel`, `/backlog/panel`} {
+	for _, notWant := range []string{"About", "Sprints", "Backlog", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
 		}
 	}
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project panel missing about/title markup %q: %s", want, body)
+		}
+	}
+	aboutIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/about"`)
+	sprintsIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/sprint"`)
+	backlogIdx := strings.Index(body, `href="/projects/`+projectID.String()+`/backlog"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || aboutIdx > sprintsIdx || sprintsIdx > backlogIdx {
+		t.Fatalf("project tabs not ordered about, sprints, backlog: about=%d sprints=%d backlog=%d body=%s", aboutIdx, sprintsIdx, backlogIdx, body)
+	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
@@ -562,9 +575,12 @@ func TestUITabBarComponentRendersReusableTabs(t *testing.T) {
 	}
 
 	body := buf.String()
-	for _, want := range []string{`aria-label="Example views"`, "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`} {
+	for _, want := range []string{`aria-label="Example views"`, "flex flex-wrap", "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("tab bar missing markup %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "overflow-x-auto") {
+		t.Fatalf("tab bar should not force horizontal scrolling: %s", body)
 	}
 }

@@ -193,6 +193,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/issues/{id}/panel", s.uiIssuePanel)
 		r.Post("/issues/{id}/comments", s.uiCreateComment)
 		r.Get("/projects/{id}", s.uiProjectPage)
+		r.Get("/projects/{id}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
+		r.Get("/projects/{id}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
 		r.Get("/projects/{id}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/projects/{id}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
 		r.Get("/projects/{id}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "backlog") })
@@ -468,7 +470,7 @@ func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/projects", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+projects[0].ID.String()+"/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/projects/"+projects[0].ID.String()+"/about", http.StatusSeeOther)
 }
 
 func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -537,7 +539,7 @@ func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+project.ID.String()+"/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/projects/"+project.ID.String()+"/about", http.StatusSeeOther)
 }
 
 func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
@@ -563,7 +565,7 @@ func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/projects/"+projectID.String()+"/sprint", http.StatusSeeOther)
+	http.Redirect(w, r, "/projects/"+projectID.String()+"/about", http.StatusSeeOther)
 }
 
 func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -778,6 +780,8 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	switch view {
+	case "about":
+		return panel, nil
 	case "sprint":
 		activeStatus := model.SprintStatusActive
 		activeSprints, _, err := s.store.ListSprints(ctx, store.ListSprintsParams{
@@ -1018,6 +1022,15 @@ func uiProjectTabs(projectID uuid.UUID, view string) uiTabBarData {
 		Label: "Project views",
 		Items: []uiTabItem{
 			{
+				Label:     "About",
+				Icon:      "info",
+				Href:      base + "/about",
+				HXGet:     base + "/about/panel",
+				HXTarget:  "#main",
+				HXPushURL: base + "/about",
+				Active:    view == "about",
+			},
+			{
 				Label:     "Sprints",
 				Icon:      "kanban",
 				Href:      base + "/sprint",
@@ -1135,7 +1148,7 @@ func safeUIProjectPath(path string) bool {
 	if len(parts) == 1 {
 		return true
 	}
-	if parts[1] != "sprint" && parts[1] != "backlog" {
+	if parts[1] != "about" && parts[1] != "sprint" && parts[1] != "backlog" {
 		return false
 	}
 	if len(parts) == 2 {
