@@ -103,6 +103,7 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/sprints/{sprintRef}", s.deleteSprint)
 					r.Post("/sprints/{sprintRef}/complete", s.completeSprint)
 					r.Get("/links/{linkRef}", s.getIssueLink)
+					r.Patch("/links/{linkRef}", s.updateIssueLink)
 					r.Delete("/links/{linkRef}", s.deleteIssueLink)
 				})
 				r.Route("/issues", func(r chi.Router) {

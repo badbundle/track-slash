@@ -104,13 +104,60 @@
             <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>
             {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
           </div>
-          <button type="button" disabled aria-label="Add link" class="grid h-7 w-7 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+          {{if .AddLink}}
+          <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+          {{else}}
+          <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
           </button>
+          {{end}}
         </header>
+        {{if .AddLink}}
+        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
+          <div class="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-center">
+            <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
+            </select>
+            <input name="target_issue" value="{{.LinkTarget}}" placeholder="{{.Issue.ProjectKey}}-12" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <div class="flex items-center gap-2 sm:justify-end">
+              <button type="submit" aria-label="Save link" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          {{if .LinkError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.LinkError}}</div>{{end}}
+        </form>
+        {{end}}
         {{if .Links}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .Links}}
+          {{if eq $.EditLinkID .Link.ID}}
+          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid gap-2 border-b border-slate-100 p-4 text-sm last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+            <div class="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-center">
+              <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
+              </select>
+              <input name="target_issue" value="{{$.LinkTarget}}" placeholder="{{$.Issue.ProjectKey}}-12" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              <div class="flex items-center gap-2 sm:justify-end">
+                <button type="submit" aria-label="Save link" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing link" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Remove link" hx-post="{{issueLinkDelete $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+            {{if $.LinkError}}<div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.LinkError}}</div>{{end}}
+          </form>
+          {{else}}
           <div class="grid grid-cols-[5.5rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
             <span class="text-xs font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
             {{if .HasIssue}}
@@ -121,13 +168,14 @@
             {{else}}
             <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
             {{end}}
-            <button type="button" disabled aria-label="Edit link" class="grid h-7 w-7 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
             </button>
           </div>
           {{end}}
+          {{end}}
         </div>
-        {{else}}
+        {{else if not .AddLink}}
         <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No linked issues.</div>
         {{end}}
       </section>

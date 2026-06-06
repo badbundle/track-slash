@@ -258,6 +258,171 @@ func TestGetIssueLinkNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateIssueLinkRewiresExistingLink(t *testing.T) {
+	env := newLinksEnv(t)
+	a := env.mustIssue(t, "A")
+	b := env.mustIssue(t, "B")
+	c := env.mustIssue(t, "C")
+	link, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
+		SourceID: a.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+
+	updated, err := env.store.UpdateIssueLink(env.ctx, link.ID, store.UpdateIssueLinkParams{
+		SourceID: b.ID,
+		TargetID: c.ID,
+		LinkType: model.LinkTypeClones,
+	})
+	if err != nil {
+		t.Fatalf("UpdateIssueLink: %v", err)
+	}
+	if updated.ID != link.ID || updated.Number != link.Number || updated.Ref != link.Ref {
+		t.Fatalf("identity changed: before=%+v after=%+v", link, updated)
+	}
+	if updated.SourceID != b.ID || updated.TargetID != c.ID || updated.LinkType != model.LinkTypeClones {
+		t.Fatalf("updated = %+v, want B clones C", updated)
+	}
+}
+
+func TestUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
+	env := newLinksEnv(t)
+	a := env.mustIssue(t, "A")
+	b := env.mustIssue(t, "B")
+	link, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
+		SourceID: a.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+
+	if _, err := env.store.UpdateIssueLink(env.ctx, link.ID, store.UpdateIssueLinkParams{
+		SourceID: a.ID,
+		TargetID: b.ID,
+		LinkType: model.LinkTypeDuplicates,
+	}); err != nil {
+		t.Fatalf("UpdateIssueLink: %v", err)
+	}
+	src, err := env.store.GetIssue(env.ctx, a.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if src.Status != model.StatusDone {
+		t.Fatalf("source status = %s, want done", src.Status)
+	}
+}
+
+func TestUpdateIssueLinkDuplicatesSourceAlreadyDone(t *testing.T) {
+	env := newLinksEnv(t)
+	a := env.mustIssue(t, "A")
+	b := env.mustIssue(t, "B")
+	st := model.StatusDone
+	if _, err := env.store.UpdateIssue(env.ctx, a.ID, store.UpdateIssueParams{Status: &st}); err != nil {
+		t.Fatalf("UpdateIssue: %v", err)
+	}
+	link, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
+		SourceID: a.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+
+	if _, err := env.store.UpdateIssueLink(env.ctx, link.ID, store.UpdateIssueLinkParams{
+		SourceID: a.ID,
+		TargetID: b.ID,
+		LinkType: model.LinkTypeDuplicates,
+	}); err != nil {
+		t.Fatalf("UpdateIssueLink: %v", err)
+	}
+	src, err := env.store.GetIssue(env.ctx, a.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if src.Status != model.StatusDone {
+		t.Fatalf("source status = %s, want done", src.Status)
+	}
+}
+
+func TestUpdateIssueLinkRejectsInvalidChanges(t *testing.T) {
+	env := newLinksEnv(t)
+	a := env.mustIssue(t, "A")
+	b := env.mustIssue(t, "B")
+	c := env.mustIssue(t, "C")
+	link, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
+		SourceID: a.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+	duplicate, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
+		SourceID: a.ID, TargetID: c.ID, LinkType: model.LinkTypeBlocks,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink duplicate candidate: %v", err)
+	}
+	other, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "other-proj", "")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	otherIssue := env.mustIssueInProject(t, other.ID, "other")
+
+	for _, tt := range []struct {
+		name string
+		id   uuid.UUID
+		p    store.UpdateIssueLinkParams
+		want error
+	}{
+		{
+			name: "missing link",
+			id:   uuid.New(),
+			p:    store.UpdateIssueLinkParams{SourceID: a.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks},
+			want: store.ErrNotFound,
+		},
+		{
+			name: "missing source",
+			id:   link.ID,
+			p:    store.UpdateIssueLinkParams{SourceID: uuid.New(), TargetID: b.ID, LinkType: model.LinkTypeBlocks},
+			want: store.ErrConflict,
+		},
+		{
+			name: "missing target",
+			id:   link.ID,
+			p:    store.UpdateIssueLinkParams{SourceID: a.ID, TargetID: uuid.New(), LinkType: model.LinkTypeBlocks},
+			want: store.ErrConflict,
+		},
+		{
+			name: "cross project source",
+			id:   link.ID,
+			p:    store.UpdateIssueLinkParams{SourceID: otherIssue.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks},
+			want: store.ErrConflict,
+		},
+		{
+			name: "cross project target",
+			id:   link.ID,
+			p:    store.UpdateIssueLinkParams{SourceID: a.ID, TargetID: otherIssue.ID, LinkType: model.LinkTypeBlocks},
+			want: store.ErrConflict,
+		},
+		{
+			name: "self",
+			id:   link.ID,
+			p:    store.UpdateIssueLinkParams{SourceID: a.ID, TargetID: a.ID, LinkType: model.LinkTypeBlocks},
+			want: store.ErrConflict,
+		},
+		{
+			name: "duplicate row",
+			id:   duplicate.ID,
+			p:    store.UpdateIssueLinkParams{SourceID: a.ID, TargetID: b.ID, LinkType: model.LinkTypeBlocks},
+			want: store.ErrConflict,
+		},
+	} {
+		_, err := env.store.UpdateIssueLink(env.ctx, tt.id, tt.p)
+		if !errors.Is(err, tt.want) {
+			t.Fatalf("%s: err = %v, want %v", tt.name, err, tt.want)
+		}
+	}
+}
+
 func TestListIssueLinksForIssueReturnsBothDirections(t *testing.T) {
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")

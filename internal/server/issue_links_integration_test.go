@@ -364,6 +364,150 @@ func TestHTTPGetIssueLinkNotFound(t *testing.T) {
 	}
 }
 
+func TestHTTPUpdateIssueLinkHappy(t *testing.T) {
+	e := newHTTPEnv(t)
+	a := e.mustCreateIssue(t, "A")
+	b := e.mustCreateIssue(t, "B")
+	c := e.mustCreateIssue(t, "C")
+	_, createBody := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
+	link := decode[model.IssueLink](t, createBody)
+
+	code, body := e.do(t, http.MethodPatch, e.projectLinkPath(link),
+		map[string]any{"source_issue": a.Identifier, "target_issue": c.Identifier, "link_type": "clones"})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body = %s", code, body)
+	}
+	got := decode[model.IssueLink](t, body)
+	if got.ID != link.ID || got.Ref != link.Ref || got.SourceID != a.ID || got.TargetID != c.ID || got.LinkType != model.LinkTypeClones {
+		t.Fatalf("link = %+v, want same ref %s with A clones C", got, link.Ref)
+	}
+}
+
+func TestHTTPUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
+	e := newHTTPEnv(t)
+	a := e.mustCreateIssue(t, "dup")
+	b := e.mustCreateIssue(t, "canon")
+	_, createBody := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
+	link := decode[model.IssueLink](t, createBody)
+
+	code, body := e.do(t, http.MethodPatch, e.projectLinkPath(link),
+		map[string]any{"source_issue": a.Identifier, "target_issue": b.Identifier, "link_type": "duplicates"})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body = %s", code, body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, a.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if updated.Status != model.StatusDone {
+		t.Fatalf("source status = %s, want done", updated.Status)
+	}
+}
+
+func TestHTTPUpdateIssueLinkValidation(t *testing.T) {
+	e := newHTTPEnv(t)
+	a := e.mustCreateIssue(t, "A")
+	b := e.mustCreateIssue(t, "B")
+	c := e.mustCreateIssue(t, "C")
+	other, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other", "")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	otherIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: other.ID, Title: "other issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue other: %v", err)
+	}
+	_, createBody := e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": b.Identifier, "link_type": "blocks"})
+	link := decode[model.IssueLink](t, createBody)
+	_, createBody = e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": c.Identifier, "link_type": "blocks"})
+	duplicateTarget := decode[model.IssueLink](t, createBody)
+
+	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPatch,
+		e.ts.URL+apiPath(e.projectLinkPath(link)),
+		bytes.NewReader([]byte("nope")))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+e.authToken)
+	res, err := e.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad json code = %d", res.StatusCode)
+	}
+
+	for _, tc := range []struct {
+		name string
+		path string
+		body map[string]any
+		want int
+	}{
+		{
+			name: "bad link ref",
+			path: e.projectPath() + "/links/nope",
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": b.Identifier, "link_type": "blocks"},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "bad source ref",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": "not-a-ref", "target_issue": b.Identifier, "link_type": "blocks"},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "bad target ref",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": "not-a-ref", "link_type": "blocks"},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "invalid type",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": b.Identifier, "link_type": "explodes"},
+			want: http.StatusBadRequest,
+		},
+		{
+			name: "missing source",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": e.projKey + "-999999", "target_issue": b.Identifier, "link_type": "blocks"},
+			want: http.StatusNotFound,
+		},
+		{
+			name: "missing target",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": e.projKey + "-999999", "link_type": "blocks"},
+			want: http.StatusNotFound,
+		},
+		{
+			name: "cross project",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": otherIssue.Identifier, "link_type": "blocks"},
+			want: http.StatusConflict,
+		},
+		{
+			name: "self",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": a.Identifier, "link_type": "blocks"},
+			want: http.StatusConflict,
+		},
+		{
+			name: "duplicate",
+			path: e.projectLinkPath(duplicateTarget),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": b.Identifier, "link_type": "blocks"},
+			want: http.StatusConflict,
+		},
+	} {
+		code, _ := e.do(t, http.MethodPatch, tc.path, tc.body)
+		if code != tc.want {
+			t.Fatalf("%s: code = %d, want %d", tc.name, code, tc.want)
+		}
+	}
+}
+
 func TestHTTPDeleteIssueLink(t *testing.T) {
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")

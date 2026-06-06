@@ -31,11 +31,17 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueDescription":     uiIssueDescriptionPath,
 	"issueDescriptionEdit": uiIssueDescriptionEditPath,
 	"issueHref":            uiIssuePath,
+	"issueLink":            uiIssueLinkPath,
+	"issueLinkDelete":      uiIssueLinkDeletePath,
+	"issueLinkEdit":        uiIssueLinkEditPath,
+	"issueLinkNew":         uiIssueLinkNewPath,
+	"issueLinks":           uiIssueLinksPath,
 	"issuePanel":           uiIssuePanelPath,
 	"issueStatus":          uiIssueStatusPath,
 	"issueStatusEdit":      uiIssueStatusEditPath,
 	"issueSubIssues":       uiIssueSubIssuesPath,
 	"linkLabel":            uiIssueLinkLabel,
+	"linkOptions":          uiIssueLinkOptions,
 	"projectPanel":         uiProjectPanelPath,
 	"projectView":          uiProjectViewPath,
 	"projectIcon":          uiProjectIcon,
@@ -158,6 +164,11 @@ type uiIssuePanelData struct {
 	CommentError     string
 	Links            []uiIssueLinkItem
 	LinksHasMore     bool
+	AddLink          bool
+	EditLinkID       uuid.UUID
+	LinkTarget       string
+	LinkRelation     string
+	LinkError        string
 	BackHref         string
 	BackHXGet        string
 	BackLabel        string
@@ -213,6 +224,11 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
 		r.Post("/{owner}/issues/{issueRef}/status", s.uiUpdateIssueStatus)
+		r.Get("/{owner}/issues/{issueRef}/links/new", s.uiNewIssueLink)
+		r.Post("/{owner}/issues/{issueRef}/links", s.uiCreateIssueLink)
+		r.Get("/{owner}/issues/{issueRef}/links/{linkRef}/edit", s.uiEditIssueLink)
+		r.Post("/{owner}/issues/{issueRef}/links/{linkRef}", s.uiUpdateIssueLink)
+		r.Post("/{owner}/issues/{issueRef}/links/{linkRef}/delete", s.uiDeleteIssueLink)
 		r.Post("/{owner}/issues/{issueRef}/sub-issues", s.uiCreateSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
@@ -758,6 +774,154 @@ func (s *Server) uiUpdateIssueStatus(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiNewIssueLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.AddLink = true
+	panel.LinkRelation = string(model.LinkTypeRelatesTo)
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiCreateIssueLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	target := strings.TrimSpace(r.Form.Get("target_issue"))
+	relation := strings.TrimSpace(r.Form.Get("relation"))
+	params, message, err := s.uiIssueLinkFormParams(r.Context(), issue, target, relation)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIIssuePanelWithLinkError(w, r, issue.ID, uuid.Nil, target, relation, message)
+		return
+	}
+	if _, err := s.store.CreateIssueLink(r.Context(), store.CreateIssueLinkParams(params)); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithLinkError(w, r, issue.ID, uuid.Nil, target, relation, "Link already exists or cannot be created.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	link, ok := s.uiIssueLinkFromRoute(w, r, issue)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditLinkID = link.ID
+	panel.LinkRelation = uiIssueLinkRelation(link, issue.ID)
+	panel.LinkTarget = s.uiIssueLinkTargetIdentifier(r.Context(), issue.ID, link)
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	link, ok := s.uiIssueLinkFromRoute(w, r, issue)
+	if !ok {
+		return
+	}
+	target := strings.TrimSpace(r.Form.Get("target_issue"))
+	relation := strings.TrimSpace(r.Form.Get("relation"))
+	params, message, err := s.uiIssueLinkFormParams(r.Context(), issue, target, relation)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIIssuePanelWithLinkError(w, r, issue.ID, link.ID, target, relation, message)
+		return
+	}
+	if _, err := s.store.UpdateIssueLink(r.Context(), link.ID, params); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithLinkError(w, r, issue.ID, link.ID, target, relation, "Link already exists or cannot be updated.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiDeleteIssueLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	link, ok := s.uiIssueLinkFromRoute(w, r, issue)
+	if !ok {
+		return
+	}
+	if err := s.store.DeleteIssueLink(r.Context(), link.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 	parent, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -850,6 +1014,20 @@ func (s *Server) renderUIIssuePanelWithCommentError(w http.ResponseWriter, r *ht
 	}
 	panel.CommentBody = body
 	panel.CommentError = message
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithLinkError(w http.ResponseWriter, r *http.Request, issueID, editLinkID uuid.UUID, target, relation, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.AddLink = editLinkID == uuid.Nil
+	panel.EditLinkID = editLinkID
+	panel.LinkTarget = target
+	panel.LinkRelation = relation
+	panel.LinkError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -1325,6 +1503,64 @@ func (s *Server) uiIssueFromRoute(w http.ResponseWriter, r *http.Request) (model
 	return issue, true
 }
 
+func (s *Server) uiIssueLinkFromRoute(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.IssueLink, bool) {
+	number, err := parseTypedRef(chi.URLParam(r, "linkRef"), "link")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return model.IssueLink{}, false
+	}
+	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), issue.ProjectID, number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.IssueLink{}, false
+	}
+	if link.SourceID != issue.ID && link.TargetID != issue.ID {
+		writeUIStoreError(w, store.ErrNotFound)
+		return model.IssueLink{}, false
+	}
+	return link, true
+}
+
+func (s *Server) uiIssueLinkFormParams(ctx context.Context, issue model.Issue, targetRaw, relation string) (store.UpdateIssueLinkParams, string, error) {
+	if targetRaw == "" {
+		return store.UpdateIssueLinkParams{}, "Linked issue required.", nil
+	}
+	targetRef, err := parseIssueRef(targetRaw)
+	if err != nil {
+		return store.UpdateIssueLinkParams{}, err.Error(), nil
+	}
+	target, err := s.store.GetIssueByOwnerKeyNumber(ctx, issue.OwnerUsername, targetRef.ProjectKey, targetRef.Number)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.UpdateIssueLinkParams{}, "Linked issue not found.", nil
+		}
+		return store.UpdateIssueLinkParams{}, "", err
+	}
+	if target.ProjectID != issue.ProjectID {
+		return store.UpdateIssueLinkParams{}, "Linked issue must be in this project.", nil
+	}
+	if target.ID == issue.ID {
+		return store.UpdateIssueLinkParams{}, "Choose a different issue.", nil
+	}
+	sourceID, targetID, linkType, ok := uiIssueLinkRelationParams(issue.ID, target.ID, relation)
+	if !ok {
+		return store.UpdateIssueLinkParams{}, "Choose a valid relationship.", nil
+	}
+	return store.UpdateIssueLinkParams{SourceID: sourceID, TargetID: targetID, LinkType: linkType}, "", nil
+}
+
+func (s *Server) uiIssueLinkTargetIdentifier(ctx context.Context, issueID uuid.UUID, link model.IssueLink) string {
+	otherID := link.SourceID
+	if otherID == issueID {
+		otherID = link.TargetID
+	}
+	linked, err := s.store.GetIssue(ctx, otherID)
+	if err != nil {
+		return ""
+	}
+	return linked.Identifier
+}
+
 func uiProjectPath(project model.Project) string {
 	return "/" + project.OwnerUsername + "/projects/" + project.Key
 }
@@ -1366,6 +1602,26 @@ func uiIssueStatusEditPath(issue any) string {
 	return uiIssueStatusPath(issue) + "/edit"
 }
 
+func uiIssueLinksPath(issue any) string {
+	return uiIssuePath(issue) + "/links"
+}
+
+func uiIssueLinkNewPath(issue any) string {
+	return uiIssueLinksPath(issue) + "/new"
+}
+
+func uiIssueLinkPath(issue any, link any) string {
+	return uiIssueLinksPath(issue) + "/" + uiIssueLinkRef(link)
+}
+
+func uiIssueLinkEditPath(issue any, link any) string {
+	return uiIssueLinkPath(issue, link) + "/edit"
+}
+
+func uiIssueLinkDeletePath(issue any, link any) string {
+	return uiIssueLinkPath(issue, link) + "/delete"
+}
+
 func uiIssueSubIssuesPath(issue any) string {
 	return uiIssuePath(issue) + "/sub-issues"
 }
@@ -1380,6 +1636,25 @@ func uiIssueValue(v any) model.Issue {
 		}
 	}
 	return model.Issue{}
+}
+
+func uiIssueLinkRef(v any) string {
+	var link model.IssueLink
+	switch l := v.(type) {
+	case model.IssueLink:
+		link = l
+	case *model.IssueLink:
+		if l != nil {
+			link = *l
+		}
+	}
+	if link.Ref != "" {
+		return link.Ref
+	}
+	if link.Number > 0 {
+		return model.IssueLinkRef(link.Number)
+	}
+	return "link-0"
 }
 
 func redirectUILogin(w http.ResponseWriter, r *http.Request) {
@@ -1436,7 +1711,7 @@ func safeUIProjectPath(path string) bool {
 
 func safeUIIssuePath(path string) bool {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(parts) != 3 && len(parts) != 4 && len(parts) != 5 {
+	if len(parts) < 3 || len(parts) > 6 {
 		return false
 	}
 	if _, err := store.NormalizeUsername(parts[0]); err != nil {
@@ -1452,9 +1727,17 @@ func safeUIIssuePath(path string) bool {
 		return true
 	}
 	if len(parts) == 4 {
-		return parts[3] == "panel"
+		return parts[3] == "panel" || parts[3] == "links"
 	}
-	return (parts[3] == "description" || parts[3] == "status") && parts[4] == "edit"
+	if len(parts) == 5 {
+		return ((parts[3] == "description" || parts[3] == "status") && parts[4] == "edit") ||
+			(parts[3] == "links" && parts[4] == "new")
+	}
+	if parts[3] != "links" || parts[5] != "edit" {
+		return false
+	}
+	_, err := parseTypedRef(parts[4], "link")
+	return err == nil
 }
 
 func renderUITemplate(w http.ResponseWriter, status int, name string, data any) {
@@ -1581,6 +1864,62 @@ func uiIssueColumns() []uiIssueColumn {
 		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
 		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
 		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+	}
+}
+
+type uiIssueLinkOption struct {
+	Value string
+	Label string
+}
+
+func uiIssueLinkOptions() []uiIssueLinkOption {
+	return []uiIssueLinkOption{
+		{Value: string(model.LinkTypeRelatesTo), Label: "Relates to"},
+		{Value: string(model.LinkTypeBlocks), Label: "Blocks"},
+		{Value: "blocked_by", Label: "Blocked by"},
+		{Value: string(model.LinkTypeDuplicates), Label: "Duplicates"},
+		{Value: "duplicated_by", Label: "Duplicated by"},
+		{Value: string(model.LinkTypeClones), Label: "Clones"},
+		{Value: "cloned_by", Label: "Cloned by"},
+	}
+}
+
+func uiIssueLinkRelation(link model.IssueLink, issueID uuid.UUID) string {
+	if link.SourceID == issueID {
+		return string(link.LinkType)
+	}
+	switch link.LinkType {
+	case model.LinkTypeBlocks:
+		return "blocked_by"
+	case model.LinkTypeDuplicates:
+		return "duplicated_by"
+	case model.LinkTypeClones:
+		return "cloned_by"
+	default:
+		return string(link.LinkType)
+	}
+}
+
+func uiIssueLinkRelationParams(issueID, otherID uuid.UUID, relation string) (uuid.UUID, uuid.UUID, model.LinkType, bool) {
+	switch model.LinkType(relation) {
+	case model.LinkTypeRelatesTo:
+		return issueID, otherID, model.LinkTypeRelatesTo, true
+	case model.LinkTypeBlocks:
+		return issueID, otherID, model.LinkTypeBlocks, true
+	case model.LinkTypeDuplicates:
+		return issueID, otherID, model.LinkTypeDuplicates, true
+	case model.LinkTypeClones:
+		return issueID, otherID, model.LinkTypeClones, true
+	}
+	switch relation {
+	case "blocked_by":
+		return otherID, issueID, model.LinkTypeBlocks, true
+	case "duplicated_by":
+		return otherID, issueID, model.LinkTypeDuplicates, true
+	case "cloned_by":
+		return otherID, issueID, model.LinkTypeClones, true
+	default:
+		return uuid.Nil, uuid.Nil, "", false
 	}
 }
 
