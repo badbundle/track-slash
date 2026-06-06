@@ -269,13 +269,14 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.SprintID != nil && !p.ClearSprint {
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			var issueProject, sprintProject uuid.UUID
+			var sprintStatus model.SprintStatus
 			if err := tx.QueryRow(ctx, `SELECT project_id FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject); err != nil {
 				if isNoRows(err) {
 					return ErrNotFound
 				}
 				return err
 			}
-			if err := tx.QueryRow(ctx, `SELECT project_id FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
 				if isNoRows(err) {
 					return fmt.Errorf("sprint not found: %w", ErrConflict)
 				}
@@ -283,6 +284,9 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 			}
 			if issueProject != sprintProject {
 				return fmt.Errorf("sprint belongs to a different project: %w", ErrConflict)
+			}
+			if sprintStatus == model.SprintStatusCompleted {
+				return fmt.Errorf("cannot assign issue to completed sprint: %w", ErrConflict)
 			}
 			_, err := tx.Exec(ctx, q, args...)
 			return err

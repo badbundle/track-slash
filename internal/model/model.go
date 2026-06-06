@@ -155,14 +155,15 @@ type Comment struct {
 }
 
 type Sprint struct {
-	ID          uuid.UUID    `json:"id"`
-	ProjectID   uuid.UUID    `json:"project_id"`
-	Name        string       `json:"name"`
-	Goal        string       `json:"goal"`
-	Status      SprintStatus `json:"status"`
-	StartDate   time.Time    `json:"start_date"`
-	EndDate     time.Time    `json:"end_date"`
-	CompletedAt *time.Time   `json:"completed_at,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	ID           uuid.UUID    `json:"id"`
+	ProjectID    uuid.UUID    `json:"project_id"`
+	Name         string       `json:"name"`
+	Goal         string       `json:"goal"`
+	Status       SprintStatus `json:"status"`
+	PlannedOrder *int64       `json:"planned_order,omitempty"`
+	StartDate    time.Time    `json:"start_date"`
+	EndDate      time.Time    `json:"end_date"`
+	CompletedAt  *time.Time   `json:"completed_at,omitempty"`
+	CreatedAt    time.Time    `json:"created_at"`
+	UpdatedAt    time.Time    `json:"updated_at"`
 }

@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
@@ -393,6 +395,45 @@ func TestUIRendersProjectBacklog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue backlog: %v", err)
 	}
+	firstPlanned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "First Planned Sprint",
+		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint first planned: %v", err)
+	}
+	secondPlanned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Second Planned Sprint",
+		StartDate: time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 7, 28, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint second planned: %v", err)
+	}
+	if _, err := e.store.ReorderPlannedSprints(e.ctx, store.ReorderPlannedSprintsParams{
+		ProjectID: e.projectID,
+		SprintIDs: []uuid.UUID{secondPlanned.ID, firstPlanned.ID},
+	}); err != nil {
+		t.Fatalf("ReorderPlannedSprints: %v", err)
+	}
+	firstPlannedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "scheduled first issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue first planned: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, firstPlannedIssue.ID, store.UpdateIssueParams{SprintID: &firstPlanned.ID}); err != nil {
+		t.Fatalf("assign first planned: %v", err)
+	}
+	secondPlannedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "scheduled second issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue second planned: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, secondPlannedIssue.ID, store.UpdateIssueParams{SprintID: &secondPlanned.ID}); err != nil {
+		t.Fatalf("assign second planned: %v", err)
+	}
+
 	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other Backlog Project", "")
 	if err != nil {
 		t.Fatalf("CreateProject other: %v", err)
@@ -403,12 +444,39 @@ func TestUIRendersProjectBacklog(t *testing.T) {
 	if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: otherProject.ID, Title: "other project backlog issue"}); err != nil {
 		t.Fatalf("CreateIssue other backlog: %v", err)
 	}
+	otherPlanned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: otherProject.ID,
+		Name:      "Other Planned Sprint",
+		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint other planned: %v", err)
+	}
+	otherPlannedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: otherProject.ID, Title: "other project planned issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue other planned: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, otherPlannedIssue.ID, store.UpdateIssueParams{SprintID: &otherPlanned.ID}); err != nil {
+		t.Fatalf("assign other planned: %v", err)
+	}
 
 	body := e.uiGet(t, "/projects/"+e.projectID.String()+"/backlog", token)
+	for _, want := range []string{"Planned sprints", "Second Planned Sprint", "First Planned Sprint", "scheduled second issue", "scheduled first issue", "Backlog", backlogIssue.Title} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("backlog body missing %q: %s", want, body)
+		}
+	}
+	secondIdx := strings.Index(body, "scheduled second issue")
+	firstIdx := strings.Index(body, "scheduled first issue")
+	backlogIdx := strings.Index(body, backlogIssue.Title)
+	if secondIdx < 0 || firstIdx < 0 || backlogIdx < 0 || secondIdx > firstIdx || firstIdx > backlogIdx {
+		t.Fatalf("planned/backlog order wrong: second=%d first=%d backlog=%d body=%s", secondIdx, firstIdx, backlogIdx, body)
+	}
 	if !strings.Contains(body, "Backlog") || !strings.Contains(body, backlogIssue.Title) {
 		t.Fatalf("backlog body missing expected issue/header: %s", body)
 	}
-	if strings.Contains(body, "other project backlog issue") || strings.Contains(body, "Backlog issues across accessible projects.") {
+	if strings.Contains(body, "other project backlog issue") || strings.Contains(body, "other project planned issue") || strings.Contains(body, "Other Planned Sprint") || strings.Contains(body, "Backlog issues across accessible projects.") {
 		t.Fatalf("backlog body included wrong scope/copy: %s", body)
 	}
 }
