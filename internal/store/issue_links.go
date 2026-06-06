@@ -19,6 +19,12 @@ type CreateIssueLinkParams struct {
 	LinkType model.LinkType
 }
 
+type UpdateIssueLinkParams struct {
+	SourceID uuid.UUID
+	TargetID uuid.UUID
+	LinkType model.LinkType
+}
+
 type issueLinkScanner interface {
 	Scan(dest ...any) error
 }
@@ -98,6 +104,99 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 			WHERE id = $1
 		`, sourceProject); err != nil {
 			return err
+		}
+
+		if p.LinkType == model.LinkTypeDuplicates && sourceStatus != model.StatusDone {
+			if _, err := tx.Exec(ctx, `
+				UPDATE issues SET status = 'done', updated_at = now() WHERE id = $1
+			`, p.SourceID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return model.IssueLink{}, err
+	}
+	return out, nil
+}
+
+// UpdateIssueLink rewires an existing link within its project. If the edited
+// relationship becomes 'duplicates', the new source issue is closed just like
+// the create path.
+func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssueLinkParams) (model.IssueLink, error) {
+	var out model.IssueLink
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var linkProject uuid.UUID
+		if err := tx.QueryRow(ctx, `
+			SELECT il.project_id
+			FROM issue_links il
+			JOIN projects pr ON pr.id = il.project_id
+			WHERE il.id = $1 AND pr.deleted_at IS NULL
+			FOR UPDATE OF il
+		`, id).Scan(&linkProject); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err // defensive: DB outage past the no-rows branch
+		}
+
+		var (
+			sourceProject uuid.UUID
+			sourceStatus  model.Status
+		)
+		if err := tx.QueryRow(ctx, `
+			SELECT i.project_id, i.status
+			FROM issues i
+			JOIN projects pr ON pr.id = i.project_id
+			WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+			FOR UPDATE OF i
+		`, p.SourceID).Scan(&sourceProject, &sourceStatus); err != nil {
+			if isNoRows(err) {
+				return fmt.Errorf("source issue not found: %w", ErrConflict)
+			}
+			return err // defensive: DB outage past the no-rows branch
+		}
+
+		var targetProject uuid.UUID
+		if err := tx.QueryRow(ctx, `
+			SELECT i.project_id
+			FROM issues i
+			JOIN projects pr ON pr.id = i.project_id
+			WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
+		`, p.TargetID).Scan(&targetProject); err != nil {
+			if isNoRows(err) {
+				return fmt.Errorf("target issue not found: %w", ErrConflict)
+			}
+			return err // defensive: DB outage past the no-rows branch
+		}
+		if sourceProject != linkProject || targetProject != linkProject {
+			return fmt.Errorf("issues belong to different projects: %w", ErrConflict)
+		}
+
+		var err error
+		out, err = scanIssueLink(tx.QueryRow(ctx, `
+			UPDATE issue_links
+			SET source_id = $2, target_id = $3, link_type = $4, updated_at = now()
+			WHERE id = $1
+			RETURNING id, project_id, number, source_id, target_id, link_type, created_at, updated_at
+		`, id, p.SourceID, p.TargetID, string(p.LinkType)))
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) {
+				switch pgErr.Code {
+				case "23505":
+					return fmt.Errorf("link already exists: %w", ErrConflict)
+				case "23514":
+					return fmt.Errorf("cannot link issue to itself: %w", ErrConflict)
+				case "23503":
+					// Defensive: source/target/project FKs all verified above; only
+					// reachable on a concurrent issue/project delete between the
+					// validation selects and the update.
+					return fmt.Errorf("invalid issue reference: %w", ErrConflict)
+				}
+			}
+			return err // defensive: non-pg or unmapped pg error
 		}
 
 		if p.LinkType == model.LinkTypeDuplicates && sourceStatus != model.StatusDone {

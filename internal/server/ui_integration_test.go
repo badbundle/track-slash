@@ -536,11 +536,12 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue linked: %v", err)
 	}
-	if _, err := e.store.CreateIssueLink(e.ctx, store.CreateIssueLinkParams{
+	link, err := e.store.CreateIssueLink(e.ctx, store.CreateIssueLinkParams{
 		SourceID: issue.ID,
 		TargetID: linked.ID,
 		LinkType: model.LinkTypeBlocks,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("CreateIssueLink: %v", err)
 	}
 	if _, err := e.store.CreateComment(e.ctx, store.CreateCommentParams{
@@ -591,13 +592,18 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		"detail comment body",
 		`aria-label="Issue settings"`,
 		`aria-label="Edit description"`,
+		`hx-get="` + e.issuePath(issue) + `/description/edit"`,
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
 		`aria-label="Change status"`,
+		`aria-expanded="false"`,
+		`hx-get="` + e.issuePath(issue) + `/status/edit"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`hx-get="` + e.issueLinksPath(issue) + `/new"`,
+		`hx-get="` + e.issueLinksPath(issue) + `/` + link.Ref + `/edit"`,
 		`aria-label="Create sub-issue"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
@@ -659,6 +665,12 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	if strings.Contains(body, `name="description"`) || strings.Contains(body, `placeholder="Description"`) {
 		t.Fatalf("sub-issue composer should be title-only: %s", body)
 	}
+	if strings.Contains(body, `aria-label="Save description"`) || strings.Contains(body, `<textarea name="description"`) {
+		t.Fatalf("issue detail should not start in description edit mode: %s", body)
+	}
+	if strings.Contains(body, `role="listbox" aria-label="Issue status"`) || strings.Contains(body, `aria-label="Cancel status change"`) {
+		t.Fatalf("issue detail should not start in status edit mode: %s", body)
+	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body included unrelated content %q: %s", notWant, body)
@@ -671,6 +683,308 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	}
 	if !strings.Contains(panel, "detail page issue") || !strings.Contains(panel, "detail comment body") {
 		t.Fatalf("panel missing issue context: %s", panel)
+	}
+}
+
+func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-status")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "status target issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/status/edit", token)
+	for _, want := range []string{
+		"status target issue",
+		`aria-label="Change status"`,
+		`aria-expanded="true"`,
+		`role="listbox" aria-label="Issue status"`,
+		`method="post" action="` + e.issuePath(issue) + `/status"`,
+		`hx-post="` + e.issuePath(issue) + `/status"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="status" value="todo"`,
+		`name="status" value="in_progress"`,
+		`name="status" value="done"`,
+		`aria-label="Cancel status change"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		"To do",
+		"In progress",
+		"Done",
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("status edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `title="Change status"`) || strings.Contains(edit, `title="Cancel status change"`) {
+		t.Fatalf("status edit response has native tooltip state: %s", edit)
+	}
+
+	form := url.Values{"status": {string(model.StatusInProgress)}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "In progress") || strings.Contains(body, `role="option"`) {
+		t.Fatalf("update status response did not return read mode with new status: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after status update: %v", err)
+	}
+	if updated.Status != model.StatusInProgress {
+		t.Fatalf("Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+
+	badStatus := url.Values{"status": {"blocked"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(badStatus.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "invalid status") {
+		t.Fatalf("bad status response missing validation error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad status: %v", err)
+	}
+	if updated.Status != model.StatusInProgress {
+		t.Fatalf("bad status changed Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form status response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form status: %v", err)
+	}
+	if updated.Status != model.StatusInProgress {
+		t.Fatalf("bad form changed Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+}
+
+func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-description")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:   e.projectID,
+		Title:       "description target issue",
+		Description: "old description",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/description/edit", token)
+	for _, want := range []string{
+		"description target issue",
+		`method="post" action="` + e.issuePath(issue) + `/description"`,
+		`hx-post="` + e.issuePath(issue) + `/description"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="description"`,
+		`placeholder="Description"`,
+		`aria-label="Save description"`,
+		`aria-label="Cancel editing description"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		"old description",
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("description edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `<textarea disabled`) || strings.Contains(edit, `title="Save description"`) {
+		t.Fatalf("description edit response has disabled/editor tooltip state: %s", edit)
+	}
+
+	form := url.Values{"description": {"new description"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update description code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "new description") || strings.Contains(body, "old description") || strings.Contains(body, `name="description"`) {
+		t.Fatalf("update description response did not return read mode with new body: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after update: %v", err)
+	}
+	if updated.Description != "new description" {
+		t.Fatalf("Description = %q, want new description", updated.Description)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form description code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form description response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form: %v", err)
+	}
+	if updated.Description != "new description" {
+		t.Fatalf("bad form changed Description = %q, want new description", updated.Description)
+	}
+
+	blank := url.Values{"description": {" \n\t "}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(blank.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("blank description code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "No description.") || strings.Contains(body, "new description") {
+		t.Fatalf("blank description response missing empty state: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after blank update: %v", err)
+	}
+	if updated.Description != "" {
+		t.Fatalf("blank Description = %q, want empty string", updated.Description)
+	}
+}
+
+func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-links")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui source"})
+	if err != nil {
+		t.Fatalf("CreateIssue source: %v", err)
+	}
+	target, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui target"})
+	if err != nil {
+		t.Fatalf("CreateIssue target: %v", err)
+	}
+	replacement, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui replacement"})
+	if err != nil {
+		t.Fatalf("CreateIssue replacement: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issueLinksPath(issue)+"/new", token)
+	for _, want := range []string{
+		"link ui source",
+		`method="post" action="` + e.issueLinksPath(issue) + `"`,
+		`hx-post="` + e.issueLinksPath(issue) + `"`,
+		`name="relation" aria-label="Link relationship"`,
+		`value="relates_to" selected`,
+		`value="blocked_by"`,
+		`name="target_issue" value="" placeholder="` + e.projKey + `-12"`,
+		`aria-label="Save link"`,
+		`aria-label="Cancel adding link"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("add link response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, "No linked issues.") {
+		t.Fatalf("add link response should replace empty state with form: %s", edit)
+	}
+
+	empty := url.Values{"relation": {"relates_to"}, "target_issue": {"   "}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(empty.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("empty target code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Linked issue required.") {
+		t.Fatalf("empty target response missing validation error: %s", body)
+	}
+
+	badRelation := url.Values{"relation": {"blocks_by_magic"}, "target_issue": {target.Identifier}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(badRelation.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("bad relation code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Choose a valid relationship.") || !strings.Contains(body, `value="`+target.Identifier+`"`) {
+		t.Fatalf("bad relation response missing preserved form state: %s", body)
+	}
+
+	form := url.Values{"relation": {"blocked_by"}, "target_issue": {target.Identifier}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("create link code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Blocked by") || !strings.Contains(body, "link ui target") || strings.Contains(body, `name="target_issue"`) {
+		t.Fatalf("create link response did not return read mode: %s", body)
+	}
+	links, _, err := e.store.ListIssueLinksForIssue(e.ctx, store.ListIssueLinksForIssueParams{IssueID: issue.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListIssueLinksForIssue: %v", err)
+	}
+	if len(links) != 1 || links[0].SourceID != target.ID || links[0].TargetID != issue.ID || links[0].LinkType != model.LinkTypeBlocks {
+		t.Fatalf("links = %+v, want target blocks issue", links)
+	}
+	link := links[0]
+
+	edit = e.uiGet(t, e.issueLinksPath(issue)+"/"+link.Ref+"/edit", token)
+	for _, want := range []string{
+		`method="post" action="` + e.issueLinksPath(issue) + `/` + link.Ref + `"`,
+		`hx-post="` + e.issueLinksPath(issue) + `/` + link.Ref + `"`,
+		`value="blocked_by" selected`,
+		`name="target_issue" value="` + target.Identifier + `"`,
+		`aria-label="Cancel editing link"`,
+		`aria-label="Remove link"`,
+		`hx-post="` + e.issueLinksPath(issue) + `/` + link.Ref + `/delete"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("edit link response missing %q: %s", want, edit)
+		}
+	}
+
+	update := url.Values{"relation": {"clones"}, "target_issue": {replacement.Identifier}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue)+"/"+link.Ref, token, strings.NewReader(update.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update link code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Clones") || !strings.Contains(body, "link ui replacement") || strings.Contains(body, "link ui target") {
+		t.Fatalf("update link response missing updated read mode: %s", body)
+	}
+	updated, err := e.store.GetIssueLink(e.ctx, link.ID)
+	if err != nil {
+		t.Fatalf("GetIssueLink after update: %v", err)
+	}
+	if updated.SourceID != issue.ID || updated.TargetID != replacement.ID || updated.LinkType != model.LinkTypeClones || updated.Ref != link.Ref {
+		t.Fatalf("updated link = %+v, want issue clones replacement with same ref %s", updated, link.Ref)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue)+"/"+link.Ref+"/delete", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete link code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "No linked issues.") || strings.Contains(body, "link ui replacement") {
+		t.Fatalf("delete link response did not return empty link state: %s", body)
+	}
+	if _, err := e.store.GetIssueLink(e.ctx, link.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetIssueLink after delete err = %v, want ErrNotFound", err)
 	}
 }
 
@@ -820,6 +1134,18 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
+	linked, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "protected linked issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue linked: %v", err)
+	}
+	link, err := e.store.CreateIssueLink(e.ctx, store.CreateIssueLinkParams{
+		SourceID: issue.ID,
+		TargetID: linked.ID,
+		LinkType: model.LinkTypeRelatesTo,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
 	_, token := e.mustUserToken(t, "ui-issue-denied")
 	res := e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), token, nil)
 	defer res.Body.Close()
@@ -832,6 +1158,51 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue comment code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/description/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue description edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(url.Values{"description": {"denied"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue description update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/status/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue status edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(url.Values{"status": {string(model.StatusDone)}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue status update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueLinksPath(issue)+"/new", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue link new code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(url.Values{"relation": {"relates_to"}, "target_issue": {linked.Identifier}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue link create code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueLinksPath(issue)+"/"+link.Ref+"/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue link edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue)+"/"+link.Ref, token, strings.NewReader(url.Values{"relation": {"blocks"}, "target_issue": {linked.Identifier}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue link update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue)+"/"+link.Ref+"/delete", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue link delete code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), "", nil)
 	defer res.Body.Close()
@@ -840,6 +1211,14 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}
 	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issuePath(issue)) {
 		t.Fatalf("Location = %q", loc)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueLinksPath(issue)+"/new", "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauth issue link new code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issueLinksPath(issue)+"/new") {
+		t.Fatalf("link new Location = %q", loc)
 	}
 
 	_, memberToken := e.mustProjectMemberToken(t, "ui-issue-bad-id")
@@ -850,7 +1229,28 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref"},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/panel"},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/description/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/description", body: strings.NewReader(url.Values{"description": {"hello"}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/status/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/status", body: strings.NewReader(url.Values{"status": {string(model.StatusDone)}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/links/new"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/links", body: strings.NewReader(url.Values{"relation": {"relates_to"}, "target_issue": {linked.Identifier}}.Encode())},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
+	} {
+		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, tc.body)
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s %s code = %d body = %s", tc.method, tc.path, res.StatusCode, readBody(t, res))
+		}
+	}
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   io.Reader
+	}{
+		{method: http.MethodGet, path: e.issueLinksPath(issue) + "/not-a-link/edit"},
+		{method: http.MethodPost, path: e.issueLinksPath(issue) + "/not-a-link", body: strings.NewReader(url.Values{"relation": {"blocks"}, "target_issue": {linked.Identifier}}.Encode())},
+		{method: http.MethodPost, path: e.issueLinksPath(issue) + "/not-a-link/delete"},
 	} {
 		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, tc.body)
 		defer res.Body.Close()

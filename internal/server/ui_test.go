@@ -108,9 +108,16 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "projects panel", raw: "/projects/panel", want: "/projects/panel"},
 		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
+		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
+		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
+		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
+		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
 		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
 		{name: "bad issue nested panel", raw: "/bradley/issues/TRACK-7/panel/extra", want: "/"},
+		{name: "bad issue status child", raw: "/bradley/issues/TRACK-7/status/panel", want: "/"},
+		{name: "bad issue link ref", raw: "/bradley/issues/TRACK-7/links/nope/edit", want: "/"},
+		{name: "bad issue link action", raw: "/bradley/issues/TRACK-7/links/link-2/delete", want: "/"},
 		{name: "project", raw: "/bradley/projects/TRACK", want: "/bradley/projects/TRACK"},
 		{name: "project about", raw: "/bradley/projects/TRACK/about", want: "/bradley/projects/TRACK/about"},
 		{name: "project sprint", raw: "/bradley/projects/TRACK/sprint", want: "/bradley/projects/TRACK/sprint"},
@@ -252,7 +259,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			AuthorEmail: "ada@example.com",
 		}},
 		Links: []uiIssueLinkItem{{
-			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
+			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, Number: 4, Ref: "link-4", SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
 			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
 			HasIssue:    true,
 		}},
@@ -286,13 +293,18 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
 		`aria-label="Issue settings"`,
 		`aria-label="Edit description"`,
+		`hx-get="/bradley/issues/TRACK-7/description/edit"`,
 		`aria-label="Edit link"`,
+		`hx-get="/bradley/issues/TRACK-7/links/link-4/edit"`,
 		`aria-label="Edit comment"`,
 		`aria-label="Change status"`,
+		`aria-expanded="false"`,
+		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`hx-get="/bradley/issues/TRACK-7/links/new"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
@@ -369,6 +381,272 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 	if strings.Contains(body, "title=") {
 		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
+	}
+}
+
+func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Status:        model.StatusInProgress,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:    model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditStatus: true,
+		BackHref:   "/bradley/projects/TRACK/backlog",
+		BackHXGet:  "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:  "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`aria-label="Change status"`,
+		`aria-expanded="true"`,
+		`data-lucide="chevron-up"`,
+		`aria-label="Cancel status change"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		`method="post" action="/bradley/issues/TRACK-7/status"`,
+		`hx-post="/bradley/issues/TRACK-7/status"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`role="listbox" aria-label="Issue status"`,
+		`name="status" value="todo"`,
+		`name="status" value="in_progress"`,
+		`name="status" value="done"`,
+		`role="option" aria-selected="true"`,
+		"To do",
+		"In progress",
+		"Done",
+		`data-lucide="check"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("status dropdown missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
+		`aria-expanded="false"`,
+		`title="Cancel status change"`,
+		`title="Change status"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("status dropdown included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersDescriptionEditForm(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Description:   "Editable description",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:         model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditDescription: true,
+		BackHref:        "/bradley/projects/TRACK/backlog",
+		BackHXGet:       "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:       "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/description"`,
+		`hx-post="/bradley/issues/TRACK-7/description"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`name="description"`,
+		`placeholder="Description"`,
+		`data-submit-shortcut="meta-enter"`,
+		`aria-label="Save description"`,
+		`data-lucide="check"`,
+		`aria-label="Cancel editing description"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		`data-lucide="x"`,
+		"Editable description",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("description edit form missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`aria-label="Edit description"`,
+		"No description.",
+		"<textarea disabled",
+		`title="Save description"`,
+		`title="Cancel editing description"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("description edit form included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersAddLinkForm(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:      model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		AddLink:      true,
+		LinkTarget:   "TRACK-8",
+		LinkRelation: "blocked_by",
+		LinkError:    "Linked issue required.",
+		BackHref:     "/bradley/projects/TRACK/backlog",
+		BackHXGet:    "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:    "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/links"`,
+		`hx-post="/bradley/issues/TRACK-7/links"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`name="relation" aria-label="Link relationship"`,
+		`value="relates_to"`,
+		`value="blocks"`,
+		`value="blocked_by" selected`,
+		`value="duplicates"`,
+		`value="duplicated_by"`,
+		`value="clones"`,
+		`value="cloned_by"`,
+		`name="target_issue" value="TRACK-8" placeholder="TRACK-12"`,
+		`aria-label="Save link"`,
+		`aria-label="Cancel adding link"`,
+		"Linked issue required.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("add link form missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/links/new"`,
+		"No linked issues.",
+		`title="Save link"`,
+		`title="Cancel adding link"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("add link form included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersLinkEditForm(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	linkedID := uuid.MustParse("ae77b9b8-9dcf-4a18-8b69-42b97bd4a4b5")
+	linkID := uuid.MustParse("48c98f2e-bad8-4054-89d7-5a45a68af54f")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project: model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		Links: []uiIssueLinkItem{{
+			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, Number: 3, Ref: "link-3", SourceID: linkedID, TargetID: issueID, LinkType: model.LinkTypeClones, CreatedAt: when, UpdatedAt: when},
+			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusInProgress},
+			HasIssue:    true,
+		}},
+		EditLinkID:   linkID,
+		LinkTarget:   "TRACK-8",
+		LinkRelation: "cloned_by",
+		LinkError:    "Link already exists or cannot be updated.",
+		BackHref:     "/bradley/projects/TRACK/backlog",
+		BackHXGet:    "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:    "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/links/link-3"`,
+		`hx-post="/bradley/issues/TRACK-7/links/link-3"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`name="relation" aria-label="Link relationship"`,
+		`value="cloned_by" selected`,
+		`name="target_issue" value="TRACK-8" placeholder="TRACK-12"`,
+		`aria-label="Save link"`,
+		`aria-label="Cancel editing link"`,
+		`aria-label="Remove link"`,
+		`hx-post="/bradley/issues/TRACK-7/links/link-3/delete"`,
+		`data-lucide="trash-2"`,
+		"Link already exists or cannot be updated.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("edit link form missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/links/link-3/edit"`,
+		`title="Remove link"`,
+		`title="Cancel editing link"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("edit link form included %q: %s", notWant, body)
+		}
 	}
 }
 
@@ -472,6 +750,69 @@ func TestUIIssueLinkLabel(t *testing.T) {
 		if got := uiIssueLinkLabel(tt.link, issueID); got != tt.want {
 			t.Fatalf("%s: uiIssueLinkLabel = %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestUIIssueLinkRelationParams(t *testing.T) {
+	t.Parallel()
+
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	otherID := uuid.MustParse("ae77b9b8-9dcf-4a18-8b69-42b97bd4a4b5")
+
+	tests := []struct {
+		name       string
+		relation   string
+		wantSource uuid.UUID
+		wantTarget uuid.UUID
+		wantType   model.LinkType
+	}{
+		{name: "blocks", relation: "blocks", wantSource: issueID, wantTarget: otherID, wantType: model.LinkTypeBlocks},
+		{name: "blocked by", relation: "blocked_by", wantSource: otherID, wantTarget: issueID, wantType: model.LinkTypeBlocks},
+		{name: "duplicates", relation: "duplicates", wantSource: issueID, wantTarget: otherID, wantType: model.LinkTypeDuplicates},
+		{name: "duplicated by", relation: "duplicated_by", wantSource: otherID, wantTarget: issueID, wantType: model.LinkTypeDuplicates},
+		{name: "relates", relation: "relates_to", wantSource: issueID, wantTarget: otherID, wantType: model.LinkTypeRelatesTo},
+		{name: "clones", relation: "clones", wantSource: issueID, wantTarget: otherID, wantType: model.LinkTypeClones},
+		{name: "cloned by", relation: "cloned_by", wantSource: otherID, wantTarget: issueID, wantType: model.LinkTypeClones},
+	}
+
+	for _, tt := range tests {
+		sourceID, targetID, linkType, ok := uiIssueLinkRelationParams(issueID, otherID, tt.relation)
+		if !ok || sourceID != tt.wantSource || targetID != tt.wantTarget || linkType != tt.wantType {
+			t.Fatalf("%s: got (%s, %s, %s, %v), want (%s, %s, %s, true)", tt.name, sourceID, targetID, linkType, ok, tt.wantSource, tt.wantTarget, tt.wantType)
+		}
+	}
+	if _, _, _, ok := uiIssueLinkRelationParams(issueID, otherID, "blocks_by_magic"); ok {
+		t.Fatalf("invalid relation unexpectedly accepted")
+	}
+
+	if got := uiIssueLinkRelation(model.IssueLink{SourceID: otherID, TargetID: issueID, LinkType: model.LinkTypeBlocks}, issueID); got != "blocked_by" {
+		t.Fatalf("incoming blocks relation = %q, want blocked_by", got)
+	}
+	if got := uiIssueLinkRelation(model.IssueLink{SourceID: otherID, TargetID: issueID, LinkType: model.LinkTypeDuplicates}, issueID); got != "duplicated_by" {
+		t.Fatalf("incoming duplicates relation = %q, want duplicated_by", got)
+	}
+	if got := uiIssueLinkRelation(model.IssueLink{SourceID: otherID, TargetID: issueID, LinkType: model.LinkTypeClones}, issueID); got != "cloned_by" {
+		t.Fatalf("incoming clones relation = %q, want cloned_by", got)
+	}
+	if got := uiIssueLinkRelation(model.IssueLink{SourceID: otherID, TargetID: issueID, LinkType: model.LinkTypeRelatesTo}, issueID); got != "relates_to" {
+		t.Fatalf("incoming relates relation = %q, want relates_to", got)
+	}
+	if got := uiIssueLinkRelation(model.IssueLink{SourceID: issueID, TargetID: otherID, LinkType: model.LinkTypeBlocks}, issueID); got != "blocks" {
+		t.Fatalf("outgoing blocks relation = %q, want blocks", got)
+	}
+}
+
+func TestUIIssueLinkRef(t *testing.T) {
+	t.Parallel()
+
+	if got := uiIssueLinkRef(model.IssueLink{Ref: "link-7", Number: 3}); got != "link-7" {
+		t.Fatalf("explicit ref = %q, want link-7", got)
+	}
+	if got := uiIssueLinkRef(&model.IssueLink{Number: 3}); got != "link-3" {
+		t.Fatalf("number fallback = %q, want link-3", got)
+	}
+	if got := uiIssueLinkRef((*model.IssueLink)(nil)); got != "link-0" {
+		t.Fatalf("nil fallback = %q, want link-0", got)
 	}
 }
 

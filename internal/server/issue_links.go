@@ -14,6 +14,12 @@ type createIssueLinkReq struct {
 	LinkType    model.LinkType `json:"link_type"`
 }
 
+type updateIssueLinkReq struct {
+	SourceIssue string         `json:"source_issue"`
+	TargetIssue string         `json:"target_issue"`
+	LinkType    model.LinkType `json:"link_type"`
+}
+
 // issueLinkView wraps a stored link with direction-aware fields so clients
 // render "is blocked by FOO-12" without recomputing the inverse name.
 type issueLinkView struct {
@@ -128,6 +134,55 @@ func (s *Server) getIssueLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, link)
+}
+
+func (s *Server) updateIssueLink(w http.ResponseWriter, r *http.Request) {
+	project, link, ok := s.issueLinkFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	var req updateIssueLinkReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sourceRef, err := parseIssueRef(req.SourceIssue)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	targetRef, err := parseIssueRef(req.TargetIssue)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !req.LinkType.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid link_type")
+		return
+	}
+	source, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), project.OwnerUsername, sourceRef.ProjectKey, sourceRef.Number)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	target, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), project.OwnerUsername, targetRef.ProjectKey, targetRef.Number)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssueLink(r.Context(), link.ID, store.UpdateIssueLinkParams{
+		SourceID: source.ID,
+		TargetID: target.ID,
+		LinkType: req.LinkType,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 }
 
 func (s *Server) deleteIssueLink(w http.ResponseWriter, r *http.Request) {
