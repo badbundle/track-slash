@@ -1,6 +1,14 @@
 package server
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+)
 
 func TestUIProjectIcon(t *testing.T) {
 	t.Parallel()
@@ -52,6 +60,49 @@ func TestSafeUINextRootPaths(t *testing.T) {
 	for _, tt := range tests {
 		if got := safeUINext(tt.raw); got != tt.want {
 			t.Fatalf("%s: safeUINext(%q) = %q, want %q", tt.name, tt.raw, got, tt.want)
+		}
+	}
+}
+
+func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project: model.Project{
+			ID:          projectID,
+			Key:         "TRACK",
+			Name:        "Track Slash",
+			Description: "Fast issue tracking.",
+		},
+		View: "sprint",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	headerEnd := strings.Index(body, "</header>")
+	if headerEnd < 0 {
+		t.Fatalf("project panel missing title card header: %s", body)
+	}
+	tabNav := strings.Index(body, `aria-label="Project views"`)
+	if tabNav < 0 {
+		t.Fatalf("project panel missing project view tabs: %s", body)
+	}
+	if tabNav < headerEnd {
+		t.Fatalf("project view tabs rendered inside title card: %s", body)
+	}
+	header := body[:headerEnd]
+	for _, notWant := range []string{"Sprints", "Backlog", `/sprint/panel`, `/backlog/panel`} {
+		if strings.Contains(header, notWant) {
+			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
+		}
+	}
+	for _, want := range []string{"Sprints", "Backlog", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
 	}
 }
