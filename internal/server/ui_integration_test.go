@@ -565,9 +565,13 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
+		`method="post" action="/issues/` + issue.ID.String() + `/comments"`,
+		`hx-post="/issues/` + issue.ID.String() + `/comments"`,
+		`data-submit-shortcut="meta-enter"`,
 		"disabled",
 		`href="/projects/` + e.projectID.String() + `/backlog"`,
 		`hx-get="/projects/` + e.projectID.String() + `/backlog/panel"`,
@@ -609,6 +613,11 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body still renders separate status edit affordance %q: %s", notWant, body)
 		}
 	}
+	for _, notWant := range []string{`<textarea disabled`, `aria-label="Post comment" class="grid h-9 w-9 shrink-0 cursor-not-allowed`, "\n            Comment\n"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body renders disabled or text-labeled composer %q: %s", notWant, body)
+		}
+	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body included unrelated content %q: %s", notWant, body)
@@ -624,6 +633,53 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	}
 }
 
+func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-comment")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "comment target issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	form := url.Values{"body": {"new ui comment"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+issue.ID.String()+"/comments", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{"comment target issue", "new ui comment", `placeholder="Add a comment"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("comment post response missing %q: %s", want, body)
+		}
+	}
+	comments, _, err := e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue: %v", err)
+	}
+	if len(comments) != 1 || comments[0].Body != "new ui comment" || comments[0].AuthorID != user.ID {
+		t.Fatalf("comments = %+v, want one new comment by %s", comments, user.ID)
+	}
+
+	empty := url.Values{"body": {"   "}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+issue.ID.String()+"/comments", token, strings.NewReader(empty.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("empty code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Comment required, max 10000 chars.") {
+		t.Fatalf("empty comment response missing validation error: %s", body)
+	}
+	comments, _, err = e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue after validation: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("empty comment should not create a row, comments = %+v", comments)
+	}
+}
+
 func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	e := newHTTPEnv(t)
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "protected issue"})
@@ -636,6 +692,12 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue detail code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	form := url.Values{"body": {"denied comment"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+issue.ID.String()+"/comments", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue comment code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 
 	res = e.uiDoNoRedirect(t, http.MethodGet, "/issues/"+issue.ID.String(), "", nil)
 	defer res.Body.Close()
@@ -647,11 +709,19 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}
 
 	_, memberToken := e.mustProjectMemberToken(t, "ui-issue-bad-id")
-	for _, path := range []string{"/issues/not-a-uuid", "/issues/not-a-uuid/panel"} {
-		res := e.uiDoNoRedirect(t, http.MethodGet, path, memberToken, nil)
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   io.Reader
+	}{
+		{method: http.MethodGet, path: "/issues/not-a-uuid"},
+		{method: http.MethodGet, path: "/issues/not-a-uuid/panel"},
+		{method: http.MethodPost, path: "/issues/not-a-uuid/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
+	} {
+		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, tc.body)
 		defer res.Body.Close()
 		if res.StatusCode != http.StatusBadRequest {
-			t.Fatalf("%s code = %d body = %s", path, res.StatusCode, readBody(t, res))
+			t.Fatalf("%s %s code = %d body = %s", tc.method, tc.path, res.StatusCode, readBody(t, res))
 		}
 	}
 }

@@ -149,6 +149,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
 		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
 	}
+	for _, want := range []string{`[data-submit-shortcut='meta-enter']`, `event.metaKey`, `event.ctrlKey`, `form.requestSubmit()`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
+		}
+	}
 }
 
 func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
@@ -260,9 +265,19 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
+		`method="post" action="/issues/` + issueID.String() + `/comments"`,
+		`hx-post="/issues/` + issueID.String() + `/comments"`,
+		`hx-target="#main"`,
+		`hx-push-url="/issues/` + issueID.String() + `"`,
+		`data-submit-shortcut="meta-enter"`,
+		`class="flex items-start gap-2"`,
+		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
+		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
+		`class="flex items-start gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 dark:border-slate-800"`,
 		`inline-flex w-fit justify-self-start items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
@@ -301,8 +316,18 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
 		t.Fatalf("issue panel missing comment metadata/body ordering: %s", body)
 	}
-	if !strings.Contains(body[commentMetaStart:commentBodyStart], `aria-label="Edit comment"`) {
-		t.Fatalf("comment edit button should render beside comment metadata: %s", body)
+	commentEditStart := strings.Index(body, `aria-label="Edit comment"`)
+	if commentEditStart < 0 || commentEditStart < commentBodyStart {
+		t.Fatalf("comment edit button should render at the right edge after comment body content: %s", body)
+	}
+	if strings.Contains(body[commentMetaStart:commentBodyStart], `aria-label="Edit comment"`) {
+		t.Fatalf("comment edit button should not render beside comment metadata: %s", body)
+	}
+	if strings.Contains(body, "\n            Comment\n") {
+		t.Fatalf("post comment button should be icon-only: %s", body)
+	}
+	if strings.Contains(body, "<textarea disabled") || strings.Contains(body, `aria-label="Post comment" class="grid h-9 w-9`) || strings.Contains(body, `aria-label="Post comment" class="grid h-7 w-7 shrink-0 cursor-not-allowed`) {
+		t.Fatalf("comment composer should be enabled: %s", body)
 	}
 	titleHeaderEnd := strings.Index(body, "</header>")
 	if titleHeaderEnd < 0 {

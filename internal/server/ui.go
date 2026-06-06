@@ -136,6 +136,8 @@ type uiIssuePanelData struct {
 	Reporter        *model.User
 	Comments        []uiIssueCommentItem
 	CommentsHasMore bool
+	CommentBody     string
+	CommentError    string
 	Links           []uiIssueLinkItem
 	LinksHasMore    bool
 	BackHref        string
@@ -189,6 +191,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
 		r.Get("/issues/{id}", s.uiIssuePage)
 		r.Get("/issues/{id}/panel", s.uiIssuePanel)
+		r.Post("/issues/{id}/comments", s.uiCreateComment)
 		r.Get("/projects/{id}", s.uiProjectPage)
 		r.Get("/projects/{id}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/projects/{id}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
@@ -634,6 +637,56 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
+	issueID, ok := uiIssueID(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	body := strings.TrimSpace(r.Form.Get("body"))
+	if body == "" || len(body) > 10000 {
+		s.renderUIIssuePanelWithCommentError(w, r, issueID, r.Form.Get("body"), "Comment required, max 10000 chars.")
+		return
+	}
+	projectID, err := s.store.ProjectIDForIssue(r.Context(), issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), projectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if _, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
+		IssueID:  issueID,
+		AuthorID: currentUser(r).ID,
+		Body:     body,
+	}); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithCommentError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, body, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.CommentBody = body
+	panel.CommentError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
