@@ -178,10 +178,32 @@
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Details</h2>
         <dl class="mt-4 space-y-4 text-sm">
           <div>
-            <button type="button" disabled aria-label="Change status" aria-haspopup="listbox" class="inline-flex w-full cursor-not-allowed items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold {{statusClass .Issue.Status}}">
+            {{if .EditStatus}}
+            <div class="space-y-2">
+              <div class="flex items-center gap-2">
+                <button type="button" disabled aria-label="Change status" aria-haspopup="listbox" aria-expanded="true" class="inline-flex min-w-0 flex-1 cursor-default items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold {{statusClass .Issue.Status}}">
+                  <span>{{statusLabel .Issue.Status}}</span>
+                  <i data-lucide="chevron-up" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel status change" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </div>
+              <form method="post" action="{{issueStatus .Issue}}" hx-post="{{issueStatus .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue status" class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+                {{range statusOptions}}
+                <button type="submit" name="status" value="{{.Status}}" role="option" aria-selected="{{if eq $.Issue.Status .Status}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+                  <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .Status}}">{{.Label}}</span>
+                  {{if eq $.Issue.Status .Status}}<i data-lucide="check" class="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>{{end}}
+                </button>
+                {{end}}
+              </form>
+            </div>
+            {{else}}
+            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
               <span>{{statusLabel .Issue.Status}}</span>
               <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
             </button>
+            {{end}}
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>

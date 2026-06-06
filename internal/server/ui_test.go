@@ -108,9 +108,12 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "projects panel", raw: "/projects/panel", want: "/projects/panel"},
 		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
+		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
+		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
 		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
 		{name: "bad issue nested panel", raw: "/bradley/issues/TRACK-7/panel/extra", want: "/"},
+		{name: "bad issue status child", raw: "/bradley/issues/TRACK-7/status/panel", want: "/"},
 		{name: "project", raw: "/bradley/projects/TRACK", want: "/bradley/projects/TRACK"},
 		{name: "project about", raw: "/bradley/projects/TRACK/about", want: "/bradley/projects/TRACK/about"},
 		{name: "project sprint", raw: "/bradley/projects/TRACK/sprint", want: "/bradley/projects/TRACK/sprint"},
@@ -290,6 +293,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
 		`aria-label="Change status"`,
+		`aria-expanded="false"`,
+		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
@@ -370,6 +375,72 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 	if strings.Contains(body, "title=") {
 		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
+	}
+}
+
+func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Status:        model.StatusInProgress,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:    model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditStatus: true,
+		BackHref:   "/bradley/projects/TRACK/backlog",
+		BackHXGet:  "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:  "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`aria-label="Change status"`,
+		`aria-expanded="true"`,
+		`data-lucide="chevron-up"`,
+		`aria-label="Cancel status change"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		`method="post" action="/bradley/issues/TRACK-7/status"`,
+		`hx-post="/bradley/issues/TRACK-7/status"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`role="listbox" aria-label="Issue status"`,
+		`name="status" value="todo"`,
+		`name="status" value="in_progress"`,
+		`name="status" value="done"`,
+		`role="option" aria-selected="true"`,
+		"To do",
+		"In progress",
+		"Done",
+		`data-lucide="check"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("status dropdown missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
+		`aria-expanded="false"`,
+		`title="Cancel status change"`,
+		`title="Change status"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("status dropdown included %q: %s", notWant, body)
+		}
 	}
 }
 

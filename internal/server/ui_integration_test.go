@@ -595,6 +595,8 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
 		`aria-label="Change status"`,
+		`aria-expanded="false"`,
+		`hx-get="` + e.issuePath(issue) + `/status/edit"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
@@ -663,6 +665,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	if strings.Contains(body, `aria-label="Save description"`) || strings.Contains(body, `<textarea name="description"`) {
 		t.Fatalf("issue detail should not start in description edit mode: %s", body)
 	}
+	if strings.Contains(body, `role="listbox" aria-label="Issue status"`) || strings.Contains(body, `aria-label="Cancel status change"`) {
+		t.Fatalf("issue detail should not start in status edit mode: %s", body)
+	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body included unrelated content %q: %s", notWant, body)
@@ -675,6 +680,97 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	}
 	if !strings.Contains(panel, "detail page issue") || !strings.Contains(panel, "detail comment body") {
 		t.Fatalf("panel missing issue context: %s", panel)
+	}
+}
+
+func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-status")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "status target issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/status/edit", token)
+	for _, want := range []string{
+		"status target issue",
+		`aria-label="Change status"`,
+		`aria-expanded="true"`,
+		`role="listbox" aria-label="Issue status"`,
+		`method="post" action="` + e.issuePath(issue) + `/status"`,
+		`hx-post="` + e.issuePath(issue) + `/status"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="status" value="todo"`,
+		`name="status" value="in_progress"`,
+		`name="status" value="done"`,
+		`aria-label="Cancel status change"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		"To do",
+		"In progress",
+		"Done",
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("status edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `title="Change status"`) || strings.Contains(edit, `title="Cancel status change"`) {
+		t.Fatalf("status edit response has native tooltip state: %s", edit)
+	}
+
+	form := url.Values{"status": {string(model.StatusInProgress)}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "In progress") || strings.Contains(body, `role="option"`) {
+		t.Fatalf("update status response did not return read mode with new status: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after status update: %v", err)
+	}
+	if updated.Status != model.StatusInProgress {
+		t.Fatalf("Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+
+	badStatus := url.Values{"status": {"blocked"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(badStatus.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "invalid status") {
+		t.Fatalf("bad status response missing validation error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad status: %v", err)
+	}
+	if updated.Status != model.StatusInProgress {
+		t.Fatalf("bad status changed Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form status response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form status: %v", err)
+	}
+	if updated.Status != model.StatusInProgress {
+		t.Fatalf("bad form changed Status = %q, want %q", updated.Status, model.StatusInProgress)
 	}
 }
 
@@ -933,6 +1029,16 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue description update code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/status/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue status edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(url.Values{"status": {string(model.StatusDone)}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue status update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), "", nil)
 	defer res.Body.Close()
@@ -953,6 +1059,8 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/panel"},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/description/edit"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/description", body: strings.NewReader(url.Values{"description": {"hello"}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/status/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/status", body: strings.NewReader(url.Values{"status": {string(model.StatusDone)}}.Encode())},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
 	} {
 		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, tc.body)

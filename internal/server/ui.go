@@ -32,6 +32,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueDescriptionEdit": uiIssueDescriptionEditPath,
 	"issueHref":            uiIssuePath,
 	"issuePanel":           uiIssuePanelPath,
+	"issueStatus":          uiIssueStatusPath,
+	"issueStatusEdit":      uiIssueStatusEditPath,
 	"issueSubIssues":       uiIssueSubIssuesPath,
 	"linkLabel":            uiIssueLinkLabel,
 	"projectPanel":         uiProjectPanelPath,
@@ -40,6 +42,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"sprintDate":           uiSprintDate,
 	"statusClass":          uiStatusClass,
 	"statusLabel":          uiStatusLabel,
+	"statusOptions":        uiStatusOptions,
 	"statusRow":            uiStatusRowClass,
 	"statusSurface":        uiStatusSurfaceClass,
 	"tokenTime":            uiTokenTime,
@@ -144,6 +147,7 @@ type uiIssuePanelData struct {
 	Assignee         *model.User
 	Reporter         *model.User
 	EditDescription  bool
+	EditStatus       bool
 	SubIssues        []model.Issue
 	SubIssuesHasMore bool
 	SubIssueTitle    string
@@ -207,6 +211,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
 		r.Get("/{owner}/issues/{issueRef}/description/edit", s.uiEditIssueDescription)
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
+		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
+		r.Post("/{owner}/issues/{issueRef}/status", s.uiUpdateIssueStatus)
 		r.Post("/{owner}/issues/{issueRef}/sub-issues", s.uiCreateSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
@@ -692,6 +698,53 @@ func (s *Server) uiUpdateIssueDescription(w http.ResponseWriter, r *http.Request
 	}
 	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
 		Description: &description,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueStatus(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditStatus = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueStatus(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	status := model.Status(strings.TrimSpace(r.Form.Get("status")))
+	if !status.Valid() {
+		http.Error(w, "invalid status", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		Status: &status,
 	})
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -1305,6 +1358,14 @@ func uiIssueDescriptionEditPath(issue any) string {
 	return uiIssueDescriptionPath(issue) + "/edit"
 }
 
+func uiIssueStatusPath(issue any) string {
+	return uiIssuePath(issue) + "/status"
+}
+
+func uiIssueStatusEditPath(issue any) string {
+	return uiIssueStatusPath(issue) + "/edit"
+}
+
 func uiIssueSubIssuesPath(issue any) string {
 	return uiIssuePath(issue) + "/sub-issues"
 }
@@ -1375,7 +1436,7 @@ func safeUIProjectPath(path string) bool {
 
 func safeUIIssuePath(path string) bool {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(parts) != 3 && len(parts) != 4 {
+	if len(parts) != 3 && len(parts) != 4 && len(parts) != 5 {
 		return false
 	}
 	if _, err := store.NormalizeUsername(parts[0]); err != nil {
@@ -1390,7 +1451,10 @@ func safeUIIssuePath(path string) bool {
 	if len(parts) == 3 {
 		return true
 	}
-	return parts[3] == "panel"
+	if len(parts) == 4 {
+		return parts[3] == "panel"
+	}
+	return (parts[3] == "description" || parts[3] == "status") && parts[4] == "edit"
 }
 
 func renderUITemplate(w http.ResponseWriter, status int, name string, data any) {
@@ -1470,6 +1534,19 @@ func uiStatusClass(s model.Status) string {
 		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
 	default:
 		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+	}
+}
+
+type uiStatusOption struct {
+	Status model.Status
+	Label  string
+}
+
+func uiStatusOptions() []uiStatusOption {
+	return []uiStatusOption{
+		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
+		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
+		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
 	}
 }
 
