@@ -7,7 +7,7 @@ TEST_DATABASE_NAME ?= track_test
 TEST_DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/$(TEST_DATABASE_NAME)?sslmode=disable
 PORT ?= 8080
 SEED_USERNAME ?= demo
-SEED_PASSWORD ?= correct-horse-battery
+SEED_PASSWORD ?=
 SEED_NAME ?= Demo User
 SEED_PROJECT_PREFIX ?= DEMO
 
