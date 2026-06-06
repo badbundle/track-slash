@@ -23,7 +23,7 @@ import (
 
 func main() {
 	username := flag.String("username", envOr("SEED_USERNAME", "demo"), "username to create or reuse")
-	password := flag.String("password", envOr("SEED_PASSWORD", ""), "password for the seeded user")
+	password := flag.String("password", envOr("SEED_PASSWORD", "correct-horse-battery"), "password for the seeded user")
 	name := flag.String("name", envOr("SEED_NAME", "Demo User"), "display name for the seeded user")
 	projectPrefix := flag.String("project-prefix", envOr("SEED_PROJECT_PREFIX", "DEMO"), "1-6 char project key prefix")
 	applyMigrations := flag.Bool("migrate", envBool("SEED_MIGRATE", true), "apply migrations before seeding")
