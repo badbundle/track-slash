@@ -101,6 +101,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/{id}", s.getIssue)
 				r.Patch("/{id}", s.updateIssue)
 				r.Delete("/{id}", s.deleteIssue)
+				r.Post("/{id}/sub-issues", s.createSubIssue)
+				r.Get("/{id}/sub-issues", s.listSubIssues)
 				r.Post("/{id}/comments", s.createComment)
 				r.Get("/{id}/comments", s.listComments)
 				r.Post("/{id}/links", s.createIssueLink)

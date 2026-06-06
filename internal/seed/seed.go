@@ -34,14 +34,15 @@ type Summary struct {
 }
 
 type ProjectSummary struct {
-	Project         model.Project
-	CreatedProject  bool
-	Seeded          bool
-	ExistingContent bool
-	IssuesCreated   int
-	SprintsCreated  int
-	CommentsCreated int
-	LinksCreated    int
+	Project          model.Project
+	CreatedProject   bool
+	Seeded           bool
+	ExistingContent  bool
+	IssuesCreated    int
+	SubIssuesCreated int
+	SprintsCreated   int
+	CommentsCreated  int
+	LinksCreated     int
 }
 
 func Run(ctx context.Context, st *store.Store, opts Options) (Summary, error) {
@@ -336,6 +337,60 @@ func createIssue(
 
 	issueByKey[seed.Key] = created
 	summary.IssuesCreated++
+	for _, subIssue := range seed.SubIssues {
+		if err := createSubIssue(ctx, st, userID, created.ID, subIssue, issueByKey, summary); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createSubIssue(
+	ctx context.Context,
+	st *store.Store,
+	userID uuid.UUID,
+	parentIssueID uuid.UUID,
+	seed issueDefinition,
+	issueByKey map[string]model.Issue,
+	summary *ProjectSummary,
+) error {
+	if _, exists := issueByKey[seed.Key]; exists {
+		return fmt.Errorf("duplicate issue seed key %q", seed.Key)
+	}
+	if len(seed.SubIssues) > 0 {
+		return fmt.Errorf("sub-issue seed key %q cannot define nested sub-issues", seed.Key)
+	}
+	created, err := st.CreateSubIssue(ctx, store.CreateSubIssueParams{
+		ParentIssueID: parentIssueID,
+		Title:         seed.Title,
+		Description:   seed.Description,
+		AssigneeID:    &userID,
+		ReporterID:    &userID,
+	})
+	if err != nil {
+		return err
+	}
+
+	if seed.Status != "" && seed.Status != model.StatusTodo {
+		created, err = st.UpdateIssue(ctx, created.ID, store.UpdateIssueParams{Status: &seed.Status})
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, body := range seed.Comments {
+		if _, err := st.CreateComment(ctx, store.CreateCommentParams{
+			IssueID:  created.ID,
+			AuthorID: userID,
+			Body:     body,
+		}); err != nil {
+			return err
+		}
+		summary.CommentsCreated++
+	}
+
+	issueByKey[seed.Key] = created
+	summary.SubIssuesCreated++
 	return nil
 }
 
@@ -364,6 +419,7 @@ type issueDefinition struct {
 	Description string
 	Status      model.Status
 	Comments    []string
+	SubIssues   []issueDefinition
 }
 
 type linkDefinition struct {
@@ -432,6 +488,23 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 					Status:      model.StatusInProgress,
 					Comments: []string{
 						"Counts can come from existing list endpoints for now.",
+					},
+					SubIssues: []issueDefinition{
+						{
+							Key:         "core-capacity-status-counts",
+							Title:       "Count issues by status for planned sprint",
+							Description: "Return todo, in-progress, and done counts for the selected planned sprint.",
+							Status:      model.StatusDone,
+							Comments: []string{
+								"Use the existing issue status enum; no new capacity state.",
+							},
+						},
+						{
+							Key:         "core-capacity-empty-state",
+							Title:       "Render empty capacity state",
+							Description: "Show a compact zero-state when a planned sprint has no issues yet.",
+							Status:      model.StatusInProgress,
+						},
 					},
 				},
 				{
@@ -564,6 +637,19 @@ func mobileCompanionProject(key string, now time.Time) projectDefinition {
 					Status:      model.StatusTodo,
 					Comments: []string{
 						"Composer needs visible submit and cancel states.",
+					},
+					SubIssues: []issueDefinition{
+						{
+							Key:         "app-comment-sheet-focus",
+							Title:       "Keep keyboard focus inside composer sheet",
+							Description: "Opening the composer should focus the textarea and keep tab order inside the sheet.",
+							Status:      model.StatusInProgress,
+						},
+						{
+							Key:         "app-comment-sheet-submit",
+							Title:       "Submit comment without closing on validation error",
+							Description: "Validation errors should leave the draft visible and focused.",
+						},
 					},
 				},
 				{
@@ -732,6 +818,19 @@ func operationsDeskProject(key string, now time.Time) projectDefinition {
 				Status:      model.StatusInProgress,
 				Comments: []string{
 					"Include bootstrap token, account creation, and project membership.",
+				},
+				SubIssues: []issueDefinition{
+					{
+						Key:         "ops-admin-guide-bootstrap",
+						Title:       "Document bootstrap admin account",
+						Description: "Explain how the initial admin account is created and rotated.",
+						Status:      model.StatusDone,
+					},
+					{
+						Key:         "ops-admin-guide-members",
+						Title:       "Add project member walkthrough",
+						Description: "Show the minimum steps to grant and revoke project access.",
+					},
 				},
 			},
 		},

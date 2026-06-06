@@ -92,12 +92,13 @@ func printSummary(summary seed.Summary) {
 			contentState = "skipped existing content"
 		}
 		fmt.Printf(
-			"project %s %s: %s, %d sprints, %d issues, %d comments, %d links\n",
+			"project %s %s: %s, %d sprints, %d issues, %d sub-issues, %d comments, %d links\n",
 			project.Project.Key,
 			projectState,
 			contentState,
 			project.SprintsCreated,
 			project.IssuesCreated,
+			project.SubIssuesCreated,
 			project.CommentsCreated,
 			project.LinksCreated,
 		)

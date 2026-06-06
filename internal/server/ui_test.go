@@ -280,7 +280,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
 		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
 		`class="flex items-start gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 dark:border-slate-800"`,
-		`inline-flex w-fit justify-self-start items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
+		`inline-flex w-fit justify-self-start items-center whitespace-nowrap rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
 		`h-6 w-6`,
@@ -351,12 +351,14 @@ func TestUIIssueBackLink(t *testing.T) {
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	sprintID := uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08")
+	parentID := uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c")
 	baseIssue := model.Issue{ProjectID: projectID, SprintID: &sprintID}
 
 	tests := []struct {
 		name      string
 		issue     model.Issue
 		sprint    *model.Sprint
+		parent    *model.Issue
 		wantHref  string
 		wantHXGet string
 		wantLabel string
@@ -399,10 +401,18 @@ func TestUIIssueBackLink(t *testing.T) {
 			wantHXGet: "/projects/" + projectID.String() + "/sprint/panel",
 			wantLabel: "Sprint",
 		},
+		{
+			name:      "parent issue",
+			issue:     model.Issue{ProjectID: projectID, ParentIssueID: &parentID},
+			parent:    &model.Issue{ID: parentID, ProjectID: projectID},
+			wantHref:  "/issues/" + parentID.String(),
+			wantHXGet: "/issues/" + parentID.String() + "/panel",
+			wantLabel: "Parent issue",
+		},
 	}
 
 	for _, tt := range tests {
-		href, hxGet, label := uiIssueBackLink(projectID, tt.issue, tt.sprint)
+		href, hxGet, label := uiIssueBackLink(projectID, tt.issue, tt.parent, tt.sprint)
 		if href != tt.wantHref || hxGet != tt.wantHXGet || label != tt.wantLabel {
 			t.Fatalf("%s: got (%q, %q, %q), want (%q, %q, %q)", tt.name, href, hxGet, label, tt.wantHref, tt.wantHXGet, tt.wantLabel)
 		}

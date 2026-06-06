@@ -315,10 +315,25 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "not assigned to current user"}); err != nil {
 		t.Fatalf("CreateIssue unassigned: %v", err)
 	}
+	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "parent with child"})
+	if err != nil {
+		t.Fatalf("CreateIssue parent: %v", err)
+	}
+	child, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "assigned child issue",
+		AssigneeID:    &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue assigned child: %v", err)
+	}
 
 	meBody := e.uiGet(t, "/me", token)
 	if !strings.Contains(meBody, assigned.Title) {
 		t.Fatalf("me body missing assigned issue: %s", meBody)
+	}
+	if !strings.Contains(meBody, child.Title) {
+		t.Fatalf("me body missing assigned sub-issue: %s", meBody)
 	}
 	if strings.Contains(meBody, "not assigned to current user") {
 		t.Fatalf("me body included unassigned issue: %s", meBody)
@@ -531,6 +546,15 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateComment: %v", err)
 	}
+	subIssue, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{
+		ParentIssueID: issue.ID,
+		Title:         "detail child issue",
+		AssigneeID:    &user.ID,
+		ReporterID:    &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue: %v", err)
+	}
 	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other Detail Project", "")
 	if err != nil {
 		t.Fatalf("CreateProject other: %v", err)
@@ -558,6 +582,8 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		user.Name,
 		"Blocks",
 		"linked detail issue",
+		"Sub-issues",
+		"detail child issue",
 		"detail comment body",
 		`aria-label="Issue settings"`,
 		`aria-label="Edit description"`,
@@ -568,6 +594,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`aria-label="Create sub-issue"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
@@ -580,6 +607,10 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-get="/projects/` + e.projectID.String() + `/backlog/panel"`,
 		`href="/issues/` + linked.ID.String() + `"`,
 		`hx-get="/issues/` + linked.ID.String() + `/panel"`,
+		`href="/issues/` + subIssue.ID.String() + `"`,
+		`hx-get="/issues/` + subIssue.ID.String() + `/panel"`,
+		`method="post" action="/issues/` + issue.ID.String() + `/sub-issues"`,
+		`hx-post="/issues/` + issue.ID.String() + `/sub-issues"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue body missing %q: %s", want, body)
@@ -620,6 +651,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body renders disabled or text-labeled composer %q: %s", notWant, body)
 		}
+	}
+	if strings.Contains(body, `name="description"`) || strings.Contains(body, `placeholder="Description"`) {
+		t.Fatalf("sub-issue composer should be title-only: %s", body)
 	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {
 		if strings.Contains(body, notWant) {
@@ -680,6 +714,99 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	}
 	if len(comments) != 1 {
 		t.Fatalf("empty comment should not create a row, comments = %+v", comments)
+	}
+}
+
+func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-sub-issue")
+	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "parent target issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	form := url.Values{"title": {"new child from ui"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+parent.ID.String()+"/sub-issues", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{"parent target issue", "Sub-issues", "new child from ui", `aria-label="Create sub-issue"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue post response missing %q: %s", want, body)
+		}
+	}
+	children, _, err := e.store.ListSubIssuesForIssue(e.ctx, store.ListSubIssuesForIssueParams{
+		ParentIssueID: parent.ID,
+		Limit:         10,
+	})
+	if err != nil {
+		t.Fatalf("ListSubIssuesForIssue: %v", err)
+	}
+	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" {
+		t.Fatalf("children = %+v, want one title-only child", children)
+	}
+
+	empty := url.Values{"title": {"   "}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues/"+parent.ID.String()+"/sub-issues", token, strings.NewReader(empty.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("empty code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Title required, max 200 chars.") {
+		t.Fatalf("empty sub-issue response missing validation error: %s", body)
+	}
+}
+
+func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-sub-detail")
+	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "parent detail issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue parent: %v", err)
+	}
+	child, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "child detail issue",
+		Description:   "child detail body",
+		AssigneeID:    &user.ID,
+		ReporterID:    &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue: %v", err)
+	}
+
+	body := e.uiGet(t, "/issues/"+child.ID.String(), token)
+	for _, want := range []string{
+		"child detail issue",
+		"child detail body",
+		"Sub-issue of",
+		"Parent",
+		"parent detail issue",
+		`href="/issues/` + parent.ID.String() + `"`,
+		`hx-get="/issues/` + parent.ID.String() + `/panel"`,
+		`data-lucide="corner-up-left"`,
+		user.Name,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue detail missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		"Sub-issues",
+		`action="/issues/` + child.ID.String() + `/sub-issues"`,
+		`aria-label="Create sub-issue"`,
+		`aria-label="Edit sprint"`,
+		">Sprint</dt>",
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sub-issue detail included %q: %s", notWant, body)
+		}
 	}
 }
 
