@@ -145,11 +145,35 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	}
 
 	body := buf.String()
-	if !strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell > aside") {
-		t.Fatalf("shell missing direct-child sidebar collapse selector: %s", body)
+	for _, want := range []string{
+		"#sidebar-toggle:checked ~ .app-shell > aside",
+		`html[data-sidebar-collapsed] .app-shell > aside`,
+		`track-slash.sidebar.collapsed`,
+		`document.documentElement.toggleAttribute("data-sidebar-collapsed", collapsed)`,
+		`sidebarToggle.addEventListener("change"`,
+		`[data-member-menu] { bottom: 0.5rem; left: calc(100% + 0.5rem); right: auto; width: 12rem; }`,
+		`overflow-visible border-r`,
+		`data-member-summary`,
+		`data-member-label`,
+		`data-member-menu`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing sidebar behavior %q: %s", want, body)
+		}
 	}
 	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
 		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
+	}
+	menuStart := strings.Index(body, `<div data-member-menu`)
+	if menuStart < 0 {
+		t.Fatalf("shell missing member menu: %s", body)
+	}
+	menuEnd := strings.Index(body[menuStart:], `>`)
+	if menuEnd < 0 {
+		t.Fatalf("shell member menu has invalid markup: %s", body)
+	}
+	if strings.Contains(body[menuStart:menuStart+menuEnd], "wide-only") {
+		t.Fatalf("member menu should remain visible when the sidebar is collapsed: %s", body)
 	}
 	for _, want := range []string{`[data-submit-shortcut='meta-enter']`, `event.metaKey`, `event.ctrlKey`, `form.requestSubmit()`} {
 		if !strings.Contains(body, want) {
