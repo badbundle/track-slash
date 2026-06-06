@@ -4,6 +4,18 @@
 
 Read `MANIFESTO.md` before making product, API, data model, or frontend decisions. It defines the long-term direction for track-slash.
 
+## Frontend design principles
+
+track-slash UI should feel like a fast work tool: quiet, direct, and consistent with the existing Tailwind-based templates. Consistency wins over almost everything else. Prefer reuse over novelty: simple components that compose should carry the interface.
+
+- Prefer simple, recognizable Lucide icons paired with concise text labels over custom graphics, decorative treatments, or verbose copy.
+- Reuse existing components and Tailwind utility patterns from nearby templates before introducing new structure or visual language.
+- When adding repeatable UI, extract or extend a shared template/component first so future screens inherit the same behavior, spacing, and states.
+- Keep navigation controls predictable: tabs for sibling views, icon+text links for movement between pages, and compact buttons for concrete actions.
+- Keep cards purposeful. Use them for bounded content like project headers, forms, lists, and repeated items; do not nest cards or add decorative wrappers.
+- Preserve dense, scannable layouts with clear hierarchy, restrained color, and readable spacing. Avoid marketing-style hero sections, gradients, and ornamental UI.
+- Match dark-mode classes and interactive states (`hover`, active, focus) when adding or changing controls.
+
 ## Test coverage policy
 
 **Aim for 100% branch coverage on business logic.** Branch coverage, not just line coverage — every condition, every error mapping, every state transition must be exercised.

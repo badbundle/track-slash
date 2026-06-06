@@ -73,6 +73,21 @@ type uiPlannedSprint struct {
 	HasMore bool
 }
 
+type uiTabBarData struct {
+	Label string
+	Items []uiTabItem
+}
+
+type uiTabItem struct {
+	Label     string
+	Icon      string
+	Href      string
+	HXGet     string
+	HXTarget  string
+	HXPushURL string
+	Active    bool
+}
+
 type uiWorkPanelData struct {
 	View         string
 	Title        string
@@ -86,6 +101,7 @@ type uiWorkPanelData struct {
 type uiProjectPanelData struct {
 	Project             model.Project
 	View                string
+	ProjectTabs         uiTabBarData
 	ActiveSprint        *model.Sprint
 	SprintColumns       []uiIssueColumn
 	PlannedSprints      []uiPlannedSprint
@@ -632,8 +648,9 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	panel := &uiProjectPanelData{
-		Project: project,
-		View:    view,
+		Project:     project,
+		View:        view,
+		ProjectTabs: uiProjectTabs(projectID, view),
 	}
 
 	switch view {
@@ -713,6 +730,33 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	return panel, nil
+}
+
+func uiProjectTabs(projectID uuid.UUID, view string) uiTabBarData {
+	base := "/projects/" + projectID.String()
+	return uiTabBarData{
+		Label: "Project views",
+		Items: []uiTabItem{
+			{
+				Label:     "Sprints",
+				Icon:      "kanban",
+				Href:      base + "/sprint",
+				HXGet:     base + "/sprint/panel",
+				HXTarget:  "#main",
+				HXPushURL: base + "/sprint",
+				Active:    view == "sprint",
+			},
+			{
+				Label:     "Backlog",
+				Icon:      "archive",
+				Href:      base + "/backlog",
+				HXGet:     base + "/backlog/panel",
+				HXTarget:  "#main",
+				HXPushURL: base + "/backlog",
+				Active:    view == "backlog",
+			},
+		},
+	}
 }
 
 func (s *Server) uiVisibleProjects(ctx context.Context, user model.User) ([]model.Project, error) {
