@@ -87,6 +87,17 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	if headerEnd < 0 {
 		t.Fatalf("project panel missing title card header: %s", body)
 	}
+	titleCard := strings.Index(body, `<header class="rounded-lg`)
+	if titleCard < 0 {
+		t.Fatalf("project panel missing title card: %s", body)
+	}
+	backLink := strings.Index(body, `href="/projects"`)
+	if backLink < 0 {
+		t.Fatalf("project panel missing back link to projects: %s", body)
+	}
+	if backLink > titleCard {
+		t.Fatalf("back link rendered inside or below title card: %s", body)
+	}
 	tabNav := strings.Index(body, `aria-label="Project views"`)
 	if tabNav < 0 {
 		t.Fatalf("project panel missing project view tabs: %s", body)
@@ -100,7 +111,10 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
 		}
 	}
-	for _, want := range []string{"Sprints", "Backlog", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
+	if strings.Contains(body, "Back to projects") {
+		t.Fatalf("project back link uses verbose label: %s", body)
+	}
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "Sprints", "Backlog", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
