@@ -141,6 +141,9 @@ func TestCreateAndGetSprint(t *testing.T) {
 	if sp.CompletedAt != nil {
 		t.Fatalf("CompletedAt = %v, want nil", sp.CompletedAt)
 	}
+	if sp.PlannedOrder == nil || *sp.PlannedOrder != 1 {
+		t.Fatalf("PlannedOrder = %v, want 1", sp.PlannedOrder)
+	}
 
 	got, err := env.store.GetSprint(env.ctx, sp.ID)
 	if err != nil {
@@ -199,6 +202,155 @@ func TestListSprintsOrderingAndStatusFilter(t *testing.T) {
 	if len(active) != 1 || active[0].ID != a.ID {
 		t.Fatalf("active list = %+v", active)
 	}
+	if active[0].PlannedOrder != nil {
+		t.Fatalf("active planned_order = %v, want nil", active[0].PlannedOrder)
+	}
+}
+
+func TestCreateSprintAppendsPlannedOrder(t *testing.T) {
+	env := newSprintsEnv(t)
+	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
+	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
+	c := mustCreateSprint(t, env, "C", date(2026, 7, 1), date(2026, 7, 14))
+
+	for i, sp := range []model.Sprint{a, b, c} {
+		want := int64(i + 1)
+		if sp.PlannedOrder == nil || *sp.PlannedOrder != want {
+			t.Fatalf("%s planned_order = %v, want %d", sp.Name, sp.PlannedOrder, want)
+		}
+	}
+}
+
+func TestReorderPlannedSprints(t *testing.T) {
+	env := newSprintsEnv(t)
+	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
+	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
+	c := mustCreateSprint(t, env, "C", date(2026, 7, 1), date(2026, 7, 14))
+
+	got, err := env.store.ReorderPlannedSprints(env.ctx, store.ReorderPlannedSprintsParams{
+		ProjectID: env.projectID,
+		SprintIDs: []uuid.UUID{c.ID, a.ID, b.ID},
+	})
+	if err != nil {
+		t.Fatalf("ReorderPlannedSprints: %v", err)
+	}
+	wantOrder := []uuid.UUID{c.ID, a.ID, b.ID}
+	if len(got) != len(wantOrder) {
+		t.Fatalf("len = %d, want %d", len(got), len(wantOrder))
+	}
+	for i, id := range wantOrder {
+		if got[i].ID != id {
+			t.Fatalf("position %d = %s, want %s", i, got[i].ID, id)
+		}
+		wantRank := int64(i + 1)
+		if got[i].PlannedOrder == nil || *got[i].PlannedOrder != wantRank {
+			t.Fatalf("rank %d = %v, want %d", i, got[i].PlannedOrder, wantRank)
+		}
+	}
+
+	listed, _, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+		ProjectID: env.projectID,
+		Status:    model.SprintStatusPlanned,
+		Limit:     100,
+	})
+	if err != nil {
+		t.Fatalf("ListSprints planned: %v", err)
+	}
+	for i, id := range wantOrder {
+		if listed[i].ID != id {
+			t.Fatalf("listed position %d = %s, want %s", i, listed[i].ID, id)
+		}
+	}
+
+	page1, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+		ProjectID: env.projectID,
+		Status:    model.SprintStatusPlanned,
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("ListSprints planned page1: %v", err)
+	}
+	if !more || len(page1) != 2 || page1[0].ID != c.ID || page1[1].ID != a.ID {
+		t.Fatalf("page1 = %+v more=%v", page1, more)
+	}
+	page2, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+		ProjectID: env.projectID,
+		Status:    model.SprintStatusPlanned,
+		Cursor: &store.SprintsCursor{
+			PlannedOrder: *page1[1].PlannedOrder,
+			ID:           page1[1].ID,
+		},
+		Limit: 2,
+	})
+	if err != nil {
+		t.Fatalf("ListSprints planned page2: %v", err)
+	}
+	if more || len(page2) != 1 || page2[0].ID != b.ID {
+		t.Fatalf("page2 = %+v more=%v", page2, more)
+	}
+}
+
+func TestReorderPlannedSprintsRejectsInvalidSets(t *testing.T) {
+	env := newSprintsEnv(t)
+	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
+	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
+	active := mustCreateSprint(t, env, "active", date(2026, 7, 1), date(2026, 7, 14))
+	mustActivate(t, env, active.ID)
+
+	otherProject, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "other", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	other, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
+		ProjectID: otherProject.ID,
+		Name:      "other",
+		StartDate: date(2026, 8, 1),
+		EndDate:   date(2026, 8, 14),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint other: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		ids  []uuid.UUID
+	}{
+		{name: "missing", ids: []uuid.UUID{a.ID}},
+		{name: "duplicate", ids: []uuid.UUID{a.ID, a.ID}},
+		{name: "active", ids: []uuid.UUID{a.ID, active.ID}},
+		{name: "other-project", ids: []uuid.UUID{a.ID, other.ID}},
+		{name: "unknown", ids: []uuid.UUID{a.ID, uuid.New()}},
+		{name: "extra", ids: []uuid.UUID{a.ID, b.ID, uuid.New()}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := env.store.ReorderPlannedSprints(env.ctx, store.ReorderPlannedSprintsParams{
+				ProjectID: env.projectID,
+				SprintIDs: tc.ids,
+			})
+			if !errors.Is(err, store.ErrConflict) {
+				t.Fatalf("err = %v, want ErrConflict", err)
+			}
+		})
+	}
+}
+
+func TestReorderPlannedSprintsEmptyAndNotFound(t *testing.T) {
+	env := newSprintsEnv(t)
+	emptyProject, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "empty", "")
+	if err != nil {
+		t.Fatalf("CreateProject empty: %v", err)
+	}
+	got, err := env.store.ReorderPlannedSprints(env.ctx, store.ReorderPlannedSprintsParams{ProjectID: emptyProject.ID})
+	if err != nil {
+		t.Fatalf("ReorderPlannedSprints empty: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("empty len = %d, want 0", len(got))
+	}
+	if _, err := env.store.ReorderPlannedSprints(env.ctx, store.ReorderPlannedSprintsParams{ProjectID: uuid.New()}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("not found err = %v, want ErrNotFound", err)
+	}
 }
 
 func TestUpdateSprintActivationUnique(t *testing.T) {
@@ -243,7 +395,7 @@ func TestUpdateSprintRejectsCompletedTransition(t *testing.T) {
 	}
 }
 
-func TestCompleteSprintRollsForwardToNextPlanned(t *testing.T) {
+func TestCompleteSprintMovesUnfinishedToBacklog(t *testing.T) {
 	env := newSprintsEnv(t)
 	active := mustCreateSprint(t, env, "active", date(2026, 6, 1), date(2026, 6, 14))
 	next := mustCreateSprint(t, env, "next", date(2026, 6, 15), date(2026, 6, 30))
@@ -276,8 +428,8 @@ func TestCompleteSprintRollsForwardToNextPlanned(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetIssue %s: %v", id, err)
 		}
-		if iss.SprintID == nil || *iss.SprintID != next.ID {
-			t.Fatalf("issue %s sprint = %v, want %s", id, iss.SprintID, next.ID)
+		if iss.SprintID != nil {
+			t.Fatalf("issue %s sprint = %v, want backlog", id, iss.SprintID)
 		}
 	}
 
@@ -287,6 +439,24 @@ func TestCompleteSprintRollsForwardToNextPlanned(t *testing.T) {
 	}
 	if done.SprintID == nil || *done.SprintID != active.ID {
 		t.Fatalf("done issue sprint = %v, want %s (stays)", done.SprintID, active.ID)
+	}
+	gotNext, err := env.store.GetSprint(env.ctx, next.ID)
+	if err != nil {
+		t.Fatalf("GetSprint next: %v", err)
+	}
+	if gotNext.Status != model.SprintStatusPlanned {
+		t.Fatalf("next status = %s, want planned", gotNext.Status)
+	}
+	completed, _, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+		ProjectID: env.projectID,
+		Status:    model.SprintStatusCompleted,
+		Limit:     100,
+	})
+	if err != nil {
+		t.Fatalf("ListSprints completed: %v", err)
+	}
+	if len(completed) != 1 || completed[0].ID != active.ID {
+		t.Fatalf("completed = %+v, want active sprint", completed)
 	}
 }
 
@@ -452,6 +622,41 @@ func TestUpdateSprintRejectsAfterCompleted(t *testing.T) {
 	}
 }
 
+func TestUpdateSprintCompletedAllowsRenameOnly(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "old", date(2026, 6, 1), date(2026, 6, 14))
+	mustActivate(t, env, sp.ID)
+	if _, err := env.store.CompleteSprint(env.ctx, sp.ID); err != nil {
+		t.Fatalf("CompleteSprint: %v", err)
+	}
+
+	newName := "renamed"
+	got, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{Name: &newName})
+	if err != nil {
+		t.Fatalf("rename completed sprint: %v", err)
+	}
+	if got.Name != newName || got.Status != model.SprintStatusCompleted {
+		t.Fatalf("got = %+v", got)
+	}
+
+	newGoal := "new goal"
+	newStart := date(2026, 6, 2)
+	newEnd := date(2026, 6, 15)
+	target := model.SprintStatusCompleted
+	cases := []store.UpdateSprintParams{
+		{Goal: &newGoal},
+		{StartDate: &newStart},
+		{EndDate: &newEnd},
+		{Status: &target},
+		{Name: &newName, Goal: &newGoal},
+	}
+	for i, params := range cases {
+		if _, err := env.store.UpdateSprint(env.ctx, sp.ID, params); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("case %d err = %v, want ErrConflict", i, err)
+		}
+	}
+}
+
 func TestUpdateSprintNameGoalDates(t *testing.T) {
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "old", date(2026, 6, 1), date(2026, 6, 14))
@@ -587,6 +792,20 @@ func TestUpdateIssueSprintNotFound(t *testing.T) {
 	iss := mustCreateIssue(t, env, "T")
 	bogus := uuid.New()
 	_, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{SprintID: &bogus})
+	if !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+}
+
+func TestUpdateIssueCompletedSprintRejected(t *testing.T) {
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "done sprint", date(2026, 6, 1), date(2026, 6, 14))
+	mustActivate(t, env, sp.ID)
+	if _, err := env.store.CompleteSprint(env.ctx, sp.ID); err != nil {
+		t.Fatalf("CompleteSprint: %v", err)
+	}
+	iss := mustCreateIssue(t, env, "T")
+	_, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{SprintID: &sp.ID})
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("err = %v, want ErrConflict", err)
 	}

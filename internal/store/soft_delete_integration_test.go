@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
@@ -91,9 +92,24 @@ func TestSoftDeleteSprint(t *testing.T) {
 	planned := mustCreateSprint(t, env, "planned", date(2026, 6, 1), date(2026, 6, 14))
 	active := mustCreateSprint(t, env, "active", date(2026, 6, 15), date(2026, 6, 30))
 	mustActivate(t, env, active.ID)
+	completed := mustCreateSprint(t, env, "completed", date(2026, 7, 1), date(2026, 7, 14))
 
 	if err := env.store.DeleteSprint(env.ctx, active.ID); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("DeleteSprint active err = %v, want ErrConflict", err)
+	}
+	if _, err := env.store.CompleteSprint(env.ctx, active.ID); err != nil {
+		t.Fatalf("CompleteSprint active: %v", err)
+	}
+	mustActivate(t, env, completed.ID)
+	if _, err := env.store.CompleteSprint(env.ctx, completed.ID); err != nil {
+		t.Fatalf("CompleteSprint completed: %v", err)
+	}
+
+	if err := env.store.DeleteSprint(env.ctx, completed.ID); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("DeleteSprint completed err = %v, want ErrConflict", err)
+	}
+	if err := env.store.DeleteSprint(env.ctx, active.ID); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("DeleteSprint completed former active err = %v, want ErrConflict", err)
 	}
 	if err := env.store.DeleteSprint(env.ctx, planned.ID); err != nil {
 		t.Fatalf("DeleteSprint planned: %v", err)
@@ -158,18 +174,22 @@ func TestSoftDeleteProjectCascades(t *testing.T) {
 	}
 }
 
-func TestSoftDeleteCompletedSprint(t *testing.T) {
+func TestCompletedSprintCannotBeSoftDeleted(t *testing.T) {
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "completed", date(2026, 9, 1), date(2026, 9, 14))
 	mustActivate(t, env, sp.ID)
 	if _, err := env.store.CompleteSprint(env.ctx, sp.ID); err != nil {
 		t.Fatalf("CompleteSprint: %v", err)
 	}
-	if err := env.store.DeleteSprint(env.ctx, sp.ID); err != nil {
-		t.Fatalf("DeleteSprint completed: %v", err)
+	if err := env.store.DeleteSprint(env.ctx, sp.ID); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("DeleteSprint completed err = %v, want ErrConflict", err)
 	}
-	if _, err := env.store.CompleteSprint(env.ctx, sp.ID); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("CompleteSprint deleted err = %v, want ErrNotFound", err)
+	got, err := env.store.GetSprint(env.ctx, sp.ID)
+	if err != nil {
+		t.Fatalf("GetSprint completed after delete attempt: %v", err)
+	}
+	if got.Status != model.SprintStatusCompleted {
+		t.Fatalf("status = %s, want completed", got.Status)
 	}
 }
 
