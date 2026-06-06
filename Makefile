@@ -6,8 +6,12 @@ DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/track?sslmode=
 TEST_DATABASE_NAME ?= track_test
 TEST_DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/$(TEST_DATABASE_NAME)?sslmode=disable
 PORT ?= 8080
+SEED_USERNAME ?= demo
+SEED_PASSWORD ?= correct-horse-battery
+SEED_NAME ?= Demo User
+SEED_PROJECT_PREFIX ?= DEMO
 
-.PHONY: run migrate up down db-logs test tidy build vet
+.PHONY: run migrate seed up down db-logs test tidy build vet
 
 run:
 	DATABASE_URL='$(DATABASE_URL)' PORT='$(PORT)' go run ./cmd/trackd
@@ -26,6 +30,9 @@ tidy:
 
 migrate:
 	DATABASE_URL='$(DATABASE_URL)' go run ./cmd/trackd -migrate-only
+
+seed:
+	DATABASE_URL='$(DATABASE_URL)' go run ./cmd/seed -username='$(SEED_USERNAME)' -password='$(SEED_PASSWORD)' -name='$(SEED_NAME)' -project-prefix='$(SEED_PROJECT_PREFIX)'
 
 up:
 	docker compose up -d
