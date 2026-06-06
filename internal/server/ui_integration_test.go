@@ -560,11 +560,13 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-label="Edit description"`,
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
-		`aria-label="Edit status"`,
+		`aria-label="Change status"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`aria-haspopup="listbox"`,
+		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
 		"disabled",
 		`href="/projects/` + e.projectID.String() + `/backlog"`,
@@ -592,6 +594,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`title="Add link"`,
 		`title="Edit link"`,
 		`title="Edit comment"`,
+		`title="Change status"`,
 		`title="Edit status"`,
 		`title="Edit assignee"`,
 		`title="Edit reporter"`,
@@ -599,6 +602,11 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body still renders native title tooltip %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{`aria-label="Edit status"`, ">Status</dt>"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body still renders separate status edit affordance %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {

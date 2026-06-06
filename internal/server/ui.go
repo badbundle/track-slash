@@ -30,6 +30,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"linkLabel":   uiIssueLinkLabel,
 	"projectIcon": uiProjectIcon,
 	"sprintDate":  uiSprintDate,
+	"statusClass": uiStatusClass,
 	"statusLabel": uiStatusLabel,
 	"tokenTime":   uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
@@ -1170,6 +1171,19 @@ func uiStatusLabel(s model.Status) string {
 		return "Done"
 	default:
 		return string(s)
+	}
+}
+
+func uiStatusClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+	case model.StatusInProgress:
+		return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200"
+	case model.StatusDone:
+		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
+	default:
+		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
 	}
 }
 

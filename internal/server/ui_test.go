@@ -32,6 +32,26 @@ func TestUIProjectIcon(t *testing.T) {
 	}
 }
 
+func TestUIStatusClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"},
+		{status: model.StatusInProgress, want: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200"},
+		{status: model.StatusDone, want: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"},
+		{status: model.Status("custom"), want: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
 func TestSafeUINextRootPaths(t *testing.T) {
 	t.Parallel()
 
@@ -144,6 +164,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	body := buf.String()
 	for _, want := range []string{
 		"TRACK-7",
+		"text-3xl",
 		"Design issue detail",
 		"Readonly description",
 		"In progress",
@@ -164,17 +185,49 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit description"`,
 		`aria-label="Edit link"`,
 		`aria-label="Edit comment"`,
-		`aria-label="Edit status"`,
+		`aria-label="Change status"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
+		`aria-haspopup="listbox"`,
+		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
+		`inline-flex items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
+		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
+		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
+		`h-6 w-6`,
+		`h-3.5 w-3.5`,
+		`border-amber-300 bg-amber-50 text-amber-800`,
 		"disabled",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
 		}
+	}
+	detailsStart := strings.Index(body, ">Details</h2>")
+	if detailsStart < 0 {
+		t.Fatalf("issue panel missing Details heading: %s", body)
+	}
+	detailsBlock := body[detailsStart:]
+	statusIndex := strings.Index(detailsBlock, `aria-label="Change status"`)
+	projectIndex := strings.Index(detailsBlock, ">Project</dt>")
+	if statusIndex < 0 || projectIndex < 0 {
+		t.Fatalf("issue panel missing status control or project details row: %s", body)
+	}
+	if statusIndex > projectIndex {
+		t.Fatalf("status control should render before project detail: %s", body)
+	}
+	if strings.Contains(detailsBlock, ">Status</dt>") || strings.Contains(body, `aria-label="Edit status"`) {
+		t.Fatalf("status control should not render a separate title or edit button: %s", body)
+	}
+	commentMetaStart := strings.Index(body, "Ada Lovelace")
+	commentBodyStart := strings.Index(body, "Looks ready.")
+	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
+		t.Fatalf("issue panel missing comment metadata/body ordering: %s", body)
+	}
+	if !strings.Contains(body[commentMetaStart:commentBodyStart], `aria-label="Edit comment"`) {
+		t.Fatalf("comment edit button should render beside comment metadata: %s", body)
 	}
 	titleHeaderEnd := strings.Index(body, "</header>")
 	if titleHeaderEnd < 0 {
