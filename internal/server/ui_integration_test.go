@@ -583,9 +583,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		t.Fatalf("issue body missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
-	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status"} {
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "To do", "In progress", "Done"} {
 		if strings.Contains(titleHeader, notWant) {
-			t.Fatalf("title card still contains section action %q: %s", notWant, body)
+			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{

@@ -52,6 +52,46 @@ func TestUIStatusClass(t *testing.T) {
 	}
 }
 
+func TestUIStatusRowClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"},
+		{status: model.StatusInProgress, want: "bg-amber-50/45 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/30"},
+		{status: model.StatusDone, want: "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"},
+		{status: model.Status("custom"), want: "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusRowClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusRowClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+func TestUIStatusSurfaceClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "bg-slate-50/70 dark:bg-slate-900/30"},
+		{status: model.StatusInProgress, want: "bg-amber-50/45 dark:bg-amber-950/15"},
+		{status: model.StatusDone, want: "bg-emerald-50/45 dark:bg-emerald-950/15"},
+		{status: model.Status("custom"), want: "bg-white dark:bg-slate-900"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusSurfaceClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusSurfaceClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
 func TestSafeUINextRootPaths(t *testing.T) {
 	t.Parallel()
 
@@ -150,7 +190,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		}},
 		Links: []uiIssueLinkItem{{
 			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
-			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, Identifier: "TRACK-8", Title: "Linked work"},
+			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
 			HasIssue:    true,
 		}},
 		BackHref:  "/projects/" + projectID.String() + "/backlog",
@@ -193,17 +233,22 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
 		`placeholder="Add a comment"`,
-		`inline-flex items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
+		`inline-flex w-fit justify-self-start items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
 		`h-6 w-6`,
 		`h-3.5 w-3.5`,
 		`border-amber-300 bg-amber-50 text-amber-800`,
+		`bg-amber-50/45 dark:bg-amber-950/15`,
+		`bg-emerald-50/45 hover:bg-emerald-50`,
 		"disabled",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
 		}
+	}
+	if got := strings.Count(body, "bg-amber-50/45 dark:bg-amber-950/15"); got != 1 {
+		t.Fatalf("issue panel should tint the title card only, got %d matches: %s", got, body)
 	}
 	detailsStart := strings.Index(body, ">Details</h2>")
 	if detailsStart < 0 {
@@ -234,9 +279,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		t.Fatalf("issue panel missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
-	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status"} {
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress"} {
 		if strings.Contains(titleHeader, notWant) {
-			t.Fatalf("title card still contains section action %q: %s", notWant, body)
+			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
 		}
 	}
 	if strings.Contains(body, "title=") {
@@ -390,6 +435,58 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/projects/` + projectID.String() + `/sprint"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
+		}
+	}
+}
+
+func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
+	t.Parallel()
+
+	issue := model.Issue{
+		ID:         uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b"),
+		ProjectID:  uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"),
+		Identifier: "TRACK-7",
+		Title:      "Row issue",
+		Status:     model.StatusDone,
+	}
+	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
+
+	tests := []struct {
+		name     string
+		template string
+		data     any
+		hasBadge bool
+	}{
+		{name: "project issue list", template: "issue-list", data: []model.Issue{issue}, hasBadge: true},
+		{name: "project inset issue list", template: "issue-list-inset", data: []model.Issue{issue}, hasBadge: true},
+		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true},
+		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project}}},
+	}
+
+	for _, tt := range tests {
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, tt.template, tt.data); err != nil {
+			t.Fatalf("%s ExecuteTemplate: %v", tt.name, err)
+		}
+		body := buf.String()
+		for _, want := range []string{
+			"TRACK-7",
+			"inline-flex w-fit justify-self-start",
+			"bg-emerald-50/45 hover:bg-emerald-50",
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing markup %q: %s", tt.name, want, body)
+			}
+		}
+		if tt.hasBadge {
+			for _, want := range []string{"Done", "border-emerald-300 bg-emerald-50 text-emerald-800"} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s missing status badge markup %q: %s", tt.name, want, body)
+				}
+			}
+		}
+		if strings.Contains(body, "rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600") {
+			t.Fatalf("%s still renders neutral row status: %s", tt.name, body)
 		}
 	}
 }

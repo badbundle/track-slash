@@ -26,13 +26,15 @@ const uiAuthCookieName = "track_slash_ui_token"
 var errUIForbidden = errors.New("forbidden")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":    uiInitials,
-	"linkLabel":   uiIssueLinkLabel,
-	"projectIcon": uiProjectIcon,
-	"sprintDate":  uiSprintDate,
-	"statusClass": uiStatusClass,
-	"statusLabel": uiStatusLabel,
-	"tokenTime":   uiTokenTime,
+	"initials":      uiInitials,
+	"linkLabel":     uiIssueLinkLabel,
+	"projectIcon":   uiProjectIcon,
+	"sprintDate":    uiSprintDate,
+	"statusClass":   uiStatusClass,
+	"statusLabel":   uiStatusLabel,
+	"statusRow":     uiStatusRowClass,
+	"statusSurface": uiStatusSurfaceClass,
+	"tokenTime":     uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -1184,6 +1186,32 @@ func uiStatusClass(s model.Status) string {
 		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
 	default:
 		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+	}
+}
+
+func uiStatusRowClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"
+	case model.StatusInProgress:
+		return "bg-amber-50/45 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/30"
+	case model.StatusDone:
+		return "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"
+	default:
+		return "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"
+	}
+}
+
+func uiStatusSurfaceClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "bg-slate-50/70 dark:bg-slate-900/30"
+	case model.StatusInProgress:
+		return "bg-amber-50/45 dark:bg-amber-950/15"
+	case model.StatusDone:
+		return "bg-emerald-50/45 dark:bg-emerald-950/15"
+	default:
+		return "bg-white dark:bg-slate-900"
 	}
 }
 
