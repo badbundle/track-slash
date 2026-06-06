@@ -481,6 +481,164 @@ func TestUIRendersProjectBacklog(t *testing.T) {
 	}
 }
 
+func TestUIRendersIssueDetailPage(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-issue")
+	reporterID := user.ID
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:   e.projectID,
+		Title:       "detail page issue",
+		Description: "read only body",
+		AssigneeID:  &user.ID,
+		ReporterID:  &reporterID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Detail Planned Sprint",
+		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
+		t.Fatalf("assign sprint: %v", err)
+	}
+	linked, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "linked detail issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue linked: %v", err)
+	}
+	if _, err := e.store.CreateIssueLink(e.ctx, store.CreateIssueLinkParams{
+		SourceID: issue.ID,
+		TargetID: linked.ID,
+		LinkType: model.LinkTypeBlocks,
+	}); err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+	if _, err := e.store.CreateComment(e.ctx, store.CreateCommentParams{
+		IssueID:  issue.ID,
+		AuthorID: user.ID,
+		Body:     "detail comment body",
+	}); err != nil {
+		t.Fatalf("CreateComment: %v", err)
+	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other Detail Project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, otherProject.ID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess other: %v", err)
+	}
+	otherIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: otherProject.ID, Title: "unrelated detail issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue other: %v", err)
+	}
+	if _, err := e.store.CreateComment(e.ctx, store.CreateCommentParams{
+		IssueID:  otherIssue.ID,
+		AuthorID: user.ID,
+		Body:     "unrelated comment body",
+	}); err != nil {
+		t.Fatalf("CreateComment other: %v", err)
+	}
+
+	body := e.uiGet(t, "/issues/"+issue.ID.String(), token)
+	for _, want := range []string{
+		"detail page issue",
+		"read only body",
+		"Detail Planned Sprint",
+		user.Name,
+		"Blocks",
+		"linked detail issue",
+		"detail comment body",
+		"Edit issue",
+		"Change status",
+		"Add link",
+		`placeholder="Add a comment"`,
+		"disabled",
+		`href="/projects/` + e.projectID.String() + `/backlog"`,
+		`hx-get="/projects/` + e.projectID.String() + `/backlog/panel"`,
+		`href="/issues/` + linked.ID.String() + `"`,
+		`hx-get="/issues/` + linked.ID.String() + `/panel"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue body missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"unrelated detail issue", "unrelated comment body", "Other Detail Project"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body included unrelated content %q: %s", notWant, body)
+		}
+	}
+
+	panel := e.uiGet(t, "/issues/"+issue.ID.String()+"/panel", token)
+	if strings.Contains(panel, "<!doctype html>") {
+		t.Fatalf("panel returned shell: %s", panel)
+	}
+	if !strings.Contains(panel, "detail page issue") || !strings.Contains(panel, "detail comment body") {
+		t.Fatalf("panel missing issue context: %s", panel)
+	}
+}
+
+func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
+	e := newHTTPEnv(t)
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "protected issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	_, token := e.mustUserToken(t, "ui-issue-denied")
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/issues/"+issue.ID.String(), token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue detail code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, "/issues/"+issue.ID.String(), "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauth issue code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/login?next=%2Fissues%2F"+issue.ID.String() {
+		t.Fatalf("Location = %q", loc)
+	}
+
+	_, memberToken := e.mustProjectMemberToken(t, "ui-issue-bad-id")
+	for _, path := range []string{"/issues/not-a-uuid", "/issues/not-a-uuid/panel"} {
+		res := e.uiDoNoRedirect(t, http.MethodGet, path, memberToken, nil)
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s code = %d body = %s", path, res.StatusCode, readBody(t, res))
+		}
+	}
+}
+
+func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-issue-links")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "linked from lists",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	wantHref := `href="/issues/` + issue.ID.String() + `"`
+	wantHXGet := `hx-get="/issues/` + issue.ID.String() + `/panel"`
+	wantHXPush := `hx-push-url="/issues/` + issue.ID.String() + `"`
+
+	for _, path := range []string{"/projects/" + e.projectID.String() + "/backlog", "/me"} {
+		body := e.uiGet(t, path, token)
+		for _, want := range []string{wantHref, wantHXGet, wantHXPush, `data-main-view="projects"`} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing issue link %q: %s", path, want, body)
+			}
+		}
+	}
+}
+
 func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-routes")
