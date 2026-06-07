@@ -62,8 +62,7 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 	// the test expects to observe.
 	time.Sleep(500 * time.Millisecond)
 
-	var projectID string
-	projectID = insertRealtimeProject(ctx, t, pool, "rt-test")
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-test")
 
 	// Subscribe after the project insert. The project event may still be
 	// in flight inside the listener at this moment, so we loop and discard
@@ -133,8 +132,7 @@ func TestListenerReceivesSubIssueEvent(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	var projectID string
-	projectID = insertRealtimeProject(ctx, t, pool, "rt-sub-issue")
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-sub-issue")
 	var parentID string
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'parent') RETURNING id::text
@@ -197,8 +195,7 @@ func TestListenerReceivesSprintEvent(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	var projectID string
-	projectID = insertRealtimeProject(ctx, t, pool, "rt-sprint")
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-sprint")
 
 	projSub := newTestClient(8)
 	hub.Subscribe(projSub, "project:"+projectID)
@@ -274,8 +271,7 @@ func TestListenerReceivesIssueLinkEvent(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	var projectID string
-	projectID = insertRealtimeProject(ctx, t, pool, "rt-link")
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-link")
 
 	var srcID, tgtID string
 	if err := pool.QueryRow(ctx, `

@@ -72,6 +72,31 @@ func (s *Server) listProjectAssignees(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, assignees)
 }
 
+func (s *Server) searchProjectMembers(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	users, err := s.store.SearchProjectMembers(r.Context(), store.SearchProjectMembersParams{
+		ProjectID: project.ID,
+		Query:     r.URL.Query().Get("q"),
+		Limit:     limit,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, users)
+}
+
 func (s *Server) parseProjectMemberRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.User, bool) {
 	project, ok := s.projectFromRoute(w, r)
 	if !ok {

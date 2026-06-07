@@ -22,3 +22,11 @@
 {{define "status-badge"}}
 <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .}}">{{statusLabel .}}</span>
 {{end}}
+
+{{define "member-options"}}
+<datalist id="issue-member-options">
+  {{range .}}
+  <option value="@{{.Username}}">{{.Name}}{{if .Email}} - {{.Email}}{{end}}</option>
+  {{end}}
+</datalist>
+{{end}}

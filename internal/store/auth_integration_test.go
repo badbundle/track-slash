@@ -328,6 +328,103 @@ func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 	}
 }
 
+func TestSearchProjectMembers(t *testing.T) {
+	env := newSprintsEnv(t)
+	ada, err := env.store.CreateUser(env.ctx, "ada-"+uniqueProjectKey(t)+"@example.com", "Ada Lovelace")
+	if err != nil {
+		t.Fatalf("CreateUser ada: %v", err)
+	}
+	grace, err := env.store.CreateUser(env.ctx, "grace-"+uniqueProjectKey(t)+"@example.com", "Grace Hopper")
+	if err != nil {
+		t.Fatalf("CreateUser grace: %v", err)
+	}
+	nonMember, err := env.store.CreateUser(env.ctx, "ada-outsider-"+uniqueProjectKey(t)+"@example.com", "Ada Outsider")
+	if err != nil {
+		t.Fatalf("CreateUser nonmember: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, ada.ID); err != nil {
+		t.Fatalf("GrantProjectAccess ada: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, grace.ID); err != nil {
+		t.Fatalf("GrantProjectAccess grace: %v", err)
+	}
+
+	limited, err := env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
+		ProjectID: env.projectID,
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("SearchProjectMembers empty: %v", err)
+	}
+	if len(limited) != 2 || limited[0].ID != ada.ID || limited[1].ID != grace.ID {
+		t.Fatalf("limited members = %+v, want Ada then Grace", limited)
+	}
+
+	byName, err := env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
+		ProjectID: env.projectID,
+		Query:     "ADA",
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("SearchProjectMembers name: %v", err)
+	}
+	if len(byName) != 1 || byName[0].ID != ada.ID {
+		t.Fatalf("byName = %+v, want only Ada member %s", byName, ada.ID)
+	}
+	for _, user := range byName {
+		if user.ID == nonMember.ID {
+			t.Fatalf("non-member included in search: %+v", byName)
+		}
+	}
+
+	byUsername, err := env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
+		ProjectID: env.projectID,
+		Query:     grace.Username,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("SearchProjectMembers username: %v", err)
+	}
+	if len(byUsername) != 1 || byUsername[0].ID != grace.ID {
+		t.Fatalf("byUsername = %+v, want Grace", byUsername)
+	}
+
+	byEmail, err := env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
+		ProjectID: env.projectID,
+		Query:     grace.Email,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("SearchProjectMembers email: %v", err)
+	}
+	if len(byEmail) != 1 || byEmail[0].ID != grace.ID {
+		t.Fatalf("byEmail = %+v, want Grace", byEmail)
+	}
+
+	if err := env.store.DeleteUser(env.ctx, grace.ID); err != nil {
+		t.Fatalf("DeleteUser grace: %v", err)
+	}
+	afterDelete, err := env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
+		ProjectID: env.projectID,
+		Query:     "Grace",
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("SearchProjectMembers deleted: %v", err)
+	}
+	if len(afterDelete) != 0 {
+		t.Fatalf("deleted user returned from search: %+v", afterDelete)
+	}
+
+	_, err = env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
+		ProjectID: uuid.New(),
+		Limit:     10,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing project err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestCreateProjectForUserGrantsAccess(t *testing.T) {
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateUser(env.ctx, "creator-"+uniqueProjectKey(t)+"@example.com", "Creator")

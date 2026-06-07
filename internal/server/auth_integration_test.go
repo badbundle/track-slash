@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,48 @@ func TestHTTPAuthRequiredAndAdminOnly(t *testing.T) {
 	code, body = e.do(t, http.MethodDelete, e.projectPath()+"/members/"+user.Username, nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("revoke member code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPProjectMemberSearch(t *testing.T) {
+	e := newHTTPEnv(t)
+	member, memberToken := e.mustUserToken(t, "search-member")
+	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, member.ID); err != nil {
+		t.Fatalf("GrantProjectAccess member: %v", err)
+	}
+	target, err := e.store.CreateUser(e.ctx, "search-target-"+uniqueProjectKey(t)+"@example.com", "Search Target")
+	if err != nil {
+		t.Fatalf("CreateUser target: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, target.ID); err != nil {
+		t.Fatalf("GrantProjectAccess target: %v", err)
+	}
+	outsider, outsiderToken := e.mustUserToken(t, "search-outsider")
+	nonMember, err := e.store.CreateUser(e.ctx, "search-nonmember-"+uniqueProjectKey(t)+"@example.com", "Search Target Nonmember")
+	if err != nil {
+		t.Fatalf("CreateUser nonmember: %v", err)
+	}
+
+	code, body := e.doWithToken(t, memberToken, http.MethodGet, e.projectPath()+"/members/search?q="+url.QueryEscape("target")+"&limit=10", nil)
+	if code != http.StatusOK {
+		t.Fatalf("member search code = %d body = %s", code, body)
+	}
+	users := decode[[]model.User](t, body)
+	if len(users) != 1 || users[0].ID != target.ID {
+		t.Fatalf("member search users = %+v, want target %s", users, target.ID)
+	}
+	if users[0].ID == nonMember.ID || users[0].ID == outsider.ID {
+		t.Fatalf("search included non-member users: %+v", users)
+	}
+
+	code, body = e.doWithToken(t, outsiderToken, http.MethodGet, e.projectPath()+"/members/search?q=target", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider search code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.projectPath()+"/members/search?limit=0", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad limit search code = %d body = %s", code, body)
 	}
 }
 

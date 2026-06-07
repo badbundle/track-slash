@@ -712,7 +712,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-expanded="false"`,
 		`hx-get="` + e.issuePath(issue) + `/status/edit"`,
 		`aria-label="Edit assignee"`,
+		`hx-get="` + e.issuePath(issue) + `/assignee/edit"`,
 		`aria-label="Edit reporter"`,
+		`hx-get="` + e.issuePath(issue) + `/reporter/edit"`,
 		`aria-label="Edit sprint"`,
 		`aria-label="Add link"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/new"`,
@@ -974,6 +976,169 @@ func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
 	}
 	if updated.Description != "" {
 		t.Fatalf("blank Description = %q, want empty string", updated.Description)
+	}
+}
+
+func TestUIEditIssuePeopleUpdatesAndClearsIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-people")
+	target, err := e.store.CreateUser(e.ctx, "ui-person-"+uniqueProjectKey(t)+"@example.com", "UI Person")
+	if err != nil {
+		t.Fatalf("CreateUser target: %v", err)
+	}
+	nonMember, err := e.store.CreateUser(e.ctx, "ui-person-outsider-"+uniqueProjectKey(t)+"@example.com", "UI Person Outsider")
+	if err != nil {
+		t.Fatalf("CreateUser nonmember: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, target.ID); err != nil {
+		t.Fatalf("GrantProjectAccess target: %v", err)
+	}
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "people target issue",
+		ReporterID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	editAssignee := e.uiGet(t, e.issuePath(issue)+"/assignee/edit", token)
+	for _, want := range []string{
+		`method="post" action="` + e.issuePath(issue) + `/assignee"`,
+		`hx-post="` + e.issuePath(issue) + `/assignee"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="assignee"`,
+		`list="issue-member-options"`,
+		`aria-label="Save assignee"`,
+		`aria-label="Cancel editing assignee"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		`<datalist id="issue-member-options">`,
+		`value="@` + target.Username + `"`,
+	} {
+		if !strings.Contains(editAssignee, want) {
+			t.Fatalf("assignee edit missing %q: %s", want, editAssignee)
+		}
+	}
+	if strings.Contains(editAssignee, `aria-label="Edit assignee" class="grid h-7 w-7 shrink-0 cursor-not-allowed`) || strings.Contains(editAssignee, `title="Save assignee"`) {
+		t.Fatalf("assignee edit has disabled or tooltip state: %s", editAssignee)
+	}
+
+	form := url.Values{"assignee": {"@" + target.Username}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/assignee", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update assignee code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, target.Name) || strings.Contains(body, `name="assignee"`) {
+		t.Fatalf("assignee update did not return read mode with target: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after assignee update: %v", err)
+	}
+	if updated.AssigneeID == nil || *updated.AssigneeID != target.ID {
+		t.Fatalf("AssigneeID = %v, want %s", updated.AssigneeID, target.ID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/assignee", token, strings.NewReader(url.Values{"assignee": {" "}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear assignee code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Unassigned") || strings.Contains(body, target.Name) {
+		t.Fatalf("clear assignee response missing empty state: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after assignee clear: %v", err)
+	}
+	if updated.AssigneeID != nil {
+		t.Fatalf("AssigneeID after clear = %v, want nil", updated.AssigneeID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/assignee", token, strings.NewReader(url.Values{"assignee": {"@" + nonMember.Username}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("invalid assignee code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Choose a project member.") || !strings.Contains(body, `name="assignee"`) {
+		t.Fatalf("invalid assignee did not rerender edit mode: %s", body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/assignee", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad assignee form code = %d body = %s", res.StatusCode, body)
+	}
+
+	editReporter := e.uiGet(t, e.issuePath(issue)+"/reporter/edit", token)
+	for _, want := range []string{
+		`method="post" action="` + e.issuePath(issue) + `/reporter"`,
+		`hx-post="` + e.issuePath(issue) + `/reporter"`,
+		`name="reporter"`,
+		`value="@` + user.Username + `"`,
+		`value="@` + target.Username + `"`,
+		`aria-label="Save reporter"`,
+		`aria-label="Cancel editing reporter"`,
+	} {
+		if !strings.Contains(editReporter, want) {
+			t.Fatalf("reporter edit missing %q: %s", want, editReporter)
+		}
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/reporter", token, strings.NewReader(url.Values{"reporter": {"@" + target.Username}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update reporter code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, target.Name) || strings.Contains(body, `name="reporter"`) {
+		t.Fatalf("reporter update did not return read mode with target: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after reporter update: %v", err)
+	}
+	if updated.ReporterID == nil || *updated.ReporterID != target.ID {
+		t.Fatalf("ReporterID = %v, want %s", updated.ReporterID, target.ID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/reporter", token, strings.NewReader(url.Values{"reporter": {""}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear reporter code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "No reporter") || strings.Contains(body, target.Name) {
+		t.Fatalf("clear reporter response missing empty state: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after reporter clear: %v", err)
+	}
+	if updated.ReporterID != nil {
+		t.Fatalf("ReporterID after clear = %v, want nil", updated.ReporterID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/reporter", token, strings.NewReader(url.Values{"reporter": {"@" + nonMember.Username}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("invalid reporter code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Choose a project member.") || !strings.Contains(body, `name="reporter"`) {
+		t.Fatalf("invalid reporter did not rerender edit mode: %s", body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/reporter", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad reporter form code = %d body = %s", res.StatusCode, body)
 	}
 }
 
@@ -1291,6 +1456,26 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue status update code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/assignee/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue assignee edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/assignee", token, strings.NewReader(url.Values{"assignee": {"denied"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue assignee update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/reporter/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue reporter edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/reporter", token, strings.NewReader(url.Values{"reporter": {"denied"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue reporter update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueLinksPath(issue)+"/new", token, nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
@@ -1333,6 +1518,14 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issueLinksPath(issue)+"/new") {
 		t.Fatalf("link new Location = %q", loc)
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/assignee/edit", "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauth assignee edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issuePath(issue)+"/assignee/edit") {
+		t.Fatalf("assignee edit Location = %q", loc)
+	}
 
 	_, memberToken := e.mustProjectMemberToken(t, "ui-issue-bad-id")
 	for _, tc := range []struct {
@@ -1346,6 +1539,10 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/description", body: strings.NewReader(url.Values{"description": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/status/edit"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/status", body: strings.NewReader(url.Values{"status": {string(model.StatusDone)}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/assignee/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/assignee", body: strings.NewReader(url.Values{"assignee": {"hello"}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/reporter/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/reporter", body: strings.NewReader(url.Values{"reporter": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/links/new"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/links", body: strings.NewReader(url.Values{"relation": {"relates_to"}, "target_issue": {linked.Identifier}}.Encode())},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
