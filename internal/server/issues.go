@@ -137,6 +137,14 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		Cursor:    cursor,
 		Limit:     limit,
 	}
+	for _, raw := range r.URL.Query()["assignee_id"] {
+		id, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid assignee_id")
+			return
+		}
+		params.AssigneeIDs = append(params.AssigneeIDs, id)
+	}
 
 	sprintParam := r.URL.Query().Get("sprint")
 	sprintIDParam := r.URL.Query().Get("sprint_id")

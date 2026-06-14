@@ -214,6 +214,8 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 type ListIssuesParams struct {
 	ProjectID uuid.UUID
 	Status    model.Status // empty = all
+	// AssigneeIDs filters to issues assigned to any supplied users. Empty = all.
+	AssigneeIDs []uuid.UUID
 	// SprintID filters by sprint. Backlog == true means "WHERE sprint_id IS NULL"
 	// and SprintID is ignored. Both nil/false → no sprint filter.
 	SprintID *uuid.UUID
@@ -280,6 +282,10 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	if p.Status != "" {
 		args = append(args, string(p.Status))
 		q += fmt.Sprintf(" AND i.status = $%d", len(args))
+	}
+	if len(p.AssigneeIDs) > 0 {
+		args = append(args, p.AssigneeIDs)
+		q += fmt.Sprintf(" AND i.assignee_id = ANY($%d)", len(args))
 	}
 	switch {
 	case p.Backlog:

@@ -68,6 +68,43 @@ func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]
 	return out, rows.Err()
 }
 
+func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) ([]model.ProjectAssignee, error) {
+	if _, err := s.GetProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	const q = `
+		WITH assignees AS (
+			SELECT u.id, u.username, u.name
+			FROM project_members pm
+			JOIN users u ON u.id = pm.user_id
+			WHERE pm.project_id = $1 AND u.deleted_at IS NULL
+			UNION
+			SELECT u.id, u.username, u.name
+			FROM issues i
+			JOIN users u ON u.id = i.assignee_id
+			WHERE i.project_id = $1 AND i.deleted_at IS NULL AND u.deleted_at IS NULL
+		)
+		SELECT id, username, name
+		FROM assignees
+		ORDER BY lower(name) ASC, lower(username) ASC, id ASC
+	`
+	rows, err := s.db.Query(ctx, q, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []model.ProjectAssignee{}
+	for rows.Next() {
+		var a model.ProjectAssignee
+		if err := rows.Scan(&a.ID, &a.Username, &a.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) UserCanAccessProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
 	if user.IsAdmin {
 		var exists bool
