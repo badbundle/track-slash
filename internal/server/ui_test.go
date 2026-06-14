@@ -816,7 +816,7 @@ func TestUIIssueLinkRef(t *testing.T) {
 	}
 }
 
-func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
+func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
@@ -831,7 +831,7 @@ func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		Project:     project,
 		View:        "about",
-		ProjectTabs: uiProjectTabs(project, "about"),
+		ProjectTabs: uiProjectTabs(project, "about", nil),
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -874,8 +874,8 @@ func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 	aboutIdx := strings.Index(body, `href="/bradley/projects/TRACK/about"`)
 	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
 	backlogIdx := strings.Index(body, `href="/bradley/projects/TRACK/backlog"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || aboutIdx > sprintsIdx || sprintsIdx > backlogIdx {
-		t.Fatalf("project tabs not ordered about, sprints, backlog: about=%d sprints=%d backlog=%d body=%s", aboutIdx, sprintsIdx, backlogIdx, body)
+	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || sprintsIdx > backlogIdx || backlogIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprints, backlog, about: sprints=%d backlog=%d about=%d body=%s", sprintsIdx, backlogIdx, aboutIdx, body)
 	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
@@ -884,6 +884,74 @@ func TestUIProjectPanelRendersAboutTabBelowTitleCard(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
+	}
+}
+
+func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	selectedID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
+	otherID := uuid.MustParse("ae77b9b8-9dcf-4a18-8b69-42b97bd4a4b5")
+	project := model.Project{
+		ID:            projectID,
+		OwnerUsername: "bradley",
+		Key:           "TRACK",
+		Name:          "Track Slash",
+	}
+	selected := []uuid.UUID{selectedID}
+	assignees := []model.ProjectAssignee{
+		{ID: selectedID, Username: "ada", Name: "Ada Lovelace"},
+		{ID: otherID, Username: "grace", Name: "Grace Hopper"},
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project:              project,
+		View:                 "sprint",
+		ProjectTabs:          uiProjectTabs(project, "sprint", selected),
+		AssigneeFilters:      uiProjectAssigneeFilters(project, "sprint", assignees, selected),
+		AssigneeFilterActive: true,
+		ClearAssigneeHref:    uiProjectViewPath(project, "sprint"),
+		ClearAssigneeHXGet:   uiProjectPanelPath(project, "sprint"),
+		ClearAssigneeHXPush:  uiProjectViewPath(project, "sprint"),
+		ActiveSprint: &model.Sprint{
+			ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
+			ProjectID: projectID,
+			Name:      "Current Sprint",
+			Goal:      "Ship filtering\nPolish sprint goals",
+			StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+			EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		},
+		SprintColumns: uiIssueColumns(),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`aria-label="Assignee filter"`,
+		`aria-pressed="true"`,
+		`aria-pressed="false"`,
+		`aria-label="Toggle Ada Lovelace"`,
+		`aria-label="Toggle Grace Hopper"`,
+		"AL",
+		"GH",
+		"Ship filtering\nPolish sprint goals",
+		"whitespace-pre-wrap",
+		`href="/bradley/projects/TRACK/sprint?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
+		`hx-get="/bradley/projects/TRACK/backlog/panel?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
+		`href="/bradley/projects/TRACK/sprint"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project panel missing %q: %s", want, body)
+		}
+	}
+	filterIdx := strings.Index(body, `aria-label="Assignee filter"`)
+	tabIdx := strings.Index(body, `aria-label="Project views"`)
+	if filterIdx < 0 || tabIdx < 0 || filterIdx > tabIdx {
+		t.Fatalf("assignee filter should render above tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
 	}
 }
 

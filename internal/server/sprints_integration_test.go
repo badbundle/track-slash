@@ -802,6 +802,124 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 	}
 }
 
+func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
+	e := newHTTPEnv(t)
+	alice, _ := e.mustUserToken(t, "assignee-alice")
+	bob, _ := e.mustUserToken(t, "assignee-bob")
+	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
+
+	aliceIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "alice sprint issue",
+		AssigneeID: &alice.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue alice: %v", err)
+	}
+	bobIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "bob sprint issue",
+		AssigneeID: &bob.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue bob: %v", err)
+	}
+	unassigned, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "unassigned sprint issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue unassigned: %v", err)
+	}
+	aliceBacklog, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "alice backlog issue",
+		AssigneeID: &alice.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue alice backlog: %v", err)
+	}
+	for _, issue := range []model.Issue{aliceIssue, bobIssue, unassigned} {
+		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
+			t.Fatalf("assign %s: %v", issue.Identifier, err)
+		}
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, bobIssue.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("set bob done: %v", err)
+	}
+
+	code, body := e.do(t, http.MethodGet,
+		e.projectIssuesPath()+"?sprint="+sp.Ref+"&assignee_id="+alice.ID.String()+"&assignee_id="+bob.ID.String(), nil)
+	if code != http.StatusOK {
+		t.Fatalf("assignee code = %d body = %s", code, body)
+	}
+	got := decodePage[model.Issue](t, body).Items
+	if len(got) != 2 || got[0].ID != aliceIssue.ID || got[1].ID != bobIssue.ID {
+		t.Fatalf("assignee list = %+v, want alice/bob sprint issues", got)
+	}
+	for _, notWant := range []uuid.UUID{unassigned.ID, aliceBacklog.ID} {
+		for _, issue := range got {
+			if issue.ID == notWant {
+				t.Fatalf("assignee filter included %s in %+v", notWant, got)
+			}
+		}
+	}
+
+	code, body = e.do(t, http.MethodGet,
+		e.projectIssuesPath()+"?sprint="+sp.Ref+"&status=done&assignee_id="+bob.ID.String(), nil)
+	if code != http.StatusOK {
+		t.Fatalf("assignee+status code = %d body = %s", code, body)
+	}
+	got = decodePage[model.Issue](t, body).Items
+	if len(got) != 1 || got[0].ID != bobIssue.ID {
+		t.Fatalf("assignee+status list = %+v, want bob done", got)
+	}
+
+	code, _ = e.do(t, http.MethodGet, e.projectIssuesPath()+"?assignee_id=nope", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad assignee_id code = %d", code)
+	}
+}
+
+func TestHTTPListProjectAssignees(t *testing.T) {
+	e := newHTTPEnv(t)
+	member, memberToken := e.mustProjectMemberToken(t, "project-assignee-member")
+	assigned, _ := e.mustUserToken(t, "project-assignee-assigned")
+	unrelated, _ := e.mustUserToken(t, "project-assignee-unrelated")
+	if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "assigned issue",
+		AssigneeID: &assigned.ID,
+	}); err != nil {
+		t.Fatalf("CreateIssue assigned: %v", err)
+	}
+
+	code, body := e.doWithToken(t, memberToken, http.MethodGet, e.projectPath()+"/assignees", nil)
+	if code != http.StatusOK {
+		t.Fatalf("assignees code = %d body = %s", code, body)
+	}
+	got := decode[[]model.ProjectAssignee](t, body)
+	if !httpProjectAssigneesContain(got, member.ID) || !httpProjectAssigneesContain(got, assigned.ID) {
+		t.Fatalf("assignees missing member/assigned: %+v", got)
+	}
+	if httpProjectAssigneesContain(got, unrelated.ID) {
+		t.Fatalf("assignees included unrelated user: %+v", got)
+	}
+
+	_, deniedToken := e.mustUserToken(t, "project-assignee-denied")
+	code, _ = e.doWithToken(t, deniedToken, http.MethodGet, e.projectPath()+"/assignees", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("denied assignees code = %d", code)
+	}
+}
+
+func httpProjectAssigneesContain(in []model.ProjectAssignee, id uuid.UUID) bool {
+	for _, assignee := range in {
+		if assignee.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func TestHTTPListIssuesMutuallyExclusive(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")

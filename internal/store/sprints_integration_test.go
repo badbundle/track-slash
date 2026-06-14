@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -913,4 +914,120 @@ func TestListIssuesBacklogFilter(t *testing.T) {
 	if len(bySprint) != 1 || bySprint[0].ID != inSprint.ID {
 		t.Fatalf("by sprint = %+v, want only %s", bySprint, inSprint.ID)
 	}
+}
+
+func TestListIssuesAssigneeFilter(t *testing.T) {
+	env := newSprintsEnv(t)
+	alice := mustCreateUser(t, env, "alice-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
+	bob := mustCreateUser(t, env, "bob-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
+	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
+
+	assignedAlice, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "alice sprint",
+		AssigneeID: &alice.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue alice: %v", err)
+	}
+	assignedBob, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "bob sprint",
+		AssigneeID: &bob.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue bob: %v", err)
+	}
+	unassigned := mustCreateIssue(t, env, "unassigned sprint")
+	if _, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "alice backlog",
+		AssigneeID: &alice.ID,
+	}); err != nil {
+		t.Fatalf("CreateIssue alice backlog: %v", err)
+	}
+	assignIssueToSprint(t, env, assignedAlice.ID, sp.ID)
+	assignIssueToSprint(t, env, assignedBob.ID, sp.ID)
+	assignIssueToSprint(t, env, unassigned.ID, sp.ID)
+	done := model.StatusDone
+	if _, err := env.store.UpdateIssue(env.ctx, assignedBob.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("set bob done: %v", err)
+	}
+
+	got, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID:   env.projectID,
+		AssigneeIDs: []uuid.UUID{alice.ID, bob.ID},
+		SprintID:    &sp.ID,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues assignees+sprint: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != assignedAlice.ID || got[1].ID != assignedBob.ID {
+		t.Fatalf("assignee+sprint = %+v, want alice/bob sprint issues", got)
+	}
+
+	got, _, err = env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID:   env.projectID,
+		AssigneeIDs: []uuid.UUID{bob.ID},
+		Status:      model.StatusDone,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues assignee+status: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != assignedBob.ID {
+		t.Fatalf("assignee+status = %+v, want bob done", got)
+	}
+}
+
+func TestListProjectAssigneesIncludesMembersAndAssignedUsers(t *testing.T) {
+	env := newSprintsEnv(t)
+	member, err := env.store.CreateUserProfile(env.ctx, "member-"+strings.ToLower(uniqueProjectKey(t)), "member@example.com", "Member User")
+	if err != nil {
+		t.Fatalf("CreateUserProfile member: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, member.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	assigned, err := env.store.CreateUserProfile(env.ctx, "assigned-"+strings.ToLower(uniqueProjectKey(t)), "assigned@example.com", "Assigned User")
+	if err != nil {
+		t.Fatalf("CreateUserProfile assigned: %v", err)
+	}
+	unrelated, err := env.store.CreateUserProfile(env.ctx, "unrelated-"+strings.ToLower(uniqueProjectKey(t)), "unrelated@example.com", "Unrelated User")
+	if err != nil {
+		t.Fatalf("CreateUserProfile unrelated: %v", err)
+	}
+	if _, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "assigned issue",
+		AssigneeID: &assigned.ID,
+	}); err != nil {
+		t.Fatalf("CreateIssue assigned: %v", err)
+	}
+
+	got, err := env.store.ListProjectAssignees(env.ctx, env.projectID)
+	if err != nil {
+		t.Fatalf("ListProjectAssignees: %v", err)
+	}
+	if !projectAssigneesContain(got, member.ID) || !projectAssigneesContain(got, assigned.ID) {
+		t.Fatalf("project assignees missing member/assigned: %+v", got)
+	}
+	if projectAssigneesContain(got, unrelated.ID) {
+		t.Fatalf("project assignees included unrelated user: %+v", got)
+	}
+
+	_, err = env.store.ListProjectAssignees(env.ctx, uuid.New())
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing project err = %v, want ErrNotFound", err)
+	}
+}
+
+func projectAssigneesContain(in []model.ProjectAssignee, id uuid.UUID) bool {
+	for _, assignee := range in {
+		if assignee.ID == id {
+			return true
+		}
+	}
+	return false
 }

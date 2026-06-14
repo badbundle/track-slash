@@ -91,6 +91,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getProject)
 					r.Delete("/", s.deleteProject)
 					r.Get("/members", s.listProjectMembers)
+					r.Get("/assignees", s.listProjectAssignees)
 					r.Put("/members/{username}", s.grantProjectMember)
 					r.Delete("/members/{username}", s.revokeProjectMember)
 					r.Post("/issues", s.createIssue)

@@ -95,6 +95,12 @@ type ProjectMember struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type ProjectAssignee struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	Name     string    `json:"name"`
+}
+
 type Project struct {
 	ID            uuid.UUID `json:"id"`
 	OwnerID       uuid.UUID `json:"owner_id"`
