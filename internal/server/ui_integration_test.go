@@ -141,13 +141,10 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/about"`, `hx-get="` + e.projectPath() + `/about/panel"`} {
+	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
 		}
-	}
-	if strings.Contains(body, `href="`+e.projectPath()+`/sprint"`) {
-		t.Fatalf("projects body included sprint row action: %s", body)
 	}
 	if strings.Contains(body, `href="`+e.projectPath()+`/backlog"`) {
 		t.Fatalf("projects body included backlog row action: %s", body)
@@ -184,11 +181,11 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 		t.Fatalf("create code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	loc := res.Header.Get("Location")
-	if loc != "/"+user.Username+"/projects/"+key+"/about" {
+	if loc != "/"+user.Username+"/projects/"+key+"/sprint" {
 		t.Fatalf("Location = %q", loc)
 	}
 	body = e.uiGet(t, loc, token)
-	if !strings.Contains(body, "Created UI Project") || !strings.Contains(body, "from UI") {
+	if !strings.Contains(body, "Created UI Project") {
 		t.Fatalf("created project page missing values: %s", body)
 	}
 }
@@ -350,6 +347,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Board Sprint",
+		Goal:      "Focus current sprint goals\nShip board clarity",
 		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
 	})
@@ -403,7 +401,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
-	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint"} {
+	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Assignee filter"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}
@@ -411,6 +409,121 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	if strings.Contains(body, "other project sprint issue") || strings.Contains(body, "Active sprint issues across accessible projects.") {
 		t.Fatalf("sprint body included wrong scope/copy: %s", body)
 	}
+}
+
+func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
+	e := newHTTPEnv(t)
+	alice, token := e.mustProjectMemberToken(t, "ui-filter-alice")
+	bob, _ := e.mustProjectMemberToken(t, "ui-filter-bob")
+	var err error
+	alice, err = e.store.UpdateUserProfile(e.ctx, alice.ID, "Alice Filter", alice.Email)
+	if err != nil {
+		t.Fatalf("UpdateUserProfile alice: %v", err)
+	}
+	bob, err = e.store.UpdateUserProfile(e.ctx, bob.ID, "Bob Filter", bob.Email)
+	if err != nil {
+		t.Fatalf("UpdateUserProfile bob: %v", err)
+	}
+	activeSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Filtered Active Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint active: %v", err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, activeSprint.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("UpdateSprint active: %v", err)
+	}
+	plannedSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Filtered Planned Sprint",
+		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint planned: %v", err)
+	}
+	aliceSprint := createAssignedIssueForUI(t, e, "alice sprint issue", alice.ID)
+	bobSprint := createAssignedIssueForUI(t, e, "bob sprint issue", bob.ID)
+	unassignedSprint, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "unassigned sprint issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue unassigned sprint: %v", err)
+	}
+	for _, issue := range []model.Issue{aliceSprint, bobSprint, unassignedSprint} {
+		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &activeSprint.ID}); err != nil {
+			t.Fatalf("assign active %s: %v", issue.Identifier, err)
+		}
+	}
+	alicePlanned := createAssignedIssueForUI(t, e, "alice planned issue", alice.ID)
+	bobPlanned := createAssignedIssueForUI(t, e, "bob planned issue", bob.ID)
+	for _, issue := range []model.Issue{alicePlanned, bobPlanned} {
+		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &plannedSprint.ID}); err != nil {
+			t.Fatalf("assign planned %s: %v", issue.Identifier, err)
+		}
+	}
+	aliceBacklog := createAssignedIssueForUI(t, e, "alice backlog issue", alice.ID)
+	bobBacklog := createAssignedIssueForUI(t, e, "bob backlog issue", bob.ID)
+
+	aliceQuery := "?assignee_id=" + alice.ID.String()
+	body := e.uiGet(t, e.projectPath()+"/sprint"+aliceQuery, token)
+	for _, want := range []string{
+		`aria-label="Assignee filter"`,
+		`aria-label="Toggle Alice Filter"`,
+		`aria-label="Toggle Bob Filter"`,
+		`aria-pressed="true"`,
+		"AF",
+		"BF",
+		"alice sprint issue",
+		`href="` + e.projectPath() + `/backlog?assignee_id=` + alice.ID.String() + `"`,
+		`assignee_id=` + bob.ID.String(),
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("filtered sprint missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"bob sprint issue", "unassigned sprint issue"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("filtered sprint included %q: %s", notWant, body)
+		}
+	}
+
+	body = e.uiGet(t, e.projectPath()+"/backlog"+aliceQuery, token)
+	for _, want := range []string{"alice planned issue", "alice backlog issue"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("filtered backlog missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"bob planned issue", "bob backlog issue"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("filtered backlog included %q: %s", notWant, body)
+		}
+	}
+
+	body = e.uiGet(t, e.projectPath()+"/sprint"+aliceQuery+"&assignee_id="+bob.ID.String(), token)
+	for _, want := range []string{"alice sprint issue", "bob sprint issue"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi-filter sprint missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "unassigned sprint issue") || aliceBacklog.ID == uuid.Nil || bobBacklog.ID == uuid.Nil {
+		t.Fatalf("multi-filter sprint included wrong issue or setup failed: %s", body)
+	}
+}
+
+func createAssignedIssueForUI(t *testing.T, e *httpEnv, title string, assigneeID uuid.UUID) model.Issue {
+	t.Helper()
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      title,
+		AssigneeID: &assigneeID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue %s: %v", title, err)
+	}
+	return issue
 }
 
 func TestUIRendersProjectBacklog(t *testing.T) {
@@ -1294,7 +1407,7 @@ func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("project root code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/about" {
+	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/sprint" {
 		t.Fatalf("project root Location = %q", loc)
 	}
 
@@ -1453,7 +1566,7 @@ func TestUIHomeRedirectsToFirstProject(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("code = %d", res.StatusCode)
 	}
-	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/about" {
+	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/sprint" {
 		t.Fatalf("Location = %q", loc)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -24,6 +25,7 @@ var uiTemplateFS embed.FS
 const uiAuthCookieName = "track_slash_ui_token"
 
 var errUIForbidden = errors.New("forbidden")
+var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":             uiInitials,
@@ -95,6 +97,14 @@ type uiPlannedSprint struct {
 	HasMore bool
 }
 
+type uiAssigneeFilterItem struct {
+	Assignee model.ProjectAssignee
+	Selected bool
+	Href     string
+	HXGet    string
+	HXPush   string
+}
+
 type uiIssueCommentItem struct {
 	Comment     model.Comment
 	AuthorName  string
@@ -133,16 +143,21 @@ type uiWorkPanelData struct {
 }
 
 type uiProjectPanelData struct {
-	Project             model.Project
-	View                string
-	ProjectTabs         uiTabBarData
-	ActiveSprint        *model.Sprint
-	SprintColumns       []uiIssueColumn
-	PlannedSprints      []uiPlannedSprint
-	BacklogIssues       []model.Issue
-	SprintIssuesHasMore bool
-	PlannedHasMore      bool
-	BacklogHasMore      bool
+	Project              model.Project
+	View                 string
+	ProjectTabs          uiTabBarData
+	AssigneeFilters      []uiAssigneeFilterItem
+	AssigneeFilterActive bool
+	ClearAssigneeHref    string
+	ClearAssigneeHXGet   string
+	ClearAssigneeHXPush  string
+	ActiveSprint         *model.Sprint
+	SprintColumns        []uiIssueColumn
+	PlannedSprints       []uiPlannedSprint
+	BacklogIssues        []model.Issue
+	SprintIssuesHasMore  bool
+	PlannedHasMore       bool
+	BacklogHasMore       bool
 }
 
 type uiIssuePanelData struct {
@@ -509,7 +524,7 @@ func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/projects", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, uiProjectViewPath(projects[0], "about"), http.StatusSeeOther)
+	http.Redirect(w, r, uiProjectViewPath(projects[0], "sprint"), http.StatusSeeOther)
 }
 
 func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -578,7 +593,7 @@ func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, uiProjectViewPath(project, "about"), http.StatusSeeOther)
+	http.Redirect(w, r, uiProjectViewPath(project, "sprint"), http.StatusSeeOther)
 }
 
 func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
@@ -604,7 +619,7 @@ func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, uiProjectViewPath(project, "about"), http.StatusSeeOther)
+	http.Redirect(w, r, uiProjectViewPath(project, "sprint"), http.StatusSeeOther)
 }
 
 func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -1115,12 +1130,25 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	if err != nil {
 		return nil, err
 	}
+	assigneeIDs, err := uiParseAssigneeFilter(r)
+	if err != nil {
+		return nil, err
+	}
+	assignees, err := s.store.ListProjectAssignees(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
 
 	panel := &uiProjectPanelData{
-		Project:     project,
-		View:        view,
-		ProjectTabs: uiProjectTabs(project, view),
+		Project:              project,
+		View:                 view,
+		ProjectTabs:          uiProjectTabs(project, view, assigneeIDs),
+		AssigneeFilterActive: len(assigneeIDs) > 0,
+		ClearAssigneeHref:    uiProjectViewPath(project, view),
+		ClearAssigneeHXGet:   uiProjectPanelPath(project, view),
+		ClearAssigneeHXPush:  uiProjectViewPath(project, view),
 	}
+	panel.AssigneeFilters = uiProjectAssigneeFilters(project, view, assignees, assigneeIDs)
 
 	switch view {
 	case "about":
@@ -1141,9 +1169,10 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		}
 		panel.ActiveSprint = &activeSprints[0]
 		sprintIssues, sprintHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID: projectID,
-			SprintID:  &panel.ActiveSprint.ID,
-			Limit:     MaxLimit,
+			ProjectID:   projectID,
+			AssigneeIDs: assigneeIDs,
+			SprintID:    &panel.ActiveSprint.ID,
+			Limit:       MaxLimit,
 		})
 		if err != nil {
 			return nil, err
@@ -1172,9 +1201,10 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		panel.PlannedSprints = make([]uiPlannedSprint, 0, len(planned))
 		for _, sprint := range planned {
 			issues, issuesHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-				ProjectID: projectID,
-				SprintID:  &sprint.ID,
-				Limit:     MaxLimit,
+				ProjectID:   projectID,
+				AssigneeIDs: assigneeIDs,
+				SprintID:    &sprint.ID,
+				Limit:       MaxLimit,
 			})
 			if err != nil {
 				return nil, err
@@ -1187,9 +1217,10 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		}
 
 		backlog, backlogHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID: projectID,
-			Backlog:   true,
-			Limit:     MaxLimit,
+			ProjectID:   projectID,
+			AssigneeIDs: assigneeIDs,
+			Backlog:     true,
+			Limit:       MaxLimit,
 		})
 		if err != nil {
 			return nil, err
@@ -1391,40 +1422,106 @@ func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Iss
 	return base, base + "/panel", label
 }
 
-func uiProjectTabs(project model.Project, view string) uiTabBarData {
-	base := uiProjectPath(project)
+func uiProjectTabs(project model.Project, view string, assigneeIDs []uuid.UUID) uiTabBarData {
 	return uiTabBarData{
 		Label: "Project views",
 		Items: []uiTabItem{
 			{
-				Label:     "About",
-				Icon:      "info",
-				Href:      base + "/about",
-				HXGet:     base + "/about/panel",
-				HXTarget:  "#main",
-				HXPushURL: base + "/about",
-				Active:    view == "about",
-			},
-			{
 				Label:     "Sprints",
 				Icon:      "kanban",
-				Href:      base + "/sprint",
-				HXGet:     base + "/sprint/panel",
+				Href:      uiProjectViewPath(project, "sprint", assigneeIDs),
+				HXGet:     uiProjectPanelPath(project, "sprint", assigneeIDs),
 				HXTarget:  "#main",
-				HXPushURL: base + "/sprint",
+				HXPushURL: uiProjectViewPath(project, "sprint", assigneeIDs),
 				Active:    view == "sprint",
 			},
 			{
 				Label:     "Backlog",
 				Icon:      "archive",
-				Href:      base + "/backlog",
-				HXGet:     base + "/backlog/panel",
+				Href:      uiProjectViewPath(project, "backlog", assigneeIDs),
+				HXGet:     uiProjectPanelPath(project, "backlog", assigneeIDs),
 				HXTarget:  "#main",
-				HXPushURL: base + "/backlog",
+				HXPushURL: uiProjectViewPath(project, "backlog", assigneeIDs),
 				Active:    view == "backlog",
+			},
+			{
+				Label:     "About",
+				Icon:      "info",
+				Href:      uiProjectViewPath(project, "about", assigneeIDs),
+				HXGet:     uiProjectPanelPath(project, "about", assigneeIDs),
+				HXTarget:  "#main",
+				HXPushURL: uiProjectViewPath(project, "about", assigneeIDs),
+				Active:    view == "about",
 			},
 		},
 	}
+}
+
+func uiParseAssigneeFilter(r *http.Request) ([]uuid.UUID, error) {
+	raws := r.URL.Query()["assignee_id"]
+	ids := make([]uuid.UUID, 0, len(raws))
+	seen := make(map[uuid.UUID]struct{}, len(raws))
+	for _, raw := range raws {
+		id, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("invalid assignee_id: %w", errUIBadRequest)
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func uiProjectAssigneeFilters(project model.Project, view string, assignees []model.ProjectAssignee, selectedIDs []uuid.UUID) []uiAssigneeFilterItem {
+	out := make([]uiAssigneeFilterItem, 0, len(assignees))
+	for _, assignee := range assignees {
+		nextIDs, selected := uiToggleAssigneeIDs(selectedIDs, assignee.ID)
+		out = append(out, uiAssigneeFilterItem{
+			Assignee: assignee,
+			Selected: selected,
+			Href:     uiProjectViewPath(project, view, nextIDs),
+			HXGet:    uiProjectPanelPath(project, view, nextIDs),
+			HXPush:   uiProjectViewPath(project, view, nextIDs),
+		})
+	}
+	return out
+}
+
+func uiToggleAssigneeIDs(ids []uuid.UUID, id uuid.UUID) ([]uuid.UUID, bool) {
+	selected := false
+	for _, current := range ids {
+		if current == id {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		out := make([]uuid.UUID, 0, len(ids)+1)
+		out = append(out, ids...)
+		out = append(out, id)
+		return out, false
+	}
+	out := make([]uuid.UUID, 0, len(ids)-1)
+	for _, current := range ids {
+		if current != id {
+			out = append(out, current)
+		}
+	}
+	return out, true
+}
+
+func uiAppendAssigneeQuery(path string, assigneeIDs []uuid.UUID) string {
+	if len(assigneeIDs) == 0 {
+		return path
+	}
+	values := url.Values{}
+	for _, id := range assigneeIDs {
+		values.Add("assignee_id", id.String())
+	}
+	return path + "?" + values.Encode()
 }
 
 func (s *Server) uiVisibleProjects(ctx context.Context, user model.User) ([]model.Project, error) {
@@ -1565,12 +1662,20 @@ func uiProjectPath(project model.Project) string {
 	return "/" + project.OwnerUsername + "/projects/" + project.Key
 }
 
-func uiProjectViewPath(project model.Project, view string) string {
-	return uiProjectPath(project) + "/" + view
+func uiProjectViewPath(project model.Project, view string, assigneeIDs ...[]uuid.UUID) string {
+	ids := []uuid.UUID(nil)
+	if len(assigneeIDs) > 0 {
+		ids = assigneeIDs[0]
+	}
+	return uiAppendAssigneeQuery(uiProjectPath(project)+"/"+view, ids)
 }
 
-func uiProjectPanelPath(project model.Project, view string) string {
-	return uiProjectViewPath(project, view) + "/panel"
+func uiProjectPanelPath(project model.Project, view string, assigneeIDs ...[]uuid.UUID) string {
+	ids := []uuid.UUID(nil)
+	if len(assigneeIDs) > 0 {
+		ids = assigneeIDs[0]
+	}
+	return uiAppendAssigneeQuery(uiProjectPath(project)+"/"+view+"/panel", ids)
 }
 
 func uiIssuePath(v any) string {
@@ -1753,6 +1858,8 @@ func renderUITemplate(w http.ResponseWriter, status int, name string, data any) 
 
 func writeUIStoreError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errUIBadRequest):
+		http.Error(w, "bad request", http.StatusBadRequest)
 	case errors.Is(err, store.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	case errors.Is(err, errUIForbidden):

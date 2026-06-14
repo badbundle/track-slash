@@ -14,6 +14,22 @@
     </div>
   </header>
 
+  {{if .AssigneeFilters}}
+  <div class="mt-4 flex flex-wrap items-center gap-3" aria-label="Assignee filter">
+    <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Assignee</span>
+    <a href="{{.ClearAssigneeHref}}" hx-get="{{.ClearAssigneeHXGet}}" hx-target="#main" hx-push-url="{{.ClearAssigneeHXPush}}" class="inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium {{if .AssigneeFilterActive}}border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800{{else}}border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/50 dark:text-indigo-200{{end}}">
+      All
+    </a>
+    <div class="flex flex-wrap items-center gap-1.5">
+      {{range .AssigneeFilters}}
+      <a href="{{.Href}}" hx-get="{{.HXGet}}" hx-target="#main" hx-push-url="{{.HXPush}}" aria-label="Toggle {{.Assignee.Name}}" aria-pressed="{{if .Selected}}true{{else}}false{{end}}" class="grid h-8 w-8 place-items-center rounded-full border text-xs font-semibold {{if .Selected}}border-indigo-600 bg-indigo-600 text-white ring-2 ring-indigo-200 dark:border-indigo-400 dark:bg-indigo-500 dark:ring-indigo-900{{else}}border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800{{end}}">
+        {{initials .Assignee.Name .Assignee.Username}}
+      </a>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
   {{template "tab-bar" .ProjectTabs}}
 
   {{if eq .View "about"}}
@@ -34,6 +50,7 @@
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sprint</h2>
         {{if .ActiveSprint}}
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.ActiveSprint.Name}} · {{sprintDate .ActiveSprint.StartDate}}-{{sprintDate .ActiveSprint.EndDate}}</p>
+        {{if .ActiveSprint.Goal}}<div class="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{{.ActiveSprint.Goal}}</div>{{end}}
         {{else}}
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">No active sprint.</p>
         {{end}}
