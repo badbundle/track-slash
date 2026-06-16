@@ -398,6 +398,8 @@ type UpdateIssueParams struct {
 	Status        *model.Status
 	AssigneeID    *uuid.UUID
 	ClearAssignee bool
+	ReporterID    *uuid.UUID
+	ClearReporter bool
 	SprintID      *uuid.UUID
 	ClearSprint   bool
 }
@@ -428,6 +430,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		args = append(args, *p.AssigneeID)
 		i++
 	}
+	if p.ClearReporter {
+		sets = append(sets, "reporter_id = NULL")
+	} else if p.ReporterID != nil {
+		sets = append(sets, fmt.Sprintf("reporter_id = $%d", i))
+		args = append(args, *p.ReporterID)
+		i++
+	}
 	if p.ClearSprint {
 		sets = append(sets, "sprint_id = NULL")
 	} else if p.SprintID != nil {
@@ -446,10 +455,11 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		UPDATE issues SET %s WHERE id = $%d AND deleted_at IS NULL
 	`, strings.Join(sets, ", "), i)
 
-	// When assigning a sprint, guard against cross-project assignment in a tx.
-	// The cheap one-shot path stays untouched when the caller is only changing
-	// title/description/status/assignee or clearing the sprint.
-	if p.SprintID != nil && !p.ClearSprint {
+	validatePeople := (p.AssigneeID != nil && !p.ClearAssignee) || (p.ReporterID != nil && !p.ClearReporter)
+	validateSprint := p.SprintID != nil && !p.ClearSprint
+	// Cross-row validation runs in a transaction so the update uses the same
+	// issue project observed by the member/sprint checks.
+	if validatePeople || validateSprint {
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			var issueProject, sprintProject uuid.UUID
 			var parentIssueID *uuid.UUID
@@ -460,20 +470,40 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 				}
 				return err
 			}
-			if parentIssueID != nil {
-				return fmt.Errorf("sub-issues cannot be assigned to sprints: %w", ErrConflict)
-			}
-			if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
-				if isNoRows(err) {
-					return fmt.Errorf("sprint not found: %w", ErrConflict)
+			if p.AssigneeID != nil && !p.ClearAssignee {
+				ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.AssigneeID)
+				if err != nil {
+					return err
 				}
-				return err
+				if !ok {
+					return ErrNotFound
+				}
 			}
-			if issueProject != sprintProject {
-				return fmt.Errorf("sprint belongs to a different project: %w", ErrConflict)
+			if p.ReporterID != nil && !p.ClearReporter {
+				ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.ReporterID)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return ErrNotFound
+				}
 			}
-			if sprintStatus == model.SprintStatusCompleted {
-				return fmt.Errorf("cannot assign issue to completed sprint: %w", ErrConflict)
+			if validateSprint {
+				if parentIssueID != nil {
+					return fmt.Errorf("sub-issues cannot be assigned to sprints: %w", ErrConflict)
+				}
+				if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
+					if isNoRows(err) {
+						return fmt.Errorf("sprint not found: %w", ErrConflict)
+					}
+					return err
+				}
+				if issueProject != sprintProject {
+					return fmt.Errorf("sprint belongs to a different project: %w", ErrConflict)
+				}
+				if sprintStatus == model.SprintStatusCompleted {
+					return fmt.Errorf("cannot assign issue to completed sprint: %w", ErrConflict)
+				}
 			}
 			_, err := tx.Exec(ctx, q, args...)
 			return err
@@ -481,7 +511,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				return model.Issue{}, fmt.Errorf("invalid assignee or sprint: %w", ErrConflict)
+				return model.Issue{}, fmt.Errorf("invalid assignee, reporter, or sprint: %w", ErrConflict)
 			}
 			return model.Issue{}, err
 		}
@@ -500,6 +530,19 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		return model.Issue{}, ErrNotFound
 	}
 	return s.GetIssue(ctx, id)
+}
+
+func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID uuid.UUID) (bool, error) {
+	var ok bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM project_members pm
+			JOIN users u ON u.id = pm.user_id
+			WHERE pm.project_id = $1 AND pm.user_id = $2 AND u.deleted_at IS NULL
+		)
+	`, projectID, userID).Scan(&ok)
+	return ok, err
 }
 
 func (s *Store) DeleteIssue(ctx context.Context, id uuid.UUID) error {

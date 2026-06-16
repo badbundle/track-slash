@@ -756,6 +756,60 @@ func TestUpdateIssueClearAssignee(t *testing.T) {
 	}
 }
 
+func TestUpdateIssuePeopleRequireProjectMembers(t *testing.T) {
+	env := newSprintsEnv(t)
+	member, err := env.store.CreateUser(env.ctx, "issue-member-"+uniqueProjectKey(t)+"@example.com", "Issue Member")
+	if err != nil {
+		t.Fatalf("CreateUser member: %v", err)
+	}
+	nonMember, err := env.store.CreateUser(env.ctx, "issue-nonmember-"+uniqueProjectKey(t)+"@example.com", "Issue Nonmember")
+	if err != nil {
+		t.Fatalf("CreateUser nonmember: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, member.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "people",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	got, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{
+		AssigneeID: &member.ID,
+		ReporterID: &member.ID,
+	})
+	if err != nil {
+		t.Fatalf("UpdateIssue set people: %v", err)
+	}
+	if got.AssigneeID == nil || *got.AssigneeID != member.ID || got.ReporterID == nil || *got.ReporterID != member.ID {
+		t.Fatalf("people = assignee %v reporter %v, want %s", got.AssigneeID, got.ReporterID, member.ID)
+	}
+
+	got, err = env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{
+		ClearAssignee: true,
+		ClearReporter: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateIssue clear people: %v", err)
+	}
+	if got.AssigneeID != nil || got.ReporterID != nil {
+		t.Fatalf("cleared people = assignee %v reporter %v, want nil", got.AssigneeID, got.ReporterID)
+	}
+
+	_, err = env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{AssigneeID: &nonMember.ID})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("non-member assignee err = %v, want ErrNotFound", err)
+	}
+	missing := uuid.New()
+	_, err = env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{ReporterID: &missing})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing reporter err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestUpdateIssueClearSprint(t *testing.T) {
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))

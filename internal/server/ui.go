@@ -29,6 +29,8 @@ var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":             uiInitials,
+	"issueAssignee":        uiIssueAssigneePath,
+	"issueAssigneeEdit":    uiIssueAssigneeEditPath,
 	"issueComments":        uiIssueCommentsPath,
 	"issueDescription":     uiIssueDescriptionPath,
 	"issueDescriptionEdit": uiIssueDescriptionEditPath,
@@ -39,6 +41,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueLinkNew":         uiIssueLinkNewPath,
 	"issueLinks":           uiIssueLinksPath,
 	"issuePanel":           uiIssuePanelPath,
+	"issueReporter":        uiIssueReporterPath,
+	"issueReporterEdit":    uiIssueReporterEditPath,
 	"issueStatus":          uiIssueStatusPath,
 	"issueStatusEdit":      uiIssueStatusEditPath,
 	"issueSubIssues":       uiIssueSubIssuesPath,
@@ -169,6 +173,13 @@ type uiIssuePanelData struct {
 	Reporter         *model.User
 	EditDescription  bool
 	EditStatus       bool
+	EditAssignee     bool
+	EditReporter     bool
+	AssigneeInput    string
+	ReporterInput    string
+	AssigneeError    string
+	ReporterError    string
+	MemberOptions    []model.User
 	SubIssues        []model.Issue
 	SubIssuesHasMore bool
 	SubIssueTitle    string
@@ -239,6 +250,10 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
 		r.Post("/{owner}/issues/{issueRef}/status", s.uiUpdateIssueStatus)
+		r.Get("/{owner}/issues/{issueRef}/assignee/edit", s.uiEditIssueAssignee)
+		r.Post("/{owner}/issues/{issueRef}/assignee", s.uiUpdateIssueAssignee)
+		r.Get("/{owner}/issues/{issueRef}/reporter/edit", s.uiEditIssueReporter)
+		r.Post("/{owner}/issues/{issueRef}/reporter", s.uiUpdateIssueReporter)
 		r.Get("/{owner}/issues/{issueRef}/links/new", s.uiNewIssueLink)
 		r.Post("/{owner}/issues/{issueRef}/links", s.uiCreateIssueLink)
 		r.Get("/{owner}/issues/{issueRef}/links/{linkRef}/edit", s.uiEditIssueLink)
@@ -789,6 +804,122 @@ func (s *Server) uiUpdateIssueStatus(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiEditIssueAssignee(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditAssignee = true
+	panel.AssigneeInput = uiIssueUserInput(panel.Assignee)
+	if err := s.uiPopulateIssueMemberOptions(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueAssignee(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := r.Form.Get("assignee")
+	assigneeID, clear, message, err := s.uiIssuePersonID(r.Context(), issue.ProjectID, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIIssuePanelWithAssigneeError(w, r, issue.ID, input, message)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		AssigneeID:    assigneeID,
+		ClearAssignee: clear,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueReporter(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditReporter = true
+	panel.ReporterInput = uiIssueUserInput(panel.Reporter)
+	if err := s.uiPopulateIssueMemberOptions(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueReporter(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := r.Form.Get("reporter")
+	reporterID, clear, message, err := s.uiIssuePersonID(r.Context(), issue.ProjectID, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIIssuePanelWithReporterError(w, r, issue.ID, input, message)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		ReporterID:    reporterID,
+		ClearReporter: clear,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiNewIssueLink(w http.ResponseWriter, r *http.Request) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -1030,6 +1161,82 @@ func (s *Server) renderUIIssuePanelWithCommentError(w http.ResponseWriter, r *ht
 	panel.CommentBody = body
 	panel.CommentError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithAssigneeError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditAssignee = true
+	panel.AssigneeInput = input
+	panel.AssigneeError = message
+	if err := s.uiPopulateIssueMemberOptions(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithReporterError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditReporter = true
+	panel.ReporterInput = input
+	panel.ReporterError = message
+	if err := s.uiPopulateIssueMemberOptions(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiPopulateIssueMemberOptions(ctx context.Context, panel *uiIssuePanelData) error {
+	users, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
+		ProjectID: panel.Project.ID,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return err
+	}
+	panel.MemberOptions = users
+	return nil
+}
+
+func (s *Server) uiIssuePersonID(ctx context.Context, projectID uuid.UUID, raw string) (*uuid.UUID, bool, string, error) {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return nil, true, "", nil
+	}
+	username, err := store.NormalizeUsername(strings.TrimPrefix(input, "@"))
+	if err != nil {
+		return nil, false, "Choose a project member.", nil
+	}
+	user, err := s.store.GetUserByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, false, "Choose a project member.", nil
+		}
+		return nil, false, "", err
+	}
+	users, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
+		ProjectID: projectID,
+		Query:     username,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return nil, false, "", err
+	}
+	for _, member := range users {
+		if member.ID == user.ID {
+			return &user.ID, false, "", nil
+		}
+	}
+	return nil, false, "Choose a project member.", nil
 }
 
 func (s *Server) renderUIIssuePanelWithLinkError(w http.ResponseWriter, r *http.Request, issueID, editLinkID uuid.UUID, target, relation, message string) {
@@ -1707,6 +1914,22 @@ func uiIssueStatusEditPath(issue any) string {
 	return uiIssueStatusPath(issue) + "/edit"
 }
 
+func uiIssueAssigneePath(issue any) string {
+	return uiIssuePath(issue) + "/assignee"
+}
+
+func uiIssueAssigneeEditPath(issue any) string {
+	return uiIssueAssigneePath(issue) + "/edit"
+}
+
+func uiIssueReporterPath(issue any) string {
+	return uiIssuePath(issue) + "/reporter"
+}
+
+func uiIssueReporterEditPath(issue any) string {
+	return uiIssueReporterPath(issue) + "/edit"
+}
+
 func uiIssueLinksPath(issue any) string {
 	return uiIssuePath(issue) + "/links"
 }
@@ -1787,6 +2010,13 @@ func safeUINext(raw string) string {
 	}
 }
 
+func uiIssueUserInput(user *model.User) string {
+	if user == nil {
+		return ""
+	}
+	return "@" + user.Username
+}
+
 func safeUIProjectPath(path string) bool {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(parts) != 3 && len(parts) != 4 && len(parts) != 5 {
@@ -1835,7 +2065,7 @@ func safeUIIssuePath(path string) bool {
 		return parts[3] == "panel" || parts[3] == "links"
 	}
 	if len(parts) == 5 {
-		return ((parts[3] == "description" || parts[3] == "status") && parts[4] == "edit") ||
+		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "assignee" || parts[3] == "reporter") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new")
 	}
 	if parts[3] != "links" || parts[5] != "edit" {

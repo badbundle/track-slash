@@ -717,6 +717,67 @@ func TestHTTPPatchIssueSetSprint(t *testing.T) {
 	}
 }
 
+func TestHTTPPatchIssueSetAndClearPeople(t *testing.T) {
+	e := newHTTPEnv(t)
+	member, err := e.store.CreateUser(e.ctx, "issue-person-"+uniqueProjectKey(t)+"@example.com", "Issue Person")
+	if err != nil {
+		t.Fatalf("CreateUser member: %v", err)
+	}
+	nonMember, err := e.store.CreateUser(e.ctx, "issue-outsider-"+uniqueProjectKey(t)+"@example.com", "Issue Outsider")
+	if err != nil {
+		t.Fatalf("CreateUser nonmember: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, member.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "people",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	code, body := e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{
+		"assignee_id": member.ID,
+		"reporter_id": member.ID,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("set people code = %d body = %s", code, body)
+	}
+	got := decode[model.Issue](t, body)
+	if got.AssigneeID == nil || *got.AssigneeID != member.ID || got.ReporterID == nil || *got.ReporterID != member.ID {
+		t.Fatalf("people = assignee %v reporter %v, want %s", got.AssigneeID, got.ReporterID, member.ID)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{
+		"clear_assignee": true,
+		"clear_reporter": true,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("clear people code = %d body = %s", code, body)
+	}
+	got = decode[model.Issue](t, body)
+	if got.AssigneeID != nil || got.ReporterID != nil {
+		t.Fatalf("cleared people = assignee %v reporter %v, want nil", got.AssigneeID, got.ReporterID)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"assignee_id": nonMember.ID})
+	if code != http.StatusNotFound {
+		t.Fatalf("non-member assignee code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"reporter_id": uuid.NewString()})
+	if code != http.StatusNotFound {
+		t.Fatalf("missing reporter code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"assignee_id": "not-a-uuid"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad assignee id code = %d body = %s", code, body)
+	}
+}
+
 func TestHTTPPatchIssueCrossProjectSprint(t *testing.T) {
 	e := newHTTPEnv(t)
 	other, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other", "")

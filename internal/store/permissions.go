@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -101,6 +102,51 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 			return nil, err
 		}
 		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+type SearchProjectMembersParams struct {
+	ProjectID uuid.UUID
+	Query     string
+	Limit     int
+}
+
+func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembersParams) ([]model.User, error) {
+	if _, err := s.GetProject(ctx, p.ProjectID); err != nil {
+		return nil, err
+	}
+	query := strings.ToLower(strings.TrimSpace(p.Query))
+	const q = `
+		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at
+		FROM project_members pm
+		JOIN projects p ON p.id = pm.project_id
+		JOIN users u ON u.id = pm.user_id
+		WHERE pm.project_id = $1
+		  AND p.deleted_at IS NULL
+		  AND u.deleted_at IS NULL
+		  AND (
+		      $2 = ''
+		      OR lower(u.name) LIKE '%' || $2 || '%'
+		      OR lower(u.username) LIKE '%' || $2 || '%'
+		      OR lower(COALESCE(u.email, '')) LIKE '%' || $2 || '%'
+		  )
+		ORDER BY lower(u.name) ASC, lower(u.username) ASC, u.id ASC
+		LIMIT $3
+	`
+	rows, err := s.db.Query(ctx, q, p.ProjectID, query, p.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []model.User{}
+	for rows.Next() {
+		var u model.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
 	}
 	return out, rows.Err()
 }

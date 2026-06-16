@@ -289,15 +289,15 @@ func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateIssueReq struct {
-	Title       *string       `json:"title,omitempty"`
-	Description *string       `json:"description,omitempty"`
-	Status      *model.Status `json:"status,omitempty"`
-	// AssigneeID: pointer-to-pointer pattern via json.RawMessage would be cleaner,
-	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
-	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
-	ClearAssignee bool       `json:"clear_assignee,omitempty"`
-	Sprint        *string    `json:"sprint,omitempty"`
-	ClearSprint   bool       `json:"clear_sprint,omitempty"`
+	Title         *string       `json:"title,omitempty"`
+	Description   *string       `json:"description,omitempty"`
+	Status        *model.Status `json:"status,omitempty"`
+	AssigneeID    *uuid.UUID    `json:"assignee_id,omitempty"`
+	ClearAssignee bool          `json:"clear_assignee,omitempty"`
+	ReporterID    *uuid.UUID    `json:"reporter_id,omitempty"`
+	ClearReporter bool          `json:"clear_reporter,omitempty"`
+	Sprint        *string       `json:"sprint,omitempty"`
+	ClearSprint   bool          `json:"clear_sprint,omitempty"`
 }
 
 func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
@@ -346,6 +346,8 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Status:        req.Status,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,
+		ReporterID:    req.ReporterID,
+		ClearReporter: req.ClearReporter,
 		SprintID:      sprintID,
 		ClearSprint:   req.ClearSprint,
 	})

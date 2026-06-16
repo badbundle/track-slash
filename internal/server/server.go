@@ -33,7 +33,6 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(exposeRequestID)
@@ -90,6 +89,7 @@ func (s *Server) Router() http.Handler {
 				r.Route("/projects/{key}", func(r chi.Router) {
 					r.Get("/", s.getProject)
 					r.Delete("/", s.deleteProject)
+					r.Get("/members/search", s.searchProjectMembers)
 					r.Get("/members", s.listProjectMembers)
 					r.Get("/assignees", s.listProjectAssignees)
 					r.Put("/members/{username}", s.grantProjectMember)
