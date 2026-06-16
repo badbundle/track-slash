@@ -29,11 +29,14 @@ var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":             uiInitials,
+	"issueArchive":         uiIssueArchivePath,
 	"issueAssignee":        uiIssueAssigneePath,
 	"issueAssigneeEdit":    uiIssueAssigneeEditPath,
 	"issueComments":        uiIssueCommentsPath,
+	"issueDelete":          uiIssueDeletePath,
 	"issueDescription":     uiIssueDescriptionPath,
 	"issueDescriptionEdit": uiIssueDescriptionEditPath,
+	"issueDone":            uiIssueDone,
 	"issueHref":            uiIssuePath,
 	"issueLink":            uiIssueLinkPath,
 	"issueLinkDelete":      uiIssueLinkDeletePath,
@@ -252,6 +255,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
 		r.Get("/{owner}/issues/{issueRef}", s.uiIssuePage)
 		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
+		r.Post("/{owner}/issues/{issueRef}/archive", s.uiArchiveIssue)
+		r.Post("/{owner}/issues/{issueRef}/delete", s.uiDeleteIssue)
 		r.Get("/{owner}/issues/{issueRef}/description/edit", s.uiEditIssueDescription)
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
@@ -717,6 +722,57 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiArchiveIssue(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	status := model.StatusDone
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		Status: &status,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiDeleteIssue(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.DeleteIssue(r.Context(), issue.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if !isHTMXRequest(r) {
+		http.Redirect(w, r, panel.BackHref, http.StatusSeeOther)
+		return
+	}
+	w.Header().Set("HX-Push-Url", panel.BackHref)
+	s.renderUIIssueBackTarget(w, r, panel)
 }
 
 func (s *Server) uiEditIssueDescription(w http.ResponseWriter, r *http.Request) {
@@ -1685,6 +1741,28 @@ func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Iss
 	return base, base + "/panel", label
 }
 
+func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request, panel *uiIssuePanelData) {
+	if panel.ParentIssue != nil {
+		parentPanel, err := s.uiBuildIssuePanel(r.Context(), r, panel.ParentIssue.ID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		renderUITemplate(w, http.StatusOK, "issue-panel", parentPanel)
+		return
+	}
+	view := "sprint"
+	if panel.Issue.SprintID == nil || (panel.Sprint != nil && panel.Sprint.Status == model.SprintStatusPlanned) {
+		view = "backlog"
+	}
+	projectPanel, err := s.uiBuildProjectPanel(r.Context(), r, panel.Project.ID, view)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", projectPanel)
+}
+
 func uiProjectTabs(project model.Project, view string, assigneeIDs []uuid.UUID) uiTabBarData {
 	return uiTabBarData{
 		Label: "Project views",
@@ -1950,6 +2028,14 @@ func uiIssuePanelPath(issue any) string {
 	return uiIssuePath(issue) + "/panel"
 }
 
+func uiIssueArchivePath(issue any) string {
+	return uiIssuePath(issue) + "/archive"
+}
+
+func uiIssueDeletePath(issue any) string {
+	return uiIssuePath(issue) + "/delete"
+}
+
 func uiIssueCommentsPath(issue any) string {
 	return uiIssuePath(issue) + "/comments"
 }
@@ -2054,6 +2140,10 @@ func redirectUILogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login?next="+next, http.StatusSeeOther)
 }
 
+func isHTMXRequest(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
+}
+
 func safeUINext(raw string) string {
 	if raw == "" {
 		return "/"
@@ -2079,6 +2169,10 @@ func uiIssueUserInput(user *model.User) string {
 		return ""
 	}
 	return "@" + user.Username
+}
+
+func uiIssueDone(status model.Status) bool {
+	return status == model.StatusDone
 }
 
 func safeUIProjectPath(path string) bool {
@@ -2126,7 +2220,7 @@ func safeUIIssuePath(path string) bool {
 		return true
 	}
 	if len(parts) == 4 {
-		return parts[3] == "panel" || parts[3] == "links"
+		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "archive" || parts[3] == "delete"
 	}
 	if len(parts) == 5 {
 		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "assignee" || parts[3] == "reporter") && parts[4] == "edit") ||

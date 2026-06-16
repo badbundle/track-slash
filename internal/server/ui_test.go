@@ -345,6 +345,19 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`href="/bradley/issues/TRACK-8"`,
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
 		`aria-label="Issue settings"`,
+		`cursor-pointer list-none`,
+		`method="post" action="/bradley/issues/TRACK-7/archive"`,
+		`hx-post="/bradley/issues/TRACK-7/archive"`,
+		`Archive issue`,
+		`data-lucide="archive"`,
+		`method="post" action="/bradley/issues/TRACK-7/delete"`,
+		`hx-post="/bradley/issues/TRACK-7/delete"`,
+		`hx-push-url="/bradley/projects/TRACK/backlog"`,
+		`hx-confirm="Delete this issue? This cannot be undone from the UI."`,
+		`Delete issue`,
+		`data-lucide="trash-2"`,
+		`text-rose-600`,
+		`dark:hover:bg-rose-950/40`,
 		`aria-label="Edit description"`,
 		`hx-get="/bradley/issues/TRACK-7/description/edit"`,
 		`aria-label="Edit link"`,
@@ -427,7 +440,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		t.Fatalf("issue panel missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
-	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress"} {
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress", "cursor-not-allowed"} {
 		if strings.Contains(titleHeader, notWant) {
 			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
 		}
