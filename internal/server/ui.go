@@ -189,7 +189,6 @@ type uiIssuePanelData struct {
 	SubIssues        []model.Issue
 	SubIssuesHasMore bool
 	SubIssueTitle    string
-	SubIssuePriority string
 	SubIssueError    string
 	Comments         []uiIssueCommentItem
 	CommentsHasMore  bool
@@ -1135,15 +1134,7 @@ func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	title := strings.TrimSpace(r.Form.Get("title"))
 	if title == "" || len(title) > 200 {
-		s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), r.Form.Get("priority"), "Title required, max 200 chars.")
-		return
-	}
-	priority := model.IssuePriority(strings.TrimSpace(r.Form.Get("priority")))
-	if priority == "" {
-		priority = model.PriorityP2
-	}
-	if !priority.Valid() {
-		s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), r.Form.Get("priority"), "Choose a valid priority.")
+		s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), "Title required, max 200 chars.")
 		return
 	}
 	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), parent.ProjectID); err != nil {
@@ -1154,11 +1145,11 @@ func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.store.CreateSubIssue(r.Context(), store.CreateSubIssueParams{
 		ParentIssueID: parent.ID,
 		Title:         title,
-		Priority:      priority,
+		Priority:      model.PriorityP2,
 		ReporterID:    &reporterID,
 	}); err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), string(priority), "Sub-issue could not be created for this issue.")
+			s.renderUIIssuePanelWithSubIssueError(w, r, parent.ID, r.Form.Get("title"), "Sub-issue could not be created for this issue.")
 			return
 		}
 		writeUIStoreError(w, err)
@@ -1206,14 +1197,13 @@ func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
-func (s *Server) renderUIIssuePanelWithSubIssueError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, title, priority, message string) {
+func (s *Server) renderUIIssuePanelWithSubIssueError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, title, message string) {
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
 	panel.SubIssueTitle = title
-	panel.SubIssuePriority = priority
 	panel.SubIssueError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
@@ -1615,7 +1605,6 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		Reporter:         reporter,
 		SubIssues:        subIssues,
 		SubIssuesHasMore: subIssuesHasMore,
-		SubIssuePriority: string(model.PriorityP2),
 		Comments:         commentItems,
 		CommentsHasMore:  commentsHasMore,
 		Links:            linkItems,

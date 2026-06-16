@@ -130,7 +130,7 @@ func TestUIPriorityBadgeRendersFilledCircle(t *testing.T) {
 		body := buf.String()
 		for _, want := range []string{
 			`aria-label="Priority ` + string(priority) + `"`,
-			"h-7 w-7",
+			"h-5 w-5",
 			"rounded-full",
 			"font-bold",
 			"text-white",
@@ -502,7 +502,7 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	}
 }
 
-func TestUIIssuePanelRendersPriorityDropdown(t *testing.T) {
+func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
@@ -534,9 +534,6 @@ func TestUIIssuePanelRendersPriorityDropdown(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`aria-label="Change priority"`,
-		`aria-expanded="true"`,
-		`data-lucide="chevron-up"`,
 		`aria-label="Cancel priority change"`,
 		`hx-get="/bradley/issues/TRACK-7/panel"`,
 		`method="post" action="/bradley/issues/TRACK-7/priority"`,
@@ -556,19 +553,23 @@ func TestUIIssuePanelRendersPriorityDropdown(t *testing.T) {
 		`bg-yellow-500`,
 		`bg-gray-500`,
 		`role="option" aria-selected="true"`,
-		`data-lucide="check"`,
+		`flex flex-wrap items-center gap-2`,
+		`opacity-100 ring-2 ring-indigo-500`,
+		`opacity-40 hover:opacity-80`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("priority dropdown missing %q: %s", want, body)
+			t.Fatalf("priority picker missing %q: %s", want, body)
 		}
 	}
 	for _, notWant := range []string{
 		`hx-get="/bradley/issues/TRACK-7/priority/edit"`,
+		`aria-expanded="true"`,
+		`data-lucide="chevron-up"`,
 		`title="Cancel priority change"`,
 		`title="Change priority"`,
 	} {
 		if strings.Contains(body, notWant) {
-			t.Fatalf("priority dropdown included %q: %s", notWant, body)
+			t.Fatalf("priority picker included %q: %s", notWant, body)
 		}
 	}
 }

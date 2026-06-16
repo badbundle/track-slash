@@ -777,7 +777,10 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body renders disabled or text-labeled composer %q: %s", notWant, body)
 		}
 	}
-	if strings.Contains(body, `name="description"`) || strings.Contains(body, `placeholder="Description"`) {
+	if strings.Contains(body, `name="description"`) ||
+		strings.Contains(body, `placeholder="Description"`) ||
+		strings.Contains(body, `name="priority"`) ||
+		strings.Contains(body, `aria-label="Sub-issue priority"`) {
 		t.Fatalf("sub-issue composer should be title-only: %s", body)
 	}
 	if strings.Contains(body, `aria-label="Save description"`) || strings.Contains(body, `<textarea name="description"`) {
@@ -907,8 +910,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 	edit := e.uiGet(t, e.issuePath(issue)+"/priority/edit", token)
 	for _, want := range []string{
 		"priority target issue",
-		`aria-label="Change priority"`,
-		`aria-expanded="true"`,
 		`role="listbox" aria-label="Issue priority"`,
 		`method="post" action="` + e.issuePath(issue) + `/priority"`,
 		`hx-post="` + e.issuePath(issue) + `/priority"`,
@@ -922,12 +923,18 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		`aria-label="Priority P3"`,
 		`bg-yellow-500`,
+		`flex flex-wrap items-center gap-2`,
+		`opacity-100 ring-2 ring-indigo-500`,
+		`opacity-40 hover:opacity-80`,
 	} {
 		if !strings.Contains(edit, want) {
 			t.Fatalf("priority edit response missing %q: %s", want, edit)
 		}
 	}
-	if strings.Contains(edit, `title="Change priority"`) || strings.Contains(edit, `title="Cancel priority change"`) {
+	if strings.Contains(edit, `title="Change priority"`) ||
+		strings.Contains(edit, `title="Cancel priority change"`) ||
+		strings.Contains(edit, `aria-expanded="true"`) ||
+		strings.Contains(edit, `data-lucide="chevron-up"`) {
 		t.Fatalf("priority edit response has native tooltip state: %s", edit)
 	}
 
@@ -1433,8 +1440,8 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSubIssuesForIssue: %v", err)
 	}
-	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" {
-		t.Fatalf("children = %+v, want one title-only child", children)
+	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" || children[0].Priority != model.PriorityP2 {
+		t.Fatalf("children = %+v, want one title-only P2 child", children)
 	}
 
 	empty := url.Values{"title": {"   "}}
