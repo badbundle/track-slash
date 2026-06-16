@@ -13,10 +13,11 @@ import (
 )
 
 type createIssueReq struct {
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	AssigneeID  *uuid.UUID `json:"assignee_id,omitempty"`
-	ReporterID  *uuid.UUID `json:"reporter_id,omitempty"`
+	Title       string               `json:"title"`
+	Description string               `json:"description"`
+	Priority    *model.IssuePriority `json:"priority,omitempty"`
+	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
+	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
 }
 
 func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +38,14 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title required, max 200 chars")
 		return
 	}
+	priority := model.PriorityP2
+	if req.Priority != nil {
+		if !req.Priority.Valid() {
+			writeError(w, http.StatusBadRequest, "invalid priority")
+			return
+		}
+		priority = *req.Priority
+	}
 	reporterID := req.ReporterID
 	if reporterID == nil {
 		id := currentUser(r).ID
@@ -50,6 +59,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		ProjectID:   project.ID,
 		Title:       req.Title,
 		Description: req.Description,
+		Priority:    priority,
 		AssigneeID:  req.AssigneeID,
 		ReporterID:  reporterID,
 	})
@@ -78,6 +88,14 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title required, max 200 chars")
 		return
 	}
+	priority := model.PriorityP2
+	if req.Priority != nil {
+		if !req.Priority.Valid() {
+			writeError(w, http.StatusBadRequest, "invalid priority")
+			return
+		}
+		priority = *req.Priority
+	}
 	reporterID := req.ReporterID
 	if reporterID == nil {
 		id := currentUser(r).ID
@@ -91,6 +109,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		ParentIssueID: parent.ID,
 		Title:         req.Title,
 		Description:   req.Description,
+		Priority:      priority,
 		AssigneeID:    req.AssigneeID,
 		ReporterID:    reporterID,
 	})
@@ -289,15 +308,18 @@ func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateIssueReq struct {
-	Title         *string       `json:"title,omitempty"`
-	Description   *string       `json:"description,omitempty"`
-	Status        *model.Status `json:"status,omitempty"`
-	AssigneeID    *uuid.UUID    `json:"assignee_id,omitempty"`
-	ClearAssignee bool          `json:"clear_assignee,omitempty"`
-	ReporterID    *uuid.UUID    `json:"reporter_id,omitempty"`
-	ClearReporter bool          `json:"clear_reporter,omitempty"`
-	Sprint        *string       `json:"sprint,omitempty"`
-	ClearSprint   bool          `json:"clear_sprint,omitempty"`
+	Title       *string              `json:"title,omitempty"`
+	Description *string              `json:"description,omitempty"`
+	Status      *model.Status        `json:"status,omitempty"`
+	Priority    *model.IssuePriority `json:"priority,omitempty"`
+	// AssigneeID: pointer-to-pointer pattern via json.RawMessage would be cleaner,
+	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
+	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
+	ClearAssignee bool       `json:"clear_assignee,omitempty"`
+	ReporterID    *uuid.UUID `json:"reporter_id,omitempty"`
+	ClearReporter bool       `json:"clear_reporter,omitempty"`
+	Sprint        *string    `json:"sprint,omitempty"`
+	ClearSprint   bool       `json:"clear_sprint,omitempty"`
 }
 
 func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
@@ -325,6 +347,10 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	if req.Priority != nil && !req.Priority.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid priority")
+		return
+	}
 	var sprintID *uuid.UUID
 	if req.Sprint != nil && !req.ClearSprint {
 		number, err := parseTypedRef(*req.Sprint, "sprint")
@@ -344,6 +370,7 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Title:         req.Title,
 		Description:   req.Description,
 		Status:        req.Status,
+		Priority:      req.Priority,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,
 		ReporterID:    req.ReporterID,

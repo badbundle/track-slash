@@ -1035,6 +1035,61 @@ func TestHTTPCreateIssueAndGet(t *testing.T) {
 	}
 }
 
+func TestHTTPCreateAndUpdateIssuePriority(t *testing.T) {
+	e := newHTTPEnv(t)
+	code, body := e.do(t, http.MethodPost,
+		e.projectIssuesPath(),
+		map[string]any{"title": "default priority"})
+	if code != http.StatusCreated {
+		t.Fatalf("create default code = %d body = %s", code, body)
+	}
+	defaultIssue := decode[model.Issue](t, body)
+	if defaultIssue.Priority != model.PriorityP2 {
+		t.Fatalf("default Priority = %q, want %q", defaultIssue.Priority, model.PriorityP2)
+	}
+
+	code, body = e.do(t, http.MethodPost,
+		e.projectIssuesPath(),
+		map[string]any{"title": "urgent", "priority": string(model.PriorityP0)})
+	if code != http.StatusCreated {
+		t.Fatalf("create explicit code = %d body = %s", code, body)
+	}
+	urgent := decode[model.Issue](t, body)
+	if urgent.Priority != model.PriorityP0 {
+		t.Fatalf("explicit Priority = %q, want %q", urgent.Priority, model.PriorityP0)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(urgent),
+		map[string]any{"priority": string(model.PriorityP4)})
+	if code != http.StatusOK {
+		t.Fatalf("patch priority code = %d body = %s", code, body)
+	}
+	updated := decode[model.Issue](t, body)
+	if updated.Priority != model.PriorityP4 {
+		t.Fatalf("updated Priority = %q, want %q", updated.Priority, model.PriorityP4)
+	}
+
+	code, _ = e.do(t, http.MethodPost,
+		e.projectIssuesPath(),
+		map[string]any{"title": "bad priority", "priority": "p0"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad create priority code = %d, want %d", code, http.StatusBadRequest)
+	}
+
+	code, _ = e.do(t, http.MethodPatch, e.issuePath(urgent),
+		map[string]any{"priority": "P5"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad update priority code = %d, want %d", code, http.StatusBadRequest)
+	}
+	got, err := e.store.GetIssue(e.ctx, urgent.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad priority: %v", err)
+	}
+	if got.Priority != model.PriorityP4 {
+		t.Fatalf("bad priority changed Priority = %q, want %q", got.Priority, model.PriorityP4)
+	}
+}
+
 func TestHTTPCreateIssueBadProject(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, "/bad!/projects/TRACK/issues",

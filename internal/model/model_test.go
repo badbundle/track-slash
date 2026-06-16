@@ -24,6 +24,30 @@ func TestStatusValid(t *testing.T) {
 	}
 }
 
+func TestIssuePriorityValid(t *testing.T) {
+	cases := []struct {
+		in   IssuePriority
+		want bool
+	}{
+		{PriorityP0, true},
+		{PriorityP1, true},
+		{PriorityP2, true},
+		{PriorityP3, true},
+		{PriorityP4, true},
+		{"", false},
+		{"p0", false},
+		{"P5", false},
+		{"urgent", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.in), func(t *testing.T) {
+			if got := c.in.Valid(); got != c.want {
+				t.Fatalf("IssuePriority(%q).Valid() = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestSprintStatusValid(t *testing.T) {
 	cases := []struct {
 		in   SprintStatus

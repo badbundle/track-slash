@@ -10,6 +10,7 @@
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           {{template "issue-key" .Issue.Identifier}}
+          {{template "priority-badge" .Issue.Priority}}
         </div>
         <h1 class="mt-2 break-words text-3xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">{{.Issue.Title}}</h1>
         {{if .ParentIssue}}
@@ -17,6 +18,7 @@
           <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
           <span class="shrink-0">Sub-issue of</span>
           {{template "issue-key" .ParentIssue.Identifier}}
+          {{template "priority-badge" .ParentIssue.Priority}}
           <span class="min-w-0 truncate">{{.ParentIssue.Title}}</span>
         </a>
         {{else}}
@@ -76,8 +78,9 @@
         {{if .SubIssues}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
-          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[7rem_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[7rem_auto_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
             {{template "issue-key" .Identifier}}
+            {{template "priority-badge" .Priority}}
             <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
             {{template "status-badge" .Status}}
           </a>
@@ -87,11 +90,21 @@
         <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No sub-issues.</div>
         {{end}}
         <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
-          <div class="flex items-center gap-2">
+          <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
             <input name="title" value="{{.SubIssueTitle}}" placeholder="Title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-            <button type="submit" aria-label="Create sub-issue" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-              <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
+            <div role="radiogroup" aria-label="Sub-issue priority" class="flex flex-wrap items-center gap-1.5">
+              {{range priorityOptions}}
+              <label class="cursor-pointer rounded-full ring-2 ring-transparent focus-within:ring-indigo-500">
+                <input type="radio" name="priority" value="{{.Priority}}" class="peer sr-only" {{if or (eq $.SubIssuePriority (printf "%s" .Priority)) (and (eq $.SubIssuePriority "") (eq (printf "%s" .Priority) "P2"))}}checked{{end}}>
+                <span class="block rounded-full opacity-55 peer-checked:opacity-100 peer-checked:ring-2 peer-checked:ring-indigo-500 peer-checked:ring-offset-2 dark:peer-checked:ring-offset-slate-900">{{template "priority-badge" .Priority}}</span>
+              </label>
+              {{end}}
+            </div>
+            <div class="flex items-center sm:justify-end">
+              <button type="submit" aria-label="Create sub-issue" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </div>
           </div>
           {{if .SubIssueError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.SubIssueError}}</div>{{end}}
         </form>
@@ -163,6 +176,7 @@
             {{if .HasIssue}}
             <a data-main-view="projects" href="{{issueHref .LinkedIssue}}" hx-get="{{issuePanel .LinkedIssue}}" hx-target="#main" hx-push-url="{{issueHref .LinkedIssue}}" class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
               {{template "issue-key" .LinkedIssue.Identifier}}
+              {{template "priority-badge" .LinkedIssue.Priority}}
               <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.LinkedIssue.Title}}</span>
             </a>
             {{else}}
@@ -254,6 +268,37 @@
             {{end}}
           </div>
           <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Priority</dt>
+            <dd class="mt-1">
+              {{if .EditPriority}}
+              <div class="space-y-2">
+                <div class="flex items-center gap-2">
+                  <button type="button" disabled aria-label="Change priority" aria-haspopup="listbox" aria-expanded="true" class="inline-flex min-w-0 flex-1 cursor-default items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950">
+                    {{template "priority-badge" .Issue.Priority}}
+                    <i data-lucide="chevron-up" class="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" aria-label="Cancel priority change" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                    <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                  </button>
+                </div>
+                <form method="post" action="{{issuePriority .Issue}}" hx-post="{{issuePriority .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue priority" class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+                  {{range priorityOptions}}
+                  <button type="submit" name="priority" value="{{.Priority}}" role="option" aria-selected="{{if eq $.Issue.Priority .Priority}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+                    {{template "priority-badge" .Priority}}
+                    {{if eq $.Issue.Priority .Priority}}<i data-lucide="check" class="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>{{end}}
+                  </button>
+                  {{end}}
+                </form>
+              </div>
+              {{else}}
+              <button type="button" aria-label="Change priority" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issuePriorityEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="inline-flex w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                {{template "priority-badge" .Issue.Priority}}
+                <i data-lucide="chevron-down" class="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>
+              </button>
+              {{end}}
+            </dd>
+          </div>
+          <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>
             <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>
           </div>
@@ -263,6 +308,7 @@
             <dd class="mt-1">
               <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="inline-flex max-w-full items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
                 {{template "issue-key" .ParentIssue.Identifier}}
+                {{template "priority-badge" .ParentIssue.Priority}}
                 <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.ParentIssue.Title}}</span>
               </a>
             </dd>

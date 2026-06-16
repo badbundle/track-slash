@@ -92,6 +92,58 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 	}
 }
 
+func TestUIPriorityClassAndLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		priority  model.IssuePriority
+		wantClass string
+		wantLabel string
+	}{
+		{priority: model.PriorityP0, wantClass: "bg-red-600", wantLabel: "P0"},
+		{priority: model.PriorityP1, wantClass: "bg-orange-500", wantLabel: "P1"},
+		{priority: model.PriorityP2, wantClass: "bg-amber-500", wantLabel: "P2"},
+		{priority: model.PriorityP3, wantClass: "bg-yellow-500", wantLabel: "P3"},
+		{priority: model.PriorityP4, wantClass: "bg-gray-500", wantLabel: "P4"},
+		{priority: "", wantClass: "bg-amber-500", wantLabel: "P2"},
+		{priority: model.IssuePriority("PX"), wantClass: "bg-gray-500", wantLabel: "PX"},
+	}
+
+	for _, tt := range tests {
+		if got := uiPriorityClass(tt.priority); got != tt.wantClass {
+			t.Fatalf("uiPriorityClass(%q) = %q, want %q", tt.priority, got, tt.wantClass)
+		}
+		if got := uiPriorityLabel(tt.priority); got != tt.wantLabel {
+			t.Fatalf("uiPriorityLabel(%q) = %q, want %q", tt.priority, got, tt.wantLabel)
+		}
+	}
+}
+
+func TestUIPriorityBadgeRendersFilledCircle(t *testing.T) {
+	t.Parallel()
+
+	for _, priority := range []model.IssuePriority{model.PriorityP0, model.PriorityP1, model.PriorityP2, model.PriorityP3, model.PriorityP4} {
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, "priority-badge", priority); err != nil {
+			t.Fatalf("ExecuteTemplate %s: %v", priority, err)
+		}
+		body := buf.String()
+		for _, want := range []string{
+			`aria-label="Priority ` + string(priority) + `"`,
+			"h-7 w-7",
+			"rounded-full",
+			"font-bold",
+			"text-white",
+			uiPriorityClass(priority),
+			string(priority),
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("priority badge %s missing %q: %s", priority, want, body)
+			}
+		}
+	}
+}
+
 func TestSafeUINextRootPaths(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +162,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
+		{name: "issue priority edit", raw: "/bradley/issues/TRACK-7/priority/edit", want: "/bradley/issues/TRACK-7/priority/edit"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
@@ -440,12 +493,82 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	}
 	for _, notWant := range []string{
 		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
-		`aria-expanded="false"`,
 		`title="Cancel status change"`,
 		`title="Change status"`,
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("status dropdown included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersPriorityDropdown(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Status:        model.StatusInProgress,
+			Priority:      model.PriorityP1,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:      model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditPriority: true,
+		BackHref:     "/bradley/projects/TRACK/backlog",
+		BackHXGet:    "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:    "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`aria-label="Change priority"`,
+		`aria-expanded="true"`,
+		`data-lucide="chevron-up"`,
+		`aria-label="Cancel priority change"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		`method="post" action="/bradley/issues/TRACK-7/priority"`,
+		`hx-post="/bradley/issues/TRACK-7/priority"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`role="listbox" aria-label="Issue priority"`,
+		`name="priority" value="P0"`,
+		`name="priority" value="P1"`,
+		`name="priority" value="P2"`,
+		`name="priority" value="P3"`,
+		`name="priority" value="P4"`,
+		`aria-label="Priority P1"`,
+		`bg-red-600`,
+		`bg-orange-500`,
+		`bg-amber-500`,
+		`bg-yellow-500`,
+		`bg-gray-500`,
+		`role="option" aria-selected="true"`,
+		`data-lucide="check"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("priority dropdown missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/priority/edit"`,
+		`title="Cancel priority change"`,
+		`title="Change priority"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("priority dropdown included %q: %s", notWant, body)
 		}
 	}
 }
@@ -964,6 +1087,7 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		Identifier: "TRACK-7",
 		Title:      "Row issue",
 		Status:     model.StatusDone,
+		Priority:   model.PriorityP0,
 	}
 	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
 
@@ -989,6 +1113,8 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			"TRACK-7",
 			"inline-flex w-fit justify-self-start",
 			"bg-emerald-50/45 hover:bg-emerald-50",
+			`aria-label="Priority P0"`,
+			"bg-red-600",
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s missing markup %q: %s", tt.name, want, body)

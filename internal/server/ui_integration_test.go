@@ -892,6 +892,99 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 	}
 }
 
+func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-priority")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "priority target issue",
+		Priority:  model.PriorityP3,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/priority/edit", token)
+	for _, want := range []string{
+		"priority target issue",
+		`aria-label="Change priority"`,
+		`aria-expanded="true"`,
+		`role="listbox" aria-label="Issue priority"`,
+		`method="post" action="` + e.issuePath(issue) + `/priority"`,
+		`hx-post="` + e.issuePath(issue) + `/priority"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="priority" value="P0"`,
+		`name="priority" value="P1"`,
+		`name="priority" value="P2"`,
+		`name="priority" value="P3"`,
+		`name="priority" value="P4"`,
+		`aria-label="Cancel priority change"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		`aria-label="Priority P3"`,
+		`bg-yellow-500`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("priority edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `title="Change priority"`) || strings.Contains(edit, `title="Cancel priority change"`) {
+		t.Fatalf("priority edit response has native tooltip state: %s", edit)
+	}
+
+	form := url.Values{"priority": {string(model.PriorityP0)}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/priority", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update priority code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, `aria-label="Priority P0"`) || strings.Contains(body, `role="listbox"`) {
+		t.Fatalf("update priority response did not return read mode with new priority: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after priority update: %v", err)
+	}
+	if updated.Priority != model.PriorityP0 {
+		t.Fatalf("Priority = %q, want %q", updated.Priority, model.PriorityP0)
+	}
+
+	badPriority := url.Values{"priority": {"p0"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/priority", token, strings.NewReader(badPriority.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad priority code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "invalid priority") {
+		t.Fatalf("bad priority response missing validation error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad priority: %v", err)
+	}
+	if updated.Priority != model.PriorityP0 {
+		t.Fatalf("bad priority changed Priority = %q, want %q", updated.Priority, model.PriorityP0)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/priority", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form priority code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form priority response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form priority: %v", err)
+	}
+	if updated.Priority != model.PriorityP0 {
+		t.Fatalf("bad form changed Priority = %q, want %q", updated.Priority, model.PriorityP0)
+	}
+}
+
 func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-description")

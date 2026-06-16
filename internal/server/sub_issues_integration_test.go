@@ -28,6 +28,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 		map[string]any{
 			"title":       "child",
 			"description": "child body",
+			"priority":    string(model.PriorityP1),
 			"assignee_id": assignee.ID,
 		})
 	if code != http.StatusCreated {
@@ -43,13 +44,16 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 	if child.AssigneeID == nil || *child.AssigneeID != assignee.ID {
 		t.Fatalf("child assignee = %v, want %s", child.AssigneeID, assignee.ID)
 	}
+	if child.Priority != model.PriorityP1 {
+		t.Fatalf("child priority = %s, want %s", child.Priority, model.PriorityP1)
+	}
 
 	code, body = e.do(t, http.MethodGet, e.issueSubIssuesPath(parent), nil)
 	if code != http.StatusOK {
 		t.Fatalf("list children code = %d body = %s", code, body)
 	}
 	children := decodePage[model.Issue](t, body).Items
-	if len(children) != 1 || children[0].ID != child.ID {
+	if len(children) != 1 || children[0].ID != child.ID || children[0].Priority != model.PriorityP1 {
 		t.Fatalf("children = %+v, want %s", children, child.ID)
 	}
 
