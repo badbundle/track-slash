@@ -923,8 +923,9 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		`aria-label="Priority P3"`,
 		`bg-yellow-500`,
+		`flex items-center gap-2`,
 		`flex flex-wrap items-center gap-2`,
-		`opacity-100 ring-2 ring-indigo-500`,
+		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
 	} {
 		if !strings.Contains(edit, want) {
@@ -934,7 +935,8 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 	if strings.Contains(edit, `title="Change priority"`) ||
 		strings.Contains(edit, `title="Cancel priority change"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
-		strings.Contains(edit, `data-lucide="chevron-up"`) {
+		strings.Contains(edit, `data-lucide="chevron-up"`) ||
+		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {
 		t.Fatalf("priority edit response has native tooltip state: %s", edit)
 	}
 

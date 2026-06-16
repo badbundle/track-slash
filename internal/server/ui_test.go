@@ -553,8 +553,9 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`bg-yellow-500`,
 		`bg-gray-500`,
 		`role="option" aria-selected="true"`,
+		`flex items-center gap-2`,
 		`flex flex-wrap items-center gap-2`,
-		`opacity-100 ring-2 ring-indigo-500`,
+		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
 	} {
 		if !strings.Contains(body, want) {
@@ -565,6 +566,7 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-7/priority/edit"`,
 		`aria-expanded="true"`,
 		`data-lucide="chevron-up"`,
+		`opacity-100 ring-2 ring-indigo-500`,
 		`title="Cancel priority change"`,
 		`title="Change priority"`,
 	} {
