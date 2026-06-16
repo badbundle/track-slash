@@ -23,6 +23,24 @@ func (s Status) Valid() bool {
 	return false
 }
 
+type IssuePriority string
+
+const (
+	PriorityP0 IssuePriority = "P0"
+	PriorityP1 IssuePriority = "P1"
+	PriorityP2 IssuePriority = "P2"
+	PriorityP3 IssuePriority = "P3"
+	PriorityP4 IssuePriority = "P4"
+)
+
+func (p IssuePriority) Valid() bool {
+	switch p {
+	case PriorityP0, PriorityP1, PriorityP2, PriorityP3, PriorityP4:
+		return true
+	}
+	return false
+}
+
 type SprintStatus string
 
 const (
@@ -113,21 +131,22 @@ type Project struct {
 }
 
 type Issue struct {
-	ID            uuid.UUID  `json:"id"`
-	ProjectID     uuid.UUID  `json:"project_id"`
-	OwnerUsername string     `json:"owner_username"`
-	ProjectKey    string     `json:"project_key"`
-	Number        int        `json:"number"`
-	Identifier    string     `json:"identifier"`
-	Title         string     `json:"title"`
-	Description   string     `json:"description"`
-	Status        Status     `json:"status"`
-	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
-	ReporterID    *uuid.UUID `json:"reporter_id,omitempty"`
-	SprintID      *uuid.UUID `json:"sprint_id,omitempty"`
-	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID            uuid.UUID     `json:"id"`
+	ProjectID     uuid.UUID     `json:"project_id"`
+	OwnerUsername string        `json:"owner_username"`
+	ProjectKey    string        `json:"project_key"`
+	Number        int           `json:"number"`
+	Identifier    string        `json:"identifier"`
+	Title         string        `json:"title"`
+	Description   string        `json:"description"`
+	Status        Status        `json:"status"`
+	Priority      IssuePriority `json:"priority"`
+	AssigneeID    *uuid.UUID    `json:"assignee_id,omitempty"`
+	ReporterID    *uuid.UUID    `json:"reporter_id,omitempty"`
+	SprintID      *uuid.UUID    `json:"sprint_id,omitempty"`
+	ParentIssueID *uuid.UUID    `json:"parent_issue_id,omitempty"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 type LinkType string

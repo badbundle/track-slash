@@ -303,6 +303,7 @@ func createIssue(
 		ProjectID:   projectID,
 		Title:       seed.Title,
 		Description: seed.Description,
+		Priority:    issuePriorityOrDefault(seed.Priority),
 		AssigneeID:  &userID,
 		ReporterID:  &userID,
 	})
@@ -364,6 +365,7 @@ func createSubIssue(
 		ParentIssueID: parentIssueID,
 		Title:         seed.Title,
 		Description:   seed.Description,
+		Priority:      issuePriorityOrDefault(seed.Priority),
 		AssigneeID:    &userID,
 		ReporterID:    &userID,
 	})
@@ -418,6 +420,7 @@ type issueDefinition struct {
 	Title       string
 	Description string
 	Status      model.Status
+	Priority    model.IssuePriority
 	Comments    []string
 	SubIssues   []issueDefinition
 }
@@ -426,6 +429,13 @@ type linkDefinition struct {
 	SourceKey string
 	TargetKey string
 	Type      model.LinkType
+}
+
+func issuePriorityOrDefault(priority model.IssuePriority) model.IssuePriority {
+	if priority == "" {
+		return model.PriorityP2
+	}
+	return priority
 }
 
 func demoProjects(prefix string, now time.Time) []projectDefinition {
@@ -468,6 +478,7 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 					Key:         "core-realtime-dup",
 					Title:       "Close duplicate realtime event delivery",
 					Description: "Some listeners receive duplicate issue update events when reconnecting after laptop sleep.",
+					Priority:    model.PriorityP1,
 					Comments: []string{
 						"Added reconnect test coverage around topic fanout.",
 						"Confirmed duplicate stream is gone in local Postgres listener run.",
@@ -486,6 +497,7 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 					Title:       "Show sprint capacity before start",
 					Description: "Planning view needs a quick count of todo, in-progress, and done work before a sprint is activated.",
 					Status:      model.StatusInProgress,
+					Priority:    model.PriorityP0,
 					Comments: []string{
 						"Counts can come from existing list endpoints for now.",
 					},
@@ -512,6 +524,7 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 					Title:       "Expose token last-used state in settings",
 					Description: "Users need confidence that old API tokens are inactive before rotating credentials.",
 					Status:      model.StatusTodo,
+					Priority:    model.PriorityP3,
 					Comments: []string{
 						"Display null last_used_at as Never used.",
 					},
@@ -573,6 +586,7 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 				Key:         "core-stale-sync",
 				Title:       "Remove stale board sync retry path",
 				Description: "Old retry path predates websocket batching and now overlaps with realtime recovery.",
+				Priority:    model.PriorityP4,
 				Comments: []string{
 					"Candidate duplicate of realtime delivery cleanup.",
 				},

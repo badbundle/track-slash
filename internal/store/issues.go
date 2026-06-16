@@ -17,6 +17,7 @@ type CreateIssueParams struct {
 	ProjectID   uuid.UUID
 	Title       string
 	Description string
+	Priority    model.IssuePriority
 	AssigneeID  *uuid.UUID
 	ReporterID  *uuid.UUID
 }
@@ -25,6 +26,7 @@ type CreateSubIssueParams struct {
 	ParentIssueID uuid.UUID
 	Title         string
 	Description   string
+	Priority      model.IssuePriority
 	AssigneeID    *uuid.UUID
 	ReporterID    *uuid.UUID
 }
@@ -37,7 +39,7 @@ func scanIssue(row issueScanner) (model.Issue, error) {
 	var iss model.Issue
 	err := row.Scan(
 		&iss.ID, &iss.ProjectID, &iss.OwnerUsername, &iss.ProjectKey, &iss.Number,
-		&iss.Title, &iss.Description, &iss.Status, &iss.AssigneeID, &iss.ReporterID,
+		&iss.Title, &iss.Description, &iss.Status, &iss.Priority, &iss.AssigneeID, &iss.ReporterID,
 		&iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
@@ -45,6 +47,13 @@ func scanIssue(row issueScanner) (model.Issue, error) {
 	}
 	iss.Identifier = fmt.Sprintf("%s-%d", iss.ProjectKey, iss.Number)
 	return iss, nil
+}
+
+func issuePriorityOrDefault(priority model.IssuePriority) model.IssuePriority {
+	if priority == "" {
+		return model.PriorityP2
+	}
+	return priority
 }
 
 func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Issue, error) {
@@ -69,13 +78,14 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 			return err
 		}
 
+		priority := issuePriorityOrDefault(p.Priority)
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, assignee_id, reporter_id)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			RETURNING id, project_id, number, title, description, status,
+			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			RETURNING id, project_id, number, title, description, status, priority,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, created_at, updated_at
-		`, p.ProjectID, number, p.Title, p.Description, p.AssigneeID, p.ReporterID).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status,
+		`, p.ProjectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.Priority,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -135,13 +145,14 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 			return fmt.Errorf("sub-issues cannot have sub-issues: %w", ErrConflict)
 		}
 
+		priority := issuePriorityOrDefault(p.Priority)
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, assignee_id, reporter_id, parent_issue_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			RETURNING id, project_id, number, title, description, status,
+			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, parent_issue_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			RETURNING id, project_id, number, title, description, status, priority,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, created_at, updated_at
-		`, projectID, number, p.Title, p.Description, p.AssigneeID, p.ReporterID, p.ParentIssueID).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status,
+		`, projectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, p.ParentIssueID).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.Priority,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -174,7 +185,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -193,7 +204,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -242,7 +253,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		return []model.Issue{}, nil
 	}
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -269,7 +280,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -351,7 +362,7 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 
 	args := []any{p.ParentIssueID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -396,6 +407,7 @@ type UpdateIssueParams struct {
 	Title         *string
 	Description   *string
 	Status        *model.Status
+	Priority      *model.IssuePriority
 	AssigneeID    *uuid.UUID
 	ClearAssignee bool
 	ReporterID    *uuid.UUID
@@ -421,6 +433,11 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.Status != nil {
 		sets = append(sets, fmt.Sprintf("status = $%d", i))
 		args = append(args, string(*p.Status))
+		i++
+	}
+	if p.Priority != nil {
+		sets = append(sets, fmt.Sprintf("priority = $%d", i))
+		args = append(args, string(*p.Priority))
 		i++
 	}
 	if p.ClearAssignee {

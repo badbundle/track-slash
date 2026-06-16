@@ -899,6 +899,89 @@ func TestListIssuesByIDsRoundtrip(t *testing.T) {
 	}
 }
 
+func TestIssuePriorityRoundtrip(t *testing.T) {
+	env := newSprintsEnv(t)
+	defaultIssue := mustCreateIssue(t, env, "default priority")
+	if defaultIssue.Priority != model.PriorityP2 {
+		t.Fatalf("default Priority = %q, want %q", defaultIssue.Priority, model.PriorityP2)
+	}
+
+	explicit, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "urgent issue",
+		Priority:  model.PriorityP0,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue explicit priority: %v", err)
+	}
+	if explicit.Priority != model.PriorityP0 {
+		t.Fatalf("explicit Priority = %q, want %q", explicit.Priority, model.PriorityP0)
+	}
+
+	got, err := env.store.GetIssue(env.ctx, explicit.ID)
+	if err != nil {
+		t.Fatalf("GetIssue explicit priority: %v", err)
+	}
+	if got.Priority != model.PriorityP0 {
+		t.Fatalf("GetIssue Priority = %q, want %q", got.Priority, model.PriorityP0)
+	}
+
+	p4 := model.PriorityP4
+	updated, err := env.store.UpdateIssue(env.ctx, explicit.ID, store.UpdateIssueParams{Priority: &p4})
+	if err != nil {
+		t.Fatalf("UpdateIssue priority: %v", err)
+	}
+	if updated.Priority != model.PriorityP4 {
+		t.Fatalf("updated Priority = %q, want %q", updated.Priority, model.PriorityP4)
+	}
+
+	listed, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{ProjectID: env.projectID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	listedPriorities := map[uuid.UUID]model.IssuePriority{}
+	for _, iss := range listed {
+		listedPriorities[iss.ID] = iss.Priority
+	}
+	if listedPriorities[defaultIssue.ID] != model.PriorityP2 || listedPriorities[explicit.ID] != model.PriorityP4 {
+		t.Fatalf("listed priorities = %+v", listedPriorities)
+	}
+
+	byID, err := env.store.ListIssuesByIDs(env.ctx, []uuid.UUID{defaultIssue.ID, explicit.ID})
+	if err != nil {
+		t.Fatalf("ListIssuesByIDs: %v", err)
+	}
+	byIDPriorities := map[uuid.UUID]model.IssuePriority{}
+	for _, iss := range byID {
+		byIDPriorities[iss.ID] = iss.Priority
+	}
+	if byIDPriorities[defaultIssue.ID] != model.PriorityP2 || byIDPriorities[explicit.ID] != model.PriorityP4 {
+		t.Fatalf("ListIssuesByIDs priorities = %+v", byIDPriorities)
+	}
+
+	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+		ParentIssueID: defaultIssue.ID,
+		Title:         "child priority",
+		Priority:      model.PriorityP1,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue priority: %v", err)
+	}
+	if child.Priority != model.PriorityP1 {
+		t.Fatalf("child Priority = %q, want %q", child.Priority, model.PriorityP1)
+	}
+	children, _, err := env.store.ListSubIssuesForIssue(env.ctx, store.ListSubIssuesForIssueParams{
+		ParentIssueID: defaultIssue.ID,
+		Limit:         10,
+	})
+	if err != nil {
+		t.Fatalf("ListSubIssuesForIssue: %v", err)
+	}
+	if len(children) != 1 || children[0].Priority != model.PriorityP1 {
+		t.Fatalf("children priorities = %+v", children)
+	}
+}
+
 func TestListIssuesStatusAndSprintCombined(t *testing.T) {
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))

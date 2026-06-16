@@ -41,6 +41,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueLinkNew":         uiIssueLinkNewPath,
 	"issueLinks":           uiIssueLinksPath,
 	"issuePanel":           uiIssuePanelPath,
+	"issuePriority":        uiIssuePriorityPath,
+	"issuePriorityEdit":    uiIssuePriorityEditPath,
 	"issueReporter":        uiIssueReporterPath,
 	"issueReporterEdit":    uiIssueReporterEditPath,
 	"issueStatus":          uiIssueStatusPath,
@@ -48,6 +50,9 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueSubIssues":       uiIssueSubIssuesPath,
 	"linkLabel":            uiIssueLinkLabel,
 	"linkOptions":          uiIssueLinkOptions,
+	"priorityClass":        uiPriorityClass,
+	"priorityLabel":        uiPriorityLabel,
+	"priorityOptions":      uiPriorityOptions,
 	"projectPanel":         uiProjectPanelPath,
 	"projectView":          uiProjectViewPath,
 	"projectIcon":          uiProjectIcon,
@@ -173,6 +178,7 @@ type uiIssuePanelData struct {
 	Reporter         *model.User
 	EditDescription  bool
 	EditStatus       bool
+	EditPriority     bool
 	EditAssignee     bool
 	EditReporter     bool
 	AssigneeInput    string
@@ -250,6 +256,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
 		r.Post("/{owner}/issues/{issueRef}/status", s.uiUpdateIssueStatus)
+		r.Get("/{owner}/issues/{issueRef}/priority/edit", s.uiEditIssuePriority)
+		r.Post("/{owner}/issues/{issueRef}/priority", s.uiUpdateIssuePriority)
 		r.Get("/{owner}/issues/{issueRef}/assignee/edit", s.uiEditIssueAssignee)
 		r.Post("/{owner}/issues/{issueRef}/assignee", s.uiUpdateIssueAssignee)
 		r.Get("/{owner}/issues/{issueRef}/reporter/edit", s.uiEditIssueReporter)
@@ -804,6 +812,53 @@ func (s *Server) uiUpdateIssueStatus(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiEditIssuePriority(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditPriority = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssuePriority(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	priority := model.IssuePriority(strings.TrimSpace(r.Form.Get("priority")))
+	if !priority.Valid() {
+		http.Error(w, "invalid priority", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		Priority: &priority,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiEditIssueAssignee(w http.ResponseWriter, r *http.Request) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -1090,6 +1145,7 @@ func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.store.CreateSubIssue(r.Context(), store.CreateSubIssueParams{
 		ParentIssueID: parent.ID,
 		Title:         title,
+		Priority:      model.PriorityP2,
 		ReporterID:    &reporterID,
 	}); err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -1914,6 +1970,14 @@ func uiIssueStatusEditPath(issue any) string {
 	return uiIssueStatusPath(issue) + "/edit"
 }
 
+func uiIssuePriorityPath(issue any) string {
+	return uiIssuePath(issue) + "/priority"
+}
+
+func uiIssuePriorityEditPath(issue any) string {
+	return uiIssuePriorityPath(issue) + "/edit"
+}
+
 func uiIssueAssigneePath(issue any) string {
 	return uiIssuePath(issue) + "/assignee"
 }
@@ -2065,7 +2129,7 @@ func safeUIIssuePath(path string) bool {
 		return parts[3] == "panel" || parts[3] == "links"
 	}
 	if len(parts) == 5 {
-		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "assignee" || parts[3] == "reporter") && parts[4] == "edit") ||
+		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "assignee" || parts[3] == "reporter") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new")
 	}
 	if parts[3] != "links" || parts[5] != "edit" {
@@ -2167,6 +2231,46 @@ func uiStatusOptions() []uiStatusOption {
 		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
 		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
 		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+	}
+}
+
+func uiPriorityClass(priority model.IssuePriority) string {
+	switch priority {
+	case model.PriorityP0:
+		return "bg-red-600"
+	case model.PriorityP1:
+		return "bg-orange-500"
+	case model.PriorityP2:
+		return "bg-amber-500"
+	case model.PriorityP3:
+		return "bg-yellow-500"
+	case model.PriorityP4:
+		return "bg-gray-500"
+	case "":
+		return "bg-amber-500"
+	default:
+		return "bg-gray-500"
+	}
+}
+
+func uiPriorityLabel(priority model.IssuePriority) string {
+	if priority == "" {
+		return string(model.PriorityP2)
+	}
+	return string(priority)
+}
+
+type uiPriorityOption struct {
+	Priority model.IssuePriority
+}
+
+func uiPriorityOptions() []uiPriorityOption {
+	return []uiPriorityOption{
+		{Priority: model.PriorityP0},
+		{Priority: model.PriorityP1},
+		{Priority: model.PriorityP2},
+		{Priority: model.PriorityP3},
+		{Priority: model.PriorityP4},
 	}
 }
 

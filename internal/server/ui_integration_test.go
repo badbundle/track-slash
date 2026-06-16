@@ -777,7 +777,10 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body renders disabled or text-labeled composer %q: %s", notWant, body)
 		}
 	}
-	if strings.Contains(body, `name="description"`) || strings.Contains(body, `placeholder="Description"`) {
+	if strings.Contains(body, `name="description"`) ||
+		strings.Contains(body, `placeholder="Description"`) ||
+		strings.Contains(body, `name="priority"`) ||
+		strings.Contains(body, `aria-label="Sub-issue priority"`) {
 		t.Fatalf("sub-issue composer should be title-only: %s", body)
 	}
 	if strings.Contains(body, `aria-label="Save description"`) || strings.Contains(body, `<textarea name="description"`) {
@@ -889,6 +892,105 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 	}
 	if updated.Status != model.StatusInProgress {
 		t.Fatalf("bad form changed Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+}
+
+func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-priority")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "priority target issue",
+		Priority:  model.PriorityP3,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/priority/edit", token)
+	for _, want := range []string{
+		"priority target issue",
+		`role="listbox" aria-label="Issue priority"`,
+		`method="post" action="` + e.issuePath(issue) + `/priority"`,
+		`hx-post="` + e.issuePath(issue) + `/priority"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="priority" value="P0"`,
+		`name="priority" value="P1"`,
+		`name="priority" value="P2"`,
+		`name="priority" value="P3"`,
+		`name="priority" value="P4"`,
+		`aria-label="Cancel priority change"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+		`aria-label="Priority P3"`,
+		`bg-yellow-500`,
+		`flex items-center gap-2`,
+		`flex flex-wrap items-center gap-2`,
+		`opacity-100`,
+		`opacity-40 hover:opacity-80`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("priority edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `title="Change priority"`) ||
+		strings.Contains(edit, `title="Cancel priority change"`) ||
+		strings.Contains(edit, `aria-expanded="true"`) ||
+		strings.Contains(edit, `data-lucide="chevron-up"`) ||
+		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {
+		t.Fatalf("priority edit response has native tooltip state: %s", edit)
+	}
+
+	form := url.Values{"priority": {string(model.PriorityP0)}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/priority", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update priority code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, `aria-label="Priority P0"`) || strings.Contains(body, `role="listbox"`) {
+		t.Fatalf("update priority response did not return read mode with new priority: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after priority update: %v", err)
+	}
+	if updated.Priority != model.PriorityP0 {
+		t.Fatalf("Priority = %q, want %q", updated.Priority, model.PriorityP0)
+	}
+
+	badPriority := url.Values{"priority": {"p0"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/priority", token, strings.NewReader(badPriority.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad priority code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "invalid priority") {
+		t.Fatalf("bad priority response missing validation error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad priority: %v", err)
+	}
+	if updated.Priority != model.PriorityP0 {
+		t.Fatalf("bad priority changed Priority = %q, want %q", updated.Priority, model.PriorityP0)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/priority", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form priority code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form priority response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form priority: %v", err)
+	}
+	if updated.Priority != model.PriorityP0 {
+		t.Fatalf("bad form changed Priority = %q, want %q", updated.Priority, model.PriorityP0)
 	}
 }
 
@@ -1340,8 +1442,8 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSubIssuesForIssue: %v", err)
 	}
-	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" {
-		t.Fatalf("children = %+v, want one title-only child", children)
+	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" || children[0].Priority != model.PriorityP2 {
+		t.Fatalf("children = %+v, want one title-only P2 child", children)
 	}
 
 	empty := url.Values{"title": {"   "}}
