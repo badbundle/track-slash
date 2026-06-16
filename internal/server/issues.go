@@ -399,3 +399,19 @@ func (s *Server) deleteIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) restoreIssue(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.deletedIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+		return
+	}
+	restored, err := s.store.RestoreIssue(r.Context(), issue.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, restored)
+}

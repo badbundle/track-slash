@@ -33,6 +33,32 @@ func TestHTTPSoftDeleteIssue(t *testing.T) {
 	}
 }
 
+func TestHTTPRestoreIssue(t *testing.T) {
+	e := newHTTPEnv(t)
+	iss := mustHTTPIssue(t, e)
+
+	code, body := e.do(t, http.MethodDelete, e.issuePath(iss), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete issue code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPost, e.issuePath(iss)+"/restore", nil)
+	if code != http.StatusOK {
+		t.Fatalf("restore issue code = %d body = %s", code, body)
+	}
+	restored := decode[model.Issue](t, body)
+	if restored.ID != iss.ID || restored.Identifier != iss.Identifier {
+		t.Fatalf("restored issue = %+v, want %s", restored, iss.Identifier)
+	}
+	code, body = e.do(t, http.MethodGet, e.issuePath(iss), nil)
+	if code != http.StatusOK {
+		t.Fatalf("get restored issue code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPost, e.issuePath(iss)+"/restore", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("restore issue second code = %d body = %s", code, body)
+	}
+}
+
 func TestHTTPSoftDeleteProject(t *testing.T) {
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
@@ -160,6 +186,10 @@ func TestHTTPSoftDeleteBadIDs(t *testing.T) {
 			t.Fatalf("DELETE %s code = %d body = %s", path, code, body)
 		}
 	}
+	code, body := e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/nope/restore", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("POST bad restore code = %d body = %s", code, body)
+	}
 	for _, path := range []string{
 		"/users/" + uuid.New().String(),
 		"/" + e.ownerUsername + "/projects/" + uniqueProjectKey(t),
@@ -170,6 +200,10 @@ func TestHTTPSoftDeleteBadIDs(t *testing.T) {
 		if code != http.StatusNotFound {
 			t.Fatalf("DELETE %s code = %d body = %s", path, code, body)
 		}
+	}
+	code, body = e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/"+e.projKey+"-999999/restore", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("POST unknown restore code = %d body = %s", code, body)
 	}
 }
 

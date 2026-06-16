@@ -473,6 +473,13 @@ func TestHTTPProjectScopedIDRoutesForbidOtherProjects(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatalf("mixed batch code = %d body = %s", code, body)
 	}
+	if err := e.store.DeleteIssue(e.ctx, otherIssue.ID); err != nil {
+		t.Fatalf("DeleteIssue other: %v", err)
+	}
+	code, body = e.doWithToken(t, token, http.MethodPost, e.issuePath(otherIssue)+"/restore", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("other issue restore code = %d body = %s", code, body)
+	}
 }
 
 func TestHTTPAuthenticatedAttribution(t *testing.T) {

@@ -116,3 +116,20 @@ func (s *Server) issueFromRoute(w http.ResponseWriter, r *http.Request) (model.I
 	}
 	return issue, true
 }
+
+func (s *Server) deletedIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
+	owner, ok := normalizeOwnerParam(w, r)
+	if !ok {
+		return model.Issue{}, false
+	}
+	ref, ok := parseIssueRefParam(w, r)
+	if !ok {
+		return model.Issue{}, false
+	}
+	issue, err := s.store.GetDeletedIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+	if err != nil {
+		writeStoreError(w, err)
+		return model.Issue{}, false
+	}
+	return issue, true
+}

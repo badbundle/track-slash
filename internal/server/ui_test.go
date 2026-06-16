@@ -163,6 +163,8 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "issue priority edit", raw: "/bradley/issues/TRACK-7/priority/edit", want: "/bradley/issues/TRACK-7/priority/edit"},
+		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
+		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
@@ -174,8 +176,10 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "project", raw: "/bradley/projects/TRACK", want: "/bradley/projects/TRACK"},
 		{name: "project about", raw: "/bradley/projects/TRACK/about", want: "/bradley/projects/TRACK/about"},
 		{name: "project sprint", raw: "/bradley/projects/TRACK/sprint", want: "/bradley/projects/TRACK/sprint"},
+		{name: "project deleted", raw: "/bradley/projects/TRACK/deleted", want: "/bradley/projects/TRACK/deleted"},
 		{name: "project about panel with query", raw: "/bradley/projects/TRACK/about/panel?x=1", want: "/bradley/projects/TRACK/about/panel?x=1"},
 		{name: "project backlog panel with query", raw: "/bradley/projects/TRACK/backlog/panel?x=1", want: "/bradley/projects/TRACK/backlog/panel?x=1"},
+		{name: "project deleted panel with query", raw: "/bradley/projects/TRACK/deleted/panel?x=1", want: "/bradley/projects/TRACK/deleted/panel?x=1"},
 		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},
 		{name: "bad project child", raw: "/bradley/projects/TRACK/issues", want: "/"},
 		{name: "bad project panel", raw: "/bradley/projects/TRACK/sprint/card", want: "/"},
@@ -346,14 +350,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
 		`aria-label="Issue settings"`,
 		`cursor-pointer list-none`,
-		`method="post" action="/bradley/issues/TRACK-7/archive"`,
-		`hx-post="/bradley/issues/TRACK-7/archive"`,
-		`Archive issue`,
-		`data-lucide="archive"`,
 		`method="post" action="/bradley/issues/TRACK-7/delete"`,
 		`hx-post="/bradley/issues/TRACK-7/delete"`,
 		`hx-push-url="/bradley/projects/TRACK/backlog"`,
-		`hx-confirm="Delete this issue? This cannot be undone from the UI."`,
+		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
@@ -416,6 +416,11 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 	if strings.Contains(detailsBlock, ">Status</dt>") || strings.Contains(body, `aria-label="Edit status"`) {
 		t.Fatalf("status control should not render a separate title or edit button: %s", body)
+	}
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
+		}
 	}
 	commentMetaStart := strings.Index(body, "Ada Lovelace")
 	commentBodyStart := strings.Index(body, "Looks ready.")
@@ -1000,7 +1005,7 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 		t.Fatalf("project view tabs rendered inside title card: %s", body)
 	}
 	header := body[:headerEnd]
-	for _, notWant := range []string{"About", "Sprints", "Backlog", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`} {
+	for _, notWant := range []string{"About", "Sprints", "Backlog", "Deleted", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`, `/deleted/panel`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
 		}
@@ -1013,13 +1018,14 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	aboutIdx := strings.Index(body, `href="/bradley/projects/TRACK/about"`)
 	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
 	backlogIdx := strings.Index(body, `href="/bradley/projects/TRACK/backlog"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || sprintsIdx > backlogIdx || backlogIdx > aboutIdx {
-		t.Fatalf("project tabs not ordered sprints, backlog, about: sprints=%d backlog=%d about=%d body=%s", sprintsIdx, backlogIdx, aboutIdx, body)
+	deletedIdx := strings.Index(body, `href="/bradley/projects/TRACK/deleted"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || deletedIdx < 0 || sprintsIdx > backlogIdx || backlogIdx > deletedIdx || deletedIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprints, backlog, deleted, about: sprints=%d backlog=%d deleted=%d about=%d body=%s", sprintsIdx, backlogIdx, deletedIdx, aboutIdx, body)
 	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "Deleted", `data-lucide="inbox"`, `data-lucide="trash-2"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}

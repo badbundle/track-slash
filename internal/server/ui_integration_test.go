@@ -728,14 +728,10 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-post="` + e.issueCommentsPath(issue) + `"`,
 		`data-submit-shortcut="meta-enter"`,
 		"disabled",
-		`method="post" action="` + e.issuePath(issue) + `/archive"`,
-		`hx-post="` + e.issuePath(issue) + `/archive"`,
-		`Archive issue`,
-		`data-lucide="archive"`,
 		`method="post" action="` + e.issuePath(issue) + `/delete"`,
 		`hx-post="` + e.issuePath(issue) + `/delete"`,
 		`hx-push-url="` + e.projectPath() + `/backlog"`,
-		`hx-confirm="Delete this issue? This cannot be undone from the UI."`,
+		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
@@ -781,6 +777,11 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	for _, notWant := range []string{`aria-label="Edit status"`, ">Status</dt>"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body still renders separate status edit affordance %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body included removed archive control %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{`<textarea disabled`, `aria-label="Post comment" class="grid h-9 w-9 shrink-0 cursor-not-allowed`, "\n            Comment\n"} {
@@ -906,38 +907,6 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 	}
 }
 
-func TestUIArchiveIssueSetsDone(t *testing.T) {
-	e := newHTTPEnv(t)
-	_, token := e.mustProjectMemberToken(t, "ui-archive")
-	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
-		ProjectID: e.projectID,
-		Title:     "archive target issue",
-	})
-	if err != nil {
-		t.Fatalf("CreateIssue: %v", err)
-	}
-
-	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/archive", token, nil)
-	defer res.Body.Close()
-	body := readBody(t, res)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("archive code = %d body = %s", res.StatusCode, body)
-	}
-	if !strings.Contains(body, "archive target issue") || !strings.Contains(body, "Done") {
-		t.Fatalf("archive response missing updated issue: %s", body)
-	}
-	if strings.Contains(body, "Archive issue") {
-		t.Fatalf("done issue should not keep archive action: %s", body)
-	}
-	updated, err := e.store.GetIssue(e.ctx, issue.ID)
-	if err != nil {
-		t.Fatalf("GetIssue after archive: %v", err)
-	}
-	if updated.Status != model.StatusDone {
-		t.Fatalf("Status = %q, want %q", updated.Status, model.StatusDone)
-	}
-}
-
 func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-delete")
@@ -954,11 +923,34 @@ func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("delete code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/backlog" {
+	backlogNotice := e.projectPath() + "/backlog?deleted_issue=" + url.QueryEscape(issue.Identifier)
+	if loc := res.Header.Get("Location"); loc != backlogNotice {
 		t.Fatalf("delete Location = %q", loc)
 	}
 	if _, err := e.store.GetIssue(e.ctx, issue.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetIssue deleted err = %v, want ErrNotFound", err)
+	}
+	body := e.uiGet(t, backlogNotice, token)
+	for _, want := range []string{
+		"Issue deleted",
+		"delete target issue",
+		"Undo delete",
+		`hx-post="` + e.issuePath(issue) + `/restore"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("delete notice missing %q: %s", want, body)
+		}
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/restore", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("restore code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != e.issuePath(issue) {
+		t.Fatalf("restore Location = %q", loc)
+	}
+	if _, err := e.store.GetIssue(e.ctx, issue.ID); err != nil {
+		t.Fatalf("GetIssue restored: %v", err)
 	}
 
 	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -979,14 +971,26 @@ func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 		"HX-Request": "true",
 	})
 	defer res.Body.Close()
-	body := readBody(t, res)
+	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("htmx delete code = %d body = %s", res.StatusCode, body)
 	}
-	if push := res.Header.Get("HX-Push-Url"); push != e.issuePath(parent) {
+	parentNotice := e.issuePath(parent) + "?deleted_issue=" + url.QueryEscape(child.Identifier)
+	if push := res.Header.Get("HX-Push-Url"); push != parentNotice {
 		t.Fatalf("HX-Push-Url = %q", push)
 	}
-	if strings.Contains(body, "<!doctype html>") || !strings.Contains(body, "delete child parent") || strings.Contains(body, "delete child target") {
+	for _, want := range []string{
+		"delete child parent",
+		"Issue deleted",
+		"delete child target",
+		"Undo delete",
+		`hx-post="` + e.issuePath(child) + `/restore"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("htmx delete response missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "<!doctype html>") {
 		t.Fatalf("htmx delete response should render parent issue panel: %s", body)
 	}
 	if _, err := e.store.GetIssue(e.ctx, child.ID); !errors.Is(err, store.ErrNotFound) {
@@ -994,6 +998,136 @@ func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 	}
 	if _, err := e.store.GetIssue(e.ctx, parent.ID); err != nil {
 		t.Fatalf("GetIssue parent after child delete: %v", err)
+	}
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(child)+"/restore", token, nil, map[string]string{
+		"HX-Request": "true",
+	})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("htmx restore code = %d body = %s", res.StatusCode, body)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != e.issuePath(child) {
+		t.Fatalf("restore HX-Push-Url = %q", push)
+	}
+	if strings.Contains(body, "<!doctype html>") || strings.Contains(body, "Issue deleted") || !strings.Contains(body, "delete child target") {
+		t.Fatalf("htmx restore response should render child issue panel: %s", body)
+	}
+	if _, err := e.store.GetIssue(e.ctx, child.ID); err != nil {
+		t.Fatalf("GetIssue child restored: %v", err)
+	}
+}
+
+func TestUIProjectDeletedTabListsAndRestoresIssues(t *testing.T) {
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-deleted")
+	live, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "live issue outside deleted tab",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue live: %v", err)
+	}
+	deleted, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "deleted tab target issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue deleted: %v", err)
+	}
+	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "deleted tab parent issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue parent: %v", err)
+	}
+	child, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "deleted tab child issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue child: %v", err)
+	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other Deleted Project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, otherProject.ID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess other: %v", err)
+	}
+	otherDeleted, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: otherProject.ID,
+		Title:     "other project deleted issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue other deleted: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteIssue deleted: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, parent.ID); err != nil {
+		t.Fatalf("DeleteIssue parent: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, otherDeleted.ID); err != nil {
+		t.Fatalf("DeleteIssue other: %v", err)
+	}
+
+	body := e.uiGet(t, e.projectPath()+"/deleted", token)
+	for _, want := range []string{
+		"Deleted",
+		"Deleted issues",
+		deleted.Identifier,
+		deleted.Title,
+		parent.Title,
+		child.Title,
+		"Sub-issue",
+		`href="` + e.projectPath() + `/deleted"`,
+		`hx-get="` + e.projectPath() + `/deleted/panel"`,
+		`method="post" action="` + e.issuePath(deleted) + `/restore"`,
+		`hx-post="` + e.issuePath(deleted) + `/restore"`,
+		`method="post" action="` + e.issuePath(child) + `/restore"`,
+		`hx-post="` + e.issuePath(child) + `/restore"`,
+		`hx-push-url="` + e.issuePath(child) + `"`,
+		`data-lucide="rotate-ccw"`,
+		"Restore",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("deleted body missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{live.Title, otherDeleted.Title, "Issue deleted"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted body included %q: %s", notWant, body)
+		}
+	}
+
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(child)+"/restore", token, nil, map[string]string{
+		"HX-Request": "true",
+	})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("deleted restore code = %d body = %s", res.StatusCode, body)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != e.issuePath(child) {
+		t.Fatalf("restore HX-Push-Url = %q", push)
+	}
+	if strings.Contains(body, "<!doctype html>") || !strings.Contains(body, child.Title) || !strings.Contains(body, "Sub-issue of") || !strings.Contains(body, parent.Title) || !strings.Contains(body, `aria-label="Issue settings"`) {
+		t.Fatalf("deleted restore should render restored issue panel: %s", body)
+	}
+	if _, err := e.store.GetIssue(e.ctx, child.ID); err != nil {
+		t.Fatalf("GetIssue child restored from deleted tab: %v", err)
+	}
+	if _, err := e.store.GetIssue(e.ctx, parent.ID); err != nil {
+		t.Fatalf("GetIssue parent restored with child: %v", err)
+	}
+	body = e.uiGet(t, e.projectPath()+"/deleted", token)
+	if strings.Contains(body, parent.Title) || strings.Contains(body, child.Title) {
+		t.Fatalf("deleted body kept restored parent/child: %s", body)
+	}
+	if !strings.Contains(body, deleted.Title) {
+		t.Fatalf("deleted body lost remaining deleted issue: %s", body)
 	}
 }
 
@@ -1628,6 +1762,13 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssueLink: %v", err)
 	}
+	deletedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "protected deleted issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue deleted: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, deletedIssue.ID); err != nil {
+		t.Fatalf("DeleteIssue protected: %v", err)
+	}
 	_, token := e.mustUserToken(t, "ui-issue-denied")
 	res := e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue), token, nil)
 	defer res.Body.Close()
@@ -1660,15 +1801,15 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue status update code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/archive", token, nil)
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf("issue archive code = %d body = %s", res.StatusCode, readBody(t, res))
-	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/delete", token, nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue delete code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(deletedIssue)+"/restore", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue restore code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/assignee/edit", token, nil)
 	defer res.Body.Close()
@@ -1753,8 +1894,8 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/description", body: strings.NewReader(url.Values{"description": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/status/edit"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/status", body: strings.NewReader(url.Values{"status": {string(model.StatusDone)}}.Encode())},
-		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/archive"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/delete"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/restore"},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/assignee/edit"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/assignee", body: strings.NewReader(url.Values{"assignee": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/reporter/edit"},
@@ -1769,8 +1910,13 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 			t.Fatalf("%s %s code = %d body = %s", tc.method, tc.path, res.StatusCode, readBody(t, res))
 		}
 	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/archive", memberToken, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("removed issue archive route code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 	unknownIssuePath := "/" + e.ownerUsername + "/issues/" + e.projKey + "-999999"
-	for _, path := range []string{unknownIssuePath + "/archive", unknownIssuePath + "/delete"} {
+	for _, path := range []string{unknownIssuePath + "/delete", unknownIssuePath + "/restore"} {
 		res := e.uiDoNoRedirect(t, http.MethodPost, path, memberToken, nil)
 		defer res.Body.Close()
 		if res.StatusCode != http.StatusNotFound {
@@ -1851,7 +1997,16 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustUserToken(t, "ui-no-project")
 
-	for _, path := range []string{e.projectPath() + "/about", e.projectPath() + "/sprint", e.projectPath() + "/backlog"} {
+	for _, path := range []string{
+		e.projectPath() + "/about",
+		e.projectPath() + "/about/panel",
+		e.projectPath() + "/sprint",
+		e.projectPath() + "/sprint/panel",
+		e.projectPath() + "/backlog",
+		e.projectPath() + "/backlog/panel",
+		e.projectPath() + "/deleted",
+		e.projectPath() + "/deleted/panel",
+	} {
 		res := e.uiDoNoRedirect(t, http.MethodGet, path, token, nil)
 		defer res.Body.Close()
 		if res.StatusCode != http.StatusForbidden {
