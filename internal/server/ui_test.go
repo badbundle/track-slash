@@ -245,6 +245,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
 		}
 	}
+	for _, want := range []string{`[data-search-input]`, `[data-search-option]`, `filterSearchOptions`, `option.dataset.value`, `input.form || input.closest("form")`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing search component behavior %q: %s", want, body)
+		}
+	}
 }
 
 func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
@@ -762,15 +767,20 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 		`hx-post="/bradley/issues/TRACK-7/sprint"`,
 		`hx-target="#main"`,
 		`hx-push-url="/bradley/issues/TRACK-7"`,
-		`name="sprint" value="sprint-2" list="issue-sprint-options"`,
+		`data-search`,
+		`name="sprint" value="sprint-2" autocomplete="off"`,
+		`data-search-input`,
 		`placeholder="None"`,
+		`data-lucide="search"`,
 		`aria-label="Save sprint"`,
 		`aria-label="Cancel editing sprint"`,
 		`hx-get="/bradley/issues/TRACK-7/panel"`,
-		`<datalist id="issue-sprint-options">`,
-		`value="sprint-1"`,
+		`role="listbox" aria-label="Sprint suggestions"`,
+		`data-search-option`,
+		`data-value="sprint-1"`,
+		`data-search-text="sprint-1 Active - Current Sprint - Jun 1-Jun 14"`,
 		`Active - Current Sprint - Jun 1-Jun 14`,
-		`value="sprint-3"`,
+		`data-value="sprint-3"`,
 		`Planned - Next Sprint - Jun 15-Jun 28`,
 		`Choose an active or planned sprint.`,
 	} {
@@ -778,12 +788,14 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 			t.Fatalf("sprint edit form missing %q: %s", want, body)
 		}
 	}
-	activeIndex := strings.Index(body, `value="sprint-1"`)
-	plannedIndex := strings.Index(body, `value="sprint-3"`)
+	activeIndex := strings.Index(body, `data-value="sprint-1"`)
+	plannedIndex := strings.Index(body, `data-value="sprint-3"`)
 	if activeIndex < 0 || plannedIndex < 0 || activeIndex > plannedIndex {
 		t.Fatalf("active sprint option should render before planned option: %s", body)
 	}
 	for _, notWant := range []string{
+		`<datalist`,
+		`list="issue-sprint-options"`,
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
 		`value="sprint-4"`,
 		`Completed Sprint`,

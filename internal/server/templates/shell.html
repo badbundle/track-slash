@@ -176,6 +176,43 @@
           setNavLoading(link, false);
         }
       });
+      const resetSearchOptions = (search) => {
+        search.querySelectorAll("[data-search-option]").forEach((option) => {
+          option.hidden = false;
+        });
+      };
+      const filterSearchOptions = (input) => {
+        const search = input.closest("[data-search]");
+        if (!search) return;
+        const query = input.value.trim().toLowerCase();
+        search.querySelectorAll("[data-search-option]").forEach((option) => {
+          const text = (option.dataset.searchText || "").toLowerCase();
+          option.hidden = query !== "" && !text.includes(query);
+        });
+      };
+      document.body.addEventListener("input", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const input = event.target.closest("[data-search-input]");
+        if (!input) return;
+        filterSearchOptions(input);
+      });
+      document.body.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const option = event.target.closest("[data-search-option]");
+        if (!option) return;
+        const search = option.closest("[data-search]");
+        const input = search && search.querySelector("[data-search-input]");
+        if (!input) return;
+        input.value = option.dataset.value || "";
+        resetSearchOptions(search);
+        const form = input.form || input.closest("form");
+        if (!form) return;
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      });
       document.body.addEventListener("keydown", (event) => {
         if (!(event.target instanceof Element)) return;
         const field = event.target.closest("[data-submit-shortcut='meta-enter']");

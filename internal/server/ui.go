@@ -152,7 +152,6 @@ type uiAutocompleteEditData struct {
 	IssueHref   string
 	Name        string
 	Value       string
-	ListID      string
 	Placeholder string
 	SaveLabel   string
 	CancelLabel string
@@ -1645,7 +1644,6 @@ func uiIssueMemberAutocomplete(panel *uiIssuePanelData, label, action, name, val
 		IssueHref:   uiIssuePath(panel.Issue),
 		Name:        name,
 		Value:       value,
-		ListID:      "issue-member-options",
 		Placeholder: placeholder,
 		SaveLabel:   saveLabel,
 		CancelLabel: cancelLabel,
@@ -1662,7 +1660,6 @@ func uiIssueSprintAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
 		IssueHref:   uiIssuePath(panel.Issue),
 		Name:        "sprint",
 		Value:       panel.SprintInput,
-		ListID:      "issue-sprint-options",
 		Placeholder: "None",
 		SaveLabel:   "Save sprint",
 		CancelLabel: "Cancel editing sprint",
