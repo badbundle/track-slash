@@ -455,6 +455,67 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 }
 
+func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "deleted-issue-panel", &uiDeletedIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Deleted issue title",
+			Description:   "Hidden deleted description",
+			Status:        model.StatusDone,
+			Priority:      model.PriorityP1,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:   model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		BackHref:  "/bradley/projects/TRACK/deleted",
+		BackHXGet: "/bradley/projects/TRACK/deleted/panel",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`href="/bradley/projects/TRACK/deleted"`,
+		`hx-get="/bradley/projects/TRACK/deleted/panel"`,
+		"Deleted issues",
+		`rounded-lg border border-slate-300`,
+		`mx-auto max-w-lg pt-10`,
+		`Deleted issue`,
+		"TRACK-7",
+		"Deleted issue title",
+		"This issue has been deleted",
+		"Track Slash",
+		"Done",
+		`h-px max-w-xs bg-slate-200`,
+		`method="post" action="/bradley/issues/TRACK-7/restore"`,
+		`hx-post="/bradley/issues/TRACK-7/restore"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`data-lucide="rotate-ccw"`,
+		"Restore issue",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("deleted issue panel missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue settings"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted issue panel leaked full issue UI %q: %s", notWant, body)
+		}
+	}
+}
+
 func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	t.Parallel()
 

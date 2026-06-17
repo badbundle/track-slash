@@ -99,6 +99,8 @@
       {{template "project-panel" .ProjectPanel}}
       {{else if .DeletedPanel}}
       {{template "deleted-issues-panel" .DeletedPanel}}
+      {{else if .DeletedIssuePanel}}
+      {{template "deleted-issue-panel" .DeletedIssuePanel}}
       {{else if .IssuePanel}}
       {{template "issue-panel" .IssuePanel}}
       {{else if .TokenPanel}}

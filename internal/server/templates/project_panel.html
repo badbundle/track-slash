@@ -153,10 +153,10 @@
   <div class="grid grid-cols-[7rem_auto_1fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 sm:grid-cols-[7rem_auto_1fr_auto_auto]">
     {{template "issue-key" .Identifier}}
     {{template "priority-badge" .Priority}}
-    <div class="min-w-0">
-      <div class="truncate text-slate-900 dark:text-slate-100">{{.Title}}</div>
+    <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="group block min-w-0 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+      <div class="truncate text-slate-900 group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">{{.Title}}</div>
       {{if .ParentIssueID}}<div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Sub-issue</div>{{end}}
-    </div>
+    </a>
     <div class="col-start-1 justify-self-start sm:col-start-auto">
       {{template "status-badge" .Status}}
     </div>

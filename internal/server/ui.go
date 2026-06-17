@@ -78,17 +78,18 @@ type uiSignupData struct {
 }
 
 type uiShellData struct {
-	User             model.User
-	Projects         []model.Project
-	CurrentProjectID uuid.UUID
-	CurrentView      string
-	WorkPanel        *uiWorkPanelData
-	ProjectsPanel    *uiProjectsPanelData
-	ProjectPanel     *uiProjectPanelData
-	DeletedPanel     *uiDeletedIssuesPanelData
-	IssuePanel       *uiIssuePanelData
-	TokenPanel       *uiTokenPanelData
-	SettingsPanel    *uiSettingsPanelData
+	User              model.User
+	Projects          []model.Project
+	CurrentProjectID  uuid.UUID
+	CurrentView       string
+	WorkPanel         *uiWorkPanelData
+	ProjectsPanel     *uiProjectsPanelData
+	ProjectPanel      *uiProjectPanelData
+	DeletedPanel      *uiDeletedIssuesPanelData
+	DeletedIssuePanel *uiDeletedIssuePanelData
+	IssuePanel        *uiIssuePanelData
+	TokenPanel        *uiTokenPanelData
+	SettingsPanel     *uiSettingsPanelData
 }
 
 type uiIssueItem struct {
@@ -181,6 +182,13 @@ type uiDeletedIssuesPanelData struct {
 	Project model.Project
 	Issues  []model.Issue
 	HasMore bool
+}
+
+type uiDeletedIssuePanelData struct {
+	Issue     model.Issue
+	Project   model.Project
+	BackHref  string
+	BackHXGet string
 }
 
 type uiIssuePanelData struct {
@@ -739,8 +747,28 @@ func (s *Server) uiProjectDeletedPanel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
-	issue, ok := s.uiIssueFromRoute(w, r)
+	issue, deleted, ok := s.uiIssueFromRouteIncludingDeleted(w, r)
 	if !ok {
+		return
+	}
+	if deleted {
+		panel, err := s.uiBuildDeletedIssuePanel(r.Context(), r, issue)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+			User:              currentUser(r),
+			Projects:          projects,
+			CurrentProjectID:  panel.Project.ID,
+			CurrentView:       "projects",
+			DeletedIssuePanel: panel,
+		})
 		return
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
@@ -763,8 +791,17 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
-	issue, ok := s.uiIssueFromRoute(w, r)
+	issue, deleted, ok := s.uiIssueFromRouteIncludingDeleted(w, r)
 	if !ok {
+		return
+	}
+	if deleted {
+		panel, err := s.uiBuildDeletedIssuePanel(r.Context(), r, issue)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		renderUITemplate(w, http.StatusOK, "deleted-issue-panel", panel)
 		return
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
@@ -1634,6 +1671,22 @@ func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request,
 	}, nil
 }
 
+func (s *Server) uiBuildDeletedIssuePanel(ctx context.Context, r *http.Request, issue model.Issue) (*uiDeletedIssuePanelData, error) {
+	if err := s.uiRequireProjectAccess(ctx, currentUser(r), issue.ProjectID); err != nil {
+		return nil, err
+	}
+	project, err := s.store.GetProject(ctx, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return &uiDeletedIssuePanelData{
+		Issue:     issue,
+		Project:   project,
+		BackHref:  uiProjectViewPath(project, "deleted"),
+		BackHXGet: uiProjectPanelPath(project, "deleted"),
+	}, nil
+}
+
 func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID uuid.UUID) (*uiIssuePanelData, error) {
 	projectID, err := s.store.ProjectIDForIssue(ctx, issueID)
 	if err != nil {
@@ -2011,14 +2064,8 @@ func (s *Server) uiProjectFromRoute(w http.ResponseWriter, r *http.Request) (mod
 }
 
 func (s *Server) uiIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
-	owner, err := store.NormalizeUsername(chi.URLParam(r, "owner"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return model.Issue{}, false
-	}
-	ref, err := parseIssueRef(chi.URLParam(r, "issueRef"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	owner, ref, ok := uiIssueRouteOwnerRef(w, r)
+	if !ok {
 		return model.Issue{}, false
 	}
 	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
@@ -2030,14 +2077,8 @@ func (s *Server) uiIssueFromRoute(w http.ResponseWriter, r *http.Request) (model
 }
 
 func (s *Server) uiDeletedIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
-	owner, err := store.NormalizeUsername(chi.URLParam(r, "owner"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return model.Issue{}, false
-	}
-	ref, err := parseIssueRef(chi.URLParam(r, "issueRef"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	owner, ref, ok := uiIssueRouteOwnerRef(w, r)
+	if !ok {
 		return model.Issue{}, false
 	}
 	issue, err := s.store.GetDeletedIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
@@ -2046,6 +2087,41 @@ func (s *Server) uiDeletedIssueFromRoute(w http.ResponseWriter, r *http.Request)
 		return model.Issue{}, false
 	}
 	return issue, true
+}
+
+func (s *Server) uiIssueFromRouteIncludingDeleted(w http.ResponseWriter, r *http.Request) (model.Issue, bool, bool) {
+	owner, ref, ok := uiIssueRouteOwnerRef(w, r)
+	if !ok {
+		return model.Issue{}, false, false
+	}
+	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+	if err == nil {
+		return issue, false, true
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		writeUIStoreError(w, err)
+		return model.Issue{}, false, false
+	}
+	issue, err = s.store.GetDeletedIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Issue{}, false, false
+	}
+	return issue, true, true
+}
+
+func uiIssueRouteOwnerRef(w http.ResponseWriter, r *http.Request) (string, issueRef, bool) {
+	owner, err := store.NormalizeUsername(chi.URLParam(r, "owner"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return "", issueRef{}, false
+	}
+	ref, err := parseIssueRef(chi.URLParam(r, "issueRef"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return "", issueRef{}, false
+	}
+	return owner, ref, true
 }
 
 func (s *Server) uiDeletedIssueNotice(ctx context.Context, r *http.Request, owner string, projectID uuid.UUID) (*uiIssueDeleteNotice, error) {
