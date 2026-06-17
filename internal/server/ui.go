@@ -70,6 +70,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"statusOptions":             uiStatusOptions,
 	"statusRow":                 uiStatusRowClass,
 	"statusSurface":             uiStatusSurfaceClass,
+	"subIssueProgress":          uiSubIssueProgress,
 	"tokenTime":                 uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
@@ -2838,6 +2839,47 @@ func uiStatusOptions() []uiStatusOption {
 		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
 		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
 	}
+}
+
+type uiSubIssueProgressData struct {
+	Total             int
+	Todo              int
+	InProgress        int
+	Done              int
+	DonePercent       string
+	InProgressPercent string
+	TodoPercent       string
+	Label             string
+}
+
+func uiSubIssueProgress(issues []model.Issue) uiSubIssueProgressData {
+	out := uiSubIssueProgressData{Total: len(issues)}
+	for _, issue := range issues {
+		switch issue.Status {
+		case model.StatusDone:
+			out.Done++
+		case model.StatusInProgress:
+			out.InProgress++
+		default:
+			out.Todo++
+		}
+	}
+	out.DonePercent = uiPercent(out.Done, out.Total)
+	out.InProgressPercent = uiPercent(out.InProgress, out.Total)
+	out.TodoPercent = uiPercent(out.Todo, out.Total)
+	if out.Total == 0 {
+		out.Label = "Sub-issue progress: no sub-issues"
+	} else {
+		out.Label = fmt.Sprintf("Sub-issue progress: %d done, %d in progress, %d to do", out.Done, out.InProgress, out.Todo)
+	}
+	return out
+}
+
+func uiPercent(part, total int) string {
+	if total <= 0 || part <= 0 {
+		return "0%"
+	}
+	return fmt.Sprintf("%.2f%%", (float64(part)/float64(total))*100)
 }
 
 func uiPriorityClass(priority model.IssuePriority) string {

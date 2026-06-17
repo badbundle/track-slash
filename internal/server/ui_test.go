@@ -92,6 +92,32 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 	}
 }
 
+func TestUISubIssueProgress(t *testing.T) {
+	t.Parallel()
+
+	empty := uiSubIssueProgress(nil)
+	if empty.Total != 0 || empty.DonePercent != "0%" || empty.InProgressPercent != "0%" || empty.TodoPercent != "0%" || empty.Label != "Sub-issue progress: no sub-issues" {
+		t.Fatalf("empty progress = %+v", empty)
+	}
+
+	mixed := uiSubIssueProgress([]model.Issue{
+		{Status: model.StatusDone},
+		{Status: model.StatusDone},
+		{Status: model.StatusInProgress},
+		{Status: model.StatusTodo},
+		{Status: model.Status("custom")},
+	})
+	if mixed.Total != 5 || mixed.Done != 2 || mixed.InProgress != 1 || mixed.Todo != 2 {
+		t.Fatalf("mixed counts = %+v", mixed)
+	}
+	if mixed.DonePercent != "40.00%" || mixed.InProgressPercent != "20.00%" || mixed.TodoPercent != "40.00%" {
+		t.Fatalf("mixed percentages = %+v", mixed)
+	}
+	if mixed.Label != "Sub-issue progress: 2 done, 1 in progress, 2 to do" {
+		t.Fatalf("mixed label = %q", mixed.Label)
+	}
+}
+
 func TestUIPriorityClassAndLabel(t *testing.T) {
 	t.Parallel()
 
@@ -872,6 +898,55 @@ func TestUIIssuePanelDoneDisablesSprintEdit(t *testing.T) {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("done sprint row included %q: %s", notWant, body)
 		}
+	}
+}
+
+func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Parent issue",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project: model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		SubIssues: []model.Issue{
+			{Status: model.StatusDone},
+			{Status: model.StatusInProgress},
+			{Status: model.StatusTodo},
+		},
+		BackHref:  "/bradley/projects/TRACK/backlog",
+		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+		BackLabel: "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`,
+		`class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
+		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
+		`bg-amber-400 dark:bg-amber-500" style="width: 33.33%;"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue progress bar missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "max-w-xs") {
+		t.Fatalf("sub-issue progress bar should fill the available width: %s", body)
 	}
 }
 

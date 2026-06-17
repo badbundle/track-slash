@@ -81,9 +81,14 @@
       {{if not .ParentIssue}}
       <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <header class="flex items-center justify-between gap-3 px-4 py-3">
-          <div>
+          <div class="min-w-0 flex-1">
             <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>
             {{if .SubIssuesHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+            {{$subIssueProgress := subIssueProgress .SubIssues}}
+            <div role="img" aria-label="{{$subIssueProgress.Label}}" class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              {{if gt $subIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$subIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
+              {{if gt $subIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-amber-400 dark:bg-amber-500" style="width: {{$subIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
+            </div>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .SubIssues}}</span>
