@@ -405,6 +405,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
+		`<span class="min-w-0 text-slate-900 dark:text-slate-100">Ada Lovelace</span>`,
+		`<span class="min-w-0 truncate text-slate-900 dark:text-slate-100">Planned One</span>`,
 		`aria-label="Add link"`,
 		`hx-get="/bradley/issues/TRACK-7/links/new"`,
 		`aria-label="Add sub-issue"`,
@@ -460,6 +462,12 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
 		}
+	}
+	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 3 {
+		t.Fatalf("assignee, reporter, and sprint rows should align edit buttons with values, got %d rows: %s", got, body)
+	}
+	if strings.Contains(body, `class="flex items-start justify-between gap-3"`) {
+		t.Fatalf("detail edit buttons should not align with row titles: %s", body)
 	}
 	for _, notWant := range []string{`method="post" action="/bradley/issues/TRACK-7/sub-issues"`, `aria-label="Create sub-issue"`, `aria-label="Cancel adding sub-issue"`} {
 		if strings.Contains(body, notWant) {

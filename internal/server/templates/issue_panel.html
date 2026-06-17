@@ -350,47 +350,47 @@
           {{if .EditAssignee}}
           {{template "autocomplete-edit" (issueAssigneeAutocomplete .)}}
           {{else}}
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</dt>
-              <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .Assignee}}{{.Assignee.Name}}{{else}}Unassigned{{end}}</dd>
-            </div>
-            <button type="button" aria-label="Edit assignee" hx-get="{{issueAssigneeEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Assignee}}{{.Assignee.Name}}{{else}}Unassigned{{end}}</span>
+              <button type="button" aria-label="Edit assignee" hx-get="{{issueAssigneeEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
           </div>
           {{end}}
           {{if .EditReporter}}
           {{template "autocomplete-edit" (issueReporterAutocomplete .)}}
           {{else}}
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reporter</dt>
-              <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .Reporter}}{{.Reporter.Name}}{{else}}No reporter{{end}}</dd>
-            </div>
-            <button type="button" aria-label="Edit reporter" hx-get="{{issueReporterEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reporter</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Reporter}}{{.Reporter.Name}}{{else}}No reporter{{end}}</span>
+              <button type="button" aria-label="Edit reporter" hx-get="{{issueReporterEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
           </div>
           {{end}}
           {{if not .ParentIssue}}
           {{if .EditSprint}}
           {{template "autocomplete-edit" (issueSprintAutocomplete .)}}
           {{else}}
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
-              <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</dd>
-            </div>
-            {{if .CanEditSprint}}
-            <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
-            {{else}}
-            <button type="button" disabled aria-label="Edit sprint" class="grid h-7 w-7 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
-              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
-            {{end}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</span>
+              {{if .CanEditSprint}}
+              <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{else}}
+              <button type="button" disabled aria-label="Edit sprint" class="grid h-7 w-7 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{end}}
+            </dd>
           </div>
           {{end}}
           {{end}}
