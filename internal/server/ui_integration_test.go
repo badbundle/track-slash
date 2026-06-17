@@ -1018,7 +1018,7 @@ func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 	}
 }
 
-func TestUIProjectDeletedTabListsAndRestoresIssues(t *testing.T) {
+func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-deleted")
 	live, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1073,17 +1073,42 @@ func TestUIProjectDeletedTabListsAndRestoresIssues(t *testing.T) {
 		t.Fatalf("DeleteIssue other: %v", err)
 	}
 
+	projectBody := e.uiGet(t, e.projectPath()+"/backlog", token)
+	for _, want := range []string{
+		`aria-label="Project actions"`,
+		`data-lucide="more-horizontal"`,
+		`href="` + e.projectPath() + `/deleted"`,
+		`hx-get="` + e.projectPath() + `/deleted/panel"`,
+		"Deleted issues",
+	} {
+		if !strings.Contains(projectBody, want) {
+			t.Fatalf("project body missing deleted menu affordance %q: %s", want, projectBody)
+		}
+	}
+	tabStart := strings.Index(projectBody, `aria-label="Project views"`)
+	if tabStart < 0 {
+		t.Fatalf("project body missing tab nav: %s", projectBody)
+	}
+	tabEnd := strings.Index(projectBody[tabStart:], "</nav>")
+	if tabEnd < 0 {
+		t.Fatalf("project body missing tab nav close: %s", projectBody)
+	}
+	tabMarkup := projectBody[tabStart : tabStart+tabEnd]
+	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
+		t.Fatalf("deleted rendered as project tab: %s", projectBody)
+	}
+
 	body := e.uiGet(t, e.projectPath()+"/deleted", token)
 	for _, want := range []string{
-		"Deleted",
 		"Deleted issues",
+		e.projKey,
+		e.projectPath() + "/sprint",
+		e.projectPath() + "/sprint/panel",
 		deleted.Identifier,
 		deleted.Title,
 		parent.Title,
 		child.Title,
 		"Sub-issue",
-		`href="` + e.projectPath() + `/deleted"`,
-		`hx-get="` + e.projectPath() + `/deleted/panel"`,
 		`method="post" action="` + e.issuePath(deleted) + `/restore"`,
 		`hx-post="` + e.issuePath(deleted) + `/restore"`,
 		`method="post" action="` + e.issuePath(child) + `/restore"`,
@@ -1096,7 +1121,7 @@ func TestUIProjectDeletedTabListsAndRestoresIssues(t *testing.T) {
 			t.Fatalf("deleted body missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{live.Title, otherDeleted.Title, "Issue deleted"} {
+	for _, notWant := range []string{live.Title, otherDeleted.Title, "Issue deleted", `aria-label="Project views"`, `aria-label="Project actions"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted body included %q: %s", notWant, body)
 		}

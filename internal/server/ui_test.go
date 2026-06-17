@@ -1005,12 +1005,12 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 		t.Fatalf("project view tabs rendered inside title card: %s", body)
 	}
 	header := body[:headerEnd]
-	for _, notWant := range []string{"About", "Sprints", "Backlog", "Deleted", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`, `/deleted/panel`} {
+	for _, notWant := range []string{"About", "Sprints", "Backlog", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
 		}
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`} {
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing about/title markup %q: %s", want, body)
 		}
@@ -1018,14 +1018,21 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	aboutIdx := strings.Index(body, `href="/bradley/projects/TRACK/about"`)
 	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
 	backlogIdx := strings.Index(body, `href="/bradley/projects/TRACK/backlog"`)
-	deletedIdx := strings.Index(body, `href="/bradley/projects/TRACK/deleted"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || deletedIdx < 0 || sprintsIdx > backlogIdx || backlogIdx > deletedIdx || deletedIdx > aboutIdx {
-		t.Fatalf("project tabs not ordered sprints, backlog, deleted, about: sprints=%d backlog=%d deleted=%d about=%d body=%s", sprintsIdx, backlogIdx, deletedIdx, aboutIdx, body)
+	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || sprintsIdx > backlogIdx || backlogIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprints, backlog, about: sprints=%d backlog=%d about=%d body=%s", sprintsIdx, backlogIdx, aboutIdx, body)
 	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "Deleted", `data-lucide="inbox"`, `data-lucide="trash-2"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`} {
+	tabEnd := strings.Index(body[tabNav:], "</nav>")
+	if tabEnd < 0 {
+		t.Fatalf("project tabs missing nav close: %s", body)
+	}
+	tabMarkup := body[tabNav : tabNav+tabEnd]
+	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
+		t.Fatalf("deleted rendered as project tab: %s", body)
+	}
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", `data-lucide="inbox"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
