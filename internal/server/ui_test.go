@@ -948,6 +948,11 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	if strings.Contains(body, "max-w-xs") {
 		t.Fatalf("sub-issue progress bar should fill the available width: %s", body)
 	}
+	addIndex := strings.Index(body, `aria-label="Add sub-issue"`)
+	progressIndex := strings.Index(body, `role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`)
+	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
+		t.Fatalf("sub-issue progress bar should render after the title row controls: %s", body)
+	}
 }
 
 func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
