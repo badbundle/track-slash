@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -30,6 +31,135 @@ func TestHTTPSoftDeleteIssue(t *testing.T) {
 	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"description": "nope"})
 	if code != http.StatusNotFound {
 		t.Fatalf("patch deleted issue code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPRestoreIssue(t *testing.T) {
+	e := newHTTPEnv(t)
+	iss := mustHTTPIssue(t, e)
+
+	code, body := e.do(t, http.MethodDelete, e.issuePath(iss), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete issue code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPost, e.issuePath(iss)+"/restore", nil)
+	if code != http.StatusOK {
+		t.Fatalf("restore issue code = %d body = %s", code, body)
+	}
+	restored := decode[model.Issue](t, body)
+	if restored.ID != iss.ID || restored.Identifier != iss.Identifier {
+		t.Fatalf("restored issue = %+v, want %s", restored, iss.Identifier)
+	}
+	code, body = e.do(t, http.MethodGet, e.issuePath(iss), nil)
+	if code != http.StatusOK {
+		t.Fatalf("get restored issue code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPost, e.issuePath(iss)+"/restore", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("restore issue second code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPListDeletedIssues(t *testing.T) {
+	e := newHTTPEnv(t)
+	live, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "live issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue live: %v", err)
+	}
+	deleted, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "deleted issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue deleted: %v", err)
+	}
+	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "deleted parent",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue parent: %v", err)
+	}
+	child, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "deleted child",
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue child: %v", err)
+	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other deleted project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	otherDeleted, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: otherProject.ID,
+		Title:     "other deleted issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue other deleted: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteIssue deleted: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, parent.ID); err != nil {
+		t.Fatalf("DeleteIssue parent: %v", err)
+	}
+	if err := e.store.DeleteIssue(e.ctx, otherDeleted.ID); err != nil {
+		t.Fatalf("DeleteIssue other: %v", err)
+	}
+
+	code, body := e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list deleted code = %d body = %s", code, body)
+	}
+	page := decodePage[model.Issue](t, body)
+	wantIDs := []uuid.UUID{deleted.ID, parent.ID, child.ID}
+	if len(page.Items) != len(wantIDs) || page.NextCursor != nil {
+		t.Fatalf("deleted page = %+v next=%v, want %d items no cursor", page.Items, page.NextCursor, len(wantIDs))
+	}
+	for i, wantID := range wantIDs {
+		if page.Items[i].ID != wantID {
+			t.Fatalf("deleted page item %d = %s, want %s: %+v", i, page.Items[i].ID, wantID, page.Items)
+		}
+	}
+	for _, got := range page.Items {
+		if got.ID == live.ID || got.ID == otherDeleted.ID {
+			t.Fatalf("deleted page included excluded issue: %+v", got)
+		}
+	}
+
+	code, body = e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted?limit=2", nil)
+	if code != http.StatusOK {
+		t.Fatalf("deleted page 1 code = %d body = %s", code, body)
+	}
+	page = decodePage[model.Issue](t, body)
+	if len(page.Items) != 2 || page.NextCursor == nil {
+		t.Fatalf("deleted page 1 = %+v next=%v, want 2 items and cursor", page.Items, page.NextCursor)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted?limit=2&cursor="+url.QueryEscape(*page.NextCursor), nil)
+	if code != http.StatusOK {
+		t.Fatalf("deleted page 2 code = %d body = %s", code, body)
+	}
+	page = decodePage[model.Issue](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != child.ID || page.NextCursor != nil {
+		t.Fatalf("deleted page 2 = %+v next=%v, want child only", page.Items, page.NextCursor)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.issuePath(deleted), nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("get listed deleted issue code = %d body = %s", code, body)
+	}
+	for _, path := range []string{
+		e.projectIssuesPath() + "/deleted?limit=0",
+		e.projectIssuesPath() + "/deleted?cursor=not-base64!!!",
+	} {
+		code, body := e.do(t, http.MethodGet, path, nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("GET %s code = %d body = %s", path, code, body)
+		}
 	}
 }
 
@@ -160,6 +290,14 @@ func TestHTTPSoftDeleteBadIDs(t *testing.T) {
 			t.Fatalf("DELETE %s code = %d body = %s", path, code, body)
 		}
 	}
+	code, body := e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/nope/restore", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("POST bad restore code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, "/bad!/projects/"+e.projKey+"/issues/deleted", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("GET bad deleted issues code = %d body = %s", code, body)
+	}
 	for _, path := range []string{
 		"/users/" + uuid.New().String(),
 		"/" + e.ownerUsername + "/projects/" + uniqueProjectKey(t),
@@ -170,6 +308,14 @@ func TestHTTPSoftDeleteBadIDs(t *testing.T) {
 		if code != http.StatusNotFound {
 			t.Fatalf("DELETE %s code = %d body = %s", path, code, body)
 		}
+	}
+	code, body = e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/"+e.projKey+"-999999/restore", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("POST unknown restore code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, "/"+e.ownerUsername+"/projects/"+uniqueProjectKey(t)+"/issues/deleted", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("GET unknown deleted issues code = %d body = %s", code, body)
 	}
 }
 

@@ -202,6 +202,48 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	writePage(w, out, next)
 }
 
+func (s *Server) listDeletedIssues(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+
+	out, hasMore, err := s.store.ListDeletedIssues(r.Context(), store.ListDeletedIssuesParams{
+		ProjectID: project.ID,
+		Cursor:    cursor,
+		Limit:     limit,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var next *string
+	if hasMore {
+		last := out[len(out)-1]
+		enc := encodeCursor(store.IssuesCursor{Number: last.Number})
+		next = &enc
+	}
+	writePage(w, out, next)
+}
+
 func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
 	parent, ok := s.issueFromRoute(w, r)
 	if !ok {
@@ -398,4 +440,20 @@ func (s *Server) deleteIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) restoreIssue(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.deletedIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+		return
+	}
+	restored, err := s.store.RestoreIssue(r.Context(), issue.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, restored)
 }

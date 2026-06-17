@@ -47,6 +47,149 @@ func TestSoftDeleteIssue(t *testing.T) {
 	}
 }
 
+func TestRestoreIssue(t *testing.T) {
+	env := newSprintsEnv(t)
+	parent := mustCreateIssue(t, env, "restore parent")
+	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "restore child",
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue: %v", err)
+	}
+
+	if err := env.store.DeleteIssue(env.ctx, parent.ID); err != nil {
+		t.Fatalf("DeleteIssue: %v", err)
+	}
+	deleted, err := env.store.GetDeletedIssueByOwnerKeyNumber(env.ctx, parent.OwnerUsername, parent.ProjectKey, parent.Number)
+	if err != nil {
+		t.Fatalf("GetDeletedIssueByOwnerKeyNumber: %v", err)
+	}
+	if deleted.ID != parent.ID {
+		t.Fatalf("deleted issue ID = %s, want %s", deleted.ID, parent.ID)
+	}
+
+	restored, err := env.store.RestoreIssue(env.ctx, parent.ID)
+	if err != nil {
+		t.Fatalf("RestoreIssue: %v", err)
+	}
+	if restored.ID != parent.ID || restored.Identifier != parent.Identifier {
+		t.Fatalf("restored issue = %+v, want %s", restored, parent.Identifier)
+	}
+	if _, err := env.store.GetIssue(env.ctx, child.ID); err != nil {
+		t.Fatalf("GetIssue child after restore: %v", err)
+	}
+	if _, err := env.store.GetDeletedIssueByOwnerKeyNumber(env.ctx, parent.OwnerUsername, parent.ProjectKey, parent.Number); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetDeletedIssue restored err = %v, want ErrNotFound", err)
+	}
+	if _, err := env.store.RestoreIssue(env.ctx, parent.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("RestoreIssue second err = %v, want ErrNotFound", err)
+	}
+
+	secondParent := mustCreateIssue(t, env, "restore child parent")
+	secondChild, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+		ParentIssueID: secondParent.ID,
+		Title:         "restore child directly",
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue second child: %v", err)
+	}
+	if err := env.store.DeleteIssue(env.ctx, secondParent.ID); err != nil {
+		t.Fatalf("DeleteIssue second parent: %v", err)
+	}
+	restoredChild, err := env.store.RestoreIssue(env.ctx, secondChild.ID)
+	if err != nil {
+		t.Fatalf("RestoreIssue child: %v", err)
+	}
+	if restoredChild.ID != secondChild.ID {
+		t.Fatalf("restored child ID = %s, want %s", restoredChild.ID, secondChild.ID)
+	}
+	if _, err := env.store.GetIssue(env.ctx, secondParent.ID); err != nil {
+		t.Fatalf("GetIssue parent after child restore: %v", err)
+	}
+}
+
+func TestListDeletedIssues(t *testing.T) {
+	env := newSprintsEnv(t)
+	live := mustCreateIssue(t, env, "live issue")
+	deleted := mustCreateIssue(t, env, "deleted issue")
+	parent := mustCreateIssue(t, env, "deleted parent")
+	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "deleted child",
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue child: %v", err)
+	}
+	otherProject, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "other deleted project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	otherDeleted, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: otherProject.ID,
+		Title:     "other deleted issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue other deleted: %v", err)
+	}
+	if err := env.store.DeleteIssue(env.ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteIssue deleted: %v", err)
+	}
+	if err := env.store.DeleteIssue(env.ctx, parent.ID); err != nil {
+		t.Fatalf("DeleteIssue parent: %v", err)
+	}
+	if err := env.store.DeleteIssue(env.ctx, otherDeleted.ID); err != nil {
+		t.Fatalf("DeleteIssue other: %v", err)
+	}
+
+	got, hasMore, err := env.store.ListDeletedIssues(env.ctx, store.ListDeletedIssuesParams{
+		ProjectID: env.projectID,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListDeletedIssues: %v", err)
+	}
+	if hasMore {
+		t.Fatalf("ListDeletedIssues hasMore = true, want false")
+	}
+	wantIDs := []uuid.UUID{deleted.ID, parent.ID, child.ID}
+	if len(got) != len(wantIDs) {
+		t.Fatalf("ListDeletedIssues len = %d, want %d: %+v", len(got), len(wantIDs), got)
+	}
+	for i, wantID := range wantIDs {
+		if got[i].ID != wantID {
+			t.Fatalf("ListDeletedIssues[%d] = %s, want %s: %+v", i, got[i].ID, wantID, got)
+		}
+	}
+	for _, iss := range got {
+		if iss.ID == live.ID || iss.ID == otherDeleted.ID {
+			t.Fatalf("ListDeletedIssues included excluded issue: %+v", iss)
+		}
+	}
+
+	page, hasMore, err := env.store.ListDeletedIssues(env.ctx, store.ListDeletedIssuesParams{
+		ProjectID: env.projectID,
+		Limit:     1,
+	})
+	if err != nil {
+		t.Fatalf("ListDeletedIssues page: %v", err)
+	}
+	if len(page) != 1 || page[0].ID != deleted.ID || !hasMore {
+		t.Fatalf("ListDeletedIssues page len=%d first=%+v hasMore=%v, want first %s and hasMore", len(page), page, hasMore, deleted.ID)
+	}
+	next, hasMore, err := env.store.ListDeletedIssues(env.ctx, store.ListDeletedIssuesParams{
+		ProjectID: env.projectID,
+		Cursor:    &store.IssuesCursor{Number: page[0].Number},
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListDeletedIssues next: %v", err)
+	}
+	if hasMore || len(next) != 2 || next[0].ID != parent.ID || next[1].ID != child.ID {
+		t.Fatalf("ListDeletedIssues next = %+v hasMore=%v, want parent/child only", next, hasMore)
+	}
+}
+
 func TestSoftDeleteUser(t *testing.T) {
 	env := newSprintsEnv(t)
 	u := mustCreateUser(t, env, "soft-user-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")

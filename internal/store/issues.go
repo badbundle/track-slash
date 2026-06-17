@@ -222,6 +222,26 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 	return iss, nil
 }
 
+func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
+	const q = `
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		FROM issues i
+		JOIN projects p ON p.id = i.project_id
+		JOIN users u ON u.id = p.owner_id
+		WHERE u.username = $1 AND p.key = $2 AND i.number = $3
+		  AND i.deleted_at IS NOT NULL AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+	`
+	iss, err := scanIssue(s.db.QueryRow(ctx, q, ownerUsername, projectKey, number))
+	if err != nil {
+		if isNoRows(err) {
+			return model.Issue{}, ErrNotFound
+		}
+		return model.Issue{}, err
+	}
+	return iss, nil
+}
+
 type ListIssuesParams struct {
 	ProjectID uuid.UUID
 	Status    model.Status // empty = all
@@ -305,6 +325,53 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		args = append(args, *p.SprintID)
 		q += fmt.Sprintf(" AND i.sprint_id = $%d", len(args))
 	}
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.Number)
+		q += fmt.Sprintf(" AND i.number > $%d", len(args))
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(" ORDER BY i.number ASC LIMIT $%d", len(args))
+
+	rows, err := s.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	out := make([]model.Issue, 0, p.Limit)
+	for rows.Next() {
+		iss, err := scanIssue(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		out = append(out, iss)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
+}
+
+type ListDeletedIssuesParams struct {
+	ProjectID uuid.UUID
+	Cursor    *IssuesCursor
+	Limit     int
+}
+
+func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams) ([]model.Issue, bool, error) {
+	args := []any{p.ProjectID}
+	q := `
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		FROM issues i
+		JOIN projects pr ON pr.id = i.project_id
+		JOIN users u ON u.id = pr.owner_id
+		WHERE i.project_id = $1 AND i.deleted_at IS NOT NULL AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
+	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)
 		q += fmt.Sprintf(" AND i.number > $%d", len(args))
@@ -575,4 +642,33 @@ func (s *Store) DeleteIssue(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *Store) RestoreIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
+	tag, err := s.db.Exec(ctx, `
+		WITH target AS (
+			SELECT id, parent_issue_id
+			FROM issues
+			WHERE id = $1 AND deleted_at IS NOT NULL
+		),
+		restore_ids AS (
+			SELECT id FROM target
+			UNION
+			SELECT parent_issue_id FROM target WHERE parent_issue_id IS NOT NULL
+			UNION
+			SELECT i.id
+			FROM issues i
+			JOIN target t ON i.parent_issue_id = t.id
+		)
+		UPDATE issues SET deleted_at = NULL, updated_at = now()
+		WHERE id IN (SELECT id FROM restore_ids) AND deleted_at IS NOT NULL
+	`, id)
+	if err != nil {
+		// Defensive: restore has no expected FK/check mapping.
+		return model.Issue{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return model.Issue{}, ErrNotFound
+	}
+	return s.GetIssue(ctx, id)
 }

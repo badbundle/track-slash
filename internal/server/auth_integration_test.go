@@ -228,6 +228,10 @@ func TestHTTPProjectMembershipFiltersAndForbids(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatalf("forbidden project code = %d body = %s", code, body)
 	}
+	code, body = e.doWithToken(t, token, http.MethodGet, "/"+other.OwnerUsername+"/projects/"+other.Key+"/issues/deleted", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("forbidden deleted issues code = %d body = %s", code, body)
+	}
 }
 
 func TestHTTPTokenAdminEndpoints(t *testing.T) {
@@ -472,6 +476,13 @@ func TestHTTPProjectScopedIDRoutesForbidOtherProjects(t *testing.T) {
 	code, body = e.doWithToken(t, token, http.MethodGet, "/"+e.ownerUsername+"/issues?refs="+own.Identifier+","+otherIssue.Identifier, nil)
 	if code != http.StatusForbidden {
 		t.Fatalf("mixed batch code = %d body = %s", code, body)
+	}
+	if err := e.store.DeleteIssue(e.ctx, otherIssue.ID); err != nil {
+		t.Fatalf("DeleteIssue other: %v", err)
+	}
+	code, body = e.doWithToken(t, token, http.MethodPost, e.issuePath(otherIssue)+"/restore", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("other issue restore code = %d body = %s", code, body)
 	}
 }
 

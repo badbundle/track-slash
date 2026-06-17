@@ -163,6 +163,8 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "issue priority edit", raw: "/bradley/issues/TRACK-7/priority/edit", want: "/bradley/issues/TRACK-7/priority/edit"},
+		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
+		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
@@ -174,8 +176,10 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "project", raw: "/bradley/projects/TRACK", want: "/bradley/projects/TRACK"},
 		{name: "project about", raw: "/bradley/projects/TRACK/about", want: "/bradley/projects/TRACK/about"},
 		{name: "project sprint", raw: "/bradley/projects/TRACK/sprint", want: "/bradley/projects/TRACK/sprint"},
+		{name: "project deleted", raw: "/bradley/projects/TRACK/deleted", want: "/bradley/projects/TRACK/deleted"},
 		{name: "project about panel with query", raw: "/bradley/projects/TRACK/about/panel?x=1", want: "/bradley/projects/TRACK/about/panel?x=1"},
 		{name: "project backlog panel with query", raw: "/bradley/projects/TRACK/backlog/panel?x=1", want: "/bradley/projects/TRACK/backlog/panel?x=1"},
+		{name: "project deleted panel with query", raw: "/bradley/projects/TRACK/deleted/panel?x=1", want: "/bradley/projects/TRACK/deleted/panel?x=1"},
 		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},
 		{name: "bad project child", raw: "/bradley/projects/TRACK/issues", want: "/"},
 		{name: "bad project panel", raw: "/bradley/projects/TRACK/sprint/card", want: "/"},
@@ -345,6 +349,15 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`href="/bradley/issues/TRACK-8"`,
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
 		`aria-label="Issue settings"`,
+		`cursor-pointer list-none`,
+		`method="post" action="/bradley/issues/TRACK-7/delete"`,
+		`hx-post="/bradley/issues/TRACK-7/delete"`,
+		`hx-push-url="/bradley/projects/TRACK/backlog"`,
+		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
+		`Delete issue`,
+		`data-lucide="trash-2"`,
+		`text-rose-600`,
+		`dark:hover:bg-rose-950/40`,
 		`aria-label="Edit description"`,
 		`hx-get="/bradley/issues/TRACK-7/description/edit"`,
 		`aria-label="Edit link"`,
@@ -404,6 +417,11 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if strings.Contains(detailsBlock, ">Status</dt>") || strings.Contains(body, `aria-label="Edit status"`) {
 		t.Fatalf("status control should not render a separate title or edit button: %s", body)
 	}
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
+		}
+	}
 	commentMetaStart := strings.Index(body, "Ada Lovelace")
 	commentBodyStart := strings.Index(body, "Looks ready.")
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
@@ -427,13 +445,74 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		t.Fatalf("issue panel missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
-	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress"} {
+	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress", "cursor-not-allowed"} {
 		if strings.Contains(titleHeader, notWant) {
 			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
 		}
 	}
 	if strings.Contains(body, "title=") {
 		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
+	}
+}
+
+func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "deleted-issue-panel", &uiDeletedIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Deleted issue title",
+			Description:   "Hidden deleted description",
+			Status:        model.StatusDone,
+			Priority:      model.PriorityP1,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:   model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		BackHref:  "/bradley/projects/TRACK/deleted",
+		BackHXGet: "/bradley/projects/TRACK/deleted/panel",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`href="/bradley/projects/TRACK/deleted"`,
+		`hx-get="/bradley/projects/TRACK/deleted/panel"`,
+		"Deleted issues",
+		`rounded-lg border border-slate-300`,
+		`mx-auto max-w-lg pt-10`,
+		`Deleted issue`,
+		"TRACK-7",
+		"Deleted issue title",
+		"This issue has been deleted",
+		"Track Slash",
+		"Done",
+		`h-px max-w-xs bg-slate-200`,
+		`method="post" action="/bradley/issues/TRACK-7/restore"`,
+		`hx-post="/bradley/issues/TRACK-7/restore"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`data-lucide="rotate-ccw"`,
+		"Restore issue",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("deleted issue panel missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue settings"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted issue panel leaked full issue UI %q: %s", notWant, body)
+		}
 	}
 }
 
@@ -992,7 +1071,7 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
 		}
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`} {
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing about/title markup %q: %s", want, body)
 		}
@@ -1006,7 +1085,15 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
+	tabEnd := strings.Index(body[tabNav:], "</nav>")
+	if tabEnd < 0 {
+		t.Fatalf("project tabs missing nav close: %s", body)
+	}
+	tabMarkup := body[tabNav : tabNav+tabEnd]
+	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
+		t.Fatalf("deleted rendered as project tab: %s", body)
+	}
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", `data-lucide="inbox"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
