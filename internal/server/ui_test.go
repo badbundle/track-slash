@@ -425,12 +425,17 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`class="flex items-start gap-2"`,
 		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
 		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
-		`class="flex items-start gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 dark:border-slate-800"`,
+		`class="space-y-3"`,
+		`class="flex items-start gap-2"`,
+		`class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
+		`class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25"`,
+		`class="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-1"`,
+		`class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800 dark:text-slate-200"`,
 		`inline-flex w-fit justify-self-start items-center whitespace-nowrap rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
-		`h-6 w-6`,
-		`h-3.5 w-3.5`,
+		`h-5 w-5`,
+		`h-3 w-3`,
 		`border-amber-300 bg-amber-50 text-amber-800`,
 		`bg-amber-50/45 dark:bg-amber-950/15`,
 		`bg-emerald-50/45 hover:bg-emerald-50`,
@@ -445,6 +450,25 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	detailsStart := strings.Index(body, ">Details</h2>")
 	if detailsStart < 0 {
 		t.Fatalf("issue panel missing Details heading: %s", body)
+	}
+	commentsHeadingStart := strings.Index(body, ">Comments</h2>")
+	commentsSectionStart := -1
+	if commentsHeadingStart >= 0 {
+		commentsSectionStart = strings.LastIndex(body[:commentsHeadingStart], "<section")
+	}
+	if commentsSectionStart < 0 || commentsHeadingStart > detailsStart {
+		t.Fatalf("issue panel missing comments section before details: %s", body)
+	}
+	commentsBlock := body[commentsSectionStart:detailsStart]
+	for _, notWant := range []string{
+		`overflow-hidden rounded-lg border border-slate-200 bg-white`,
+		`border-t border-slate-100 p-4`,
+		`border-t border-dashed border-slate-200 px-4 py-4`,
+		`rotate-45`,
+	} {
+		if strings.Contains(commentsBlock, notWant) {
+			t.Fatalf("comments section should not render the outer card treatment %q: %s", notWant, body)
+		}
 	}
 	detailsBlock := body[detailsStart:]
 	statusIndex := strings.Index(detailsBlock, `aria-label="Change status"`)
@@ -466,7 +490,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 3 {
 		t.Fatalf("assignee, reporter, and sprint rows should align edit buttons with values, got %d rows: %s", got, body)
 	}
-	if strings.Contains(body, `class="flex items-start justify-between gap-3"`) {
+	if strings.Contains(detailsBlock, `class="flex items-start justify-between gap-3"`) {
 		t.Fatalf("detail edit buttons should not align with row titles: %s", body)
 	}
 	for _, notWant := range []string{`method="post" action="/bradley/issues/TRACK-7/sub-issues"`, `aria-label="Create sub-issue"`, `aria-label="Cancel adding sub-issue"`} {
@@ -474,17 +498,25 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			t.Fatalf("issue panel should not render the sub-issue composer by default %q: %s", notWant, body)
 		}
 	}
+	if strings.Contains(body, `border-b border-slate-100 px-4 py-4 last:border-b-0`) {
+		t.Fatalf("comments should render as bubbles instead of bordered rows: %s", body)
+	}
 	commentMetaStart := strings.Index(body, "Ada Lovelace")
 	commentBodyStart := strings.Index(body, "Looks ready.")
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
-		t.Fatalf("issue panel missing comment metadata/body ordering: %s", body)
+		t.Fatalf("issue panel should render comment metadata above the body: %s", body)
+	}
+	commentBubbleStart := strings.Index(body, `class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2`)
+	if commentBubbleStart < 0 || commentBubbleStart < commentMetaStart || commentBubbleStart > commentBodyStart {
+		t.Fatalf("comment body should render inside the bubble after metadata: %s", body)
+	}
+	commentAvatarStart := strings.Index(body, `class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`)
+	if commentAvatarStart < 0 || commentAvatarStart > commentMetaStart {
+		t.Fatalf("comment avatar should render with the metadata beside the author name: %s", body)
 	}
 	commentEditStart := strings.Index(body, `aria-label="Edit comment"`)
-	if commentEditStart < 0 || commentEditStart < commentBodyStart {
-		t.Fatalf("comment edit button should render at the right edge after comment body content: %s", body)
-	}
-	if strings.Contains(body[commentMetaStart:commentBodyStart], `aria-label="Edit comment"`) {
-		t.Fatalf("comment edit button should not render beside comment metadata: %s", body)
+	if commentEditStart < 0 || commentEditStart < commentMetaStart || commentEditStart > commentBubbleStart {
+		t.Fatalf("comment edit button should render with metadata above the bubble: %s", body)
 	}
 	if strings.Contains(body, "\n            Comment\n") {
 		t.Fatalf("post comment button should be icon-only: %s", body)
