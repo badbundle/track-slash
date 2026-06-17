@@ -400,7 +400,7 @@ func TestUpdateSprintRejectsCompletedTransition(t *testing.T) {
 	}
 }
 
-func TestCompleteSprintMovesUnfinishedToBacklog(t *testing.T) {
+func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	env := newSprintsEnv(t)
 	active := mustCreateSprint(t, env, "active", date(2026, 6, 1), date(2026, 6, 14))
 	next := mustCreateSprint(t, env, "next", date(2026, 6, 15), date(2026, 6, 30))
@@ -433,8 +433,8 @@ func TestCompleteSprintMovesUnfinishedToBacklog(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetIssue %s: %v", id, err)
 		}
-		if iss.SprintID != nil {
-			t.Fatalf("issue %s sprint = %v, want backlog", id, iss.SprintID)
+		if iss.SprintID == nil || *iss.SprintID != next.ID {
+			t.Fatalf("issue %s sprint = %v, want next sprint %s", id, iss.SprintID, next.ID)
 		}
 	}
 
@@ -822,6 +822,45 @@ func TestUpdateIssueClearSprint(t *testing.T) {
 	}
 	if got.SprintID != nil {
 		t.Fatalf("SprintID = %v, want nil", got.SprintID)
+	}
+}
+
+func TestUpdateIssueDoneRejectsSprintEdit(t *testing.T) {
+	env := newSprintsEnv(t)
+	current := mustCreateSprint(t, env, "current", date(2026, 6, 1), date(2026, 6, 14))
+	next := mustCreateSprint(t, env, "next", date(2026, 6, 15), date(2026, 6, 30))
+	iss := mustCreateIssue(t, env, "done")
+	assignIssueToSprint(t, env, iss.ID, current.ID)
+	setIssueStatus(t, env, iss.ID, model.StatusDone)
+
+	if _, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{SprintID: &next.ID}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("set sprint err = %v, want ErrConflict", err)
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{ClearSprint: true}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("clear sprint err = %v, want ErrConflict", err)
+	}
+	got, err := env.store.GetIssue(env.ctx, iss.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if got.SprintID == nil || *got.SprintID != current.ID {
+		t.Fatalf("SprintID = %v, want %s", got.SprintID, current.ID)
+	}
+
+	becomingDone := mustCreateIssue(t, env, "done-with-move")
+	done := model.StatusDone
+	if _, err := env.store.UpdateIssue(env.ctx, becomingDone.ID, store.UpdateIssueParams{
+		Status:   &done,
+		SprintID: &next.ID,
+	}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("status done plus sprint err = %v, want ErrConflict", err)
+	}
+	got, err = env.store.GetIssue(env.ctx, becomingDone.ID)
+	if err != nil {
+		t.Fatalf("GetIssue becoming done: %v", err)
+	}
+	if got.Status != model.StatusTodo || got.SprintID != nil {
+		t.Fatalf("issue after rejected update = status %s sprint %v, want todo/no sprint", got.Status, got.SprintID)
 	}
 }
 

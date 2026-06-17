@@ -28,43 +28,48 @@ var errUIForbidden = errors.New("forbidden")
 var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":             uiInitials,
-	"issueAssignee":        uiIssueAssigneePath,
-	"issueAssigneeEdit":    uiIssueAssigneeEditPath,
-	"issueComments":        uiIssueCommentsPath,
-	"issueDelete":          uiIssueDeletePath,
-	"issueDescription":     uiIssueDescriptionPath,
-	"issueDescriptionEdit": uiIssueDescriptionEditPath,
-	"issueHref":            uiIssuePath,
-	"issueLink":            uiIssueLinkPath,
-	"issueLinkDelete":      uiIssueLinkDeletePath,
-	"issueLinkEdit":        uiIssueLinkEditPath,
-	"issueLinkNew":         uiIssueLinkNewPath,
-	"issueLinks":           uiIssueLinksPath,
-	"issuePanel":           uiIssuePanelPath,
-	"issuePriority":        uiIssuePriorityPath,
-	"issuePriorityEdit":    uiIssuePriorityEditPath,
-	"issueReporter":        uiIssueReporterPath,
-	"issueReporterEdit":    uiIssueReporterEditPath,
-	"issueRestore":         uiIssueRestorePath,
-	"issueStatus":          uiIssueStatusPath,
-	"issueStatusEdit":      uiIssueStatusEditPath,
-	"issueSubIssues":       uiIssueSubIssuesPath,
-	"linkLabel":            uiIssueLinkLabel,
-	"linkOptions":          uiIssueLinkOptions,
-	"priorityClass":        uiPriorityClass,
-	"priorityLabel":        uiPriorityLabel,
-	"priorityOptions":      uiPriorityOptions,
-	"projectPanel":         uiProjectPanelPath,
-	"projectView":          uiProjectViewPath,
-	"projectIcon":          uiProjectIcon,
-	"sprintDate":           uiSprintDate,
-	"statusClass":          uiStatusClass,
-	"statusLabel":          uiStatusLabel,
-	"statusOptions":        uiStatusOptions,
-	"statusRow":            uiStatusRowClass,
-	"statusSurface":        uiStatusSurfaceClass,
-	"tokenTime":            uiTokenTime,
+	"initials":                  uiInitials,
+	"issueAssignee":             uiIssueAssigneePath,
+	"issueAssigneeEdit":         uiIssueAssigneeEditPath,
+	"issueComments":             uiIssueCommentsPath,
+	"issueDelete":               uiIssueDeletePath,
+	"issueDescription":          uiIssueDescriptionPath,
+	"issueDescriptionEdit":      uiIssueDescriptionEditPath,
+	"issueHref":                 uiIssuePath,
+	"issueLink":                 uiIssueLinkPath,
+	"issueLinkDelete":           uiIssueLinkDeletePath,
+	"issueLinkEdit":             uiIssueLinkEditPath,
+	"issueLinkNew":              uiIssueLinkNewPath,
+	"issueLinks":                uiIssueLinksPath,
+	"issuePanel":                uiIssuePanelPath,
+	"issuePriority":             uiIssuePriorityPath,
+	"issuePriorityEdit":         uiIssuePriorityEditPath,
+	"issueReporter":             uiIssueReporterPath,
+	"issueReporterEdit":         uiIssueReporterEditPath,
+	"issueRestore":              uiIssueRestorePath,
+	"issueSprint":               uiIssueSprintPath,
+	"issueSprintEdit":           uiIssueSprintEditPath,
+	"issueStatus":               uiIssueStatusPath,
+	"issueStatusEdit":           uiIssueStatusEditPath,
+	"issueSubIssues":            uiIssueSubIssuesPath,
+	"issueAssigneeAutocomplete": uiIssueAssigneeAutocomplete,
+	"issueReporterAutocomplete": uiIssueReporterAutocomplete,
+	"issueSprintAutocomplete":   uiIssueSprintAutocomplete,
+	"linkLabel":                 uiIssueLinkLabel,
+	"linkOptions":               uiIssueLinkOptions,
+	"priorityClass":             uiPriorityClass,
+	"priorityLabel":             uiPriorityLabel,
+	"priorityOptions":           uiPriorityOptions,
+	"projectPanel":              uiProjectPanelPath,
+	"projectView":               uiProjectViewPath,
+	"projectIcon":               uiProjectIcon,
+	"sprintDate":                uiSprintDate,
+	"statusClass":               uiStatusClass,
+	"statusLabel":               uiStatusLabel,
+	"statusOptions":             uiStatusOptions,
+	"statusRow":                 uiStatusRowClass,
+	"statusSurface":             uiStatusSurfaceClass,
+	"tokenTime":                 uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -128,6 +133,30 @@ type uiIssueLinkItem struct {
 	Link        model.IssueLink
 	LinkedIssue model.Issue
 	HasIssue    bool
+}
+
+type uiIssueSprintOption struct {
+	Value string
+	Label string
+}
+
+type uiAutocompleteOption struct {
+	Value string
+	Label string
+}
+
+type uiAutocompleteEditData struct {
+	Label       string
+	Action      string
+	PanelPath   string
+	IssueHref   string
+	Name        string
+	Value       string
+	Placeholder string
+	SaveLabel   string
+	CancelLabel string
+	Error       string
+	Options     []uiAutocompleteOption
 }
 
 type uiIssueDeleteNotice struct {
@@ -203,11 +232,16 @@ type uiIssuePanelData struct {
 	EditPriority     bool
 	EditAssignee     bool
 	EditReporter     bool
+	EditSprint       bool
+	CanEditSprint    bool
 	AssigneeInput    string
 	ReporterInput    string
+	SprintInput      string
 	AssigneeError    string
 	ReporterError    string
+	SprintError      string
 	MemberOptions    []model.User
+	SprintOptions    []uiIssueSprintOption
 	SubIssues        []model.Issue
 	SubIssuesHasMore bool
 	SubIssueTitle    string
@@ -287,6 +321,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/assignee", s.uiUpdateIssueAssignee)
 		r.Get("/{owner}/issues/{issueRef}/reporter/edit", s.uiEditIssueReporter)
 		r.Post("/{owner}/issues/{issueRef}/reporter", s.uiUpdateIssueReporter)
+		r.Get("/{owner}/issues/{issueRef}/sprint/edit", s.uiEditIssueSprint)
+		r.Post("/{owner}/issues/{issueRef}/sprint", s.uiUpdateIssueSprint)
 		r.Get("/{owner}/issues/{issueRef}/links/new", s.uiNewIssueLink)
 		r.Post("/{owner}/issues/{issueRef}/links", s.uiCreateIssueLink)
 		r.Get("/{owner}/issues/{issueRef}/links/{linkRef}/edit", s.uiEditIssueLink)
@@ -1122,6 +1158,72 @@ func (s *Server) uiUpdateIssueReporter(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiEditIssueSprint(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if !panel.CanEditSprint {
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+	panel.EditSprint = true
+	panel.SprintInput = uiIssueSprintInput(panel.Sprint)
+	if err := s.uiPopulateIssueSprintOptions(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueSprint(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if issue.ParentIssueID != nil || issue.Status == model.StatusDone {
+		writeUIStoreError(w, store.ErrConflict)
+		return
+	}
+	input := r.Form.Get("sprint")
+	sprintID, clear, message, err := s.uiIssueSprintID(r.Context(), issue.ProjectID, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIIssuePanelWithSprintError(w, r, issue.ID, input, message)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		SprintID:    sprintID,
+		ClearSprint: clear,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiNewIssueLink(w http.ResponseWriter, r *http.Request) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -1398,6 +1500,22 @@ func (s *Server) renderUIIssuePanelWithReporterError(w http.ResponseWriter, r *h
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) renderUIIssuePanelWithSprintError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditSprint = true
+	panel.SprintInput = input
+	panel.SprintError = message
+	if err := s.uiPopulateIssueSprintOptions(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiPopulateIssueMemberOptions(ctx context.Context, panel *uiIssuePanelData) error {
 	users, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
 		ProjectID: panel.Project.ID,
@@ -1407,6 +1525,33 @@ func (s *Server) uiPopulateIssueMemberOptions(ctx context.Context, panel *uiIssu
 		return err
 	}
 	panel.MemberOptions = users
+	return nil
+}
+
+func (s *Server) uiPopulateIssueSprintOptions(ctx context.Context, panel *uiIssuePanelData) error {
+	active, _, err := s.store.ListSprints(ctx, store.ListSprintsParams{
+		ProjectID: panel.Project.ID,
+		Status:    model.SprintStatusActive,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return err
+	}
+	planned, _, err := s.store.ListSprints(ctx, store.ListSprintsParams{
+		ProjectID: panel.Project.ID,
+		Status:    model.SprintStatusPlanned,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return err
+	}
+	panel.SprintOptions = make([]uiIssueSprintOption, 0, len(active)+len(planned))
+	for _, sprint := range active {
+		panel.SprintOptions = append(panel.SprintOptions, uiIssueSprintOptionFor(sprint, "Active"))
+	}
+	for _, sprint := range planned {
+		panel.SprintOptions = append(panel.SprintOptions, uiIssueSprintOptionFor(sprint, "Planned"))
+	}
 	return nil
 }
 
@@ -1440,6 +1585,130 @@ func (s *Server) uiIssuePersonID(ctx context.Context, projectID uuid.UUID, raw s
 		}
 	}
 	return nil, false, "Choose a project member.", nil
+}
+
+func (s *Server) uiIssueSprintID(ctx context.Context, projectID uuid.UUID, raw string) (*uuid.UUID, bool, string, error) {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return nil, true, "", nil
+	}
+	number, err := parseTypedRef(input, "sprint")
+	if err != nil {
+		return nil, false, "Choose an active or planned sprint.", nil
+	}
+	sprint, err := s.store.GetSprintByProjectNumber(ctx, projectID, number)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, false, "Choose an active or planned sprint.", nil
+		}
+		return nil, false, "", err
+	}
+	if sprint.Status == model.SprintStatusCompleted {
+		return nil, false, "Choose an active or planned sprint.", nil
+	}
+	return &sprint.ID, false, "", nil
+}
+
+func uiIssueSprintInput(sprint *model.Sprint) string {
+	if sprint == nil {
+		return ""
+	}
+	return uiIssueSprintRef(*sprint)
+}
+
+func uiIssueSprintOptionFor(sprint model.Sprint, status string) uiIssueSprintOption {
+	ref := uiIssueSprintRef(sprint)
+	name := strings.TrimSpace(sprint.Name)
+	if name == "" {
+		name = ref
+	}
+	return uiIssueSprintOption{
+		Value: ref,
+		Label: fmt.Sprintf("%s - %s - %s-%s", status, name, uiSprintDate(sprint.StartDate), uiSprintDate(sprint.EndDate)),
+	}
+}
+
+func uiIssueAssigneeAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
+	return uiIssueMemberAutocomplete(panel, "Assignee", uiIssueAssigneePath(panel.Issue), "assignee", panel.AssigneeInput, "Unassigned", "Save assignee", "Cancel editing assignee", panel.AssigneeError)
+}
+
+func uiIssueReporterAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
+	return uiIssueMemberAutocomplete(panel, "Reporter", uiIssueReporterPath(panel.Issue), "reporter", panel.ReporterInput, "No reporter", "Save reporter", "Cancel editing reporter", panel.ReporterError)
+}
+
+func uiIssueMemberAutocomplete(panel *uiIssuePanelData, label, action, name, value, placeholder, saveLabel, cancelLabel, message string) uiAutocompleteEditData {
+	return uiAutocompleteEditData{
+		Label:       label,
+		Action:      action,
+		PanelPath:   uiIssuePanelPath(panel.Issue),
+		IssueHref:   uiIssuePath(panel.Issue),
+		Name:        name,
+		Value:       value,
+		Placeholder: placeholder,
+		SaveLabel:   saveLabel,
+		CancelLabel: cancelLabel,
+		Error:       message,
+		Options:     uiMemberAutocompleteOptions(panel.MemberOptions),
+	}
+}
+
+func uiIssueSprintAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
+	return uiAutocompleteEditData{
+		Label:       "Sprint",
+		Action:      uiIssueSprintPath(panel.Issue),
+		PanelPath:   uiIssuePanelPath(panel.Issue),
+		IssueHref:   uiIssuePath(panel.Issue),
+		Name:        "sprint",
+		Value:       panel.SprintInput,
+		Placeholder: "None",
+		SaveLabel:   "Save sprint",
+		CancelLabel: "Cancel editing sprint",
+		Error:       panel.SprintError,
+		Options:     uiSprintAutocompleteOptions(panel.SprintOptions),
+	}
+}
+
+func uiMemberAutocompleteOptions(users []model.User) []uiAutocompleteOption {
+	options := make([]uiAutocompleteOption, 0, len(users))
+	for _, user := range users {
+		label := strings.TrimSpace(user.Name)
+		if user.Email != "" {
+			if label == "" {
+				label = user.Email
+			} else {
+				label += " - " + user.Email
+			}
+		}
+		if label == "" {
+			label = "@" + user.Username
+		}
+		options = append(options, uiAutocompleteOption{
+			Value: "@" + user.Username,
+			Label: label,
+		})
+	}
+	return options
+}
+
+func uiSprintAutocompleteOptions(sprints []uiIssueSprintOption) []uiAutocompleteOption {
+	options := make([]uiAutocompleteOption, 0, len(sprints))
+	for _, sprint := range sprints {
+		options = append(options, uiAutocompleteOption{
+			Value: sprint.Value,
+			Label: sprint.Label,
+		})
+	}
+	return options
+}
+
+func uiIssueSprintRef(sprint model.Sprint) string {
+	if sprint.Ref != "" {
+		return sprint.Ref
+	}
+	if sprint.Number > 0 {
+		return model.SprintRef(sprint.Number)
+	}
+	return ""
 }
 
 func (s *Server) renderUIIssuePanelWithLinkError(w http.ResponseWriter, r *http.Request, issueID, editLinkID uuid.UUID, target, relation, message string) {
@@ -1797,6 +2066,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		Sprint:           sprint,
 		Assignee:         assignee,
 		Reporter:         reporter,
+		CanEditSprint:    issue.ParentIssueID == nil && issue.Status != model.StatusDone,
 		SubIssues:        subIssues,
 		SubIssuesHasMore: subIssuesHasMore,
 		Comments:         commentItems,
@@ -2285,6 +2555,14 @@ func uiIssueReporterEditPath(issue any) string {
 	return uiIssueReporterPath(issue) + "/edit"
 }
 
+func uiIssueSprintPath(issue any) string {
+	return uiIssuePath(issue) + "/sprint"
+}
+
+func uiIssueSprintEditPath(issue any) string {
+	return uiIssueSprintPath(issue) + "/edit"
+}
+
 func uiIssueLinksPath(issue any) string {
 	return uiIssuePath(issue) + "/links"
 }
@@ -2432,7 +2710,7 @@ func safeUIIssuePath(path string) bool {
 		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "delete" || parts[3] == "restore"
 	}
 	if len(parts) == 5 {
-		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "assignee" || parts[3] == "reporter") && parts[4] == "edit") ||
+		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new")
 	}
 	if parts[3] != "links" || parts[5] != "edit" {
@@ -2459,6 +2737,8 @@ func writeUIStoreError(w http.ResponseWriter, err error) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 	case errors.Is(err, store.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
+	case errors.Is(err, store.ErrConflict):
+		http.Error(w, "conflict", http.StatusConflict)
 	case errors.Is(err, errUIForbidden):
 		http.Error(w, "forbidden", http.StatusForbidden)
 	default:

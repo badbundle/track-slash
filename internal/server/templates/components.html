@@ -23,12 +23,35 @@
 <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .}}">{{statusLabel .}}</span>
 {{end}}
 
-{{define "member-options"}}
-<datalist id="issue-member-options">
-  {{range .}}
-  <option value="@{{.Username}}">{{.Name}}{{if .Email}} - {{.Email}}{{end}}</option>
-  {{end}}
-</datalist>
+{{define "autocomplete-edit"}}
+<div>
+  <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">{{.Label}}</dt>
+  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="#main" hx-push-url="{{.IssueHref}}" data-search class="mt-1 w-full max-w-full space-y-2">
+    <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+      <div class="relative min-w-0">
+        <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" aria-hidden="true"></i>
+        <input name="{{.Name}}" value="{{.Value}}" autocomplete="off" autofocus aria-label="{{.Label}}" placeholder="{{.Placeholder}}" data-search-input class="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+      </div>
+      <button type="submit" aria-label="{{.SaveLabel}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+      </button>
+      <button type="button" aria-label="{{.CancelLabel}}" hx-get="{{.PanelPath}}" hx-target="#main" hx-push-url="{{.IssueHref}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+      </button>
+    </div>
+    {{if .Options}}
+    <div data-search-options role="listbox" aria-label="{{.Label}} suggestions" class="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      {{range .Options}}
+      <button type="button" role="option" data-search-option data-value="{{.Value}}" data-search-text="{{.Value}} {{.Label}}" class="flex w-full items-start gap-2 border-b border-slate-100 px-2.5 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+        <span class="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{{.Value}}</span>
+        <span class="min-w-0 whitespace-normal break-words leading-5 text-slate-700 dark:text-slate-200">{{.Label}}</span>
+      </button>
+      {{end}}
+    </div>
+    {{end}}
+    {{if .Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.Error}}</p>{{end}}
+  </form>
+</div>
 {{end}}
 
 {{define "priority-badge"}}

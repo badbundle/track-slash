@@ -317,15 +317,17 @@ func validateSprintTransition(from, to model.SprintStatus) error {
 	return fmt.Errorf("invalid sprint transition %s -> %s: %w", from, to, ErrConflict)
 }
 
-// CompleteSprint marks the sprint completed. Non-done issues fall back to the
-// backlog; done issues stay attached so historical velocity is preserved.
+// CompleteSprint marks the sprint completed. Non-done issues roll into the
+// next planned sprint when one exists, otherwise they fall back to the backlog;
+// done issues stay attached so historical velocity is preserved.
 func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint, error) {
 	var out model.Sprint
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var projectID uuid.UUID
 		var status model.SprintStatus
 		err := tx.QueryRow(ctx, `
-			SELECT status FROM sprints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
-		`, id).Scan(&status)
+			SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+		`, id).Scan(&projectID, &status)
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -336,10 +338,31 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 			return fmt.Errorf("can only complete an active sprint (current: %s): %w", status, ErrConflict)
 		}
 
-		if _, err := tx.Exec(ctx, `
-			UPDATE issues SET sprint_id = NULL, updated_at = now()
-			WHERE sprint_id = $1 AND status <> 'done' AND deleted_at IS NULL
-		`, id); err != nil {
+		var nextSprintID uuid.UUID
+		nextErr := tx.QueryRow(ctx, `
+			SELECT id
+			FROM sprints
+			WHERE project_id = $1 AND status = 'planned' AND deleted_at IS NULL
+			ORDER BY planned_order ASC NULLS LAST, id ASC
+			LIMIT 1
+			FOR UPDATE
+		`, projectID).Scan(&nextSprintID)
+		if nextErr != nil && !isNoRows(nextErr) {
+			return nextErr
+		}
+
+		if isNoRows(nextErr) {
+			_, err = tx.Exec(ctx, `
+				UPDATE issues SET sprint_id = NULL, updated_at = now()
+				WHERE sprint_id = $1 AND status <> 'done' AND deleted_at IS NULL
+			`, id)
+		} else {
+			_, err = tx.Exec(ctx, `
+				UPDATE issues SET sprint_id = $2, updated_at = now()
+				WHERE sprint_id = $1 AND status <> 'done' AND deleted_at IS NULL
+			`, id, nextSprintID)
+		}
+		if err != nil {
 			return err
 		}
 

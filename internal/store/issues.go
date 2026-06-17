@@ -540,15 +540,16 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	`, strings.Join(sets, ", "), i)
 
 	validatePeople := (p.AssigneeID != nil && !p.ClearAssignee) || (p.ReporterID != nil && !p.ClearReporter)
-	validateSprint := p.SprintID != nil && !p.ClearSprint
+	editSprint := p.ClearSprint || (p.SprintID != nil && !p.ClearSprint)
 	// Cross-row validation runs in a transaction so the update uses the same
 	// issue project observed by the member/sprint checks.
-	if validatePeople || validateSprint {
+	if validatePeople || editSprint {
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			var issueProject, sprintProject uuid.UUID
 			var parentIssueID *uuid.UUID
+			var issueStatus model.Status
 			var sprintStatus model.SprintStatus
-			if err := tx.QueryRow(ctx, `SELECT project_id, parent_issue_id FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject, &parentIssueID); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id, parent_issue_id, status FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject, &parentIssueID, &issueStatus); err != nil {
 				if isNoRows(err) {
 					return ErrNotFound
 				}
@@ -572,10 +573,15 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 					return ErrNotFound
 				}
 			}
-			if validateSprint {
+			if editSprint {
+				if issueStatus == model.StatusDone || (p.Status != nil && *p.Status == model.StatusDone) {
+					return fmt.Errorf("cannot edit sprint for completed issue: %w", ErrConflict)
+				}
 				if parentIssueID != nil {
 					return fmt.Errorf("sub-issues cannot be assigned to sprints: %w", ErrConflict)
 				}
+			}
+			if p.SprintID != nil && !p.ClearSprint {
 				if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
 					if isNoRows(err) {
 						return fmt.Errorf("sprint not found: %w", ErrConflict)

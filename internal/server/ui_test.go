@@ -163,6 +163,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "issue priority edit", raw: "/bradley/issues/TRACK-7/priority/edit", want: "/bradley/issues/TRACK-7/priority/edit"},
+		{name: "issue sprint edit", raw: "/bradley/issues/TRACK-7/sprint/edit", want: "/bradley/issues/TRACK-7/sprint/edit"},
 		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
 		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
@@ -244,6 +245,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
 		}
 	}
+	for _, want := range []string{`[data-search-input]`, `[data-search-option]`, `filterSearchOptions`, `option.dataset.value`, `input.form || input.closest("form")`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing search component behavior %q: %s", want, body)
+		}
+	}
 }
 
 func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
@@ -306,10 +312,11 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			CreatedAt:     when,
 			UpdatedAt:     when,
 		},
-		Project:  model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
-		Sprint:   &sprint,
-		Assignee: &assignee,
-		Reporter: &reporter,
+		Project:       model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		Sprint:        &sprint,
+		Assignee:      &assignee,
+		Reporter:      &reporter,
+		CanEditSprint: true,
 		Comments: []uiIssueCommentItem{{
 			Comment:     model.Comment{ID: commentID, IssueID: issueID, AuthorID: userID, Body: "Looks ready.", CreatedAt: when, UpdatedAt: when},
 			AuthorName:  "Ada Lovelace",
@@ -369,6 +376,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
+		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
 		`aria-label="Add link"`,
 		`hx-get="/bradley/issues/TRACK-7/links/new"`,
 		`aria-label="Post comment"`,
@@ -392,7 +400,6 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`border-amber-300 bg-amber-50 text-amber-800`,
 		`bg-amber-50/45 dark:bg-amber-950/15`,
 		`bg-emerald-50/45 hover:bg-emerald-50`,
-		"disabled",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
@@ -714,6 +721,142 @@ func TestUIIssuePanelRendersDescriptionEditForm(t *testing.T) {
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("description edit form included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Design issue detail",
+			Status:        model.StatusInProgress,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:       model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditSprint:    true,
+		CanEditSprint: true,
+		SprintInput:   "sprint-2",
+		SprintError:   "Choose an active or planned sprint.",
+		SprintOptions: []uiIssueSprintOption{
+			{Value: "sprint-1", Label: "Active - Current Sprint - Jun 1-Jun 14"},
+			{Value: "sprint-3", Label: "Planned - Next Sprint - Jun 15-Jun 28"},
+		},
+		BackHref:  "/bradley/projects/TRACK/sprint",
+		BackHXGet: "/bradley/projects/TRACK/sprint/panel",
+		BackLabel: "Sprint",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/sprint"`,
+		`hx-post="/bradley/issues/TRACK-7/sprint"`,
+		`hx-target="#main"`,
+		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`data-search`,
+		`name="sprint" value="sprint-2" autocomplete="off"`,
+		`data-search-input`,
+		`placeholder="None"`,
+		`data-lucide="search"`,
+		`aria-label="Save sprint"`,
+		`aria-label="Cancel editing sprint"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		`role="listbox" aria-label="Sprint suggestions"`,
+		`data-search-option`,
+		`data-value="sprint-1"`,
+		`data-search-text="sprint-1 Active - Current Sprint - Jun 1-Jun 14"`,
+		`Active - Current Sprint - Jun 1-Jun 14`,
+		`data-value="sprint-3"`,
+		`Planned - Next Sprint - Jun 15-Jun 28`,
+		`Choose an active or planned sprint.`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sprint edit form missing %q: %s", want, body)
+		}
+	}
+	activeIndex := strings.Index(body, `data-value="sprint-1"`)
+	plannedIndex := strings.Index(body, `data-value="sprint-3"`)
+	if activeIndex < 0 || plannedIndex < 0 || activeIndex > plannedIndex {
+		t.Fatalf("active sprint option should render before planned option: %s", body)
+	}
+	for _, notWant := range []string{
+		`<datalist`,
+		`list="issue-sprint-options"`,
+		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
+		`value="sprint-4"`,
+		`Completed Sprint`,
+		`title="Save sprint"`,
+		`title="Cancel editing sprint"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sprint edit form included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelDoneDisablesSprintEdit(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	sprintID := uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Done issue",
+			Status:        model.StatusDone,
+			SprintID:      &sprintID,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:   model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		Sprint:    &model.Sprint{ID: sprintID, Name: "Completed Work"},
+		BackHref:  "/bradley/projects/TRACK/sprint",
+		BackHXGet: "/bradley/projects/TRACK/sprint/panel",
+		BackLabel: "Sprint",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		"Completed Work",
+		`aria-label="Edit sprint"`,
+		"disabled",
+		"cursor-not-allowed",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("done sprint row missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
+		`method="post" action="/bradley/issues/TRACK-7/sprint"`,
+		`name="sprint"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("done sprint row included %q: %s", notWant, body)
 		}
 	}
 }

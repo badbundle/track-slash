@@ -631,6 +631,61 @@ func TestHTTPCompleteSprintHappy(t *testing.T) {
 	}
 }
 
+func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
+	e := newHTTPEnv(t)
+	active := createSprintFor(t, e, "Active", "2026-06-01", "2026-06-14")
+	next := createSprintFor(t, e, "Next", "2026-06-15", "2026-06-28")
+	createSprintFor(t, e, "Later", "2026-06-29", "2026-07-12")
+	e.do(t, http.MethodPatch, e.sprintPath(active), map[string]any{"status": "active"})
+
+	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "todo rollover"})
+	if err != nil {
+		t.Fatalf("CreateIssue todo: %v", err)
+	}
+	inProgress, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "progress rollover"})
+	if err != nil {
+		t.Fatalf("CreateIssue progress: %v", err)
+	}
+	doneIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "done stays"})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	progressStatus := model.StatusInProgress
+	doneStatus := model.StatusDone
+	for _, issue := range []model.Issue{todo, inProgress, doneIssue} {
+		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &active.ID}); err != nil {
+			t.Fatalf("assign issue %s: %v", issue.ID, err)
+		}
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, inProgress.ID, store.UpdateIssueParams{Status: &progressStatus}); err != nil {
+		t.Fatalf("mark progress: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, doneIssue.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
+		t.Fatalf("mark done: %v", err)
+	}
+
+	code, body := e.do(t, http.MethodPost, e.sprintPath(active)+"/complete", nil)
+	if code != http.StatusOK {
+		t.Fatalf("complete code = %d body = %s", code, body)
+	}
+	for _, id := range []uuid.UUID{todo.ID, inProgress.ID} {
+		got, err := e.store.GetIssue(e.ctx, id)
+		if err != nil {
+			t.Fatalf("GetIssue %s: %v", id, err)
+		}
+		if got.SprintID == nil || *got.SprintID != next.ID {
+			t.Fatalf("issue %s sprint = %v, want %s", id, got.SprintID, next.ID)
+		}
+	}
+	gotDone, err := e.store.GetIssue(e.ctx, doneIssue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue done: %v", err)
+	}
+	if gotDone.SprintID == nil || *gotDone.SprintID != active.ID {
+		t.Fatalf("done sprint = %v, want %s", gotDone.SprintID, active.ID)
+	}
+}
+
 func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
@@ -714,6 +769,57 @@ func TestHTTPPatchIssueSetSprint(t *testing.T) {
 	got = decode[model.Issue](t, body)
 	if got.SprintID != nil {
 		t.Fatalf("sprint_id = %v, want nil", got.SprintID)
+	}
+}
+
+func TestHTTPPatchDoneIssueRejectsSprintEdit(t *testing.T) {
+	e := newHTTPEnv(t)
+	current := createSprintFor(t, e, "Current", "2026-06-01", "2026-06-14")
+	next := createSprintFor(t, e, "Next", "2026-06-15", "2026-06-28")
+	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "done issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, iss.ID, store.UpdateIssueParams{SprintID: &current.ID}); err != nil {
+		t.Fatalf("assign done issue: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, iss.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("mark done issue: %v", err)
+	}
+
+	code, body := e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"sprint": next.Ref})
+	if code != http.StatusConflict {
+		t.Fatalf("set code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"clear_sprint": true})
+	if code != http.StatusConflict {
+		t.Fatalf("clear code = %d body = %s", code, body)
+	}
+	got, err := e.store.GetIssue(e.ctx, iss.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if got.SprintID == nil || *got.SprintID != current.ID {
+		t.Fatalf("SprintID = %v, want %s", got.SprintID, current.ID)
+	}
+
+	becomingDone, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "done plus sprint",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue becoming done: %v", err)
+	}
+	code, body = e.do(t, http.MethodPatch, e.issuePath(becomingDone), map[string]any{
+		"status": string(model.StatusDone),
+		"sprint": next.Ref,
+	})
+	if code != http.StatusConflict {
+		t.Fatalf("status plus sprint code = %d body = %s", code, body)
 	}
 }
 

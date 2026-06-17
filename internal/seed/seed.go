@@ -311,15 +311,14 @@ func createIssue(
 		return err
 	}
 
-	update := store.UpdateIssueParams{}
 	if sprintID != nil {
-		update.SprintID = sprintID
+		created, err = st.UpdateIssue(ctx, created.ID, store.UpdateIssueParams{SprintID: sprintID})
+		if err != nil {
+			return err
+		}
 	}
 	if seed.Status != "" && seed.Status != model.StatusTodo {
-		update.Status = &seed.Status
-	}
-	if update.SprintID != nil || update.Status != nil {
-		created, err = st.UpdateIssue(ctx, created.ID, update)
+		created, err = st.UpdateIssue(ctx, created.ID, store.UpdateIssueParams{Status: &seed.Status})
 		if err != nil {
 			return err
 		}
