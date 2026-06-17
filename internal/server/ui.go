@@ -28,45 +28,48 @@ var errUIForbidden = errors.New("forbidden")
 var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":             uiInitials,
-	"issueAssignee":        uiIssueAssigneePath,
-	"issueAssigneeEdit":    uiIssueAssigneeEditPath,
-	"issueComments":        uiIssueCommentsPath,
-	"issueDelete":          uiIssueDeletePath,
-	"issueDescription":     uiIssueDescriptionPath,
-	"issueDescriptionEdit": uiIssueDescriptionEditPath,
-	"issueHref":            uiIssuePath,
-	"issueLink":            uiIssueLinkPath,
-	"issueLinkDelete":      uiIssueLinkDeletePath,
-	"issueLinkEdit":        uiIssueLinkEditPath,
-	"issueLinkNew":         uiIssueLinkNewPath,
-	"issueLinks":           uiIssueLinksPath,
-	"issuePanel":           uiIssuePanelPath,
-	"issuePriority":        uiIssuePriorityPath,
-	"issuePriorityEdit":    uiIssuePriorityEditPath,
-	"issueReporter":        uiIssueReporterPath,
-	"issueReporterEdit":    uiIssueReporterEditPath,
-	"issueRestore":         uiIssueRestorePath,
-	"issueSprint":          uiIssueSprintPath,
-	"issueSprintEdit":      uiIssueSprintEditPath,
-	"issueStatus":          uiIssueStatusPath,
-	"issueStatusEdit":      uiIssueStatusEditPath,
-	"issueSubIssues":       uiIssueSubIssuesPath,
-	"linkLabel":            uiIssueLinkLabel,
-	"linkOptions":          uiIssueLinkOptions,
-	"priorityClass":        uiPriorityClass,
-	"priorityLabel":        uiPriorityLabel,
-	"priorityOptions":      uiPriorityOptions,
-	"projectPanel":         uiProjectPanelPath,
-	"projectView":          uiProjectViewPath,
-	"projectIcon":          uiProjectIcon,
-	"sprintDate":           uiSprintDate,
-	"statusClass":          uiStatusClass,
-	"statusLabel":          uiStatusLabel,
-	"statusOptions":        uiStatusOptions,
-	"statusRow":            uiStatusRowClass,
-	"statusSurface":        uiStatusSurfaceClass,
-	"tokenTime":            uiTokenTime,
+	"initials":                  uiInitials,
+	"issueAssignee":             uiIssueAssigneePath,
+	"issueAssigneeEdit":         uiIssueAssigneeEditPath,
+	"issueComments":             uiIssueCommentsPath,
+	"issueDelete":               uiIssueDeletePath,
+	"issueDescription":          uiIssueDescriptionPath,
+	"issueDescriptionEdit":      uiIssueDescriptionEditPath,
+	"issueHref":                 uiIssuePath,
+	"issueLink":                 uiIssueLinkPath,
+	"issueLinkDelete":           uiIssueLinkDeletePath,
+	"issueLinkEdit":             uiIssueLinkEditPath,
+	"issueLinkNew":              uiIssueLinkNewPath,
+	"issueLinks":                uiIssueLinksPath,
+	"issuePanel":                uiIssuePanelPath,
+	"issuePriority":             uiIssuePriorityPath,
+	"issuePriorityEdit":         uiIssuePriorityEditPath,
+	"issueReporter":             uiIssueReporterPath,
+	"issueReporterEdit":         uiIssueReporterEditPath,
+	"issueRestore":              uiIssueRestorePath,
+	"issueSprint":               uiIssueSprintPath,
+	"issueSprintEdit":           uiIssueSprintEditPath,
+	"issueStatus":               uiIssueStatusPath,
+	"issueStatusEdit":           uiIssueStatusEditPath,
+	"issueSubIssues":            uiIssueSubIssuesPath,
+	"issueAssigneeAutocomplete": uiIssueAssigneeAutocomplete,
+	"issueReporterAutocomplete": uiIssueReporterAutocomplete,
+	"issueSprintAutocomplete":   uiIssueSprintAutocomplete,
+	"linkLabel":                 uiIssueLinkLabel,
+	"linkOptions":               uiIssueLinkOptions,
+	"priorityClass":             uiPriorityClass,
+	"priorityLabel":             uiPriorityLabel,
+	"priorityOptions":           uiPriorityOptions,
+	"projectPanel":              uiProjectPanelPath,
+	"projectView":               uiProjectViewPath,
+	"projectIcon":               uiProjectIcon,
+	"sprintDate":                uiSprintDate,
+	"statusClass":               uiStatusClass,
+	"statusLabel":               uiStatusLabel,
+	"statusOptions":             uiStatusOptions,
+	"statusRow":                 uiStatusRowClass,
+	"statusSurface":             uiStatusSurfaceClass,
+	"tokenTime":                 uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -135,6 +138,26 @@ type uiIssueLinkItem struct {
 type uiIssueSprintOption struct {
 	Value string
 	Label string
+}
+
+type uiAutocompleteOption struct {
+	Value string
+	Label string
+}
+
+type uiAutocompleteEditData struct {
+	Label       string
+	Action      string
+	PanelPath   string
+	IssueHref   string
+	Name        string
+	Value       string
+	ListID      string
+	Placeholder string
+	SaveLabel   string
+	CancelLabel string
+	Error       string
+	Options     []uiAutocompleteOption
 }
 
 type uiIssueDeleteNotice struct {
@@ -1604,6 +1627,81 @@ func uiIssueSprintOptionFor(sprint model.Sprint, status string) uiIssueSprintOpt
 		Value: ref,
 		Label: fmt.Sprintf("%s - %s - %s-%s", status, name, uiSprintDate(sprint.StartDate), uiSprintDate(sprint.EndDate)),
 	}
+}
+
+func uiIssueAssigneeAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
+	return uiIssueMemberAutocomplete(panel, "Assignee", uiIssueAssigneePath(panel.Issue), "assignee", panel.AssigneeInput, "Unassigned", "Save assignee", "Cancel editing assignee", panel.AssigneeError)
+}
+
+func uiIssueReporterAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
+	return uiIssueMemberAutocomplete(panel, "Reporter", uiIssueReporterPath(panel.Issue), "reporter", panel.ReporterInput, "No reporter", "Save reporter", "Cancel editing reporter", panel.ReporterError)
+}
+
+func uiIssueMemberAutocomplete(panel *uiIssuePanelData, label, action, name, value, placeholder, saveLabel, cancelLabel, message string) uiAutocompleteEditData {
+	return uiAutocompleteEditData{
+		Label:       label,
+		Action:      action,
+		PanelPath:   uiIssuePanelPath(panel.Issue),
+		IssueHref:   uiIssuePath(panel.Issue),
+		Name:        name,
+		Value:       value,
+		ListID:      "issue-member-options",
+		Placeholder: placeholder,
+		SaveLabel:   saveLabel,
+		CancelLabel: cancelLabel,
+		Error:       message,
+		Options:     uiMemberAutocompleteOptions(panel.MemberOptions),
+	}
+}
+
+func uiIssueSprintAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
+	return uiAutocompleteEditData{
+		Label:       "Sprint",
+		Action:      uiIssueSprintPath(panel.Issue),
+		PanelPath:   uiIssuePanelPath(panel.Issue),
+		IssueHref:   uiIssuePath(panel.Issue),
+		Name:        "sprint",
+		Value:       panel.SprintInput,
+		ListID:      "issue-sprint-options",
+		Placeholder: "None",
+		SaveLabel:   "Save sprint",
+		CancelLabel: "Cancel editing sprint",
+		Error:       panel.SprintError,
+		Options:     uiSprintAutocompleteOptions(panel.SprintOptions),
+	}
+}
+
+func uiMemberAutocompleteOptions(users []model.User) []uiAutocompleteOption {
+	options := make([]uiAutocompleteOption, 0, len(users))
+	for _, user := range users {
+		label := strings.TrimSpace(user.Name)
+		if user.Email != "" {
+			if label == "" {
+				label = user.Email
+			} else {
+				label += " - " + user.Email
+			}
+		}
+		if label == "" {
+			label = "@" + user.Username
+		}
+		options = append(options, uiAutocompleteOption{
+			Value: "@" + user.Username,
+			Label: label,
+		})
+	}
+	return options
+}
+
+func uiSprintAutocompleteOptions(sprints []uiIssueSprintOption) []uiAutocompleteOption {
+	options := make([]uiAutocompleteOption, 0, len(sprints))
+	for _, sprint := range sprints {
+		options = append(options, uiAutocompleteOption{
+			Value: sprint.Value,
+			Label: sprint.Label,
+		})
+	}
+	return options
 }
 
 func uiIssueSprintRef(sprint model.Sprint) string {
