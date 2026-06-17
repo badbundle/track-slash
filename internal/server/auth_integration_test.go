@@ -228,6 +228,10 @@ func TestHTTPProjectMembershipFiltersAndForbids(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatalf("forbidden project code = %d body = %s", code, body)
 	}
+	code, body = e.doWithToken(t, token, http.MethodGet, "/"+other.OwnerUsername+"/projects/"+other.Key+"/issues/deleted", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("forbidden deleted issues code = %d body = %s", code, body)
+	}
 }
 
 func TestHTTPTokenAdminEndpoints(t *testing.T) {

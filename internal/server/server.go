@@ -96,6 +96,7 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/members/{username}", s.revokeProjectMember)
 					r.Post("/issues", s.createIssue)
 					r.Get("/issues", s.listIssues)
+					r.Get("/issues/deleted", s.listDeletedIssues)
 					r.Patch("/sprints/planned-order", s.reorderPlannedSprints)
 					r.Post("/sprints", s.createSprint)
 					r.Get("/sprints", s.listProjectSprints)
