@@ -703,7 +703,8 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		"Sub-issues",
 		"detail child issue",
 		"detail comment body",
-		`aria-label="Issue settings"`,
+		`aria-label="Issue actions"`,
+		`data-lucide="more-horizontal"`,
 		`aria-label="Edit description"`,
 		`hx-get="` + e.issuePath(issue) + `/description/edit"`,
 		`aria-label="Edit link"`,
@@ -759,7 +760,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		}
 	}
 	for _, notWant := range []string{
-		`title="Issue settings"`,
+		`title="Issue actions"`,
 		`title="Edit description"`,
 		`title="Add link"`,
 		`title="Edit link"`,
@@ -779,7 +780,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body still renders separate status edit affordance %q: %s", notWant, body)
 		}
 	}
-	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`, `data-lucide="settings"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body included removed archive control %q: %s", notWant, body)
 		}
@@ -1065,7 +1066,7 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 			t.Fatalf("deleted issue page missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"not found", "deleted description should stay hidden", "Comments", "Sub-issues", `aria-label="Issue settings"`} {
+	for _, notWant := range []string{"not found", "deleted description should stay hidden", "Comments", "Sub-issues", `aria-label="Issue actions"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted issue page leaked full/error UI %q: %s", notWant, body)
 		}
@@ -1221,7 +1222,7 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	if push := res.Header.Get("HX-Push-Url"); push != e.issuePath(child) {
 		t.Fatalf("restore HX-Push-Url = %q", push)
 	}
-	if strings.Contains(body, "<!doctype html>") || !strings.Contains(body, child.Title) || !strings.Contains(body, "Sub-issue of") || !strings.Contains(body, parent.Title) || !strings.Contains(body, `aria-label="Issue settings"`) {
+	if strings.Contains(body, "<!doctype html>") || !strings.Contains(body, child.Title) || !strings.Contains(body, "Sub-issue of") || !strings.Contains(body, parent.Title) || !strings.Contains(body, `aria-label="Issue actions"`) {
 		t.Fatalf("deleted restore should render restored issue panel: %s", body)
 	}
 	if _, err := e.store.GetIssue(e.ctx, child.ID); err != nil {

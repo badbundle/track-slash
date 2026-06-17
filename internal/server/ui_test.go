@@ -356,7 +356,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/projects/TRACK/backlog/panel"`,
 		`href="/bradley/issues/TRACK-8"`,
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
-		`aria-label="Issue settings"`,
+		`aria-label="Issue actions"`,
+		`data-lucide="more-horizontal"`,
 		`cursor-pointer list-none`,
 		`method="post" action="/bradley/issues/TRACK-7/delete"`,
 		`hx-post="/bradley/issues/TRACK-7/delete"`,
@@ -429,7 +430,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if strings.Contains(detailsBlock, ">Status</dt>") || strings.Contains(body, `aria-label="Edit status"`) {
 		t.Fatalf("status control should not render a separate title or edit button: %s", body)
 	}
-	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`, `data-lucide="settings"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
 		}
@@ -526,7 +527,7 @@ func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
 			t.Fatalf("deleted issue panel missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue settings"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {
+	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue actions"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted issue panel leaked full issue UI %q: %s", notWant, body)
 		}
