@@ -52,6 +52,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueStatus":               uiIssueStatusPath,
 	"issueStatusEdit":           uiIssueStatusEditPath,
 	"issueSubIssues":            uiIssueSubIssuesPath,
+	"issueSubIssuesNew":         uiIssueSubIssuesNewPath,
 	"issueAssigneeAutocomplete": uiIssueAssigneeAutocomplete,
 	"issueReporterAutocomplete": uiIssueReporterAutocomplete,
 	"issueSprintAutocomplete":   uiIssueSprintAutocomplete,
@@ -244,6 +245,7 @@ type uiIssuePanelData struct {
 	SprintOptions    []uiIssueSprintOption
 	SubIssues        []model.Issue
 	SubIssuesHasMore bool
+	AddSubIssue      bool
 	SubIssueTitle    string
 	SubIssueError    string
 	Comments         []uiIssueCommentItem
@@ -328,6 +330,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/links/{linkRef}/edit", s.uiEditIssueLink)
 		r.Post("/{owner}/issues/{issueRef}/links/{linkRef}", s.uiUpdateIssueLink)
 		r.Post("/{owner}/issues/{issueRef}/links/{linkRef}/delete", s.uiDeleteIssueLink)
+		r.Get("/{owner}/issues/{issueRef}/sub-issues/new", s.uiNewSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/sub-issues", s.uiCreateSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
@@ -1372,6 +1375,20 @@ func (s *Server) uiDeleteIssueLink(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiNewSubIssue(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.AddSubIssue = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 	parent, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -1454,6 +1471,7 @@ func (s *Server) renderUIIssuePanelWithSubIssueError(w http.ResponseWriter, r *h
 	}
 	panel.SubIssueTitle = title
 	panel.SubIssueError = message
+	panel.AddSubIssue = true
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2587,6 +2605,10 @@ func uiIssueSubIssuesPath(issue any) string {
 	return uiIssuePath(issue) + "/sub-issues"
 }
 
+func uiIssueSubIssuesNewPath(issue any) string {
+	return uiIssueSubIssuesPath(issue) + "/new"
+}
+
 func uiIssueValue(v any) model.Issue {
 	switch issue := v.(type) {
 	case model.Issue:
@@ -2711,7 +2733,8 @@ func safeUIIssuePath(path string) bool {
 	}
 	if len(parts) == 5 {
 		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
-			(parts[3] == "links" && parts[4] == "new")
+			(parts[3] == "links" && parts[4] == "new") ||
+			(parts[3] == "sub-issues" && parts[4] == "new")
 	}
 	if parts[3] != "links" || parts[5] != "edit" {
 		return false

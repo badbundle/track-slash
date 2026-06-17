@@ -167,6 +167,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
 		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
+		{name: "issue sub-issue add", raw: "/bradley/issues/TRACK-7/sub-issues/new?x=1", want: "/bradley/issues/TRACK-7/sub-issues/new?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
 		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
@@ -379,6 +380,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
 		`aria-label="Add link"`,
 		`hx-get="/bradley/issues/TRACK-7/links/new"`,
+		`aria-label="Add sub-issue"`,
+		`hx-get="/bradley/issues/TRACK-7/sub-issues/new"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
@@ -388,6 +391,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-target="#main"`,
 		`hx-push-url="/bradley/issues/TRACK-7"`,
 		`data-submit-shortcut="meta-enter"`,
+		`class="order-2 min-w-0 space-y-6 lg:order-1"`,
+		`class="order-1 min-w-0 lg:order-2"`,
 		`class="flex items-start gap-2"`,
 		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
 		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
@@ -427,6 +432,11 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{`method="post" action="/bradley/issues/TRACK-7/sub-issues"`, `aria-label="Create sub-issue"`, `aria-label="Cancel adding sub-issue"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue panel should not render the sub-issue composer by default %q: %s", notWant, body)
 		}
 	}
 	commentMetaStart := strings.Index(body, "Ada Lovelace")
@@ -620,13 +630,14 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`aria-label="Cancel priority change"`,
-		`hx-get="/bradley/issues/TRACK-7/panel"`,
 		`method="post" action="/bradley/issues/TRACK-7/priority"`,
 		`hx-post="/bradley/issues/TRACK-7/priority"`,
 		`hx-target="#main"`,
 		`hx-push-url="/bradley/issues/TRACK-7"`,
-		`role="listbox" aria-label="Issue priority"`,
+		`@keyframes priority-picker-item-enter`,
+		`@media (prefers-reduced-motion: no-preference)`,
+		`[data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }`,
+		`role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1"`,
 		`name="priority" value="P0"`,
 		`name="priority" value="P1"`,
 		`name="priority" value="P2"`,
@@ -639,8 +650,8 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`bg-yellow-500`,
 		`bg-gray-500`,
 		`role="option" aria-selected="true"`,
-		`flex items-center gap-2`,
-		`flex flex-wrap items-center gap-2`,
+		`type="button" hx-get="/bradley/issues/TRACK-7/panel" hx-target="#main" hx-push-url="/bradley/issues/TRACK-7" name="priority" value="P1"`,
+		`rounded-full p-0.5 transition`,
 		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
 	} {
@@ -653,6 +664,8 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`aria-expanded="true"`,
 		`data-lucide="chevron-up"`,
 		`opacity-100 ring-2 ring-indigo-500`,
+		`aria-label="Cancel priority change"`,
+		`data-lucide="x"`,
 		`title="Cancel priority change"`,
 		`title="Change priority"`,
 	} {
@@ -857,6 +870,80 @@ func TestUIIssuePanelDoneDisablesSprintEdit(t *testing.T) {
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("done sprint row included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	childID := uuid.MustParse("1e533f98-310a-4090-a8ff-7cc4c4a69df2")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Parent issue",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:       model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		AddSubIssue:   true,
+		SubIssueTitle: "Draft child",
+		SubIssueError: "Title required, max 200 chars.",
+		SubIssues: []model.Issue{{
+			ID:            childID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-8",
+			Title:         "Existing child",
+			Status:        model.StatusTodo,
+			Priority:      model.PriorityP2,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		}},
+		BackHref:  "/bradley/projects/TRACK/backlog",
+		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+		BackLabel: "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`aria-label="Cancel adding sub-issue"`,
+		`method="post" action="/bradley/issues/TRACK-7/sub-issues"`,
+		`hx-post="/bradley/issues/TRACK-7/sub-issues"`,
+		`name="title" value="Draft child" autofocus placeholder="Title"`,
+		`aria-label="Create sub-issue"`,
+		`data-lucide="check"`,
+		"Title required, max 200 chars.",
+		"Existing child",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue composer missing %q: %s", want, body)
+		}
+	}
+	formIndex := strings.Index(body, `name="title" value="Draft child"`)
+	childIndex := strings.Index(body, "Existing child")
+	if formIndex < 0 || childIndex < 0 || formIndex > childIndex {
+		t.Fatalf("sub-issue composer should render before the list rows: %s", body)
+	}
+	for _, notWant := range []string{
+		`aria-label="Add sub-issue"`,
+		`hx-get="/bradley/issues/TRACK-7/sub-issues/new"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sub-issue composer included closed-state control %q: %s", notWant, body)
 		}
 	}
 }

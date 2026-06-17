@@ -719,8 +719,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-get="` + e.issuePath(issue) + `/sprint/edit"`,
 		`aria-label="Add link"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/new"`,
+		`aria-label="Add sub-issue"`,
+		`hx-get="` + e.issueSubIssuesPath(issue) + `/new"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/` + link.Ref + `/edit"`,
-		`aria-label="Create sub-issue"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
@@ -742,8 +743,6 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
 		`href="` + e.issuePath(subIssue) + `"`,
 		`hx-get="` + e.issuePath(subIssue) + `/panel"`,
-		`method="post" action="` + e.issueSubIssuesPath(issue) + `"`,
-		`hx-post="` + e.issueSubIssuesPath(issue) + `"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue body missing %q: %s", want, body)
@@ -788,6 +787,16 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	for _, notWant := range []string{`<textarea disabled`, `aria-label="Post comment" class="grid h-9 w-9 shrink-0 cursor-not-allowed`, "\n            Comment\n"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body renders disabled or text-labeled composer %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{
+		`method="post" action="` + e.issueSubIssuesPath(issue) + `"`,
+		`hx-post="` + e.issueSubIssuesPath(issue) + `"`,
+		`aria-label="Create sub-issue"`,
+		`aria-label="Cancel adding sub-issue"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body should not render sub-issue composer by default %q: %s", notWant, body)
 		}
 	}
 	if strings.Contains(body, `name="description"`) ||
@@ -1952,6 +1961,24 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 
+	edit := e.uiGet(t, e.issueSubIssuesPath(parent)+"/new", token)
+	for _, want := range []string{
+		"parent target issue",
+		`aria-label="Cancel adding sub-issue"`,
+		`method="post" action="` + e.issueSubIssuesPath(parent) + `"`,
+		`hx-post="` + e.issueSubIssuesPath(parent) + `"`,
+		`name="title" value="" autofocus placeholder="Title"`,
+		`aria-label="Create sub-issue"`,
+		`data-lucide="check"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("sub-issue add response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `hx-get="`+e.issueSubIssuesPath(parent)+`/new"`) {
+		t.Fatalf("sub-issue add response should replace the add button with a cancel button: %s", edit)
+	}
+
 	form := url.Values{"title": {"new child from ui"}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, e.issueSubIssuesPath(parent), token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
@@ -1959,10 +1986,13 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"parent target issue", "Sub-issues", "new child from ui", `aria-label="Create sub-issue"`} {
+	for _, want := range []string{"parent target issue", "Sub-issues", "new child from ui", `aria-label="Add sub-issue"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sub-issue post response missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `aria-label="Create sub-issue"`) || strings.Contains(body, `name="title"`) {
+		t.Fatalf("successful sub-issue post should close the composer: %s", body)
 	}
 	children, _, err := e.store.ListSubIssuesForIssue(e.ctx, store.ListSubIssuesForIssueParams{
 		ParentIssueID: parent.ID,
@@ -1984,6 +2014,21 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	}
 	if !strings.Contains(body, "Title required, max 200 chars.") {
 		t.Fatalf("empty sub-issue response missing validation error: %s", body)
+	}
+	for _, want := range []string{
+		`aria-label="Cancel adding sub-issue"`,
+		`method="post" action="` + e.issueSubIssuesPath(parent) + `"`,
+		`name="title" value="   " autofocus placeholder="Title"`,
+		`aria-label="Create sub-issue"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty sub-issue response should keep composer open with %q: %s", want, body)
+		}
+	}
+	formIndex := strings.Index(body, `name="title" value="   "`)
+	childIndex := strings.Index(body, "new child from ui")
+	if formIndex < 0 || childIndex < 0 || formIndex > childIndex {
+		t.Fatalf("empty sub-issue response should render composer before rows: %s", body)
 	}
 }
 
@@ -2027,6 +2072,7 @@ func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing
 	for _, notWant := range []string{
 		"Sub-issues",
 		`action="` + e.issueSubIssuesPath(child) + `"`,
+		`aria-label="Add sub-issue"`,
 		`aria-label="Create sub-issue"`,
 		`aria-label="Edit sprint"`,
 		">Sprint</dt>",
@@ -2149,6 +2195,11 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue link new code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueSubIssuesPath(issue)+"/new", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue sub-issue new code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(url.Values{"relation": {"relates_to"}, "target_issue": {linked.Identifier}}.Encode()))
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
@@ -2185,6 +2236,14 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}
 	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issueLinksPath(issue)+"/new") {
 		t.Fatalf("link new Location = %q", loc)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueSubIssuesPath(issue)+"/new", "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauth issue sub-issue new code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issueSubIssuesPath(issue)+"/new") {
+		t.Fatalf("sub-issue new Location = %q", loc)
 	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/assignee/edit", "", nil)
 	defer res.Body.Close()
