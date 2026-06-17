@@ -716,6 +716,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`aria-label="Edit reporter"`,
 		`hx-get="` + e.issuePath(issue) + `/reporter/edit"`,
 		`aria-label="Edit sprint"`,
+		`hx-get="` + e.issuePath(issue) + `/sprint/edit"`,
 		`aria-label="Add link"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/new"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/` + link.Ref + `/edit"`,
@@ -1578,6 +1579,193 @@ func TestUIEditIssuePeopleUpdatesAndClearsIssuePanel(t *testing.T) {
 	}
 }
 
+func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-sprint-edit")
+	past, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Past Sprint",
+		StartDate: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint past: %v", err)
+	}
+	activeStatus := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, past.ID, store.UpdateSprintParams{Status: &activeStatus}); err != nil {
+		t.Fatalf("activate past: %v", err)
+	}
+	if _, err := e.store.CompleteSprint(e.ctx, past.ID); err != nil {
+		t.Fatalf("complete past: %v", err)
+	}
+	active, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Active Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint active: %v", err)
+	}
+	if _, err := e.store.UpdateSprint(e.ctx, active.ID, store.UpdateSprintParams{Status: &activeStatus}); err != nil {
+		t.Fatalf("activate current: %v", err)
+	}
+	planned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Future Sprint",
+		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint planned: %v", err)
+	}
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "sprint target issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/sprint/edit", token)
+	for _, want := range []string{
+		`method="post" action="` + e.issuePath(issue) + `/sprint"`,
+		`hx-post="` + e.issuePath(issue) + `/sprint"`,
+		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`name="sprint"`,
+		`list="issue-sprint-options"`,
+		`aria-label="Save sprint"`,
+		`aria-label="Cancel editing sprint"`,
+		`<datalist id="issue-sprint-options">`,
+		`value="` + active.Ref + `"`,
+		"Active Sprint",
+		`value="` + planned.Ref + `"`,
+		"Future Sprint",
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("sprint edit missing %q: %s", want, edit)
+		}
+	}
+	activeIndex := strings.Index(edit, `value="`+active.Ref+`"`)
+	plannedIndex := strings.Index(edit, `value="`+planned.Ref+`"`)
+	if activeIndex < 0 || plannedIndex < 0 || activeIndex > plannedIndex {
+		t.Fatalf("active option should render before planned option: %s", edit)
+	}
+	if strings.Contains(edit, "Past Sprint") || strings.Contains(edit, past.Ref) {
+		t.Fatalf("sprint edit included completed sprint: %s", edit)
+	}
+
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {planned.Ref}}.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("set sprint code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Future Sprint") || strings.Contains(body, `name="sprint"`) {
+		t.Fatalf("set sprint did not return read mode with planned sprint: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after set: %v", err)
+	}
+	if updated.SprintID == nil || *updated.SprintID != planned.ID {
+		t.Fatalf("SprintID = %v, want %s", updated.SprintID, planned.ID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {" "}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear sprint code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, ">None</dd>") {
+		t.Fatalf("clear sprint did not show none: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after clear: %v", err)
+	}
+	if updated.SprintID != nil {
+		t.Fatalf("SprintID = %v, want nil", updated.SprintID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {"not-a-sprint"}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("invalid sprint code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Choose an active or planned sprint.") || !strings.Contains(body, `value="not-a-sprint"`) {
+		t.Fatalf("invalid sprint response missing inline error/input: %s", body)
+	}
+}
+
+func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-sprint-done")
+	current, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Current Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint current: %v", err)
+	}
+	next, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Next Sprint",
+		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint next: %v", err)
+	}
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "done sprint issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &current.ID}); err != nil {
+		t.Fatalf("assign current: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("mark done: %v", err)
+	}
+
+	body := e.uiGet(t, e.issuePath(issue), token)
+	for _, want := range []string{
+		"Current Sprint",
+		`aria-label="Edit sprint"`,
+		"disabled",
+		"cursor-not-allowed",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("done detail missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `/sprint/edit`) || strings.Contains(body, `name="sprint"`) {
+		t.Fatalf("done detail included editable sprint controls: %s", body)
+	}
+
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {next.Ref}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("done sprint post code = %d body = %s", res.StatusCode, body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after rejected post: %v", err)
+	}
+	if updated.SprintID == nil || *updated.SprintID != current.ID {
+		t.Fatalf("SprintID = %v, want %s", updated.SprintID, current.ID)
+	}
+}
+
 func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-links")
@@ -1939,6 +2127,16 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue reporter update code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/sprint/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue sprint edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {"denied"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue sprint update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueLinksPath(issue)+"/new", token, nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
@@ -1989,6 +2187,14 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issuePath(issue)+"/assignee/edit") {
 		t.Fatalf("assignee edit Location = %q", loc)
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/sprint/edit", "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauth sprint edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issuePath(issue)+"/sprint/edit") {
+		t.Fatalf("sprint edit Location = %q", loc)
+	}
 
 	_, memberToken := e.mustProjectMemberToken(t, "ui-issue-bad-id")
 	for _, tc := range []struct {
@@ -2008,6 +2214,8 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/assignee", body: strings.NewReader(url.Values{"assignee": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/reporter/edit"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/reporter", body: strings.NewReader(url.Values{"reporter": {"hello"}}.Encode())},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/sprint/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/sprint", body: strings.NewReader(url.Values{"sprint": {"sprint-1"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/links/new"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/links", body: strings.NewReader(url.Values{"relation": {"relates_to"}, "target_issue": {linked.Identifier}}.Encode())},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/comments", body: strings.NewReader(url.Values{"body": {"hello"}}.Encode())},
@@ -2032,6 +2240,8 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 		{method: http.MethodGet, path: unknownIssuePath + "/panel"},
 		{method: http.MethodPost, path: unknownIssuePath + "/delete"},
 		{method: http.MethodPost, path: unknownIssuePath + "/restore"},
+		{method: http.MethodGet, path: unknownIssuePath + "/sprint/edit"},
+		{method: http.MethodPost, path: unknownIssuePath + "/sprint"},
 	} {
 		res := e.uiDoNoRedirect(t, tc.method, tc.path, memberToken, nil)
 		defer res.Body.Close()

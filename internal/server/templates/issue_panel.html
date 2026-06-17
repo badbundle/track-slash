@@ -369,15 +369,40 @@
           </div>
           {{end}}
           {{if not .ParentIssue}}
+          {{if .EditSprint}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
+            <form method="post" action="{{issueSprint .Issue}}" hx-post="{{issueSprint .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="mt-1 space-y-2">
+              <div class="flex items-center gap-2">
+                <input name="sprint" value="{{.SprintInput}}" list="issue-sprint-options" autocomplete="off" autofocus aria-label="Sprint" placeholder="None" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                <button type="submit" aria-label="Save sprint" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing sprint" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </div>
+              {{template "sprint-options" .SprintOptions}}
+              {{if .SprintError}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.SprintError}}</p>{{end}}
+            </form>
+          </div>
+          {{else}}
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
               <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</dd>
             </div>
+            {{if .CanEditSprint}}
+            <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            {{else}}
             <button type="button" disabled aria-label="Edit sprint" class="grid h-7 w-7 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
               <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
             </button>
+            {{end}}
           </div>
+          {{end}}
           {{end}}
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Created</dt>

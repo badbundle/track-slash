@@ -31,6 +31,14 @@
 </datalist>
 {{end}}
 
+{{define "sprint-options"}}
+<datalist id="issue-sprint-options">
+  {{range .}}
+  <option value="{{.Value}}">{{.Label}}</option>
+  {{end}}
+</datalist>
+{{end}}
+
 {{define "priority-badge"}}
 <span aria-label="Priority {{priorityLabel .}}" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] font-bold leading-none text-white {{priorityClass .}}">{{priorityLabel .}}</span>
 {{end}}
