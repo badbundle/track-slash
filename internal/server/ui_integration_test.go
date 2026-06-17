@@ -703,7 +703,8 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		"Sub-issues",
 		"detail child issue",
 		"detail comment body",
-		`aria-label="Issue settings"`,
+		`aria-label="Issue actions"`,
+		`data-lucide="more-horizontal"`,
 		`aria-label="Edit description"`,
 		`hx-get="` + e.issuePath(issue) + `/description/edit"`,
 		`aria-label="Edit link"`,
@@ -719,8 +720,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-get="` + e.issuePath(issue) + `/sprint/edit"`,
 		`aria-label="Add link"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/new"`,
+		`aria-label="Add sub-issue"`,
+		`hx-get="` + e.issueSubIssuesPath(issue) + `/new"`,
 		`hx-get="` + e.issueLinksPath(issue) + `/` + link.Ref + `/edit"`,
-		`aria-label="Create sub-issue"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
@@ -742,8 +744,6 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
 		`href="` + e.issuePath(subIssue) + `"`,
 		`hx-get="` + e.issuePath(subIssue) + `/panel"`,
-		`method="post" action="` + e.issueSubIssuesPath(issue) + `"`,
-		`hx-post="` + e.issueSubIssuesPath(issue) + `"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue body missing %q: %s", want, body)
@@ -760,7 +760,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		}
 	}
 	for _, notWant := range []string{
-		`title="Issue settings"`,
+		`title="Issue actions"`,
 		`title="Edit description"`,
 		`title="Add link"`,
 		`title="Edit link"`,
@@ -780,7 +780,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body still renders separate status edit affordance %q: %s", notWant, body)
 		}
 	}
-	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`, `data-lucide="settings"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body included removed archive control %q: %s", notWant, body)
 		}
@@ -788,6 +788,16 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	for _, notWant := range []string{`<textarea disabled`, `aria-label="Post comment" class="grid h-9 w-9 shrink-0 cursor-not-allowed`, "\n            Comment\n"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body renders disabled or text-labeled composer %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{
+		`method="post" action="` + e.issueSubIssuesPath(issue) + `"`,
+		`hx-post="` + e.issueSubIssuesPath(issue) + `"`,
+		`aria-label="Create sub-issue"`,
+		`aria-label="Cancel adding sub-issue"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body should not render sub-issue composer by default %q: %s", notWant, body)
 		}
 	}
 	if strings.Contains(body, `name="description"`) ||
@@ -1056,7 +1066,7 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 			t.Fatalf("deleted issue page missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"not found", "deleted description should stay hidden", "Comments", "Sub-issues", `aria-label="Issue settings"`} {
+	for _, notWant := range []string{"not found", "deleted description should stay hidden", "Comments", "Sub-issues", `aria-label="Issue actions"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted issue page leaked full/error UI %q: %s", notWant, body)
 		}
@@ -1212,7 +1222,7 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	if push := res.Header.Get("HX-Push-Url"); push != e.issuePath(child) {
 		t.Fatalf("restore HX-Push-Url = %q", push)
 	}
-	if strings.Contains(body, "<!doctype html>") || !strings.Contains(body, child.Title) || !strings.Contains(body, "Sub-issue of") || !strings.Contains(body, parent.Title) || !strings.Contains(body, `aria-label="Issue settings"`) {
+	if strings.Contains(body, "<!doctype html>") || !strings.Contains(body, child.Title) || !strings.Contains(body, "Sub-issue of") || !strings.Contains(body, parent.Title) || !strings.Contains(body, `aria-label="Issue actions"`) {
 		t.Fatalf("deleted restore should render restored issue panel: %s", body)
 	}
 	if _, err := e.store.GetIssue(e.ctx, child.ID); err != nil {
@@ -1254,7 +1264,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`name="priority" value="P2"`,
 		`name="priority" value="P3"`,
 		`name="priority" value="P4"`,
-		`aria-label="Cancel priority change"`,
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		`aria-label="Priority P3"`,
 		`bg-yellow-500`,
@@ -1269,6 +1278,8 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 	}
 	if strings.Contains(edit, `title="Change priority"`) ||
 		strings.Contains(edit, `title="Cancel priority change"`) ||
+		strings.Contains(edit, `aria-label="Cancel priority change"`) ||
+		strings.Contains(edit, `data-lucide="x"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
 		strings.Contains(edit, `data-lucide="chevron-up"`) ||
 		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {
@@ -1685,7 +1696,7 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("clear sprint code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, ">None</dd>") {
+	if !strings.Contains(body, `class="min-w-0 truncate text-slate-900 dark:text-slate-100">None</span>`) {
 		t.Fatalf("clear sprint did not show none: %s", body)
 	}
 	updated, err = e.store.GetIssue(e.ctx, issue.ID)
@@ -1952,6 +1963,24 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 
+	edit := e.uiGet(t, e.issueSubIssuesPath(parent)+"/new", token)
+	for _, want := range []string{
+		"parent target issue",
+		`aria-label="Cancel adding sub-issue"`,
+		`method="post" action="` + e.issueSubIssuesPath(parent) + `"`,
+		`hx-post="` + e.issueSubIssuesPath(parent) + `"`,
+		`name="title" value="" autofocus placeholder="Title"`,
+		`aria-label="Create sub-issue"`,
+		`data-lucide="check"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("sub-issue add response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `hx-get="`+e.issueSubIssuesPath(parent)+`/new"`) {
+		t.Fatalf("sub-issue add response should replace the add button with a cancel button: %s", edit)
+	}
+
 	form := url.Values{"title": {"new child from ui"}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, e.issueSubIssuesPath(parent), token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
@@ -1959,10 +1988,13 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"parent target issue", "Sub-issues", "new child from ui", `aria-label="Create sub-issue"`} {
+	for _, want := range []string{"parent target issue", "Sub-issues", "new child from ui", `aria-label="Add sub-issue"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sub-issue post response missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `aria-label="Create sub-issue"`) || strings.Contains(body, `name="title"`) {
+		t.Fatalf("successful sub-issue post should close the composer: %s", body)
 	}
 	children, _, err := e.store.ListSubIssuesForIssue(e.ctx, store.ListSubIssuesForIssueParams{
 		ParentIssueID: parent.ID,
@@ -1984,6 +2016,21 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	}
 	if !strings.Contains(body, "Title required, max 200 chars.") {
 		t.Fatalf("empty sub-issue response missing validation error: %s", body)
+	}
+	for _, want := range []string{
+		`aria-label="Cancel adding sub-issue"`,
+		`method="post" action="` + e.issueSubIssuesPath(parent) + `"`,
+		`name="title" value="   " autofocus placeholder="Title"`,
+		`aria-label="Create sub-issue"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty sub-issue response should keep composer open with %q: %s", want, body)
+		}
+	}
+	formIndex := strings.Index(body, `name="title" value="   "`)
+	childIndex := strings.Index(body, "new child from ui")
+	if formIndex < 0 || childIndex < 0 || formIndex > childIndex {
+		t.Fatalf("empty sub-issue response should render composer before rows: %s", body)
 	}
 }
 
@@ -2027,6 +2074,7 @@ func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing
 	for _, notWant := range []string{
 		"Sub-issues",
 		`action="` + e.issueSubIssuesPath(child) + `"`,
+		`aria-label="Add sub-issue"`,
 		`aria-label="Create sub-issue"`,
 		`aria-label="Edit sprint"`,
 		">Sprint</dt>",
@@ -2149,6 +2197,11 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue link new code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueSubIssuesPath(issue)+"/new", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue sub-issue new code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(url.Values{"relation": {"relates_to"}, "target_issue": {linked.Identifier}}.Encode()))
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
@@ -2185,6 +2238,14 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}
 	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issueLinksPath(issue)+"/new") {
 		t.Fatalf("link new Location = %q", loc)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueSubIssuesPath(issue)+"/new", "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("unauth issue sub-issue new code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != "/login?next="+url.QueryEscape(e.issueSubIssuesPath(issue)+"/new") {
+		t.Fatalf("sub-issue new Location = %q", loc)
 	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/assignee/edit", "", nil)
 	defer res.Body.Close()

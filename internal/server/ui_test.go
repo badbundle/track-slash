@@ -92,6 +92,32 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 	}
 }
 
+func TestUISubIssueProgress(t *testing.T) {
+	t.Parallel()
+
+	empty := uiSubIssueProgress(nil)
+	if empty.Total != 0 || empty.DonePercent != "0%" || empty.InProgressPercent != "0%" || empty.TodoPercent != "0%" || empty.Label != "Sub-issue progress: no sub-issues" {
+		t.Fatalf("empty progress = %+v", empty)
+	}
+
+	mixed := uiSubIssueProgress([]model.Issue{
+		{Status: model.StatusDone},
+		{Status: model.StatusDone},
+		{Status: model.StatusInProgress},
+		{Status: model.StatusTodo},
+		{Status: model.Status("custom")},
+	})
+	if mixed.Total != 5 || mixed.Done != 2 || mixed.InProgress != 1 || mixed.Todo != 2 {
+		t.Fatalf("mixed counts = %+v", mixed)
+	}
+	if mixed.DonePercent != "40.00%" || mixed.InProgressPercent != "20.00%" || mixed.TodoPercent != "40.00%" {
+		t.Fatalf("mixed percentages = %+v", mixed)
+	}
+	if mixed.Label != "Sub-issue progress: 2 done, 1 in progress, 2 to do" {
+		t.Fatalf("mixed label = %q", mixed.Label)
+	}
+}
+
 func TestUIPriorityClassAndLabel(t *testing.T) {
 	t.Parallel()
 
@@ -167,6 +193,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
 		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
+		{name: "issue sub-issue add", raw: "/bradley/issues/TRACK-7/sub-issues/new?x=1", want: "/bradley/issues/TRACK-7/sub-issues/new?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
 		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
@@ -355,7 +382,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/projects/TRACK/backlog/panel"`,
 		`href="/bradley/issues/TRACK-8"`,
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
-		`aria-label="Issue settings"`,
+		`aria-label="Issue actions"`,
+		`data-lucide="more-horizontal"`,
 		`cursor-pointer list-none`,
 		`method="post" action="/bradley/issues/TRACK-7/delete"`,
 		`hx-post="/bradley/issues/TRACK-7/delete"`,
@@ -377,8 +405,12 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit reporter"`,
 		`aria-label="Edit sprint"`,
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
+		`<span class="min-w-0 text-slate-900 dark:text-slate-100">Ada Lovelace</span>`,
+		`<span class="min-w-0 truncate text-slate-900 dark:text-slate-100">Planned One</span>`,
 		`aria-label="Add link"`,
 		`hx-get="/bradley/issues/TRACK-7/links/new"`,
+		`aria-label="Add sub-issue"`,
+		`hx-get="/bradley/issues/TRACK-7/sub-issues/new"`,
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
@@ -388,15 +420,22 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-target="#main"`,
 		`hx-push-url="/bradley/issues/TRACK-7"`,
 		`data-submit-shortcut="meta-enter"`,
+		`class="order-2 min-w-0 space-y-6 lg:order-1"`,
+		`class="order-1 min-w-0 lg:order-2"`,
 		`class="flex items-start gap-2"`,
 		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
 		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
-		`class="flex items-start gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 dark:border-slate-800"`,
+		`class="space-y-3"`,
+		`class="flex items-start gap-2"`,
+		`class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
+		`class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25"`,
+		`class="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-1"`,
+		`class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800 dark:text-slate-200"`,
 		`inline-flex w-fit justify-self-start items-center whitespace-nowrap rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
-		`h-6 w-6`,
-		`h-3.5 w-3.5`,
+		`h-5 w-5`,
+		`h-3 w-3`,
 		`border-amber-300 bg-amber-50 text-amber-800`,
 		`bg-amber-50/45 dark:bg-amber-950/15`,
 		`bg-emerald-50/45 hover:bg-emerald-50`,
@@ -412,6 +451,25 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if detailsStart < 0 {
 		t.Fatalf("issue panel missing Details heading: %s", body)
 	}
+	commentsHeadingStart := strings.Index(body, ">Comments</h2>")
+	commentsSectionStart := -1
+	if commentsHeadingStart >= 0 {
+		commentsSectionStart = strings.LastIndex(body[:commentsHeadingStart], "<section")
+	}
+	if commentsSectionStart < 0 || commentsHeadingStart > detailsStart {
+		t.Fatalf("issue panel missing comments section before details: %s", body)
+	}
+	commentsBlock := body[commentsSectionStart:detailsStart]
+	for _, notWant := range []string{
+		`overflow-hidden rounded-lg border border-slate-200 bg-white`,
+		`border-t border-slate-100 p-4`,
+		`border-t border-dashed border-slate-200 px-4 py-4`,
+		`rotate-45`,
+	} {
+		if strings.Contains(commentsBlock, notWant) {
+			t.Fatalf("comments section should not render the outer card treatment %q: %s", notWant, body)
+		}
+	}
 	detailsBlock := body[detailsStart:]
 	statusIndex := strings.Index(detailsBlock, `aria-label="Change status"`)
 	projectIndex := strings.Index(detailsBlock, ">Project</dt>")
@@ -424,22 +482,41 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if strings.Contains(detailsBlock, ">Status</dt>") || strings.Contains(body, `aria-label="Edit status"`) {
 		t.Fatalf("status control should not render a separate title or edit button: %s", body)
 	}
-	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`} {
+	for _, notWant := range []string{`/archive`, `Archive issue`, `data-lucide="archive"`, `data-lucide="settings"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
 		}
 	}
+	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 3 {
+		t.Fatalf("assignee, reporter, and sprint rows should align edit buttons with values, got %d rows: %s", got, body)
+	}
+	if strings.Contains(detailsBlock, `class="flex items-start justify-between gap-3"`) {
+		t.Fatalf("detail edit buttons should not align with row titles: %s", body)
+	}
+	for _, notWant := range []string{`method="post" action="/bradley/issues/TRACK-7/sub-issues"`, `aria-label="Create sub-issue"`, `aria-label="Cancel adding sub-issue"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue panel should not render the sub-issue composer by default %q: %s", notWant, body)
+		}
+	}
+	if strings.Contains(body, `border-b border-slate-100 px-4 py-4 last:border-b-0`) {
+		t.Fatalf("comments should render as bubbles instead of bordered rows: %s", body)
+	}
 	commentMetaStart := strings.Index(body, "Ada Lovelace")
 	commentBodyStart := strings.Index(body, "Looks ready.")
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
-		t.Fatalf("issue panel missing comment metadata/body ordering: %s", body)
+		t.Fatalf("issue panel should render comment metadata above the body: %s", body)
+	}
+	commentBubbleStart := strings.Index(body, `class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2`)
+	if commentBubbleStart < 0 || commentBubbleStart < commentMetaStart || commentBubbleStart > commentBodyStart {
+		t.Fatalf("comment body should render inside the bubble after metadata: %s", body)
+	}
+	commentAvatarStart := strings.Index(body, `class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`)
+	if commentAvatarStart < 0 || commentAvatarStart > commentMetaStart {
+		t.Fatalf("comment avatar should render with the metadata beside the author name: %s", body)
 	}
 	commentEditStart := strings.Index(body, `aria-label="Edit comment"`)
-	if commentEditStart < 0 || commentEditStart < commentBodyStart {
-		t.Fatalf("comment edit button should render at the right edge after comment body content: %s", body)
-	}
-	if strings.Contains(body[commentMetaStart:commentBodyStart], `aria-label="Edit comment"`) {
-		t.Fatalf("comment edit button should not render beside comment metadata: %s", body)
+	if commentEditStart < 0 || commentEditStart < commentMetaStart || commentEditStart > commentBubbleStart {
+		t.Fatalf("comment edit button should render with metadata above the bubble: %s", body)
 	}
 	if strings.Contains(body, "\n            Comment\n") {
 		t.Fatalf("post comment button should be icon-only: %s", body)
@@ -516,7 +593,7 @@ func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
 			t.Fatalf("deleted issue panel missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue settings"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {
+	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue actions"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted issue panel leaked full issue UI %q: %s", notWant, body)
 		}
@@ -620,13 +697,14 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`aria-label="Cancel priority change"`,
-		`hx-get="/bradley/issues/TRACK-7/panel"`,
 		`method="post" action="/bradley/issues/TRACK-7/priority"`,
 		`hx-post="/bradley/issues/TRACK-7/priority"`,
 		`hx-target="#main"`,
 		`hx-push-url="/bradley/issues/TRACK-7"`,
-		`role="listbox" aria-label="Issue priority"`,
+		`@keyframes priority-picker-item-enter`,
+		`@media (prefers-reduced-motion: no-preference)`,
+		`[data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }`,
+		`role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1"`,
 		`name="priority" value="P0"`,
 		`name="priority" value="P1"`,
 		`name="priority" value="P2"`,
@@ -639,8 +717,8 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`bg-yellow-500`,
 		`bg-gray-500`,
 		`role="option" aria-selected="true"`,
-		`flex items-center gap-2`,
-		`flex flex-wrap items-center gap-2`,
+		`type="button" hx-get="/bradley/issues/TRACK-7/panel" hx-target="#main" hx-push-url="/bradley/issues/TRACK-7" name="priority" value="P1"`,
+		`rounded-full p-0.5 transition`,
 		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
 	} {
@@ -653,6 +731,8 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`aria-expanded="true"`,
 		`data-lucide="chevron-up"`,
 		`opacity-100 ring-2 ring-indigo-500`,
+		`aria-label="Cancel priority change"`,
+		`data-lucide="x"`,
 		`title="Cancel priority change"`,
 		`title="Change priority"`,
 	} {
@@ -857,6 +937,134 @@ func TestUIIssuePanelDoneDisablesSprintEdit(t *testing.T) {
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("done sprint row included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Parent issue",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project: model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		SubIssues: []model.Issue{
+			{Status: model.StatusDone},
+			{Status: model.StatusInProgress},
+			{Status: model.StatusTodo},
+		},
+		BackHref:  "/bradley/projects/TRACK/backlog",
+		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+		BackLabel: "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`,
+		`class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
+		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
+		`bg-amber-400 dark:bg-amber-500" style="width: 33.33%;"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue progress bar missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "max-w-xs") {
+		t.Fatalf("sub-issue progress bar should fill the available width: %s", body)
+	}
+	addIndex := strings.Index(body, `aria-label="Add sub-issue"`)
+	progressIndex := strings.Index(body, `role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`)
+	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
+		t.Fatalf("sub-issue progress bar should render after the title row controls: %s", body)
+	}
+}
+
+func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	childID := uuid.MustParse("1e533f98-310a-4090-a8ff-7cc4c4a69df2")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Parent issue",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:       model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		AddSubIssue:   true,
+		SubIssueTitle: "Draft child",
+		SubIssueError: "Title required, max 200 chars.",
+		SubIssues: []model.Issue{{
+			ID:            childID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-8",
+			Title:         "Existing child",
+			Status:        model.StatusTodo,
+			Priority:      model.PriorityP2,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		}},
+		BackHref:  "/bradley/projects/TRACK/backlog",
+		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+		BackLabel: "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`aria-label="Cancel adding sub-issue"`,
+		`method="post" action="/bradley/issues/TRACK-7/sub-issues"`,
+		`hx-post="/bradley/issues/TRACK-7/sub-issues"`,
+		`name="title" value="Draft child" autofocus placeholder="Title"`,
+		`aria-label="Create sub-issue"`,
+		`data-lucide="check"`,
+		"Title required, max 200 chars.",
+		"Existing child",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue composer missing %q: %s", want, body)
+		}
+	}
+	formIndex := strings.Index(body, `name="title" value="Draft child"`)
+	childIndex := strings.Index(body, "Existing child")
+	if formIndex < 0 || childIndex < 0 || formIndex > childIndex {
+		t.Fatalf("sub-issue composer should render before the list rows: %s", body)
+	}
+	for _, notWant := range []string{
+		`aria-label="Add sub-issue"`,
+		`hx-get="/bradley/issues/TRACK-7/sub-issues/new"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sub-issue composer included closed-state control %q: %s", notWant, body)
 		}
 	}
 }
