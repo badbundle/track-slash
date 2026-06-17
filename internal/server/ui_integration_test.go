@@ -1264,7 +1264,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`name="priority" value="P2"`,
 		`name="priority" value="P3"`,
 		`name="priority" value="P4"`,
-		`aria-label="Cancel priority change"`,
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		`aria-label="Priority P3"`,
 		`bg-yellow-500`,
@@ -1279,6 +1278,8 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 	}
 	if strings.Contains(edit, `title="Change priority"`) ||
 		strings.Contains(edit, `title="Cancel priority change"`) ||
+		strings.Contains(edit, `aria-label="Cancel priority change"`) ||
+		strings.Contains(edit, `data-lucide="x"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
 		strings.Contains(edit, `data-lucide="chevron-up"`) ||
 		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {
@@ -1695,7 +1696,7 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("clear sprint code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, ">None</dd>") {
+	if !strings.Contains(body, `class="min-w-0 truncate text-slate-900 dark:text-slate-100">None</span>`) {
 		t.Fatalf("clear sprint did not show none: %s", body)
 	}
 	updated, err = e.store.GetIssue(e.ctx, issue.ID)
