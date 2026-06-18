@@ -469,7 +469,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"`,
 		`class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>`,
 		`class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>`,
-		`class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs`,
+		`class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs`,
 		`h-5 w-5`,
 		`h-3 w-3`,
 		`border-blue-300 bg-blue-50 text-blue-800`,
@@ -1023,7 +1023,7 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	for _, want := range []string{
 		`role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`,
 		`class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
-		`class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs`,
+		`class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs`,
 		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
 		`bg-blue-400 dark:bg-blue-500" style="width: 33.33%;"`,
 	} {

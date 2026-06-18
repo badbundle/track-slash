@@ -80,7 +80,7 @@
 
       {{if not .ParentIssue}}
       <section class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <header class="px-4 py-2">
+        <header class="px-4 py-2.5">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
               <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -108,7 +108,7 @@
           </div>
         </header>
         {{if .AddSubIssue}}
-        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
           <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <input name="title" value="{{.SubIssueTitle}}" autofocus placeholder="Title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <div class="flex items-center sm:justify-end">
@@ -123,7 +123,7 @@
         {{if .SubIssues}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
-          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
             {{template "issue-key" .Identifier}}
             {{template "priority-badge" .Priority}}
             <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
@@ -132,13 +132,13 @@
           {{end}}
         </div>
         {{else}}
-        <div class="border-t border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">No sub-issues.</div>
+        <div class="border-t border-dashed border-slate-200 px-4 py-3.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">No sub-issues.</div>
         {{end}}
       </section>
       {{end}}
 
       <section class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <header class="px-4 py-2">
+        <header class="px-4 py-2.5">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
               <div class="flex min-w-0 flex-wrap items-center gap-2">
@@ -164,7 +164,7 @@
           </div>
         </header>
         {{if .AddLink}}
-        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
           <div class="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
             <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
               {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
@@ -186,7 +186,7 @@
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .Links}}
           {{if eq $.EditLinkID .Link.ID}}
-          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid gap-2 border-b border-slate-100 px-4 py-3 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid gap-2 border-b border-slate-100 px-4 py-3.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
             <div class="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
               <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
                 {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
@@ -207,7 +207,7 @@
             {{if $.LinkError}}<div class="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.LinkError}}</div>{{end}}
           </form>
           {{else}}
-          <div class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+          <div class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
             <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
             {{if .HasIssue}}
             <a data-main-view="projects" href="{{issueHref .LinkedIssue}}" hx-get="{{issuePanel .LinkedIssue}}" hx-target="#main" hx-push-url="{{issueHref .LinkedIssue}}" class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
@@ -226,7 +226,7 @@
           {{end}}
         </div>
         {{else if not .AddLink}}
-        <div class="border-t border-dashed border-slate-200 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">No linked issues.</div>
+        <div class="border-t border-dashed border-slate-200 px-4 py-3.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">No linked issues.</div>
         {{end}}
       </section>
 
