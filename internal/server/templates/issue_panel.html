@@ -79,49 +79,51 @@
       </section>
 
       {{if not .ParentIssue}}
-      <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <header class="px-4 py-3">
+      <section class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <header class="px-4 py-2.5">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
-              <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>
+                {{template "count-badge" (len .SubIssues)}}
+              </div>
               {{if .SubIssuesHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
             </div>
             <div class="flex shrink-0 items-center gap-2">
-              <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .SubIssues}}</span>
               {{if .AddSubIssue}}
-              <button type="button" aria-label="Cancel adding sub-issue" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+              <button type="button" aria-label="Cancel adding sub-issue" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
               {{else}}
-              <button type="button" aria-label="Add sub-issue" hx-get="{{issueSubIssuesNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+              <button type="button" aria-label="Add sub-issue" hx-get="{{issueSubIssuesNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
               {{end}}
             </div>
           </div>
           {{$subIssueProgress := subIssueProgress .SubIssues}}
-          <div role="img" aria-label="{{$subIssueProgress.Label}}" class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+          <div role="img" aria-label="{{$subIssueProgress.Label}}" class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
             {{if gt $subIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$subIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
-            {{if gt $subIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-amber-400 dark:bg-amber-500" style="width: {{$subIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
+            {{if gt $subIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-blue-400 dark:bg-blue-500" style="width: {{$subIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
           </div>
         </header>
         {{if .AddSubIssue}}
-        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
+        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
           <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <input name="title" value="{{.SubIssueTitle}}" autofocus placeholder="Title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <input name="title" value="{{.SubIssueTitle}}" autofocus placeholder="Title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <div class="flex items-center sm:justify-end">
-              <button type="submit" aria-label="Create sub-issue" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-                <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+              <button type="submit" aria-label="Create sub-issue" class="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
             </div>
           </div>
-          {{if .SubIssueError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.SubIssueError}}</div>{{end}}
+          {{if .SubIssueError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.SubIssueError}}</div>{{end}}
         </form>
         {{end}}
         {{if .SubIssues}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
-          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[7rem_auto_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
             {{template "issue-key" .Identifier}}
             {{template "priority-badge" .Priority}}
             <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
@@ -130,73 +132,83 @@
           {{end}}
         </div>
         {{else}}
-        <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No sub-issues.</div>
+        <div class="border-t border-dashed border-slate-200 px-4 py-3.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">No sub-issues.</div>
         {{end}}
       </section>
       {{end}}
 
-      <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <header class="flex items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>
-            {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+      <section class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <header class="px-4 py-2.5">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>
+                {{template "count-badge" (len .Links)}}
+              </div>
+              {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+            </div>
+            {{if .AddLink}}
+            <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </button>
+            {{else}}
+            <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </button>
+            {{end}}
           </div>
-          {{if .AddLink}}
-          <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
-          {{else}}
-          <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-            <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
-          {{end}}
+          {{$linkedIssueProgress := linkedIssueProgress .Links}}
+          <div role="img" aria-label="{{$linkedIssueProgress.Label}}" class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            {{if gt $linkedIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$linkedIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
+            {{if gt $linkedIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-blue-400 dark:bg-blue-500" style="width: {{$linkedIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
+          </div>
         </header>
         {{if .AddLink}}
-        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
-          <div class="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-center">
-            <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
+          <div class="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
+            <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
               {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
             </select>
-            <input name="target_issue" value="{{.LinkTarget}}" placeholder="{{.Issue.ProjectKey}}-12" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <input name="target_issue" value="{{.LinkTarget}}" placeholder="{{.Issue.ProjectKey}}-12" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <div class="flex items-center gap-2 sm:justify-end">
-              <button type="submit" aria-label="Save link" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-                <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+              <button type="submit" aria-label="Save link" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
-              <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+              <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
             </div>
           </div>
-          {{if .LinkError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.LinkError}}</div>{{end}}
+          {{if .LinkError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.LinkError}}</div>{{end}}
         </form>
         {{end}}
         {{if .Links}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .Links}}
           {{if eq $.EditLinkID .Link.ID}}
-          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid gap-2 border-b border-slate-100 p-4 text-sm last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
-            <div class="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto] sm:items-center">
-              <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid gap-2 border-b border-slate-100 px-4 py-3.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+            <div class="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
+              <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
                 {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
               </select>
-              <input name="target_issue" value="{{$.LinkTarget}}" placeholder="{{$.Issue.ProjectKey}}-12" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              <input name="target_issue" value="{{$.LinkTarget}}" placeholder="{{$.Issue.ProjectKey}}-12" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
               <div class="flex items-center gap-2 sm:justify-end">
-                <button type="submit" aria-label="Save link" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-                  <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                <button type="submit" aria-label="Save link" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Cancel editing link" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                <button type="button" aria-label="Cancel editing link" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Remove link" hx-post="{{issueLinkDelete $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
-                  <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                <button type="button" aria-label="Remove link" hx-post="{{issueLinkDelete $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
               </div>
             </div>
-            {{if $.LinkError}}<div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.LinkError}}</div>{{end}}
+            {{if $.LinkError}}<div class="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.LinkError}}</div>{{end}}
           </form>
           {{else}}
-          <div class="grid grid-cols-[5.5rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
-            <span class="text-xs font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
+          <div class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+            <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
             {{if .HasIssue}}
             <a data-main-view="projects" href="{{issueHref .LinkedIssue}}" hx-get="{{issuePanel .LinkedIssue}}" hx-target="#main" hx-push-url="{{issueHref .LinkedIssue}}" class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
               {{template "issue-key" .LinkedIssue.Identifier}}
@@ -206,25 +218,27 @@
             {{else}}
             <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
             {{end}}
-            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-              <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
           </div>
           {{end}}
           {{end}}
         </div>
         {{else if not .AddLink}}
-        <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No linked issues.</div>
+        <div class="border-t border-dashed border-slate-200 px-4 py-3.5 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">No linked issues.</div>
         {{end}}
       </section>
 
-      <section class="space-y-3">
+      <section class="space-y-3 px-4">
         <header class="flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Comments</h2>
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Comments</h2>
+              {{template "count-badge" (len .Comments)}}
+            </div>
             {{if .CommentsHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
           </div>
-          <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Comments}}</span>
         </header>
         {{if .Comments}}
         <div class="space-y-3">
@@ -249,11 +263,12 @@
         {{end}}
         <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
           <div class="flex items-start gap-2">
-            <textarea name="body" rows="3" placeholder="Add a comment" data-submit-shortcut="meta-enter" class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
-            <button type="submit" aria-label="Post comment" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-              <i data-lucide="send" class="h-4 w-4" aria-hidden="true"></i>
+            <textarea name="body" rows="1" placeholder="Add a comment" data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
+            <button type="submit" aria-label="Post comment" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+              <i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>
             </button>
           </div>
+          <div class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to send</div>
           {{if .CommentError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.CommentError}}</div>{{end}}
         </form>
       </section>
@@ -264,18 +279,34 @@
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Details</h2>
         <dl class="mt-4 space-y-4 text-sm">
           <div>
+            <style>
+              @keyframes status-picker-enter {
+                from { opacity: 0; transform: translateY(-0.25rem); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @keyframes status-pill-settle {
+                from { opacity: 0.85; transform: translateY(-0.125rem); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @media (prefers-reduced-motion: no-preference) {
+                [data-status-toggle] {
+                  animation: status-pill-settle 120ms ease-out both;
+                }
+                [data-status-list] {
+                  animation: status-picker-enter 140ms ease-out both;
+                  transform-origin: top;
+                }
+              }
+            </style>
             {{if .EditStatus}}
             <div class="space-y-2">
-              <div class="flex items-center gap-2">
-                <button type="button" disabled aria-label="Change status" aria-haspopup="listbox" aria-expanded="true" class="inline-flex min-w-0 flex-1 cursor-default items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold {{statusClass .Issue.Status}}">
+              <div>
+                <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="true" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-status-toggle class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
                   <span>{{statusLabel .Issue.Status}}</span>
                   <i data-lucide="chevron-up" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Cancel status change" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-                </button>
               </div>
-              <form method="post" action="{{issueStatus .Issue}}" hx-post="{{issueStatus .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue status" class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+              <form method="post" action="{{issueStatus .Issue}}" hx-post="{{issueStatus .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue status" data-status-list class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
                 {{range statusOptions}}
                 <button type="submit" name="status" value="{{.Status}}" role="option" aria-selected="{{if eq $.Issue.Status .Status}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
                   <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .Status}}">{{.Label}}</span>
@@ -285,7 +316,7 @@
               </form>
             </div>
             {{else}}
-            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
+            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-status-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
               <span>{{statusLabel .Issue.Status}}</span>
               <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
             </button>

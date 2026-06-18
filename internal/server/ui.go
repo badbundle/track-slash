@@ -58,6 +58,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueSprintAutocomplete":   uiIssueSprintAutocomplete,
 	"linkLabel":                 uiIssueLinkLabel,
 	"linkOptions":               uiIssueLinkOptions,
+	"linkedIssueProgress":       uiLinkedIssueProgress,
+	"issueColumnCount":          uiIssueColumnCount,
 	"priorityClass":             uiPriorityClass,
 	"priorityLabel":             uiPriorityLabel,
 	"priorityOptions":           uiPriorityOptions,
@@ -2820,7 +2822,7 @@ func uiStatusClass(s model.Status) string {
 	case model.StatusTodo:
 		return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
 	case model.StatusInProgress:
-		return "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200"
+		return "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-500/40 dark:bg-blue-950/40 dark:text-blue-200"
 	case model.StatusDone:
 		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
 	default:
@@ -2875,6 +2877,45 @@ func uiSubIssueProgress(issues []model.Issue) uiSubIssueProgressData {
 	return out
 }
 
+func uiLinkedIssueProgress(links []uiIssueLinkItem) uiSubIssueProgressData {
+	out := uiSubIssueProgressData{}
+	for _, link := range links {
+		if !link.HasIssue {
+			continue
+		}
+		out.Total++
+		switch link.LinkedIssue.Status {
+		case model.StatusDone:
+			out.Done++
+		case model.StatusInProgress:
+			out.InProgress++
+		default:
+			out.Todo++
+		}
+	}
+	out.DonePercent = uiPercent(out.Done, out.Total)
+	out.InProgressPercent = uiPercent(out.InProgress, out.Total)
+	out.TodoPercent = uiPercent(out.Todo, out.Total)
+	if out.Total == 0 {
+		if len(links) == 0 {
+			out.Label = "Linked issue progress: no linked issues"
+		} else {
+			out.Label = "Linked issue progress: no available linked issues"
+		}
+	} else {
+		out.Label = fmt.Sprintf("Linked issue progress: %d done, %d in progress, %d to do", out.Done, out.InProgress, out.Todo)
+	}
+	return out
+}
+
+func uiIssueColumnCount(columns []uiIssueColumn) int {
+	total := 0
+	for _, column := range columns {
+		total += len(column.Issues)
+	}
+	return total
+}
+
 func uiPercent(part, total int) string {
 	if total <= 0 || part <= 0 {
 		return "0%"
@@ -2927,7 +2968,7 @@ func uiStatusRowClass(s model.Status) string {
 	case model.StatusTodo:
 		return "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"
 	case model.StatusInProgress:
-		return "bg-amber-50/45 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/30"
+		return "bg-blue-50/45 hover:bg-blue-50 dark:bg-blue-950/15 dark:hover:bg-blue-950/30"
 	case model.StatusDone:
 		return "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"
 	default:
@@ -2940,7 +2981,7 @@ func uiStatusSurfaceClass(s model.Status) string {
 	case model.StatusTodo:
 		return "bg-slate-50/70 dark:bg-slate-900/30"
 	case model.StatusInProgress:
-		return "bg-amber-50/45 dark:bg-amber-950/15"
+		return "bg-blue-50/45 dark:bg-blue-950/15"
 	case model.StatusDone:
 		return "bg-emerald-50/45 dark:bg-emerald-950/15"
 	default:

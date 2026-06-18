@@ -843,6 +843,9 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 		"status target issue",
 		`aria-label="Change status"`,
 		`aria-expanded="true"`,
+		`data-status-toggle`,
+		`data-status-list`,
+		`status-picker-enter`,
 		`role="listbox" aria-label="Issue status"`,
 		`method="post" action="` + e.issuePath(issue) + `/status"`,
 		`hx-post="` + e.issuePath(issue) + `/status"`,
@@ -850,7 +853,6 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 		`name="status" value="todo"`,
 		`name="status" value="in_progress"`,
 		`name="status" value="done"`,
-		`aria-label="Cancel status change"`,
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		"To do",
 		"In progress",
@@ -860,7 +862,11 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 			t.Fatalf("status edit response missing %q: %s", want, edit)
 		}
 	}
-	if strings.Contains(edit, `title="Change status"`) || strings.Contains(edit, `title="Cancel status change"`) {
+	if strings.Contains(edit, `aria-label="Cancel status change"`) ||
+		strings.Contains(edit, `disabled aria-label="Change status"`) ||
+		strings.Contains(edit, `cursor-default`) ||
+		strings.Contains(edit, `title="Change status"`) ||
+		strings.Contains(edit, `title="Cancel status change"`) {
 		t.Fatalf("status edit response has native tooltip state: %s", edit)
 	}
 

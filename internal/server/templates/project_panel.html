@@ -58,9 +58,12 @@
   </section>
   {{else if eq .View "sprint"}}
   <section class="py-6">
-    <div class="mb-3 flex items-center justify-between gap-3">
+    <div class="mb-3 flex items-start justify-between gap-3">
       <div>
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sprint</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sprint</h2>
+          {{template "count-badge" (issueColumnCount .SprintColumns)}}
+        </div>
         {{if .ActiveSprint}}
         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.ActiveSprint.Name}} · {{sprintDate .ActiveSprint.StartDate}}-{{sprintDate .ActiveSprint.EndDate}}</p>
         {{if .ActiveSprint.Goal}}<div class="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{{.ActiveSprint.Goal}}</div>{{end}}
@@ -74,9 +77,9 @@
     <section class="grid gap-4 lg:grid-cols-3">
       {{range .SprintColumns}}
       <div class="min-w-0">
-        <div class="mb-3 flex items-center justify-between gap-3">
+        <div class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
           <h3 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{.Label}}</h3>
-          <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Issues}}</span>
+          {{template "count-badge" (len .Issues)}}
         </div>
         {{template "issue-card-list" .Issues}}
       </div>
@@ -92,7 +95,10 @@
     {{if .PlannedSprints}}
     <div class="mb-6">
       <div class="mb-3 flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Planned sprints</h2>
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Planned sprints</h2>
+          {{template "count-badge" (len .PlannedSprints)}}
+        </div>
         {{if .PlannedHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
       </div>
       <div class="space-y-4">
@@ -100,7 +106,10 @@
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <header class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div class="min-w-0">
-              <h3 class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{.Sprint.Name}}</h3>
+              <div class="flex min-w-0 items-center gap-2">
+                <h3 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{.Sprint.Name}}</h3>
+                {{template "count-badge" (len .Issues)}}
+              </div>
               <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{sprintDate .Sprint.StartDate}}-{{sprintDate .Sprint.EndDate}}</p>
             </div>
             {{if .HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
@@ -112,7 +121,10 @@
     </div>
     {{end}}
     <div class="mb-3 flex items-center justify-between gap-3">
-      <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Backlog</h2>
+      <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Backlog</h2>
+        {{template "count-badge" (len .BacklogIssues)}}
+      </div>
       {{if .BacklogHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
     </div>
     {{template "issue-list" .BacklogIssues}}
