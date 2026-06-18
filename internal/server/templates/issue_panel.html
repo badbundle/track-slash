@@ -83,11 +83,13 @@
         <header class="px-4 py-3">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
-              <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>
+                {{template "count-badge" (len .SubIssues)}}
+              </div>
               {{if .SubIssuesHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
             </div>
             <div class="flex shrink-0 items-center gap-2">
-              <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .SubIssues}}</span>
               {{if .AddSubIssue}}
               <button type="button" aria-label="Cancel adding sub-issue" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
@@ -136,20 +138,30 @@
       {{end}}
 
       <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <header class="flex items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>
-            {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+        <header class="px-4 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>
+                {{template "count-badge" (len .Links)}}
+              </div>
+              {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+            </div>
+            {{if .AddLink}}
+            <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            {{else}}
+            <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            {{end}}
           </div>
-          {{if .AddLink}}
-          <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
-          {{else}}
-          <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-            <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
-          {{end}}
+          {{$linkedIssueProgress := linkedIssueProgress .Links}}
+          <div role="img" aria-label="{{$linkedIssueProgress.Label}}" class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            {{if gt $linkedIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$linkedIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
+            {{if gt $linkedIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-blue-400 dark:bg-blue-500" style="width: {{$linkedIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
+          </div>
         </header>
         {{if .AddLink}}
         <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 p-4 dark:border-slate-800">
@@ -221,10 +233,12 @@
       <section class="space-y-3">
         <header class="flex items-center justify-between gap-3">
           <div>
-            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Comments</h2>
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Comments</h2>
+              {{template "count-badge" (len .Comments)}}
+            </div>
             {{if .CommentsHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
           </div>
-          <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Comments}}</span>
         </header>
         {{if .Comments}}
         <div class="space-y-3">

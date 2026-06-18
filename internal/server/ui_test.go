@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,25 @@ import (
 
 	"github.com/bradleymackey/track-slash/internal/model"
 )
+
+const uiCountBadgeClass = "inline-flex shrink-0 items-center rounded-md border border-slate-200 px-2 py-0.5 text-xs font-medium leading-4 text-slate-500 dark:border-slate-700 dark:text-slate-400"
+
+func requireInlineCount(t *testing.T, body, heading string, count int) {
+	t.Helper()
+	headingIndex := strings.Index(body, ">"+heading+"</h")
+	if headingIndex < 0 {
+		t.Fatalf("missing heading %q: %s", heading, body)
+	}
+	segmentEnd := headingIndex + 350
+	if segmentEnd > len(body) {
+		segmentEnd = len(body)
+	}
+	segment := body[headingIndex:segmentEnd]
+	want := `class="` + uiCountBadgeClass + `">` + strconv.Itoa(count) + `</span>`
+	if !strings.Contains(segment, want) {
+		t.Fatalf("heading %q missing inline count %d: %s", heading, count, body)
+	}
+}
 
 func TestUIProjectIcon(t *testing.T) {
 	t.Parallel()
@@ -419,6 +439,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Post comment"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
+		`role="img" aria-label="Linked issue progress: 1 done, 0 in progress, 0 to do"`,
+		`bg-emerald-500 dark:bg-emerald-400" style="width: 100.00%;"`,
 		`placeholder="Add a comment"`,
 		`method="post" action="/bradley/issues/TRACK-7/comments"`,
 		`hx-post="/bradley/issues/TRACK-7/comments"`,
@@ -457,6 +479,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if got := strings.Count(body, "bg-blue-50/45 dark:bg-blue-950/15"); got != 1 {
 		t.Fatalf("issue panel should tint the title card only, got %d matches: %s", got, body)
 	}
+	requireInlineCount(t, body, "Sub-issues", 0)
+	requireInlineCount(t, body, "Linked issues", 1)
+	requireInlineCount(t, body, "Comments", 1)
 	detailsStart := strings.Index(body, ">Details</h2>")
 	if detailsStart < 0 {
 		t.Fatalf("issue panel missing Details heading: %s", body)
@@ -998,10 +1023,83 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	if strings.Contains(body, "max-w-xs") {
 		t.Fatalf("sub-issue progress bar should fill the available width: %s", body)
 	}
+	requireInlineCount(t, body, "Sub-issues", 3)
 	addIndex := strings.Index(body, `aria-label="Add sub-issue"`)
 	progressIndex := strings.Index(body, `role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`)
 	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
 		t.Fatalf("sub-issue progress bar should render after the title row controls: %s", body)
+	}
+}
+
+func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	doneID := uuid.MustParse("ae77b9b8-9dcf-4a18-8b69-42b97bd4a4b5")
+	progressID := uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2")
+	todoID := uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c")
+	deletedID := uuid.MustParse("0e4c50a0-ae1a-46e9-a7b5-75989e4f3ec3")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Issue with links",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project: model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		Links: []uiIssueLinkItem{
+			{
+				Link:        model.IssueLink{ID: uuid.MustParse("48c98f2e-bad8-4054-89d7-5a45a68af54f"), ProjectID: projectID, Number: 1, Ref: "link-1", SourceID: issueID, TargetID: doneID, LinkType: model.LinkTypeRelatesTo, CreatedAt: when, UpdatedAt: when},
+				LinkedIssue: model.Issue{ID: doneID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Done link", Status: model.StatusDone},
+				HasIssue:    true,
+			},
+			{
+				Link:        model.IssueLink{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, Number: 2, Ref: "link-2", SourceID: issueID, TargetID: progressID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
+				LinkedIssue: model.Issue{ID: progressID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-9", Title: "Progress link", Status: model.StatusInProgress},
+				HasIssue:    true,
+			},
+			{
+				Link:        model.IssueLink{ID: uuid.MustParse("57bf290a-e723-42e6-8a1d-2c7ed8672646"), ProjectID: projectID, Number: 3, Ref: "link-3", SourceID: todoID, TargetID: issueID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
+				LinkedIssue: model.Issue{ID: todoID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "Todo link", Status: model.StatusTodo},
+				HasIssue:    true,
+			},
+			{
+				Link:     model.IssueLink{ID: uuid.MustParse("9b208bfe-63f0-461d-ad2b-4725106fd314"), ProjectID: projectID, Number: 4, Ref: "link-4", SourceID: issueID, TargetID: deletedID, LinkType: model.LinkTypeClones, CreatedAt: when, UpdatedAt: when},
+				HasIssue: false,
+			},
+		},
+		BackHref:  "/bradley/projects/TRACK/backlog",
+		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+		BackLabel: "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`role="img" aria-label="Linked issue progress: 1 done, 1 in progress, 1 to do"`,
+		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
+		`bg-blue-400 dark:bg-blue-500" style="width: 33.33%;"`,
+		"Deleted issue",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("linked issue progress missing %q: %s", want, body)
+		}
+	}
+	requireInlineCount(t, body, "Linked issues", 4)
+	addIndex := strings.Index(body, `aria-label="Add link"`)
+	progressIndex := strings.Index(body, `role="img" aria-label="Linked issue progress: 1 done, 1 in progress, 1 to do"`)
+	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
+		t.Fatalf("linked issue progress bar should render after the title row controls: %s", body)
 	}
 }
 
@@ -1478,6 +1576,15 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		{ID: selectedID, Username: "ada", Name: "Ada Lovelace"},
 		{ID: otherID, Username: "grace", Name: "Grace Hopper"},
 	}
+	columns := uiIssueColumns()
+	columns[0].Issues = append(columns[0].Issues, uiIssueItem{
+		Issue:   model.Issue{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "Todo count issue", Status: model.StatusTodo},
+		Project: project,
+	})
+	columns[1].Issues = append(columns[1].Issues, uiIssueItem{
+		Issue:   model.Issue{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Progress count issue", Status: model.StatusInProgress},
+		Project: project,
+	})
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
@@ -1497,7 +1604,7 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 			StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 			EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
 		},
-		SprintColumns: uiIssueColumns(),
+		SprintColumns: columns,
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -1513,6 +1620,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"AL",
 		"GH",
 		"Ship filtering\nPolish sprint goals",
+		"Todo count issue",
+		"Progress count issue",
 		"whitespace-pre-wrap",
 		`href="/bradley/projects/TRACK/sprint?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
 		`hx-get="/bradley/projects/TRACK/backlog/panel?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
@@ -1527,6 +1636,60 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 	if filterIdx < 0 || tabIdx < 0 || filterIdx > tabIdx {
 		t.Fatalf("assignee filter should render above tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
 	}
+	requireInlineCount(t, body, "Sprint", 2)
+	requireInlineCount(t, body, "To do", 1)
+	requireInlineCount(t, body, "In progress", 1)
+	requireInlineCount(t, body, "Done", 0)
+}
+
+func TestUIProjectPanelRendersInlineBacklogCounts(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	sprint := model.Sprint{
+		ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
+		ProjectID: projectID,
+		Name:      "First Planned Sprint",
+		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project:     project,
+		View:        "backlog",
+		ProjectTabs: uiProjectTabs(project, "backlog", nil),
+		PlannedSprints: []uiPlannedSprint{{
+			Sprint: sprint,
+			Issues: []model.Issue{
+				{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo},
+				{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Second planned issue", Status: model.StatusDone},
+			},
+		}},
+		BacklogIssues: []model.Issue{
+			{ID: uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-12", Title: "First backlog issue", Status: model.StatusTodo},
+			{ID: uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-13", Title: "Second backlog issue", Status: model.StatusInProgress},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		"First planned issue",
+		"Second planned issue",
+		"First backlog issue",
+		"Second backlog issue",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project backlog panel missing %q: %s", want, body)
+		}
+	}
+	requireInlineCount(t, body, "Planned sprints", 1)
+	requireInlineCount(t, body, "First Planned Sprint", 2)
+	requireInlineCount(t, body, "Backlog", 2)
 }
 
 func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {

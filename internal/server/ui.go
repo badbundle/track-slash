@@ -58,6 +58,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueSprintAutocomplete":   uiIssueSprintAutocomplete,
 	"linkLabel":                 uiIssueLinkLabel,
 	"linkOptions":               uiIssueLinkOptions,
+	"linkedIssueProgress":       uiLinkedIssueProgress,
+	"issueColumnCount":          uiIssueColumnCount,
 	"priorityClass":             uiPriorityClass,
 	"priorityLabel":             uiPriorityLabel,
 	"priorityOptions":           uiPriorityOptions,
@@ -2873,6 +2875,45 @@ func uiSubIssueProgress(issues []model.Issue) uiSubIssueProgressData {
 		out.Label = fmt.Sprintf("Sub-issue progress: %d done, %d in progress, %d to do", out.Done, out.InProgress, out.Todo)
 	}
 	return out
+}
+
+func uiLinkedIssueProgress(links []uiIssueLinkItem) uiSubIssueProgressData {
+	out := uiSubIssueProgressData{}
+	for _, link := range links {
+		if !link.HasIssue {
+			continue
+		}
+		out.Total++
+		switch link.LinkedIssue.Status {
+		case model.StatusDone:
+			out.Done++
+		case model.StatusInProgress:
+			out.InProgress++
+		default:
+			out.Todo++
+		}
+	}
+	out.DonePercent = uiPercent(out.Done, out.Total)
+	out.InProgressPercent = uiPercent(out.InProgress, out.Total)
+	out.TodoPercent = uiPercent(out.Todo, out.Total)
+	if out.Total == 0 {
+		if len(links) == 0 {
+			out.Label = "Linked issue progress: no linked issues"
+		} else {
+			out.Label = "Linked issue progress: no available linked issues"
+		}
+	} else {
+		out.Label = fmt.Sprintf("Linked issue progress: %d done, %d in progress, %d to do", out.Done, out.InProgress, out.Todo)
+	}
+	return out
+}
+
+func uiIssueColumnCount(columns []uiIssueColumn) int {
+	total := 0
+	for _, column := range columns {
+		total += len(column.Issues)
+	}
+	return total
 }
 
 func uiPercent(part, total int) string {
