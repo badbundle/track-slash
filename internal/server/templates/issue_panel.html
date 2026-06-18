@@ -102,7 +102,7 @@
           {{$subIssueProgress := subIssueProgress .SubIssues}}
           <div role="img" aria-label="{{$subIssueProgress.Label}}" class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
             {{if gt $subIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$subIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
-            {{if gt $subIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-amber-400 dark:bg-amber-500" style="width: {{$subIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
+            {{if gt $subIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-blue-400 dark:bg-blue-500" style="width: {{$subIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
           </div>
         </header>
         {{if .AddSubIssue}}
@@ -249,11 +249,12 @@
         {{end}}
         <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
           <div class="flex items-start gap-2">
-            <textarea name="body" rows="3" placeholder="Add a comment" data-submit-shortcut="meta-enter" class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
-            <button type="submit" aria-label="Post comment" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-              <i data-lucide="send" class="h-4 w-4" aria-hidden="true"></i>
+            <textarea name="body" rows="1" placeholder="Add a comment" data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
+            <button type="submit" aria-label="Post comment" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+              <i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>
             </button>
           </div>
+          <div class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to send</div>
           {{if .CommentError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.CommentError}}</div>{{end}}
         </form>
       </section>

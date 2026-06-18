@@ -40,7 +40,7 @@ func TestUIStatusClass(t *testing.T) {
 		want   string
 	}{
 		{status: model.StatusTodo, want: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"},
-		{status: model.StatusInProgress, want: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-200"},
+		{status: model.StatusInProgress, want: "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-500/40 dark:bg-blue-950/40 dark:text-blue-200"},
 		{status: model.StatusDone, want: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"},
 		{status: model.Status("custom"), want: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"},
 	}
@@ -60,7 +60,7 @@ func TestUIStatusRowClass(t *testing.T) {
 		want   string
 	}{
 		{status: model.StatusTodo, want: "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"},
-		{status: model.StatusInProgress, want: "bg-amber-50/45 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/30"},
+		{status: model.StatusInProgress, want: "bg-blue-50/45 hover:bg-blue-50 dark:bg-blue-950/15 dark:hover:bg-blue-950/30"},
 		{status: model.StatusDone, want: "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"},
 		{status: model.Status("custom"), want: "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"},
 	}
@@ -80,7 +80,7 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 		want   string
 	}{
 		{status: model.StatusTodo, want: "bg-slate-50/70 dark:bg-slate-900/30"},
-		{status: model.StatusInProgress, want: "bg-amber-50/45 dark:bg-amber-950/15"},
+		{status: model.StatusInProgress, want: "bg-blue-50/45 dark:bg-blue-950/15"},
 		{status: model.StatusDone, want: "bg-emerald-50/45 dark:bg-emerald-950/15"},
 		{status: model.Status("custom"), want: "bg-white dark:bg-slate-900"},
 	}
@@ -272,6 +272,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
 		}
 	}
+	for _, want := range []string{`[data-autogrow-textarea]`, `resizeTextarea`, `textarea.scrollHeight`, `resizeTextareas(event.target)`, `resizeTextareas();`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing autogrowing textarea behavior %q: %s", want, body)
+		}
+	}
 	for _, want := range []string{`[data-search-input]`, `[data-search-option]`, `filterSearchOptions`, `option.dataset.value`, `input.form || input.closest("form")`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing search component behavior %q: %s", want, body)
@@ -420,11 +425,16 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-target="#main"`,
 		`hx-push-url="/bradley/issues/TRACK-7"`,
 		`data-submit-shortcut="meta-enter"`,
+		`data-autogrow-textarea`,
+		`<textarea name="body" rows="1"`,
+		`⌘ + Enter to send`,
+		`data-lucide="send-horizontal"`,
 		`class="order-2 min-w-0 space-y-6 lg:order-1"`,
 		`class="order-1 min-w-0 lg:order-2"`,
 		`class="flex items-start gap-2"`,
-		`class="min-w-0 flex-1 resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
-		`class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white`,
+		`class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
+		`class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700`,
+		`class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500"`,
 		`class="space-y-3"`,
 		`class="flex items-start gap-2"`,
 		`class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
@@ -436,15 +446,15 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
 		`h-5 w-5`,
 		`h-3 w-3`,
-		`border-amber-300 bg-amber-50 text-amber-800`,
-		`bg-amber-50/45 dark:bg-amber-950/15`,
+		`border-blue-300 bg-blue-50 text-blue-800`,
+		`bg-blue-50/45 dark:bg-blue-950/15`,
 		`bg-emerald-50/45 hover:bg-emerald-50`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
 		}
 	}
-	if got := strings.Count(body, "bg-amber-50/45 dark:bg-amber-950/15"); got != 1 {
+	if got := strings.Count(body, "bg-blue-50/45 dark:bg-blue-950/15"); got != 1 {
 		t.Fatalf("issue panel should tint the title card only, got %d matches: %s", got, body)
 	}
 	detailsStart := strings.Index(body, ">Details</h2>")
@@ -521,7 +531,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if strings.Contains(body, "\n            Comment\n") {
 		t.Fatalf("post comment button should be icon-only: %s", body)
 	}
-	if strings.Contains(body, "<textarea disabled") || strings.Contains(body, `aria-label="Post comment" class="grid h-9 w-9`) || strings.Contains(body, `aria-label="Post comment" class="grid h-7 w-7 shrink-0 cursor-not-allowed`) {
+	if strings.Contains(body, "<textarea disabled") || strings.Contains(body, `aria-label="Post comment" class="grid h-9 w-9 shrink-0 cursor-not-allowed`) || strings.Contains(body, `aria-label="Post comment" class="grid h-7 w-7 shrink-0 cursor-not-allowed`) {
 		t.Fatalf("comment composer should be enabled: %s", body)
 	}
 	titleHeaderEnd := strings.Index(body, "</header>")
@@ -979,7 +989,7 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 		`role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`,
 		`class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
 		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
-		`bg-amber-400 dark:bg-amber-500" style="width: 33.33%;"`,
+		`bg-blue-400 dark:bg-blue-500" style="width: 33.33%;"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sub-issue progress bar missing %q: %s", want, body)
