@@ -457,7 +457,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
 		`class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700`,
 		`class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500"`,
-		`class="space-y-3"`,
+		`class="space-y-3 px-4"`,
 		`class="flex items-start gap-2"`,
 		`class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
 		`class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25"`,
@@ -466,6 +466,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`inline-flex w-fit justify-self-start items-center whitespace-nowrap rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
+		`class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"`,
+		`class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>`,
+		`class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>`,
+		`class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs`,
 		`h-5 w-5`,
 		`h-3 w-3`,
 		`border-blue-300 bg-blue-50 text-blue-800`,
@@ -1012,7 +1016,8 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	body := buf.String()
 	for _, want := range []string{
 		`role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`,
-		`class="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
+		`class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
+		`class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2 text-xs`,
 		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
 		`bg-blue-400 dark:bg-blue-500" style="width: 33.33%;"`,
 	} {
