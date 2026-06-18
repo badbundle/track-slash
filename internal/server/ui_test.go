@@ -672,8 +672,11 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	for _, want := range []string{
 		`aria-label="Change status"`,
 		`aria-expanded="true"`,
+		`data-status-toggle`,
+		`data-status-list`,
+		`status-picker-enter`,
+		`status-pill-settle`,
 		`data-lucide="chevron-up"`,
-		`aria-label="Cancel status change"`,
 		`hx-get="/bradley/issues/TRACK-7/panel"`,
 		`method="post" action="/bradley/issues/TRACK-7/status"`,
 		`hx-post="/bradley/issues/TRACK-7/status"`,
@@ -695,6 +698,9 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	}
 	for _, notWant := range []string{
 		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
+		`aria-label="Cancel status change"`,
+		`cursor-default`,
+		`disabled aria-label="Change status"`,
 		`title="Cancel status change"`,
 		`title="Change status"`,
 	} {

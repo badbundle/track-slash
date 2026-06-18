@@ -279,18 +279,34 @@
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Details</h2>
         <dl class="mt-4 space-y-4 text-sm">
           <div>
+            <style>
+              @keyframes status-picker-enter {
+                from { opacity: 0; transform: translateY(-0.25rem); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @keyframes status-pill-settle {
+                from { opacity: 0.85; transform: translateY(-0.125rem); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @media (prefers-reduced-motion: no-preference) {
+                [data-status-toggle] {
+                  animation: status-pill-settle 120ms ease-out both;
+                }
+                [data-status-list] {
+                  animation: status-picker-enter 140ms ease-out both;
+                  transform-origin: top;
+                }
+              }
+            </style>
             {{if .EditStatus}}
             <div class="space-y-2">
-              <div class="flex items-center gap-2">
-                <button type="button" disabled aria-label="Change status" aria-haspopup="listbox" aria-expanded="true" class="inline-flex min-w-0 flex-1 cursor-default items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold {{statusClass .Issue.Status}}">
+              <div>
+                <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="true" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-status-toggle class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
                   <span>{{statusLabel .Issue.Status}}</span>
                   <i data-lucide="chevron-up" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Cancel status change" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-                </button>
               </div>
-              <form method="post" action="{{issueStatus .Issue}}" hx-post="{{issueStatus .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue status" class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+              <form method="post" action="{{issueStatus .Issue}}" hx-post="{{issueStatus .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue status" data-status-list class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
                 {{range statusOptions}}
                 <button type="submit" name="status" value="{{.Status}}" role="option" aria-selected="{{if eq $.Issue.Status .Status}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
                   <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .Status}}">{{.Label}}</span>
@@ -300,7 +316,7 @@
               </form>
             </div>
             {{else}}
-            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
+            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-status-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
               <span>{{statusLabel .Issue.Status}}</span>
               <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
             </button>
