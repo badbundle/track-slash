@@ -18,6 +18,7 @@ type createIssueReq struct {
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
 	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
 	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
+	DueDate     *model.Date          `json:"due_date,omitempty"`
 }
 
 func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +63,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		Priority:    priority,
 		AssigneeID:  req.AssigneeID,
 		ReporterID:  reporterID,
+		DueDate:     req.DueDate,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -112,6 +114,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		Priority:      priority,
 		AssigneeID:    req.AssigneeID,
 		ReporterID:    reporterID,
+		DueDate:       req.DueDate,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -356,12 +359,14 @@ type updateIssueReq struct {
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
 	// AssigneeID: pointer-to-pointer pattern via json.RawMessage would be cleaner,
 	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
-	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
-	ClearAssignee bool       `json:"clear_assignee,omitempty"`
-	ReporterID    *uuid.UUID `json:"reporter_id,omitempty"`
-	ClearReporter bool       `json:"clear_reporter,omitempty"`
-	Sprint        *string    `json:"sprint,omitempty"`
-	ClearSprint   bool       `json:"clear_sprint,omitempty"`
+	AssigneeID    *uuid.UUID  `json:"assignee_id,omitempty"`
+	ClearAssignee bool        `json:"clear_assignee,omitempty"`
+	ReporterID    *uuid.UUID  `json:"reporter_id,omitempty"`
+	ClearReporter bool        `json:"clear_reporter,omitempty"`
+	Sprint        *string     `json:"sprint,omitempty"`
+	ClearSprint   bool        `json:"clear_sprint,omitempty"`
+	DueDate       *model.Date `json:"due_date,omitempty"`
+	ClearDueDate  bool        `json:"clear_due_date,omitempty"`
 }
 
 func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
@@ -419,6 +424,8 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		ClearReporter: req.ClearReporter,
 		SprintID:      sprintID,
 		ClearSprint:   req.ClearSprint,
+		DueDate:       req.DueDate,
+		ClearDueDate:  req.ClearDueDate,
 	})
 	if err != nil {
 		writeStoreError(w, err)

@@ -124,10 +124,7 @@
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
           <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
-            {{template "issue-key" .Identifier}}
-            {{template "priority-badge" .Priority}}
-            <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
-            {{template "status-badge" .Status}}
+            {{template "issue-summary-row-cells" .}}
           </a>
           {{end}}
         </div>
@@ -214,6 +211,8 @@
               {{template "issue-key" .LinkedIssue.Identifier}}
               {{template "priority-badge" .LinkedIssue.Priority}}
               <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.LinkedIssue.Title}}</span>
+              {{template "issue-due-badge" .LinkedIssue}}
+              {{template "status-badge" .LinkedIssue.Status}}
             </a>
             {{else}}
             <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
@@ -362,6 +361,33 @@
               {{end}}
             </dd>
           </div>
+          {{if .EditDueDate}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
+            <form method="post" action="{{issueDueDate .Issue}}" hx-post="{{issueDueDate .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="mt-1 space-y-2">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                <input type="date" name="due_date" value="{{.DueDateInput}}" autofocus aria-label="Due date" class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                <button type="submit" aria-label="Save due date" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing due date" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </div>
+              {{if .DueDateError}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.DueDateError}}</p>{{end}}
+            </form>
+          </div>
+          {{else}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.DueDate}}{{template "issue-due-badge" .Issue}}{{else}}None{{end}}</span>
+              <button type="button" aria-label="Edit due date" hx-get="{{issueDueDateEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
+          </div>
+          {{end}}
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>
             <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>

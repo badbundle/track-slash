@@ -1793,15 +1793,23 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-links")
+	targetDue, err := model.ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate target: %v", err)
+	}
+	replacementDue, err := model.ParseDate("2026-06-26")
+	if err != nil {
+		t.Fatalf("ParseDate replacement: %v", err)
+	}
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui source"})
 	if err != nil {
 		t.Fatalf("CreateIssue source: %v", err)
 	}
-	target, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui target"})
+	target, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui target", DueDate: &targetDue})
 	if err != nil {
 		t.Fatalf("CreateIssue target: %v", err)
 	}
-	replacement, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui replacement"})
+	replacement, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "link ui replacement", DueDate: &replacementDue})
 	if err != nil {
 		t.Fatalf("CreateIssue replacement: %v", err)
 	}
@@ -1855,7 +1863,7 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create link code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "Blocked by") || !strings.Contains(body, "link ui target") || strings.Contains(body, `name="target_issue"`) {
+	if !strings.Contains(body, "Blocked by") || !strings.Contains(body, "link ui target") || !strings.Contains(body, "Jun 24") || strings.Contains(body, `name="target_issue"`) {
 		t.Fatalf("create link response did not return read mode: %s", body)
 	}
 	links, _, err := e.store.ListIssueLinksForIssue(e.ctx, store.ListIssueLinksForIssueParams{IssueID: issue.ID, Limit: 10})
@@ -1889,7 +1897,7 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("update link code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "Clones") || !strings.Contains(body, "link ui replacement") || strings.Contains(body, "link ui target") {
+	if !strings.Contains(body, "Clones") || !strings.Contains(body, "link ui replacement") || !strings.Contains(body, "Jun 26") || strings.Contains(body, "link ui target") {
 		t.Fatalf("update link response missing updated read mode: %s", body)
 	}
 	updated, err := e.store.GetIssueLink(e.ctx, link.ID)
@@ -2011,6 +2019,17 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	}
 	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" || children[0].Priority != model.PriorityP2 {
 		t.Fatalf("children = %+v, want one title-only P2 child", children)
+	}
+	childDue, err := model.ParseDate("2026-06-25")
+	if err != nil {
+		t.Fatalf("ParseDate child due: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, children[0].ID, store.UpdateIssueParams{DueDate: &childDue}); err != nil {
+		t.Fatalf("UpdateIssue child due date: %v", err)
+	}
+	body = e.uiGet(t, e.issuePath(parent), token)
+	if !strings.Contains(body, "new child from ui") || !strings.Contains(body, "Jun 25") {
+		t.Fatalf("parent issue panel missing sub-issue due date: %s", body)
 	}
 
 	empty := url.Values{"title": {"   "}}
@@ -2343,10 +2362,15 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-issue-links")
+	dueDate, err := model.ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
 		ProjectID:  e.projectID,
 		Title:      "linked from lists",
 		AssigneeID: &user.ID,
+		DueDate:    &dueDate,
 	})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
@@ -2362,6 +2386,76 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 				t.Fatalf("%s missing issue link %q: %s", path, want, body)
 			}
 		}
+		if !strings.Contains(body, "Jun 24") {
+			t.Fatalf("%s missing due date badge: %s", path, body)
+		}
+	}
+}
+
+func TestUIIssueDueDateEditorRoundtrip(t *testing.T) {
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-due-date")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "due ui issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	path := e.issuePath(issue) + "/due-date"
+
+	edit := e.uiGet(t, path+"/edit", token)
+	for _, want := range []string{
+		"due ui issue",
+		`method="post" action="` + path + `"`,
+		`hx-post="` + path + `"`,
+		`type="date" name="due_date" value=""`,
+		`aria-label="Save due date"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("due date edit missing %q: %s", want, edit)
+		}
+	}
+
+	form := url.Values{"due_date": {"2026-06-24"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, path, token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("set due date code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Jun 24") || !strings.Contains(body, `aria-label="Edit due date"`) {
+		t.Fatalf("set due date response missing read mode: %s", body)
+	}
+	got, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after set due date: %v", err)
+	}
+	if got.DueDate == nil || got.DueDate.String() != "2026-06-24" {
+		t.Fatalf("stored DueDate = %v", got.DueDate)
+	}
+
+	bad := url.Values{"due_date": {"tomorrow"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, path, token, strings.NewReader(bad.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Use YYYY-MM-DD.") || !strings.Contains(body, `value="tomorrow"`) {
+		t.Fatalf("bad due date response = %d %s", res.StatusCode, body)
+	}
+
+	clear := url.Values{"due_date": {""}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, path, token, strings.NewReader(clear.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("clear due date code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "None") || strings.Contains(body, "Jun 24") {
+		t.Fatalf("clear due date response missing empty state: %s", body)
+	}
+	got, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after clear due date: %v", err)
+	}
+	if got.DueDate != nil {
+		t.Fatalf("cleared DueDate = %v, want nil", got.DueDate)
 	}
 }
 
@@ -2427,6 +2521,10 @@ func TestUIRendersProjectSprintEmptyState(t *testing.T) {
 func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sprint")
+	dueDate, err := model.ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Active UI Sprint",
@@ -2440,7 +2538,7 @@ func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	if _, err := e.store.UpdateSprint(e.ctx, sp.ID, store.UpdateSprintParams{Status: &active}); err != nil {
 		t.Fatalf("UpdateSprint active: %v", err)
 	}
-	inSprint, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "issue inside active sprint"})
+	inSprint, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "issue inside active sprint", DueDate: &dueDate})
 	if err != nil {
 		t.Fatalf("CreateIssue in sprint: %v", err)
 	}
@@ -2454,6 +2552,9 @@ func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
 	if !strings.Contains(body, "issue inside active sprint") {
 		t.Fatalf("sprint body missing sprint issue: %s", body)
+	}
+	if !strings.Contains(body, "Jun 24") {
+		t.Fatalf("sprint body missing issue due date: %s", body)
 	}
 	if strings.Contains(body, "issue still in backlog") {
 		t.Fatalf("sprint body included backlog issue: %s", body)

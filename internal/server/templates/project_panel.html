@@ -191,10 +191,7 @@
 <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
   {{range .}}
   <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[7rem_auto_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
-    {{template "issue-key" .Identifier}}
-    {{template "priority-badge" .Priority}}
-    <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
-    {{template "status-badge" .Status}}
+    {{template "issue-summary-row-cells" .}}
   </a>
   {{end}}
 </div>
@@ -208,10 +205,7 @@
 <div class="border-t border-slate-100 dark:border-slate-800">
   {{range .}}
   <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[7rem_auto_1fr_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
-    {{template "issue-key" .Identifier}}
-    {{template "priority-badge" .Priority}}
-    <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
-    {{template "status-badge" .Status}}
+    {{template "issue-summary-row-cells" .}}
   </a>
   {{end}}
 </div>

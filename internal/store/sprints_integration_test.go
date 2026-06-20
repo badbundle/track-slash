@@ -1021,6 +1021,97 @@ func TestIssuePriorityRoundtrip(t *testing.T) {
 	}
 }
 
+func TestIssueDueDateRoundtrip(t *testing.T) {
+	env := newSprintsEnv(t)
+	due, err := model.ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "due issue",
+		DueDate:   &due,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if iss.DueDate == nil || iss.DueDate.String() != "2026-06-24" {
+		t.Fatalf("CreateIssue DueDate = %v", iss.DueDate)
+	}
+
+	got, err := env.store.GetIssue(env.ctx, iss.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if got.DueDate == nil || got.DueDate.String() != "2026-06-24" {
+		t.Fatalf("GetIssue DueDate = %v", got.DueDate)
+	}
+
+	listed, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{ProjectID: env.projectID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	listedDueDates := map[uuid.UUID]string{}
+	for _, item := range listed {
+		if item.DueDate != nil {
+			listedDueDates[item.ID] = item.DueDate.String()
+		}
+	}
+	if listedDueDates[iss.ID] != "2026-06-24" {
+		t.Fatalf("listed due dates = %+v", listedDueDates)
+	}
+
+	byID, err := env.store.ListIssuesByIDs(env.ctx, []uuid.UUID{iss.ID})
+	if err != nil {
+		t.Fatalf("ListIssuesByIDs: %v", err)
+	}
+	if len(byID) != 1 || byID[0].DueDate == nil || byID[0].DueDate.String() != "2026-06-24" {
+		t.Fatalf("ListIssuesByIDs = %+v", byID)
+	}
+
+	childDue, err := model.ParseDate("2026-06-25")
+	if err != nil {
+		t.Fatalf("ParseDate child: %v", err)
+	}
+	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+		ParentIssueID: iss.ID,
+		Title:         "due child",
+		DueDate:       &childDue,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue: %v", err)
+	}
+	children, _, err := env.store.ListSubIssuesForIssue(env.ctx, store.ListSubIssuesForIssueParams{
+		ParentIssueID: iss.ID,
+		Limit:         10,
+	})
+	if err != nil {
+		t.Fatalf("ListSubIssuesForIssue: %v", err)
+	}
+	if len(children) != 1 || children[0].ID != child.ID || children[0].DueDate == nil || children[0].DueDate.String() != "2026-06-25" {
+		t.Fatalf("children = %+v", children)
+	}
+
+	updatedDue, err := model.ParseDate("2026-06-26")
+	if err != nil {
+		t.Fatalf("ParseDate updated: %v", err)
+	}
+	updated, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{DueDate: &updatedDue})
+	if err != nil {
+		t.Fatalf("UpdateIssue due date: %v", err)
+	}
+	if updated.DueDate == nil || updated.DueDate.String() != "2026-06-26" {
+		t.Fatalf("updated DueDate = %v", updated.DueDate)
+	}
+	cleared, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{ClearDueDate: true})
+	if err != nil {
+		t.Fatalf("UpdateIssue clear due date: %v", err)
+	}
+	if cleared.DueDate != nil {
+		t.Fatalf("cleared DueDate = %v, want nil", cleared.DueDate)
+	}
+}
+
 func TestListIssuesStatusAndSprintCombined(t *testing.T) {
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))

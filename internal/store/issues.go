@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,6 +21,7 @@ type CreateIssueParams struct {
 	Priority    model.IssuePriority
 	AssigneeID  *uuid.UUID
 	ReporterID  *uuid.UUID
+	DueDate     *model.Date
 }
 
 type CreateSubIssueParams struct {
@@ -29,6 +31,7 @@ type CreateSubIssueParams struct {
 	Priority      model.IssuePriority
 	AssigneeID    *uuid.UUID
 	ReporterID    *uuid.UUID
+	DueDate       *model.Date
 }
 
 type issueScanner interface {
@@ -37,16 +40,34 @@ type issueScanner interface {
 
 func scanIssue(row issueScanner) (model.Issue, error) {
 	var iss model.Issue
+	var dueDate *time.Time
 	err := row.Scan(
 		&iss.ID, &iss.ProjectID, &iss.OwnerUsername, &iss.ProjectKey, &iss.Number,
 		&iss.Title, &iss.Description, &iss.Status, &iss.Priority, &iss.AssigneeID, &iss.ReporterID,
-		&iss.SprintID, &iss.ParentIssueID, &iss.CreatedAt, &iss.UpdatedAt,
+		&iss.SprintID, &iss.ParentIssueID, &dueDate, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
 		return model.Issue{}, err
 	}
+	setIssueDueDate(&iss, dueDate)
 	iss.Identifier = fmt.Sprintf("%s-%d", iss.ProjectKey, iss.Number)
 	return iss, nil
+}
+
+func setIssueDueDate(iss *model.Issue, dueDate *time.Time) {
+	if dueDate == nil {
+		iss.DueDate = nil
+		return
+	}
+	d := model.DateFromTime(*dueDate)
+	iss.DueDate = &d
+}
+
+func issueDueDateValue(d *model.Date) any {
+	if d == nil {
+		return nil
+	}
+	return d.Time()
 }
 
 func issuePriorityOrDefault(priority model.IssuePriority) model.IssuePriority {
@@ -79,14 +100,15 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		}
 
 		priority := issuePriorityOrDefault(p.Priority)
+		var dueDate *time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, due_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			RETURNING id, project_id, number, title, description, status, priority,
-			          assignee_id, reporter_id, sprint_id, parent_issue_id, created_at, updated_at
-		`, p.ProjectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID).
+			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
+		`, p.ProjectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, issueDueDateValue(p.DueDate)).
 			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.Priority,
-				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &out.CreatedAt, &out.UpdatedAt)
+				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -94,6 +116,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 			}
 			return err
 		}
+		setIssueDueDate(&out, dueDate)
 
 		_, err = tx.Exec(ctx, `
 			UPDATE projects
@@ -146,14 +169,15 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		}
 
 		priority := issuePriorityOrDefault(p.Priority)
+		var dueDate *time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, parent_issue_id)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, parent_issue_id, due_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			RETURNING id, project_id, number, title, description, status, priority,
-			          assignee_id, reporter_id, sprint_id, parent_issue_id, created_at, updated_at
-		`, projectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, p.ParentIssueID).
+			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
+		`, projectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, p.ParentIssueID, issueDueDateValue(p.DueDate)).
 			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.Priority,
-				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &out.CreatedAt, &out.UpdatedAt)
+				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -161,6 +185,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 			}
 			return err
 		}
+		setIssueDueDate(&out, dueDate)
 
 		_, err = tx.Exec(ctx, `
 			UPDATE projects
@@ -186,7 +211,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
 		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		JOIN users u ON u.id = p.owner_id
@@ -205,7 +230,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
 		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		JOIN users u ON u.id = p.owner_id
@@ -225,7 +250,7 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
 		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		JOIN users u ON u.id = p.owner_id
@@ -274,7 +299,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 	}
 	const q = `
 		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		JOIN users u ON u.id = p.owner_id
@@ -301,7 +326,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	args := []any{p.ProjectID}
 	q := `
 		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		JOIN users u ON u.id = pr.owner_id
@@ -366,7 +391,7 @@ func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams
 	args := []any{p.ProjectID}
 	q := `
 		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		JOIN users u ON u.id = pr.owner_id
@@ -430,7 +455,7 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 	args := []any{p.ParentIssueID}
 	q := `
 		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
-		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.created_at, i.updated_at
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		JOIN users u ON u.id = pr.owner_id
@@ -481,6 +506,8 @@ type UpdateIssueParams struct {
 	ClearReporter bool
 	SprintID      *uuid.UUID
 	ClearSprint   bool
+	DueDate       *model.Date
+	ClearDueDate  bool
 }
 
 func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssueParams) (model.Issue, error) {
@@ -505,6 +532,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.Priority != nil {
 		sets = append(sets, fmt.Sprintf("priority = $%d", i))
 		args = append(args, string(*p.Priority))
+		i++
+	}
+	if p.ClearDueDate {
+		sets = append(sets, "due_date = NULL")
+	} else if p.DueDate != nil {
+		sets = append(sets, fmt.Sprintf("due_date = $%d", i))
+		args = append(args, issueDueDateValue(p.DueDate))
 		i++
 	}
 	if p.ClearAssignee {
