@@ -44,6 +44,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issuePanel":                uiIssuePanelPath,
 	"issuePriority":             uiIssuePriorityPath,
 	"issuePriorityEdit":         uiIssuePriorityEditPath,
+	"issueDueDate":              uiIssueDueDatePath,
+	"issueDueDateEdit":          uiIssueDueDateEditPath,
 	"issueReporter":             uiIssueReporterPath,
 	"issueReporterEdit":         uiIssueReporterEditPath,
 	"issueRestore":              uiIssueRestorePath,
@@ -66,6 +68,12 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectPanel":              uiProjectPanelPath,
 	"projectView":               uiProjectViewPath,
 	"projectIcon":               uiProjectIcon,
+	"dueBadgeClass":             uiDueBadgeClass,
+	"dueBadgeIcon":              uiDueBadgeIcon,
+	"dueBadgeLabel":             uiDueBadgeLabel,
+	"dueDateFull":               uiDueDateFull,
+	"dueDateShort":              uiDueDateShort,
+	"dueDateValue":              uiDueDateValue,
 	"sprintDate":                uiSprintDate,
 	"statusClass":               uiStatusClass,
 	"statusLabel":               uiStatusLabel,
@@ -234,6 +242,7 @@ type uiIssuePanelData struct {
 	EditDescription  bool
 	EditStatus       bool
 	EditPriority     bool
+	EditDueDate      bool
 	EditAssignee     bool
 	EditReporter     bool
 	EditSprint       bool
@@ -241,9 +250,11 @@ type uiIssuePanelData struct {
 	AssigneeInput    string
 	ReporterInput    string
 	SprintInput      string
+	DueDateInput     string
 	AssigneeError    string
 	ReporterError    string
 	SprintError      string
+	DueDateError     string
 	MemberOptions    []model.User
 	SprintOptions    []uiIssueSprintOption
 	SubIssues        []model.Issue
@@ -322,6 +333,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/status", s.uiUpdateIssueStatus)
 		r.Get("/{owner}/issues/{issueRef}/priority/edit", s.uiEditIssuePriority)
 		r.Post("/{owner}/issues/{issueRef}/priority", s.uiUpdateIssuePriority)
+		r.Get("/{owner}/issues/{issueRef}/due-date/edit", s.uiEditIssueDueDate)
+		r.Post("/{owner}/issues/{issueRef}/due-date", s.uiUpdateIssueDueDate)
 		r.Get("/{owner}/issues/{issueRef}/assignee/edit", s.uiEditIssueAssignee)
 		r.Post("/{owner}/issues/{issueRef}/assignee", s.uiUpdateIssueAssignee)
 		r.Get("/{owner}/issues/{issueRef}/reporter/edit", s.uiEditIssueReporter)
@@ -1048,6 +1061,59 @@ func (s *Server) uiUpdateIssuePriority(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiEditIssueDueDate(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditDueDate = true
+	panel.DueDateInput = uiDueDateValue(panel.Issue.DueDate)
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueDueDate(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := strings.TrimSpace(r.Form.Get("due_date"))
+	params := store.UpdateIssueParams{}
+	if input == "" {
+		params.ClearDueDate = true
+	} else {
+		dueDate, err := model.ParseDate(input)
+		if err != nil {
+			s.renderUIIssuePanelWithDueDateError(w, r, issue.ID, input, "Use YYYY-MM-DD.")
+			return
+		}
+		params.DueDate = &dueDate
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, params)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiEditIssueAssignee(w http.ResponseWriter, r *http.Request) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -1534,6 +1600,18 @@ func (s *Server) renderUIIssuePanelWithSprintError(w http.ResponseWriter, r *htt
 		writeUIStoreError(w, err)
 		return
 	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithDueDateError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditDueDate = true
+	panel.DueDateInput = input
+	panel.DueDateError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2560,6 +2638,14 @@ func uiIssuePriorityEditPath(issue any) string {
 	return uiIssuePriorityPath(issue) + "/edit"
 }
 
+func uiIssueDueDatePath(issue any) string {
+	return uiIssuePath(issue) + "/due-date"
+}
+
+func uiIssueDueDateEditPath(issue any) string {
+	return uiIssueDueDatePath(issue) + "/edit"
+}
+
 func uiIssueAssigneePath(issue any) string {
 	return uiIssuePath(issue) + "/assignee"
 }
@@ -2735,7 +2821,7 @@ func safeUIIssuePath(path string) bool {
 		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "delete" || parts[3] == "restore"
 	}
 	if len(parts) == 5 {
-		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
+		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new")
 	}
@@ -2802,6 +2888,80 @@ func uiProjectIcon(name, key string) string {
 
 func uiSprintDate(t time.Time) string {
 	return t.Format("Jan 2")
+}
+
+func uiDueDateValue(d *model.Date) string {
+	if d == nil {
+		return ""
+	}
+	return d.String()
+}
+
+func uiDueDateShort(d *model.Date) string {
+	if d == nil {
+		return ""
+	}
+	return d.Time().Format("Jan 2")
+}
+
+func uiDueDateFull(d *model.Date) string {
+	if d == nil {
+		return ""
+	}
+	return d.Time().Format("Jan 2, 2006")
+}
+
+func uiDueBadgeClass(issue model.Issue) string {
+	if uiIssueOverdue(issue, time.Now()) {
+		return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200"
+	}
+	if uiIssueDueSoon(issue, time.Now()) {
+		return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+	}
+	return "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+}
+
+func uiDueBadgeIcon(issue model.Issue) string {
+	if uiIssueDueSoon(issue, time.Now()) {
+		return "clock"
+	}
+	return "calendar"
+}
+
+func uiDueBadgeLabel(issue model.Issue) string {
+	if issue.DueDate == nil {
+		return ""
+	}
+	if days, ok := uiIssueDueDays(issue, time.Now()); ok && days >= 0 && days < 7 {
+		if days == 0 {
+			return "Today"
+		}
+		if days == 1 {
+			return "1 day"
+		}
+		return fmt.Sprintf("%d days", days)
+	}
+	return uiDueDateShort(issue.DueDate)
+}
+
+func uiIssueOverdue(issue model.Issue, now time.Time) bool {
+	days, ok := uiIssueDueDays(issue, now)
+	return ok && days < 0
+}
+
+func uiIssueDueSoon(issue model.Issue, now time.Time) bool {
+	days, ok := uiIssueDueDays(issue, now)
+	return ok && days >= 0 && days < 7
+}
+
+func uiIssueDueDays(issue model.Issue, now time.Time) (int, bool) {
+	if issue.DueDate == nil || issue.Status == model.StatusDone {
+		return 0, false
+	}
+	current := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	due := issue.DueDate.Time()
+	due = time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, current.Location())
+	return int(due.Sub(current).Hours() / 24), true
 }
 
 func uiStatusLabel(s model.Status) string {

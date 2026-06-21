@@ -1196,6 +1196,81 @@ func TestHTTPCreateAndUpdateIssuePriority(t *testing.T) {
 	}
 }
 
+func TestHTTPCreateAndUpdateIssueDueDate(t *testing.T) {
+	e := newHTTPEnv(t)
+	code, body := e.do(t, http.MethodPost,
+		e.projectIssuesPath(),
+		map[string]any{"title": "due api", "due_date": "2026-06-24"})
+	if code != http.StatusCreated {
+		t.Fatalf("create due date code = %d body = %s", code, body)
+	}
+	iss := decode[model.Issue](t, body)
+	if iss.DueDate == nil || iss.DueDate.String() != "2026-06-24" {
+		t.Fatalf("create DueDate = %v", iss.DueDate)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.issuePath(iss), nil)
+	if code != http.StatusOK {
+		t.Fatalf("get due date code = %d body = %s", code, body)
+	}
+	got := decode[model.Issue](t, body)
+	if got.DueDate == nil || got.DueDate.String() != "2026-06-24" {
+		t.Fatalf("get DueDate = %v", got.DueDate)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.projectIssuesPath(), nil)
+	if code != http.StatusOK {
+		t.Fatalf("list due date code = %d body = %s", code, body)
+	}
+	listed := decodePage[model.Issue](t, body).Items
+	if len(listed) != 1 || listed[0].DueDate == nil || listed[0].DueDate.String() != "2026-06-24" {
+		t.Fatalf("listed = %+v", listed)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"due_date": "2026-06-26"})
+	if code != http.StatusOK {
+		t.Fatalf("patch due date code = %d body = %s", code, body)
+	}
+	updated := decode[model.Issue](t, body)
+	if updated.DueDate == nil || updated.DueDate.String() != "2026-06-26" {
+		t.Fatalf("updated DueDate = %v", updated.DueDate)
+	}
+
+	code, body = e.do(t, http.MethodPost, e.issueSubIssuesPath(iss),
+		map[string]any{"title": "due sub", "due_date": "2026-06-27"})
+	if code != http.StatusCreated {
+		t.Fatalf("create sub due date code = %d body = %s", code, body)
+	}
+	child := decode[model.Issue](t, body)
+	if child.DueDate == nil || child.DueDate.String() != "2026-06-27" {
+		t.Fatalf("child DueDate = %v", child.DueDate)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"clear_due_date": true})
+	if code != http.StatusOK {
+		t.Fatalf("clear due date code = %d body = %s", code, body)
+	}
+	cleared := decode[model.Issue](t, body)
+	if cleared.DueDate != nil {
+		t.Fatalf("cleared DueDate = %v, want nil", cleared.DueDate)
+	}
+
+	code, _ = e.do(t, http.MethodPost,
+		e.projectIssuesPath(),
+		map[string]any{"title": "bad due", "due_date": "2026/06/24"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad create due date code = %d, want %d", code, http.StatusBadRequest)
+	}
+
+	code, _ = e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"due_date": "tomorrow"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad update due date code = %d, want %d", code, http.StatusBadRequest)
+	}
+}
+
 func TestHTTPCreateIssueBadProject(t *testing.T) {
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, "/bad!/projects/TRACK/issues",

@@ -1,11 +1,53 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+const DateLayout = "2006-01-02"
+
+type Date time.Time
+
+func ParseDate(raw string) (Date, error) {
+	t, err := time.Parse(DateLayout, raw)
+	if err != nil {
+		return Date{}, err
+	}
+	return DateFromTime(t), nil
+}
+
+func DateFromTime(t time.Time) Date {
+	return Date(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC))
+}
+
+func (d Date) Time() time.Time {
+	return time.Time(d)
+}
+
+func (d Date) String() string {
+	return d.Time().Format(DateLayout)
+}
+
+func (d Date) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+func (d *Date) UnmarshalJSON(b []byte) error {
+	var raw string
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	parsed, err := ParseDate(raw)
+	if err != nil {
+		return fmt.Errorf("date must be YYYY-MM-DD")
+	}
+	*d = parsed
+	return nil
+}
 
 type Status string
 
@@ -145,6 +187,7 @@ type Issue struct {
 	ReporterID    *uuid.UUID    `json:"reporter_id,omitempty"`
 	SprintID      *uuid.UUID    `json:"sprint_id,omitempty"`
 	ParentIssueID *uuid.UUID    `json:"parent_issue_id,omitempty"`
+	DueDate       *Date         `json:"due_date"`
 	CreatedAt     time.Time     `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`
 }

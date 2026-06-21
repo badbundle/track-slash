@@ -62,6 +62,25 @@
 <span aria-label="Priority {{priorityLabel .}}" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] font-bold leading-none text-white {{priorityClass .}}">{{priorityLabel .}}</span>
 {{end}}
 
+{{define "issue-due-badge"}}
+{{if .DueDate}}
+<span aria-label="Due {{dueDateFull .DueDate}}" class="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 {{dueBadgeClass .}}">
+  <i data-lucide="{{dueBadgeIcon .}}" class="h-3 w-3" aria-hidden="true"></i>
+  {{dueBadgeLabel .}}
+</span>
+{{end}}
+{{end}}
+
+{{define "issue-summary-row-cells"}}
+{{template "issue-key" .Identifier}}
+{{template "priority-badge" .Priority}}
+<span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
+<span class="flex shrink-0 items-center gap-2">
+  {{template "issue-due-badge" .}}
+  {{template "status-badge" .Status}}
+</span>
+{{end}}
+
 {{define "issue-delete-notice"}}
 {{if .}}
 <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100">

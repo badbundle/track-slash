@@ -344,11 +344,15 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	commentID := uuid.MustParse("d0c74b63-c75c-42b0-b899-6baf6948e3fd")
 	linkID := uuid.MustParse("48c98f2e-bad8-4054-89d7-5a45a68af54f")
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	dueDate, err := model.ParseDate("2099-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
 	assignee := model.User{ID: userID, Name: "Ada Lovelace", Email: "ada@example.com"}
 	reporter := model.User{ID: userID, Name: "Ada Lovelace", Email: "ada@example.com"}
 	sprint := model.Sprint{ID: uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"), ProjectID: projectID, Name: "Planned One", Status: model.SprintStatusPlanned}
 	var buf bytes.Buffer
-	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -361,6 +365,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			AssigneeID:    &userID,
 			ReporterID:    &userID,
 			SprintID:      &sprint.ID,
+			DueDate:       &dueDate,
 			CreatedAt:     when,
 			UpdatedAt:     when,
 		},
@@ -397,6 +402,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Track Slash",
 		"Ada Lovelace",
 		"Planned One",
+		"Due date",
+		"Jun 24",
+		`aria-label="Due Jun 24, 2099"`,
+		`data-lucide="calendar"`,
 		"Linked issues",
 		"Blocks",
 		"TRACK-8",
@@ -428,6 +437,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-7/status/edit"`,
 		`aria-label="Edit assignee"`,
 		`aria-label="Edit reporter"`,
+		`aria-label="Edit due date"`,
+		`hx-get="/bradley/issues/TRACK-7/due-date/edit"`,
 		`aria-label="Edit sprint"`,
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
 		`<span class="min-w-0 text-slate-900 dark:text-slate-100">Ada Lovelace</span>`,
@@ -526,8 +537,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
 		}
 	}
-	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 3 {
-		t.Fatalf("assignee, reporter, and sprint rows should align edit buttons with values, got %d rows: %s", got, body)
+	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 4 {
+		t.Fatalf("due date, assignee, reporter, and sprint rows should align edit buttons with values, got %d rows: %s", got, body)
 	}
 	if strings.Contains(detailsBlock, `class="flex items-start justify-between gap-3"`) {
 		t.Fatalf("detail edit buttons should not align with row titles: %s", body)
@@ -636,6 +647,61 @@ func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted issue panel leaked full issue UI %q: %s", notWant, body)
 		}
+	}
+}
+
+func TestUIIssuePanelRendersDueDateEditor(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	dueDate, err := model.ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	var buf bytes.Buffer
+	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Due date editor",
+			Status:        model.StatusTodo,
+			DueDate:       &dueDate,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:      model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditDueDate:  true,
+		DueDateInput: "2026-06-24",
+		DueDateError: "Use YYYY-MM-DD.",
+		BackHref:     "/bradley/projects/TRACK/backlog",
+		BackHXGet:    "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:    "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/due-date"`,
+		`hx-post="/bradley/issues/TRACK-7/due-date"`,
+		`type="date" name="due_date" value="2026-06-24"`,
+		`aria-label="Save due date"`,
+		`aria-label="Cancel editing due date"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		"Use YYYY-MM-DD.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("due date editor missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `hx-get="/bradley/issues/TRACK-7/due-date/edit"`) {
+		t.Fatalf("due date editor rendered readonly edit button: %s", body)
 	}
 }
 
@@ -1706,6 +1772,10 @@ func TestUIProjectPanelRendersInlineBacklogCounts(t *testing.T) {
 func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 	t.Parallel()
 
+	dueDate, err := model.ParseDate("2099-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
 	issue := model.Issue{
 		ID:         uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b"),
 		ProjectID:  uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"),
@@ -1713,6 +1783,7 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		Title:      "Row issue",
 		Status:     model.StatusDone,
 		Priority:   model.PriorityP0,
+		DueDate:    &dueDate,
 	}
 	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
 
@@ -1740,6 +1811,9 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			"bg-emerald-50/45 hover:bg-emerald-50",
 			`aria-label="Priority P0"`,
 			"bg-red-600",
+			`aria-label="Due Jun 24, 2099"`,
+			`data-lucide="calendar"`,
+			"Jun 24",
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s missing markup %q: %s", tt.name, want, body)
@@ -1755,6 +1829,121 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		if strings.Contains(body, "rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600") {
 			t.Fatalf("%s still renders neutral row status: %s", tt.name, body)
 		}
+	}
+}
+
+func TestUIDueBadgeClassOverdueOnlyForOpenPastIssues(t *testing.T) {
+	t.Parallel()
+
+	past, err := model.ParseDate("2026-06-19")
+	if err != nil {
+		t.Fatalf("ParseDate past: %v", err)
+	}
+	future, err := model.ParseDate("2026-06-21")
+	if err != nil {
+		t.Fatalf("ParseDate future: %v", err)
+	}
+	now := time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC)
+
+	if !uiIssueOverdue(model.Issue{Status: model.StatusTodo, DueDate: &past}, now) {
+		t.Fatal("open past issue should be overdue")
+	}
+	if uiIssueOverdue(model.Issue{Status: model.StatusDone, DueDate: &past}, now) {
+		t.Fatal("done past issue should not be overdue")
+	}
+	if uiIssueOverdue(model.Issue{Status: model.StatusTodo, DueDate: &future}, now) {
+		t.Fatal("future issue should not be overdue")
+	}
+	if uiIssueOverdue(model.Issue{Status: model.StatusTodo}, now) {
+		t.Fatal("issue without due date should not be overdue")
+	}
+
+	today, err := model.ParseDate("2026-06-20")
+	if err != nil {
+		t.Fatalf("ParseDate today: %v", err)
+	}
+	sixDays, err := model.ParseDate("2026-06-26")
+	if err != nil {
+		t.Fatalf("ParseDate six days: %v", err)
+	}
+	sevenDays, err := model.ParseDate("2026-06-27")
+	if err != nil {
+		t.Fatalf("ParseDate seven days: %v", err)
+	}
+	for _, issue := range []model.Issue{
+		{Status: model.StatusTodo, DueDate: &today},
+		{Status: model.StatusTodo, DueDate: &sixDays},
+	} {
+		if !uiIssueDueSoon(issue, now) {
+			t.Fatalf("issue should be due soon: %+v", issue)
+		}
+	}
+	if uiIssueDueSoon(model.Issue{Status: model.StatusTodo, DueDate: &sevenDays}, now) {
+		t.Fatal("seven days out should not be due soon")
+	}
+	if days, ok := uiIssueDueDays(model.Issue{Status: model.StatusTodo, DueDate: &sixDays}, now); !ok || days != 6 {
+		t.Fatalf("days = %d, ok = %v, want 6 true", days, ok)
+	}
+	if days, ok := uiIssueDueDays(model.Issue{Status: model.StatusDone, DueDate: &today}, now); ok || days != 0 {
+		t.Fatalf("done days = %d, ok = %v, want 0 false", days, ok)
+	}
+}
+
+func TestUIDueDateFormatHelpers(t *testing.T) {
+	t.Parallel()
+
+	if uiDueDateValue(nil) != "" || uiDueDateShort(nil) != "" || uiDueDateFull(nil) != "" {
+		t.Fatal("nil due date helpers should return empty strings")
+	}
+	dueDate, err := model.ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	if got := uiDueDateValue(&dueDate); got != "2026-06-24" {
+		t.Fatalf("value = %q", got)
+	}
+	if got := uiDueDateShort(&dueDate); got != "Jun 24" {
+		t.Fatalf("short = %q", got)
+	}
+	if got := uiDueDateFull(&dueDate); got != "Jun 24, 2026" {
+		t.Fatalf("full = %q", got)
+	}
+	overdueDate, err := model.ParseDate("2020-01-01")
+	if err != nil {
+		t.Fatalf("ParseDate overdue: %v", err)
+	}
+	if got := uiDueBadgeClass(model.Issue{Status: model.StatusTodo, DueDate: &overdueDate}); !strings.Contains(got, "border-rose-200") {
+		t.Fatalf("overdue class = %q", got)
+	}
+	today, err := model.ParseDate(time.Now().Format(model.DateLayout))
+	if err != nil {
+		t.Fatalf("ParseDate today: %v", err)
+	}
+	if got := uiDueBadgeClass(model.Issue{Status: model.StatusTodo, DueDate: &today}); !strings.Contains(got, "border-amber-200") {
+		t.Fatalf("today class = %q", got)
+	}
+	if got := uiDueBadgeIcon(model.Issue{Status: model.StatusTodo, DueDate: &today}); got != "clock" {
+		t.Fatalf("today icon = %q", got)
+	}
+	if got := uiDueBadgeLabel(model.Issue{Status: model.StatusTodo, DueDate: &today}); got != "Today" {
+		t.Fatalf("today label = %q", got)
+	}
+	tomorrow := model.DateFromTime(time.Now().AddDate(0, 0, 1))
+	if got := uiDueBadgeLabel(model.Issue{Status: model.StatusTodo, DueDate: &tomorrow}); got != "1 day" {
+		t.Fatalf("tomorrow label = %q", got)
+	}
+	sixDays := model.DateFromTime(time.Now().AddDate(0, 0, 6))
+	if got := uiDueBadgeLabel(model.Issue{Status: model.StatusTodo, DueDate: &sixDays}); got != "6 days" {
+		t.Fatalf("six-day label = %q", got)
+	}
+	if got := uiDueBadgeClass(model.Issue{}); !strings.Contains(got, "border-slate-200") {
+		t.Fatalf("neutral class = %q", got)
+	}
+	if got := uiDueBadgeIcon(model.Issue{}); got != "calendar" {
+		t.Fatalf("neutral icon = %q", got)
+	}
+	if got := uiDueBadgeLabel(model.Issue{}); got != "" {
+		t.Fatalf("nil label = %q", got)
 	}
 }
 

@@ -1,6 +1,9 @@
 package model
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestStatusValid(t *testing.T) {
 	cases := []struct {
@@ -21,6 +24,33 @@ func TestStatusValid(t *testing.T) {
 				t.Fatalf("Status(%q).Valid() = %v, want %v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+func TestDateJSONRoundTrip(t *testing.T) {
+	d, err := ParseDate("2026-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate: %v", err)
+	}
+	b, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if string(b) != `"2026-06-24"` {
+		t.Fatalf("json = %s", b)
+	}
+	var got Date
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got.String() != "2026-06-24" {
+		t.Fatalf("got = %s", got.String())
+	}
+	if err := json.Unmarshal([]byte(`"2026/06/24"`), &got); err == nil {
+		t.Fatal("Unmarshal invalid date succeeded")
+	}
+	if err := json.Unmarshal([]byte(`123`), &got); err == nil {
+		t.Fatal("Unmarshal non-string date succeeded")
 	}
 }
 
