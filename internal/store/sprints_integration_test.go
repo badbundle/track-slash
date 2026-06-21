@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,9 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/bradleymackey/track-slash/internal/testutil"
@@ -31,30 +28,11 @@ type sprintsTestEnv struct {
 
 func newSprintsEnv(t *testing.T) *sprintsTestEnv {
 	t.Helper()
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	db := testutil.NewMigratedDatabase(t)
+	pool := db.Pool
 
 	s := store.New(pool)
 	owner, err := s.CreateOrUpdateAdminUser(ctx, "owner-"+uniqueProjectKey(t)+"@example.com", "Owner")
@@ -137,6 +115,7 @@ func date(y int, m time.Month, d int) time.Time {
 }
 
 func TestCreateAndGetSprint(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S1", date(2026, 6, 1), date(2026, 6, 14))
 
@@ -160,6 +139,7 @@ func TestCreateAndGetSprint(t *testing.T) {
 }
 
 func TestCreateSprintBadDateRange(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	_, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: env.projectID,
@@ -173,6 +153,7 @@ func TestCreateSprintBadDateRange(t *testing.T) {
 }
 
 func TestListSprintsOrderingAndStatusFilter(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	c := mustCreateSprint(t, env, "C", date(2026, 7, 1), date(2026, 7, 14))
 	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
@@ -213,6 +194,7 @@ func TestListSprintsOrderingAndStatusFilter(t *testing.T) {
 }
 
 func TestCreateSprintAppendsPlannedOrder(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
 	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
@@ -227,6 +209,7 @@ func TestCreateSprintAppendsPlannedOrder(t *testing.T) {
 }
 
 func TestReorderPlannedSprints(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
 	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
@@ -296,6 +279,7 @@ func TestReorderPlannedSprints(t *testing.T) {
 }
 
 func TestReorderPlannedSprintsRejectsInvalidSets(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
 	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
@@ -341,6 +325,7 @@ func TestReorderPlannedSprintsRejectsInvalidSets(t *testing.T) {
 }
 
 func TestReorderPlannedSprintsEmptyAndNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	emptyProject, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "empty", "")
 	if err != nil {
@@ -359,6 +344,7 @@ func TestReorderPlannedSprintsEmptyAndNotFound(t *testing.T) {
 }
 
 func TestUpdateSprintActivationUnique(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	a := mustCreateSprint(t, env, "A", date(2026, 6, 1), date(2026, 6, 14))
 	b := mustCreateSprint(t, env, "B", date(2026, 6, 15), date(2026, 6, 30))
@@ -389,6 +375,7 @@ func TestUpdateSprintActivationUnique(t *testing.T) {
 }
 
 func TestUpdateSprintRejectsCompletedTransition(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -401,6 +388,7 @@ func TestUpdateSprintRejectsCompletedTransition(t *testing.T) {
 }
 
 func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	active := mustCreateSprint(t, env, "active", date(2026, 6, 1), date(2026, 6, 14))
 	next := mustCreateSprint(t, env, "next", date(2026, 6, 15), date(2026, 6, 30))
@@ -466,6 +454,7 @@ func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 }
 
 func TestCompleteSprintFallsBackToBacklog(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "only", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -486,6 +475,7 @@ func TestCompleteSprintFallsBackToBacklog(t *testing.T) {
 }
 
 func TestCompleteSprintRejectsNonActive(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	planned := mustCreateSprint(t, env, "planned", date(2026, 6, 1), date(2026, 6, 14))
 	if _, err := env.store.CompleteSprint(env.ctx, planned.ID); !errors.Is(err, store.ErrConflict) {
@@ -504,6 +494,7 @@ func TestCompleteSprintRejectsNonActive(t *testing.T) {
 }
 
 func TestCompleteSprintConcurrent(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "race", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -537,6 +528,7 @@ func TestCompleteSprintConcurrent(t *testing.T) {
 }
 
 func TestUpdateIssueSetSprintCrossProjectRejected(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 
 	otherProj, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "other-cross", "")
@@ -559,6 +551,7 @@ func TestUpdateIssueSetSprintCrossProjectRejected(t *testing.T) {
 }
 
 func TestGetSprintNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	_, err := env.store.GetSprint(env.ctx, uuid.New())
 	if !errors.Is(err, store.ErrNotFound) {
@@ -567,6 +560,7 @@ func TestGetSprintNotFound(t *testing.T) {
 }
 
 func TestCreateSprintProjectNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	_, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: uuid.New(),
@@ -580,6 +574,7 @@ func TestCreateSprintProjectNotFound(t *testing.T) {
 }
 
 func TestUpdateSprintNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	name := "nope"
 	_, err := env.store.UpdateSprint(env.ctx, uuid.New(), store.UpdateSprintParams{Name: &name})
@@ -589,6 +584,7 @@ func TestUpdateSprintNotFound(t *testing.T) {
 }
 
 func TestUpdateSprintNoFieldsReturnsCurrent(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "noop", date(2026, 6, 1), date(2026, 6, 14))
 	got, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{})
@@ -601,6 +597,7 @@ func TestUpdateSprintNoFieldsReturnsCurrent(t *testing.T) {
 }
 
 func TestUpdateSprintRejectsActiveToPlanned(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -612,6 +609,7 @@ func TestUpdateSprintRejectsActiveToPlanned(t *testing.T) {
 }
 
 func TestUpdateSprintRejectsAfterCompleted(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -628,6 +626,7 @@ func TestUpdateSprintRejectsAfterCompleted(t *testing.T) {
 }
 
 func TestUpdateSprintCompletedAllowsRenameOnly(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "old", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -663,6 +662,7 @@ func TestUpdateSprintCompletedAllowsRenameOnly(t *testing.T) {
 }
 
 func TestUpdateSprintNameGoalDates(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "old", date(2026, 6, 1), date(2026, 6, 14))
 
@@ -688,6 +688,7 @@ func TestUpdateSprintNameGoalDates(t *testing.T) {
 }
 
 func TestUpdateSprintDateCheckViolation(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	newEnd := date(2026, 5, 1)
@@ -698,6 +699,7 @@ func TestUpdateSprintDateCheckViolation(t *testing.T) {
 }
 
 func TestCompleteSprintNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	_, err := env.store.CompleteSprint(env.ctx, uuid.New())
 	if !errors.Is(err, store.ErrNotFound) {
@@ -706,6 +708,7 @@ func TestCompleteSprintNotFound(t *testing.T) {
 }
 
 func TestUpdateSprintStatusNoOp(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	st := model.SprintStatusPlanned
@@ -719,6 +722,7 @@ func TestUpdateSprintStatusNoOp(t *testing.T) {
 }
 
 func TestListSprintsEmptyProject(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	out, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID, Limit: 100})
 	if err != nil {
@@ -733,6 +737,7 @@ func TestListSprintsEmptyProject(t *testing.T) {
 }
 
 func TestUpdateIssueClearAssignee(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	email := fmt.Sprintf("u%d@test.local", time.Now().UnixNano())
 	user, err := env.store.CreateUser(env.ctx, email, "A")
@@ -757,6 +762,7 @@ func TestUpdateIssueClearAssignee(t *testing.T) {
 }
 
 func TestUpdateIssuePeopleRequireProjectMembers(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	member, err := env.store.CreateUser(env.ctx, "issue-member-"+uniqueProjectKey(t)+"@example.com", "Issue Member")
 	if err != nil {
@@ -811,6 +817,7 @@ func TestUpdateIssuePeopleRequireProjectMembers(t *testing.T) {
 }
 
 func TestUpdateIssueClearSprint(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	iss := mustCreateIssue(t, env, "T")
@@ -826,6 +833,7 @@ func TestUpdateIssueClearSprint(t *testing.T) {
 }
 
 func TestUpdateIssueDoneRejectsSprintEdit(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	current := mustCreateSprint(t, env, "current", date(2026, 6, 1), date(2026, 6, 14))
 	next := mustCreateSprint(t, env, "next", date(2026, 6, 15), date(2026, 6, 30))
@@ -865,6 +873,7 @@ func TestUpdateIssueDoneRejectsSprintEdit(t *testing.T) {
 }
 
 func TestUpdateIssueEmptyParamsReturnsCurrent(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "unchanged")
 	got, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{})
@@ -877,6 +886,7 @@ func TestUpdateIssueEmptyParamsReturnsCurrent(t *testing.T) {
 }
 
 func TestUpdateIssueNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	title := "new"
 	_, err := env.store.UpdateIssue(env.ctx, uuid.New(), store.UpdateIssueParams{Title: &title})
@@ -886,6 +896,7 @@ func TestUpdateIssueNotFound(t *testing.T) {
 }
 
 func TestUpdateIssueSprintNotFound(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "T")
 	bogus := uuid.New()
@@ -896,6 +907,7 @@ func TestUpdateIssueSprintNotFound(t *testing.T) {
 }
 
 func TestUpdateIssueCompletedSprintRejected(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "done sprint", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -910,6 +922,7 @@ func TestUpdateIssueCompletedSprintRejected(t *testing.T) {
 }
 
 func TestListIssuesByIDsRoundtrip(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	i1 := mustCreateIssue(t, env, "one")
 	i2 := mustCreateIssue(t, env, "two")
@@ -939,6 +952,7 @@ func TestListIssuesByIDsRoundtrip(t *testing.T) {
 }
 
 func TestIssuePriorityRoundtrip(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	defaultIssue := mustCreateIssue(t, env, "default priority")
 	if defaultIssue.Priority != model.PriorityP2 {
@@ -1022,6 +1036,7 @@ func TestIssuePriorityRoundtrip(t *testing.T) {
 }
 
 func TestIssueDueDateRoundtrip(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	due, err := model.ParseDate("2026-06-24")
 	if err != nil {
@@ -1113,6 +1128,7 @@ func TestIssueDueDateRoundtrip(t *testing.T) {
 }
 
 func TestListIssuesStatusAndSprintCombined(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 
@@ -1154,6 +1170,7 @@ func TestListIssuesStatusAndSprintCombined(t *testing.T) {
 }
 
 func TestListIssuesBacklogFilter(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 	mustActivate(t, env, sp.ID)
@@ -1184,6 +1201,7 @@ func TestListIssuesBacklogFilter(t *testing.T) {
 }
 
 func TestListIssuesAssigneeFilter(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	alice := mustCreateUser(t, env, "alice-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
 	bob := mustCreateUser(t, env, "bob-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
@@ -1249,6 +1267,7 @@ func TestListIssuesAssigneeFilter(t *testing.T) {
 }
 
 func TestListProjectAssigneesIncludesMembersAndAssignedUsers(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	member, err := env.store.CreateUserProfile(env.ctx, "member-"+strings.ToLower(uniqueProjectKey(t)), "member@example.com", "Member User")
 	if err != nil {

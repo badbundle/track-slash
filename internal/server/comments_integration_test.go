@@ -31,6 +31,7 @@ func mustHTTPIssue(t *testing.T, e *httpEnv) model.Issue {
 }
 
 func TestHTTPCommentsCRUDAndPagination(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
 	author := mustHTTPUser(t, e)
@@ -101,6 +102,7 @@ func TestHTTPCommentsCRUDAndPagination(t *testing.T) {
 }
 
 func TestHTTPCommentValidationAndNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
 	author := mustHTTPUser(t, e)

@@ -13,6 +13,7 @@ import (
 )
 
 func TestAuthTokenLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateOrUpdateAdminUser(env.ctx, "admin-"+uniqueProjectKey(t)+"@example.com", "Admin")
 	if err != nil {
@@ -66,6 +67,7 @@ func TestAuthTokenLifecycle(t *testing.T) {
 }
 
 func TestAuthTokenExpiryAndKind(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateUser(env.ctx, "user-"+uniqueProjectKey(t)+"@example.com", "User")
 	if err != nil {
@@ -92,6 +94,7 @@ func TestAuthTokenExpiryAndKind(t *testing.T) {
 }
 
 func TestAccountPasswordLifecycle(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	password := "correct-horse-battery"
 	u, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
@@ -150,6 +153,7 @@ func TestAccountPasswordLifecycle(t *testing.T) {
 }
 
 func TestAccountValidationAndLegacyTokenOnlyUser(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	for _, tc := range []struct {
 		name     string
@@ -186,6 +190,7 @@ func TestAccountValidationAndLegacyTokenOnlyUser(t *testing.T) {
 }
 
 func TestRevokeAuthTokenForUser(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateUser(env.ctx, "self-revoke-"+uuid.NewString()+"@example.com", "Self")
 	if err != nil {
@@ -215,6 +220,7 @@ func TestRevokeAuthTokenForUser(t *testing.T) {
 }
 
 func TestUserSettingsProfileAndPassword(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	oldPassword := "correct-horse-battery"
 	newPassword := "new-correct-horse"
@@ -272,6 +278,7 @@ func TestUserSettingsProfileAndPassword(t *testing.T) {
 }
 
 func TestProjectMembershipAndVisibleProjects(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateUser(env.ctx, "member-"+uniqueProjectKey(t)+"@example.com", "Member")
 	if err != nil {
@@ -329,6 +336,7 @@ func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 }
 
 func TestSearchProjectMembers(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	ada, err := env.store.CreateUser(env.ctx, "ada-"+uniqueProjectKey(t)+"@example.com", "Ada Lovelace")
 	if err != nil {
@@ -426,6 +434,7 @@ func TestSearchProjectMembers(t *testing.T) {
 }
 
 func TestCreateProjectForUserGrantsAccess(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	u, err := env.store.CreateUser(env.ctx, "creator-"+uniqueProjectKey(t)+"@example.com", "Creator")
 	if err != nil {
@@ -480,6 +489,7 @@ func TestCreateProjectForUserGrantsAccess(t *testing.T) {
 }
 
 func TestProjectOwnershipLookupHelpers(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "owned")
 	sp := mustCreateSprint(t, env, "owned", date(2026, 1, 1), date(2026, 1, 5))

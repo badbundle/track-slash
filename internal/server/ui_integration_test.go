@@ -16,6 +16,7 @@ import (
 )
 
 func TestUIRedirectsUnauthenticatedApp(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	res := e.uiDoNoRedirect(t, http.MethodGet, "/", "", nil)
 	defer res.Body.Close()
@@ -29,6 +30,7 @@ func TestUIRedirectsUnauthenticatedApp(t *testing.T) {
 }
 
 func TestUILoginRejectsBadCredentials(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	form := url.Values{"username": {"not-a-user"}, "password": {"not-a-password"}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
@@ -47,6 +49,7 @@ func TestUILoginRejectsBadCredentials(t *testing.T) {
 }
 
 func TestUILoginSetsCookie(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	username := "uilogin" + strings.ToLower(uniqueProjectKey(t))
 	password := "correct-horse-battery"
@@ -77,6 +80,7 @@ func TestUILoginSetsCookie(t *testing.T) {
 }
 
 func TestUISignupCreatesAccountAndSetsCookie(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	username := "uisignup" + strings.ToLower(uniqueProjectKey(t))
 	form := url.Values{"username": {username}, "password": {"correct-horse-battery"}, "next": {"/tokens"}}
@@ -99,6 +103,7 @@ func TestUISignupCreatesAccountAndSetsCookie(t *testing.T) {
 }
 
 func TestUIRendersWorkSidebar(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
@@ -133,6 +138,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 }
 
 func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-projects")
 	hidden, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Hidden UI Project", "")
@@ -203,6 +209,7 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 }
 
 func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-tokens")
 
@@ -252,6 +259,7 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 }
 
 func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	username := "uisettings" + strings.ToLower(uniqueProjectKey(t))
 	oldPassword := "correct-horse-battery"
@@ -315,6 +323,7 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 }
 
 func TestUIRendersPersonalWorkViews(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-work")
 	assigned, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -354,6 +363,7 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 }
 
 func TestUIRendersProjectSprintBoard(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-board")
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
@@ -424,6 +434,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 }
 
 func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	alice, token := e.mustProjectMemberToken(t, "ui-filter-alice")
 	bob, _ := e.mustProjectMemberToken(t, "ui-filter-bob")
@@ -539,6 +550,7 @@ func createAssignedIssueForUI(t *testing.T, e *httpEnv, title string, assigneeID
 }
 
 func TestUIRendersProjectBacklog(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-backlog")
 	backlogIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "issue still in backlog"})
@@ -632,6 +644,7 @@ func TestUIRendersProjectBacklog(t *testing.T) {
 }
 
 func TestUIRendersIssueDetailPage(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-issue")
 	reporterID := user.ID
@@ -840,6 +853,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 }
 
 func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-status")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -937,6 +951,7 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 }
 
 func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-delete")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1048,6 +1063,7 @@ func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 }
 
 func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-deleted-open")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1119,6 +1135,7 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 }
 
 func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-deleted")
 	live, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1259,6 +1276,7 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 }
 
 func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-priority")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1359,6 +1377,7 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 }
 
 func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-description")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1446,6 +1465,7 @@ func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
 }
 
 func TestUIEditIssuePeopleUpdatesAndClearsIssuePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-people")
 	target, err := e.store.CreateUser(e.ctx, "ui-person-"+uniqueProjectKey(t)+"@example.com", "UI Person")
@@ -1613,6 +1633,7 @@ func TestUIEditIssuePeopleUpdatesAndClearsIssuePanel(t *testing.T) {
 }
 
 func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sprint-edit")
 	past, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
@@ -1737,6 +1758,7 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 }
 
 func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sprint-done")
 	current, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
@@ -1803,6 +1825,7 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 }
 
 func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-links")
 	targetDue, err := model.ParseDate("2099-06-24")
@@ -1935,6 +1958,7 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 }
 
 func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-comment")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "comment target issue"})
@@ -1982,6 +2006,7 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 }
 
 func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sub-issue")
 	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "parent target issue"})
@@ -2072,6 +2097,7 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 }
 
 func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-sub-detail")
 	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -2123,6 +2149,7 @@ func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing
 }
 
 func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "protected issue"})
 	if err != nil {
@@ -2372,6 +2399,7 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 }
 
 func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-issue-links")
 	dueDate, err := model.ParseDate("2099-06-24")
@@ -2405,6 +2433,7 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 }
 
 func TestUIIssueDueDateEditorRoundtrip(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-due-date")
 	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "due ui issue"})
@@ -2472,6 +2501,7 @@ func TestUIIssueDueDateEditorRoundtrip(t *testing.T) {
 }
 
 func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-routes")
 
@@ -2500,6 +2530,7 @@ func TestUIProjectRoutesRedirectAndRejectOldGlobals(t *testing.T) {
 }
 
 func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustUserToken(t, "ui-no-project")
 
@@ -2522,6 +2553,7 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 }
 
 func TestUIRendersProjectSprintEmptyState(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-empty")
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
@@ -2531,6 +2563,7 @@ func TestUIRendersProjectSprintEmptyState(t *testing.T) {
 }
 
 func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sprint")
 	dueDate, err := model.ParseDate("2099-06-24")
@@ -2574,6 +2607,7 @@ func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 }
 
 func TestUILogoutClearsCookie(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	res := e.uiDoNoRedirect(t, http.MethodPost, "/logout", e.authToken, nil)
 	defer res.Body.Close()
@@ -2655,6 +2689,7 @@ func readBody(t *testing.T, res *http.Response) string {
 }
 
 func TestUIHomeRedirectsToFirstProject(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-home")
 	res := e.uiDoNoRedirect(t, http.MethodGet, "/", token, nil)
@@ -2669,6 +2704,7 @@ func TestUIHomeRedirectsToFirstProject(t *testing.T) {
 }
 
 func TestUIHomeRedirectsToProjectsWithoutAccessibleProject(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustUserToken(t, "ui-home-empty")
 	res := e.uiDoNoRedirect(t, http.MethodGet, "/", token, nil)

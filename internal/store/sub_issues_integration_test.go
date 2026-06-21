@@ -11,6 +11,7 @@ import (
 )
 
 func TestSubIssuesCreateListFieldsAndFiltering(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	parent := mustCreateIssue(t, env, "parent")
 	assignee := mustCreateUser(t, env, "sub-assignee-"+uniqueDigits(timeNow(t), 8)+"@example.com")
@@ -141,6 +142,7 @@ func TestSubIssuesCreateListFieldsAndFiltering(t *testing.T) {
 }
 
 func TestSubIssueValidationAndSprintRules(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	parent := mustCreateIssue(t, env, "parent")
 	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
@@ -204,6 +206,7 @@ func ptrUUID(id uuid.UUID) *uuid.UUID {
 }
 
 func TestDeleteIssueSoftDeletesSubIssuesOnlyWhenParentDeleted(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	parent := mustCreateIssue(t, env, "parent")
 	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{

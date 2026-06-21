@@ -12,6 +12,7 @@ import (
 )
 
 func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	assignee := mustHTTPUser(t, e)
 
@@ -100,6 +101,7 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 }
 
 func TestHTTPSubIssueValidation(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "parent"})
 	if err != nil {
@@ -159,6 +161,7 @@ func TestHTTPSubIssueValidation(t *testing.T) {
 }
 
 func TestHTTPSubIssuesRequireProjectAccess(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "parent"})
 	if err != nil {

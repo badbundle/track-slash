@@ -25,6 +25,7 @@ func (e *httpEnv) mustCreateIssue(t *testing.T, title string) model.Issue {
 }
 
 func TestHTTPCreateIssueLinkHappy(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -41,6 +42,7 @@ func TestHTTPCreateIssueLinkHappy(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "dup")
 	b := e.mustCreateIssue(t, "canon")
@@ -61,6 +63,7 @@ func TestHTTPCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkBadSourceID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/not-a-ref/links",
 		map[string]any{"target_issue": e.projKey + "-999999", "link_type": "blocks"})
@@ -70,6 +73,7 @@ func TestHTTPCreateIssueLinkBadSourceID(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkBadJSON(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost,
@@ -88,6 +92,7 @@ func TestHTTPCreateIssueLinkBadJSON(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkMissingTarget(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
@@ -98,6 +103,7 @@ func TestHTTPCreateIssueLinkMissingTarget(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkInvalidType(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -109,6 +115,7 @@ func TestHTTPCreateIssueLinkInvalidType(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkSelfRejected(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
@@ -119,6 +126,7 @@ func TestHTTPCreateIssueLinkSelfRejected(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkDuplicateRejected(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -133,6 +141,7 @@ func TestHTTPCreateIssueLinkDuplicateRejected(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkCrossProject(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	other, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other", "")
 	if err != nil {
@@ -152,6 +161,7 @@ func TestHTTPCreateIssueLinkCrossProject(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkSourceNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	b := e.mustCreateIssue(t, "B")
 	code, _ := e.do(t, http.MethodPost, "/"+e.ownerUsername+"/issues/"+e.projKey+"-999999/links",
@@ -162,6 +172,7 @@ func TestHTTPCreateIssueLinkSourceNotFound(t *testing.T) {
 }
 
 func TestHTTPCreateIssueLinkTargetNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	code, _ := e.do(t, http.MethodPost, e.issueLinksPath(a),
@@ -179,6 +190,7 @@ type linkView struct {
 }
 
 func TestHTTPListIssueLinksDirectionalView(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -263,6 +275,7 @@ func TestHTTPListIssueLinksDirectionalView(t *testing.T) {
 // TestHTTPListIssueLinksIncomingDisplayNames pins down the inverse-display
 // table for every link type via incoming-direction lookups.
 func TestHTTPListIssueLinksIncomingDisplayNames(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	target := e.mustCreateIssue(t, "target")
 
@@ -310,6 +323,7 @@ func TestHTTPListIssueLinksIncomingDisplayNames(t *testing.T) {
 }
 
 func TestHTTPListIssueLinksBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, "/"+e.ownerUsername+"/issues/not-a-ref/links", nil)
 	if code != http.StatusBadRequest {
@@ -318,6 +332,7 @@ func TestHTTPListIssueLinksBadID(t *testing.T) {
 }
 
 func TestHTTPListIssueLinksEmpty(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "lone")
 	code, body := e.do(t, http.MethodGet, e.issueLinksPath(a), nil)
@@ -331,6 +346,7 @@ func TestHTTPListIssueLinksEmpty(t *testing.T) {
 }
 
 func TestHTTPGetIssueLinkHappy(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -349,6 +365,7 @@ func TestHTTPGetIssueLinkHappy(t *testing.T) {
 }
 
 func TestHTTPGetIssueLinkBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, e.projectPath()+"/links/zzz", nil)
 	if code != http.StatusBadRequest {
@@ -357,6 +374,7 @@ func TestHTTPGetIssueLinkBadID(t *testing.T) {
 }
 
 func TestHTTPGetIssueLinkNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, e.projectPath()+"/links/link-999999", nil)
 	if code != http.StatusNotFound {
@@ -365,6 +383,7 @@ func TestHTTPGetIssueLinkNotFound(t *testing.T) {
 }
 
 func TestHTTPUpdateIssueLinkHappy(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -385,6 +404,7 @@ func TestHTTPUpdateIssueLinkHappy(t *testing.T) {
 }
 
 func TestHTTPUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "dup")
 	b := e.mustCreateIssue(t, "canon")
@@ -407,6 +427,7 @@ func TestHTTPUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
 }
 
 func TestHTTPUpdateIssueLinkValidation(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -509,6 +530,7 @@ func TestHTTPUpdateIssueLinkValidation(t *testing.T) {
 }
 
 func TestHTTPDeleteIssueLink(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	b := e.mustCreateIssue(t, "B")
@@ -527,6 +549,7 @@ func TestHTTPDeleteIssueLink(t *testing.T) {
 }
 
 func TestHTTPDeleteIssueLinkBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodDelete, e.projectPath()+"/links/nope", nil)
 	if code != http.StatusBadRequest {

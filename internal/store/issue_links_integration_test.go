@@ -2,16 +2,13 @@ package store_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/bradleymackey/track-slash/internal/testutil"
@@ -26,30 +23,11 @@ type linksTestEnv struct {
 
 func newLinksEnv(t *testing.T) *linksTestEnv {
 	t.Helper()
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	db := testutil.NewMigratedDatabase(t)
+	pool := db.Pool
 
 	s := store.New(pool)
 	owner, err := s.CreateOrUpdateAdminUser(ctx, "owner-"+uniqueProjectKey(t)+"@example.com", "Owner")
@@ -88,6 +66,7 @@ func (e *linksTestEnv) mustIssueInProject(t *testing.T, projectID uuid.UUID, tit
 }
 
 func TestCreateIssueLinkBlocks(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -115,6 +94,7 @@ func TestCreateIssueLinkBlocks(t *testing.T) {
 }
 
 func TestCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "dup-src")
 	b := env.mustIssue(t, "canonical")
@@ -143,6 +123,7 @@ func TestCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 }
 
 func TestCreateIssueLinkDuplicatesSourceAlreadyDone(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "already-done")
 	b := env.mustIssue(t, "target")
@@ -167,6 +148,7 @@ func TestCreateIssueLinkDuplicatesSourceAlreadyDone(t *testing.T) {
 }
 
 func TestCreateIssueLinkAllTypes(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	for _, lt := range []model.LinkType{
 		model.LinkTypeBlocks,
@@ -184,6 +166,7 @@ func TestCreateIssueLinkAllTypes(t *testing.T) {
 }
 
 func TestCreateIssueLinkSelfRejected(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "lonely")
 	_, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
@@ -195,6 +178,7 @@ func TestCreateIssueLinkSelfRejected(t *testing.T) {
 }
 
 func TestCreateIssueLinkDuplicateRowRejected(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -212,6 +196,7 @@ func TestCreateIssueLinkDuplicateRowRejected(t *testing.T) {
 }
 
 func TestCreateIssueLinkCrossProjectRejected(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	other, err := env.store.CreateProject(env.ctx, uniqueProjectKey(t), "other-proj", "")
 	if err != nil {
@@ -229,6 +214,7 @@ func TestCreateIssueLinkCrossProjectRejected(t *testing.T) {
 }
 
 func TestCreateIssueLinkSourceNotFound(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	b := env.mustIssue(t, "B")
 	_, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
@@ -240,6 +226,7 @@ func TestCreateIssueLinkSourceNotFound(t *testing.T) {
 }
 
 func TestCreateIssueLinkTargetNotFound(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	_, err := env.store.CreateIssueLink(env.ctx, store.CreateIssueLinkParams{
@@ -251,6 +238,7 @@ func TestCreateIssueLinkTargetNotFound(t *testing.T) {
 }
 
 func TestGetIssueLinkNotFound(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	_, err := env.store.GetIssueLink(env.ctx, uuid.New())
 	if !errors.Is(err, store.ErrNotFound) {
@@ -259,6 +247,7 @@ func TestGetIssueLinkNotFound(t *testing.T) {
 }
 
 func TestUpdateIssueLinkRewiresExistingLink(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -287,6 +276,7 @@ func TestUpdateIssueLinkRewiresExistingLink(t *testing.T) {
 }
 
 func TestUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -314,6 +304,7 @@ func TestUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
 }
 
 func TestUpdateIssueLinkDuplicatesSourceAlreadyDone(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -345,6 +336,7 @@ func TestUpdateIssueLinkDuplicatesSourceAlreadyDone(t *testing.T) {
 }
 
 func TestUpdateIssueLinkRejectsInvalidChanges(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -424,6 +416,7 @@ func TestUpdateIssueLinkRejectsInvalidChanges(t *testing.T) {
 }
 
 func TestListIssueLinksForIssueReturnsBothDirections(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -459,6 +452,7 @@ func TestListIssueLinksForIssueReturnsBothDirections(t *testing.T) {
 }
 
 func TestListIssueLinksForIssueEmpty(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "lone")
 	links, more, err := env.store.ListIssueLinksForIssue(env.ctx, store.ListIssueLinksForIssueParams{IssueID: a.ID, Limit: 100})
@@ -474,6 +468,7 @@ func TestListIssueLinksForIssueEmpty(t *testing.T) {
 }
 
 func TestDeleteIssueLink(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
@@ -493,6 +488,7 @@ func TestDeleteIssueLink(t *testing.T) {
 }
 
 func TestIssueLinkCascadeOnIssueDelete(t *testing.T) {
+	t.Parallel()
 	env := newLinksEnv(t)
 	a := env.mustIssue(t, "A")
 	b := env.mustIssue(t, "B")
