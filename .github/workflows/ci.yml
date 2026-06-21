@@ -32,7 +32,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      TEST_DATABASE_URL: postgres://track:track@localhost:5432/track?sslmode=disable
+      TEST_DATABASE_URL: postgres://track:track@localhost:5432/track_test?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,4 +58,4 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -race -count=1 -p 1 ./...
+        run: go test -race -count=1 ./...
