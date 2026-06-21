@@ -204,6 +204,8 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "removed work panel with query", raw: "/sprint/panel?x=1", want: "/"},
 		{name: "projects", raw: "/projects", want: "/projects"},
 		{name: "projects panel", raw: "/projects/panel", want: "/projects/panel"},
+		{name: "new project", raw: "/projects/new", want: "/projects/new"},
+		{name: "new project panel with query", raw: "/projects/new/panel?x=1", want: "/projects/new/panel?x=1"},
 		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
@@ -314,6 +316,7 @@ func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
 	}{
 		{name: "work", path: "templates/work_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
 		{name: "projects", path: "templates/projects_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
+		{name: "new project", path: "templates/new_project_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
 		{name: "project", path: "templates/project_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
 		{name: "issue", path: "templates/issue_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
 		{name: "settings", path: "templates/settings.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},

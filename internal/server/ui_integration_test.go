@@ -141,9 +141,14 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", "Create project", e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+	for _, want := range []string{"Projects", "Projects you can access.", `aria-label="New project"`, `href="/projects/new"`, `hx-get="/projects/new/panel"`, e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`id="project-key"`, `>Create project<`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("projects body still included project form %q: %s", notWant, body)
 		}
 	}
 	if strings.Contains(body, `href="`+e.projectPath()+`/backlog"`) {
@@ -153,11 +158,18 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 		t.Fatalf("projects body included inaccessible project: %s", body)
 	}
 
+	body = e.uiGet(t, "/projects/new", token)
+	for _, want := range []string{"New project", "Create project", `action="/projects"`, `id="project-key"`, `id="project-name"`, `id="project-description"`, `href="/projects"`, `hx-get="/projects/panel"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new project body missing %q: %s", want, body)
+		}
+	}
+
 	form := url.Values{"key": {"bad"}, "name": {"Bad"}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, "/projects", token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusBadRequest || !strings.Contains(body, "Key must match") {
+	if res.StatusCode != http.StatusBadRequest || !strings.Contains(body, "Key must match") || !strings.Contains(body, "New project") || !strings.Contains(body, `value="bad"`) {
 		t.Fatalf("bad key code = %d body = %s", res.StatusCode, body)
 	}
 
@@ -169,7 +181,7 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	res = e.uiDoNoRedirect(t, http.MethodPost, "/projects", token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusConflict || !strings.Contains(body, "Project key already exists.") {
+	if res.StatusCode != http.StatusConflict || !strings.Contains(body, "Project key already exists.") || !strings.Contains(body, "New project") {
 		t.Fatalf("duplicate code = %d body = %s", res.StatusCode, body)
 	}
 
