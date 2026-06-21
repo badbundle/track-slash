@@ -1,0 +1,38 @@
+{{define "new-project-panel"}}
+<section class="mx-auto max-w-6xl px-6 py-6">
+  <a data-main-view="projects" href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" class="mb-3 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+    <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
+    Projects
+  </a>
+
+  <header class="border-b border-slate-200 pb-5 dark:border-slate-800">
+    <div class="min-w-0">
+      <h1 class="truncate text-2xl font-semibold tracking-normal">New project</h1>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Create a project workspace.</p>
+    </div>
+  </header>
+
+  <section class="py-6">
+    <form method="post" action="/projects" class="max-w-xl rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Create project</h2>
+        <i data-lucide="plus" class="h-4 w-4 text-slate-400" aria-hidden="true"></i>
+      </div>
+      {{if .Error}}<div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>{{end}}
+      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="project-key">Key</label>
+      <input id="project-key" name="key" value="{{.Key}}" autocomplete="off" autofocus class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="TRACK">
+
+      <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="project-name">Name</label>
+      <input id="project-name" name="name" value="{{.Name}}" class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Track Slash">
+
+      <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="project-description">Description</label>
+      <textarea id="project-description" name="description" rows="4" data-autogrow-textarea class="mt-1 w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">{{.Description}}</textarea>
+
+      <button type="submit" class="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+        Create project
+      </button>
+    </form>
+  </section>
+</section>
+{{end}}

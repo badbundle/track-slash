@@ -95,6 +95,8 @@
       {{template "work-panel" .WorkPanel}}
       {{else if .ProjectsPanel}}
       {{template "projects-panel" .ProjectsPanel}}
+      {{else if .NewProjectPanel}}
+      {{template "new-project-panel" .NewProjectPanel}}
       {{else if .ProjectPanel}}
       {{template "project-panel" .ProjectPanel}}
       {{else if .DeletedPanel}}
