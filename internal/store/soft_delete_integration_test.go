@@ -12,6 +12,7 @@ import (
 )
 
 func TestSoftDeleteIssue(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "delete me")
 
@@ -48,6 +49,7 @@ func TestSoftDeleteIssue(t *testing.T) {
 }
 
 func TestRestoreIssue(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	parent := mustCreateIssue(t, env, "restore parent")
 	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
@@ -110,6 +112,7 @@ func TestRestoreIssue(t *testing.T) {
 }
 
 func TestListDeletedIssues(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	live := mustCreateIssue(t, env, "live issue")
 	deleted := mustCreateIssue(t, env, "deleted issue")
@@ -191,6 +194,7 @@ func TestListDeletedIssues(t *testing.T) {
 }
 
 func TestSoftDeleteUser(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	u := mustCreateUser(t, env, "soft-user-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
 	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
@@ -231,6 +235,7 @@ func TestSoftDeleteUser(t *testing.T) {
 }
 
 func TestSoftDeleteSprint(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	planned := mustCreateSprint(t, env, "planned", date(2026, 6, 1), date(2026, 6, 14))
 	active := mustCreateSprint(t, env, "active", date(2026, 6, 15), date(2026, 6, 30))
@@ -271,6 +276,7 @@ func TestSoftDeleteSprint(t *testing.T) {
 }
 
 func TestSoftDeleteProjectCascades(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "project issue")
 	sp := mustCreateSprint(t, env, "project sprint", date(2026, 7, 1), date(2026, 7, 14))
@@ -318,6 +324,7 @@ func TestSoftDeleteProjectCascades(t *testing.T) {
 }
 
 func TestCompletedSprintCannotBeSoftDeleted(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	sp := mustCreateSprint(t, env, "completed", date(2026, 9, 1), date(2026, 9, 14))
 	mustActivate(t, env, sp.ID)

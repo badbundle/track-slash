@@ -13,6 +13,7 @@ import (
 )
 
 func TestHTTPSoftDeleteIssue(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
 
@@ -35,6 +36,7 @@ func TestHTTPSoftDeleteIssue(t *testing.T) {
 }
 
 func TestHTTPRestoreIssue(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
 
@@ -61,6 +63,7 @@ func TestHTTPRestoreIssue(t *testing.T) {
 }
 
 func TestHTTPListDeletedIssues(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	live, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
 		ProjectID: e.projectID,
@@ -164,6 +167,7 @@ func TestHTTPListDeletedIssues(t *testing.T) {
 }
 
 func TestHTTPSoftDeleteProject(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss := mustHTTPIssue(t, e)
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
@@ -197,6 +201,7 @@ func TestHTTPSoftDeleteProject(t *testing.T) {
 }
 
 func TestHTTPSoftDeleteUser(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	u := mustHTTPUser(t, e)
 
@@ -215,6 +220,7 @@ func TestHTTPSoftDeleteUser(t *testing.T) {
 }
 
 func TestHTTPSoftDeleteSprint(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	planned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
@@ -278,6 +284,7 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 }
 
 func TestHTTPSoftDeleteBadIDs(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	for _, path := range []string{
 		"/users/nope",
@@ -320,6 +327,7 @@ func TestHTTPSoftDeleteBadIDs(t *testing.T) {
 }
 
 func TestHTTPOldUUIDObjectRoutesRemoved(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	issue := mustHTTPIssue(t, e)
 	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{

@@ -32,6 +32,7 @@ func decodePage[T any](t *testing.T, body []byte) pageDecoded[T] {
 // ---------- pagination wiring on /{owner}/projects/{key}/issues ----------
 
 func TestPaginationIssuesRoundTrip(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	const n = 5
 	created := make([]uuid.UUID, n)
@@ -89,6 +90,7 @@ func TestPaginationIssuesRoundTrip(t *testing.T) {
 }
 
 func TestPaginationIssuesExactLimitNoCursor(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	for i := 0; i < 3; i++ {
 		if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -112,6 +114,7 @@ func TestPaginationIssuesExactLimitNoCursor(t *testing.T) {
 }
 
 func TestPaginationEmptyEnvelope(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodGet,
 		e.projectIssuesPath(), nil)
@@ -125,6 +128,7 @@ func TestPaginationEmptyEnvelope(t *testing.T) {
 }
 
 func TestPaginationBadCursor(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	for _, raw := range []string{"not-base64!!!", "Zm9v"} { // second decodes to "foo" — invalid JSON
 		path := e.projectIssuesPath() + "?cursor=" + raw
@@ -136,6 +140,7 @@ func TestPaginationBadCursor(t *testing.T) {
 }
 
 func TestPaginationBadLimit(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	for _, raw := range []string{"0", "-1", "abc"} {
 		path := e.projectIssuesPath() + "?limit=" + raw
@@ -147,6 +152,7 @@ func TestPaginationBadLimit(t *testing.T) {
 }
 
 func TestPaginationLimitClampedAboveMax(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	// Create 3 issues; limit 500 (> MaxLimit) must succeed and return all 3.
 	for i := 0; i < 3; i++ {
@@ -170,6 +176,7 @@ func TestPaginationLimitClampedAboveMax(t *testing.T) {
 // ---------- pagination wiring on the other list endpoints (smoke) ----------
 
 func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 
 	for i := 0; i < 3; i++ {
@@ -278,6 +285,7 @@ func TestPaginationUsersAndProjectsAndSprintsAndLinks(t *testing.T) {
 // invalid cursor to 400, not 500. Catches a future addition that forgets to
 // wire the parser.
 func TestPaginationBadCursorOnAllListEndpoints(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	const bad = "!!!"
@@ -298,6 +306,7 @@ func TestPaginationBadCursorOnAllListEndpoints(t *testing.T) {
 
 // TestPaginationBadLimitOnAllListEndpoints mirrors the cursor test for limit.
 func TestPaginationBadLimitOnAllListEndpoints(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := e.mustCreateIssue(t, "A")
 	paths := []string{

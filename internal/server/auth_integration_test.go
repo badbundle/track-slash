@@ -22,6 +22,7 @@ import (
 )
 
 func TestHTTPAuthRequiredAndAdminOnly(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.doUnauth(t, http.MethodGet, "/projects", nil)
 	if code != http.StatusUnauthorized {
@@ -69,6 +70,7 @@ func TestHTTPAuthRequiredAndAdminOnly(t *testing.T) {
 }
 
 func TestHTTPProjectMemberSearch(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	member, memberToken := e.mustUserToken(t, "search-member")
 	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, member.ID); err != nil {
@@ -111,6 +113,7 @@ func TestHTTPProjectMemberSearch(t *testing.T) {
 }
 
 func TestHTTPAdminCanCreateUsersAndProjects(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost, "/users/", map[string]any{
 		"email": "created-" + uuid.NewString() + "@example.com",
@@ -139,6 +142,7 @@ func TestHTTPAdminCanCreateUsersAndProjects(t *testing.T) {
 }
 
 func TestHTTPMemberCanCreateProjectAndGetsAccess(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustUserToken(t, "project-creator")
 	key := uniqueProjectKey(t)
@@ -205,6 +209,7 @@ func TestHTTPMemberCanCreateProjectAndGetsAccess(t *testing.T) {
 }
 
 func TestHTTPProjectMembershipFiltersAndForbids(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustUserToken(t, "member")
 	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, user.ID); err != nil {
@@ -235,6 +240,7 @@ func TestHTTPProjectMembershipFiltersAndForbids(t *testing.T) {
 }
 
 func TestHTTPTokenAdminEndpoints(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, _ := e.mustUserToken(t, "token-target")
 
@@ -279,6 +285,7 @@ func TestHTTPTokenAdminEndpoints(t *testing.T) {
 }
 
 func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	username := "acct" + strings.ToLower(uniqueProjectKey(t))
 	password := "correct-horse-battery"
@@ -375,6 +382,7 @@ func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
 }
 
 func TestHTTPUpdateMySettings(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	username := "settings" + strings.ToLower(uniqueProjectKey(t))
 	oldPassword := "correct-horse-battery"
@@ -447,6 +455,7 @@ func TestHTTPUpdateMySettings(t *testing.T) {
 }
 
 func TestHTTPProjectScopedIDRoutesForbidOtherProjects(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustUserToken(t, "scoped")
 	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, user.ID); err != nil {
@@ -487,6 +496,7 @@ func TestHTTPProjectScopedIDRoutesForbidOtherProjects(t *testing.T) {
 }
 
 func TestHTTPAuthenticatedAttribution(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustUserToken(t, "writer")
 	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, user.ID); err != nil {
@@ -531,6 +541,7 @@ func TestHTTPAuthenticatedAttribution(t *testing.T) {
 }
 
 func TestHTTPHealthzIsUnderAPINamespace(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	res, err := http.Get(e.ts.URL + apiPath("/healthz"))
 	if err != nil {
@@ -543,6 +554,7 @@ func TestHTTPHealthzIsUnderAPINamespace(t *testing.T) {
 }
 
 func TestWebSocketAuthAndTopicPermission(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	hub := realtime.NewHub()
 	srv := server.New(e.store, hub, nil)

@@ -2,61 +2,52 @@ package realtime
 
 import (
 	"context"
-	"database/sql"
-	"os"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/testutil"
 )
 
-func testDatabaseURL() string {
-	if v := os.Getenv("TEST_DATABASE_URL"); v != "" {
-		return v
-	}
-	return os.Getenv("DATABASE_URL")
+func newRealtimeDB(t *testing.T) (context.Context, *pgxpool.Pool, string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	db := testutil.NewMigratedDatabase(t)
+	return ctx, db.Pool, db.URL
+}
+
+func runRealtimeListener(t *testing.T, ctx context.Context, dbURL string, hub *Hub) {
+	t.Helper()
+	listener := NewListener(dbURL, hub)
+	listenerCtx, stopListener := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		listener.Run(listenerCtx)
+	}()
+	t.Cleanup(func() {
+		stopListener()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Errorf("realtime listener did not stop within 2s")
+		}
+	})
 }
 
 // TestListenerReceivesEventFromIssueInsert exercises the full pipeline:
 // trigger fires pg_notify, Listener decodes payload, Hub fans out to a
 // client subscribed to the project's topic.
 func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
 
 	hub := NewHub()
-	listener := NewListener(dbURL, hub)
-
-	listenerCtx, stopListener := context.WithCancel(ctx)
-	t.Cleanup(stopListener)
-	go listener.Run(listenerCtx)
+	runRealtimeListener(t, ctx, dbURL, hub)
 
 	// Wait for the listener's LISTEN to register before producing events
 	// the test expects to observe.
@@ -99,36 +90,11 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 // TestListenerReceivesSubIssueEvent verifies child issue events include
 // parent_issue_id so the hub can fan them out on the parent issue topic.
 func TestListenerReceivesSubIssueEvent(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
 
 	hub := NewHub()
-	listener := NewListener(dbURL, hub)
-	listenerCtx, stopListener := context.WithCancel(ctx)
-	t.Cleanup(stopListener)
-	go listener.Run(listenerCtx)
+	runRealtimeListener(t, ctx, dbURL, hub)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -162,36 +128,11 @@ func TestListenerReceivesSubIssueEvent(t *testing.T) {
 // sprints_events trigger, the listener decodes the payload, and the hub fans
 // it out on both the project topic and the sprint topic.
 func TestListenerReceivesSprintEvent(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
 
 	hub := NewHub()
-	listener := NewListener(dbURL, hub)
-	listenerCtx, stopListener := context.WithCancel(ctx)
-	t.Cleanup(stopListener)
-	go listener.Run(listenerCtx)
+	runRealtimeListener(t, ctx, dbURL, hub)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -238,36 +179,11 @@ func TestListenerReceivesSprintEvent(t *testing.T) {
 // duplicates link path also closes the source issue, producing a follow-up
 // issue UPDATE event.
 func TestListenerReceivesIssueLinkEvent(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
 
 	hub := NewHub()
-	listener := NewListener(dbURL, hub)
-	listenerCtx, stopListener := context.WithCancel(ctx)
-	t.Cleanup(stopListener)
-	go listener.Run(listenerCtx)
+	runRealtimeListener(t, ctx, dbURL, hub)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -346,36 +262,11 @@ func TestListenerReceivesIssueLinkEvent(t *testing.T) {
 // TestListenerReceivesCommentEvent verifies comment events include both issue_id
 // and project_id so the hub can fan them out on comment, issue, and project topics.
 func TestListenerReceivesCommentEvent(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
 
 	hub := NewHub()
-	listener := NewListener(dbURL, hub)
-	listenerCtx, stopListener := context.WithCancel(ctx)
-	t.Cleanup(stopListener)
-	go listener.Run(listenerCtx)
+	runRealtimeListener(t, ctx, dbURL, hub)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -428,36 +319,11 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 // TestListenerReceivesSoftDeleteAsDelete verifies updating deleted_at emits a
 // realtime delete op so subscribers see the same event kind as hard deletes.
 func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
 
 	hub := NewHub()
-	listener := NewListener(dbURL, hub)
-	listenerCtx, stopListener := context.WithCancel(ctx)
-	t.Cleanup(stopListener)
-	go listener.Run(listenerCtx)
+	runRealtimeListener(t, ctx, dbURL, hub)
 
 	time.Sleep(500 * time.Millisecond)
 

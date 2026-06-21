@@ -35,6 +35,7 @@ func mustCreateComment(t *testing.T, env *sprintsTestEnv, issueID, authorID uuid
 }
 
 func TestCreateGetUpdateDeleteComment(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "commented")
 	author := mustCreateUser(t, env, "commenter-"+uniqueDigits(timeNow(t), 8)+"@example.com")
@@ -72,6 +73,7 @@ func TestCreateGetUpdateDeleteComment(t *testing.T) {
 }
 
 func TestCreateCommentForeignKeysAndBodyCheck(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "commented")
 	author := mustCreateUser(t, env, "commenter-"+uniqueDigits(timeNow(t), 8)+"@example.com")
@@ -116,6 +118,7 @@ func TestCreateCommentForeignKeysAndBodyCheck(t *testing.T) {
 }
 
 func TestListCommentsForIssuePagination(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	iss := mustCreateIssue(t, env, "commented")
 	author := mustCreateUser(t, env, "commenter-"+uniqueDigits(timeNow(t), 8)+"@example.com")
@@ -160,6 +163,7 @@ func TestListCommentsForIssuePagination(t *testing.T) {
 }
 
 func TestListCommentsForUnknownIssue(t *testing.T) {
+	t.Parallel()
 	env := newSprintsEnv(t)
 	_, _, err := env.store.ListCommentsForIssue(env.ctx, store.ListCommentsForIssueParams{
 		IssueID: uuid.New(),

@@ -2,48 +2,23 @@ package store_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-
-	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/bradleymackey/track-slash/internal/testutil"
 )
 
 func TestStoreOwnerScopedPublicRefs(t *testing.T) {
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
-
-	s := store.New(pool)
+	db := testutil.NewMigratedDatabase(t)
+	s := store.New(db.Pool)
 	key := storePublicRefKey(t)
 	ownerA, err := s.CreateUserProfile(ctx, "owner-a-"+storePublicRefSuffix(t), "owner-a@example.com", "Owner A")
 	if err != nil {

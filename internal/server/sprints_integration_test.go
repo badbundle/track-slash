@@ -3,33 +3,21 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/server"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/bradleymackey/track-slash/internal/testutil"
 )
-
-func testDatabaseURL() string {
-	if v := os.Getenv("TEST_DATABASE_URL"); v != "" {
-		return v
-	}
-	return os.Getenv("DATABASE_URL")
-}
 
 type httpEnv struct {
 	ctx           context.Context
@@ -44,31 +32,11 @@ type httpEnv struct {
 
 func newHTTPEnv(t *testing.T) *httpEnv {
 	t.Helper()
-	dbURL := testDatabaseURL()
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL / DATABASE_URL not set; skipping integration test")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
 
-	sqlDB, err := sql.Open("pgx", dbURL)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := migrations.Up(sqlDB); err != nil {
-		t.Fatalf("migrations.Up: %v", err)
-	}
-	testutil.CleanDatabase(t, sqlDB)
-	t.Cleanup(func() { testutil.CleanDatabase(t, sqlDB) })
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pgxpool.New: %v", err)
-	}
-	t.Cleanup(pool.Close)
-
-	s := store.New(pool)
+	db := testutil.NewMigratedDatabase(t)
+	s := store.New(db.Pool)
 	// Hub is nil — none of these handlers need realtime fanout; /api/v1/ws route
 	// is just skipped when hub == nil.
 	srv := server.New(s, nil, nil)
@@ -205,6 +173,7 @@ func decode[T any](t *testing.T, body []byte) T {
 // ---------- createSprint ----------
 
 func TestHTTPCreateSprintHappy(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost,
 		e.projectSprintsPath(),
@@ -220,6 +189,7 @@ func TestHTTPCreateSprintHappy(t *testing.T) {
 }
 
 func TestHTTPCreateSprintBadProjectID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, "/bad!/projects/TRACK/sprints",
 		map[string]any{"name": "S", "start_date": "2026-06-01", "end_date": "2026-06-14"})
@@ -229,6 +199,7 @@ func TestHTTPCreateSprintBadProjectID(t *testing.T) {
 }
 
 func TestHTTPCreateSprintBadJSON(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost,
 		e.ts.URL+apiPath(e.projectSprintsPath()),
@@ -246,6 +217,7 @@ func TestHTTPCreateSprintBadJSON(t *testing.T) {
 }
 
 func TestHTTPCreateSprintBadDateFormat(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	cases := []map[string]any{
 		{"start_date": "2026/06/01", "end_date": "2026-06-14"},
@@ -262,6 +234,7 @@ func TestHTTPCreateSprintBadDateFormat(t *testing.T) {
 }
 
 func TestHTTPCreateSprintEndBeforeStart(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost,
 		e.projectSprintsPath(),
@@ -272,6 +245,7 @@ func TestHTTPCreateSprintEndBeforeStart(t *testing.T) {
 }
 
 func TestHTTPCreateSprintNameTooLong(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	long := make([]byte, 201)
 	for i := range long {
@@ -286,6 +260,7 @@ func TestHTTPCreateSprintNameTooLong(t *testing.T) {
 }
 
 func TestHTTPCreateSprintGoalTooLong(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	long := make([]byte, 2001)
 	for i := range long {
@@ -300,6 +275,7 @@ func TestHTTPCreateSprintGoalTooLong(t *testing.T) {
 }
 
 func TestHTTPCreateSprintProjectNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost,
 		"/"+e.ownerUsername+"/projects/"+uniqueProjectKey(t)+"/sprints",
@@ -312,6 +288,7 @@ func TestHTTPCreateSprintProjectNotFound(t *testing.T) {
 // ---------- listProjectSprints ----------
 
 func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	for i, name := range []string{"S1", "S2"} {
 		e.do(t, http.MethodPost, e.projectSprintsPath(),
@@ -338,6 +315,7 @@ func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
 }
 
 func TestHTTPListSprintsBadStatus(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
 		e.projectSprintsPath()+"?status=banana", nil)
@@ -347,6 +325,7 @@ func TestHTTPListSprintsBadStatus(t *testing.T) {
 }
 
 func TestHTTPListSprintsBadProjectID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, "/bad!/projects/TRACK/sprints", nil)
 	if code != http.StatusBadRequest {
@@ -357,6 +336,7 @@ func TestHTTPListSprintsBadProjectID(t *testing.T) {
 // ---------- reorderPlannedSprints ----------
 
 func TestHTTPReorderPlannedSprints(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := createSprintFor(t, e, "A", "2026-06-01", "2026-06-14")
 	b := createSprintFor(t, e, "B", "2026-06-15", "2026-06-28")
@@ -382,6 +362,7 @@ func TestHTTPReorderPlannedSprints(t *testing.T) {
 }
 
 func TestHTTPReorderPlannedSprintsRejectsBadRequests(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := createSprintFor(t, e, "A", "2026-06-01", "2026-06-14")
 	b := createSprintFor(t, e, "B", "2026-06-15", "2026-06-28")
@@ -413,6 +394,7 @@ func TestHTTPReorderPlannedSprintsRejectsBadRequests(t *testing.T) {
 }
 
 func TestHTTPReorderPlannedSprintsBadIDAndBody(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPatch, "/bad!/projects/TRACK/sprints/planned-order",
 		map[string]any{"sprint_refs": []string{}})
@@ -444,6 +426,7 @@ func TestHTTPReorderPlannedSprintsBadIDAndBody(t *testing.T) {
 // ---------- getSprint ----------
 
 func TestHTTPGetSprint(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	_, body := e.do(t, http.MethodPost, e.projectSprintsPath(),
 		map[string]any{"name": "S", "start_date": "2026-06-01", "end_date": "2026-06-14"})
@@ -460,6 +443,7 @@ func TestHTTPGetSprint(t *testing.T) {
 }
 
 func TestHTTPGetSprintBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, e.projectSprintsPath()+"/not-a-sprint", nil)
 	if code != http.StatusBadRequest {
@@ -468,6 +452,7 @@ func TestHTTPGetSprintBadID(t *testing.T) {
 }
 
 func TestHTTPGetSprintNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, e.projectSprintsPath()+"/sprint-999999", nil)
 	if code != http.StatusNotFound {
@@ -485,6 +470,7 @@ func createSprintFor(t *testing.T, e *httpEnv, name, start, end string) model.Sp
 }
 
 func TestHTTPUpdateSprintAllFields(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, body := e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{
@@ -503,6 +489,7 @@ func TestHTTPUpdateSprintAllFields(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintActivate(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, body := e.do(t, http.MethodPatch, e.sprintPath(sp),
@@ -516,6 +503,7 @@ func TestHTTPUpdateSprintActivate(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintRejectsCompleted(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp),
@@ -526,6 +514,7 @@ func TestHTTPUpdateSprintRejectsCompleted(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintInvalidStatus(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp),
@@ -536,6 +525,7 @@ func TestHTTPUpdateSprintInvalidStatus(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintBadDate(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	cases := []map[string]any{
@@ -551,6 +541,7 @@ func TestHTTPUpdateSprintBadDate(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintNameAndGoalTooLong(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 
@@ -565,6 +556,7 @@ func TestHTTPUpdateSprintNameAndGoalTooLong(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintBadJSON(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	req, _ := http.NewRequestWithContext(e.ctx, http.MethodPatch,
@@ -582,6 +574,7 @@ func TestHTTPUpdateSprintBadJSON(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPatch, e.projectSprintsPath()+"/not-a-sprint",
 		map[string]any{"name": "x"})
@@ -591,6 +584,7 @@ func TestHTTPUpdateSprintBadID(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPatch, e.projectSprintsPath()+"/sprint-999999",
 		map[string]any{"name": "x"})
@@ -600,6 +594,7 @@ func TestHTTPUpdateSprintNotFound(t *testing.T) {
 }
 
 func TestHTTPUpdateSprintActivationConflict(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	a := createSprintFor(t, e, "A", "2026-06-01", "2026-06-14")
 	b := createSprintFor(t, e, "B", "2026-06-15", "2026-06-28")
@@ -617,6 +612,7 @@ func TestHTTPUpdateSprintActivationConflict(t *testing.T) {
 // ---------- completeSprint ----------
 
 func TestHTTPCompleteSprintHappy(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"status": "active"})
@@ -632,6 +628,7 @@ func TestHTTPCompleteSprintHappy(t *testing.T) {
 }
 
 func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	active := createSprintFor(t, e, "Active", "2026-06-01", "2026-06-14")
 	next := createSprintFor(t, e, "Next", "2026-06-15", "2026-06-28")
@@ -687,6 +684,7 @@ func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 }
 
 func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"status": "active"})
@@ -714,6 +712,7 @@ func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
 }
 
 func TestHTTPCompleteSprintConflictNonActive(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, _ := e.do(t, http.MethodPost, e.sprintPath(sp)+"/complete", nil)
@@ -723,6 +722,7 @@ func TestHTTPCompleteSprintConflictNonActive(t *testing.T) {
 }
 
 func TestHTTPCompleteSprintBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, e.projectSprintsPath()+"/zzz/complete", nil)
 	if code != http.StatusBadRequest {
@@ -731,6 +731,7 @@ func TestHTTPCompleteSprintBadID(t *testing.T) {
 }
 
 func TestHTTPCompleteSprintNotFound(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, e.projectSprintsPath()+"/sprint-999999/complete", nil)
 	if code != http.StatusNotFound {
@@ -741,6 +742,7 @@ func TestHTTPCompleteSprintNotFound(t *testing.T) {
 // ---------- issue PATCH + list with sprint filters ----------
 
 func TestHTTPPatchIssueSetSprint(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 
@@ -773,6 +775,7 @@ func TestHTTPPatchIssueSetSprint(t *testing.T) {
 }
 
 func TestHTTPPatchDoneIssueRejectsSprintEdit(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	current := createSprintFor(t, e, "Current", "2026-06-01", "2026-06-14")
 	next := createSprintFor(t, e, "Next", "2026-06-15", "2026-06-28")
@@ -824,6 +827,7 @@ func TestHTTPPatchDoneIssueRejectsSprintEdit(t *testing.T) {
 }
 
 func TestHTTPPatchIssueSetAndClearPeople(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	member, err := e.store.CreateUser(e.ctx, "issue-person-"+uniqueProjectKey(t)+"@example.com", "Issue Person")
 	if err != nil {
@@ -885,6 +889,7 @@ func TestHTTPPatchIssueSetAndClearPeople(t *testing.T) {
 }
 
 func TestHTTPPatchIssueCrossProjectSprint(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	other, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other", "")
 	if err != nil {
@@ -913,6 +918,7 @@ func TestHTTPPatchIssueCrossProjectSprint(t *testing.T) {
 }
 
 func TestHTTPPatchIssueCompletedSprintRejected(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"status": "active"})
@@ -933,6 +939,7 @@ func TestHTTPPatchIssueCompletedSprintRejected(t *testing.T) {
 }
 
 func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	inSprint, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "in"})
@@ -970,6 +977,7 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 }
 
 func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	alice, _ := e.mustUserToken(t, "assignee-alice")
 	bob, _ := e.mustUserToken(t, "assignee-bob")
@@ -1047,6 +1055,7 @@ func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
 }
 
 func TestHTTPListProjectAssignees(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	member, memberToken := e.mustProjectMemberToken(t, "project-assignee-member")
 	assigned, _ := e.mustUserToken(t, "project-assignee-assigned")
@@ -1088,6 +1097,7 @@ func httpProjectAssigneesContain(in []model.ProjectAssignee, id uuid.UUID) bool 
 }
 
 func TestHTTPListIssuesMutuallyExclusive(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 	code, _ := e.do(t, http.MethodGet,
@@ -1098,6 +1108,7 @@ func TestHTTPListIssuesMutuallyExclusive(t *testing.T) {
 }
 
 func TestHTTPListIssuesBadSprintParam(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
 		e.projectIssuesPath()+"?sprint=potato", nil)
@@ -1107,6 +1118,7 @@ func TestHTTPListIssuesBadSprintParam(t *testing.T) {
 }
 
 func TestHTTPListIssuesBadSprintID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
 		e.projectIssuesPath()+"?sprint_id=zzz", nil)
@@ -1119,6 +1131,7 @@ func TestHTTPListIssuesBadSprintID(t *testing.T) {
 // in those handlers is exercised too) ----------
 
 func TestHTTPCreateIssueAndGet(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost,
 		e.projectIssuesPath(),
@@ -1142,6 +1155,7 @@ func TestHTTPCreateIssueAndGet(t *testing.T) {
 }
 
 func TestHTTPCreateAndUpdateIssuePriority(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost,
 		e.projectIssuesPath(),
@@ -1197,6 +1211,7 @@ func TestHTTPCreateAndUpdateIssuePriority(t *testing.T) {
 }
 
 func TestHTTPCreateAndUpdateIssueDueDate(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.do(t, http.MethodPost,
 		e.projectIssuesPath(),
@@ -1272,6 +1287,7 @@ func TestHTTPCreateAndUpdateIssueDueDate(t *testing.T) {
 }
 
 func TestHTTPCreateIssueBadProject(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost, "/bad!/projects/TRACK/issues",
 		map[string]any{"title": "x"})
@@ -1281,6 +1297,7 @@ func TestHTTPCreateIssueBadProject(t *testing.T) {
 }
 
 func TestHTTPCreateIssueMissingTitle(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPost,
 		e.projectIssuesPath(),
@@ -1291,6 +1308,7 @@ func TestHTTPCreateIssueMissingTitle(t *testing.T) {
 }
 
 func TestHTTPUpdateIssueBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodPatch, "/"+e.ownerUsername+"/issues/not-uuid",
 		map[string]any{"title": "x"})
@@ -1300,6 +1318,7 @@ func TestHTTPUpdateIssueBadID(t *testing.T) {
 }
 
 func TestHTTPUpdateIssueBadStatus(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "t"})
 	if err != nil {
@@ -1313,6 +1332,7 @@ func TestHTTPUpdateIssueBadStatus(t *testing.T) {
 }
 
 func TestHTTPUpdateIssueTitleTooLong(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "t"})
 	if err != nil {
@@ -1327,6 +1347,7 @@ func TestHTTPUpdateIssueTitleTooLong(t *testing.T) {
 }
 
 func TestHTTPGetIssueBadID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, "/"+e.ownerUsername+"/issues/zzz", nil)
 	if code != http.StatusBadRequest {
@@ -1335,6 +1356,7 @@ func TestHTTPGetIssueBadID(t *testing.T) {
 }
 
 func TestHTTPListIssuesBadProjectID(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, "/bad!/projects/TRACK/issues", nil)
 	if code != http.StatusBadRequest {
@@ -1343,6 +1365,7 @@ func TestHTTPListIssuesBadProjectID(t *testing.T) {
 }
 
 func TestHTTPListIssuesBadStatus(t *testing.T) {
+	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet,
 		e.projectIssuesPath()+"?status=banana", nil)
