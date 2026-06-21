@@ -65,8 +65,8 @@
 {{define "issue-due-badge"}}
 {{if .DueDate}}
 <span aria-label="Due {{dueDateFull .DueDate}}" class="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 {{dueBadgeClass .}}">
-  <i data-lucide="calendar" class="h-3 w-3" aria-hidden="true"></i>
-  {{dueDateShort .DueDate}}
+  <i data-lucide="{{dueBadgeIcon .}}" class="h-3 w-3" aria-hidden="true"></i>
+  {{dueBadgeLabel .}}
 </span>
 {{end}}
 {{end}}

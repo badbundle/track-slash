@@ -1793,11 +1793,11 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-links")
-	targetDue, err := model.ParseDate("2026-06-24")
+	targetDue, err := model.ParseDate("2099-06-24")
 	if err != nil {
 		t.Fatalf("ParseDate target: %v", err)
 	}
-	replacementDue, err := model.ParseDate("2026-06-26")
+	replacementDue, err := model.ParseDate("2099-06-26")
 	if err != nil {
 		t.Fatalf("ParseDate replacement: %v", err)
 	}
@@ -2020,7 +2020,7 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	if len(children) != 1 || children[0].Title != "new child from ui" || children[0].Description != "" || children[0].Priority != model.PriorityP2 {
 		t.Fatalf("children = %+v, want one title-only P2 child", children)
 	}
-	childDue, err := model.ParseDate("2026-06-25")
+	childDue, err := model.ParseDate("2099-06-25")
 	if err != nil {
 		t.Fatalf("ParseDate child due: %v", err)
 	}
@@ -2362,7 +2362,7 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-issue-links")
-	dueDate, err := model.ParseDate("2026-06-24")
+	dueDate, err := model.ParseDate("2099-06-24")
 	if err != nil {
 		t.Fatalf("ParseDate: %v", err)
 	}
@@ -2414,7 +2414,7 @@ func TestUIIssueDueDateEditorRoundtrip(t *testing.T) {
 		}
 	}
 
-	form := url.Values{"due_date": {"2026-06-24"}}
+	form := url.Values{"due_date": {"2099-06-24"}}
 	res := e.uiDoNoRedirect(t, http.MethodPost, path, token, strings.NewReader(form.Encode()))
 	defer res.Body.Close()
 	body := readBody(t, res)
@@ -2428,7 +2428,7 @@ func TestUIIssueDueDateEditorRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetIssue after set due date: %v", err)
 	}
-	if got.DueDate == nil || got.DueDate.String() != "2026-06-24" {
+	if got.DueDate == nil || got.DueDate.String() != "2099-06-24" {
 		t.Fatalf("stored DueDate = %v", got.DueDate)
 	}
 
@@ -2521,7 +2521,7 @@ func TestUIRendersProjectSprintEmptyState(t *testing.T) {
 func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	e := newHTTPEnv(t)
 	_, token := e.mustProjectMemberToken(t, "ui-sprint")
-	dueDate, err := model.ParseDate("2026-06-24")
+	dueDate, err := model.ParseDate("2099-06-24")
 	if err != nil {
 		t.Fatalf("ParseDate: %v", err)
 	}

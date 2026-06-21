@@ -344,7 +344,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	commentID := uuid.MustParse("d0c74b63-c75c-42b0-b899-6baf6948e3fd")
 	linkID := uuid.MustParse("48c98f2e-bad8-4054-89d7-5a45a68af54f")
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
-	dueDate, err := model.ParseDate("2026-06-24")
+	dueDate, err := model.ParseDate("2099-06-24")
 	if err != nil {
 		t.Fatalf("ParseDate: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Planned One",
 		"Due date",
 		"Jun 24",
-		`aria-label="Due Jun 24, 2026"`,
+		`aria-label="Due Jun 24, 2099"`,
 		`data-lucide="calendar"`,
 		"Linked issues",
 		"Blocks",
@@ -1857,6 +1857,36 @@ func TestUIDueBadgeClassOverdueOnlyForOpenPastIssues(t *testing.T) {
 	if uiIssueOverdue(model.Issue{Status: model.StatusTodo}, now) {
 		t.Fatal("issue without due date should not be overdue")
 	}
+
+	today, err := model.ParseDate("2026-06-20")
+	if err != nil {
+		t.Fatalf("ParseDate today: %v", err)
+	}
+	sixDays, err := model.ParseDate("2026-06-26")
+	if err != nil {
+		t.Fatalf("ParseDate six days: %v", err)
+	}
+	sevenDays, err := model.ParseDate("2026-06-27")
+	if err != nil {
+		t.Fatalf("ParseDate seven days: %v", err)
+	}
+	for _, issue := range []model.Issue{
+		{Status: model.StatusTodo, DueDate: &today},
+		{Status: model.StatusTodo, DueDate: &sixDays},
+	} {
+		if !uiIssueDueSoon(issue, now) {
+			t.Fatalf("issue should be due soon: %+v", issue)
+		}
+	}
+	if uiIssueDueSoon(model.Issue{Status: model.StatusTodo, DueDate: &sevenDays}, now) {
+		t.Fatal("seven days out should not be due soon")
+	}
+	if days, ok := uiIssueDueDays(model.Issue{Status: model.StatusTodo, DueDate: &sixDays}, now); !ok || days != 6 {
+		t.Fatalf("days = %d, ok = %v, want 6 true", days, ok)
+	}
+	if days, ok := uiIssueDueDays(model.Issue{Status: model.StatusDone, DueDate: &today}, now); ok || days != 0 {
+		t.Fatalf("done days = %d, ok = %v, want 0 false", days, ok)
+	}
 }
 
 func TestUIDueDateFormatHelpers(t *testing.T) {
@@ -1885,8 +1915,35 @@ func TestUIDueDateFormatHelpers(t *testing.T) {
 	if got := uiDueBadgeClass(model.Issue{Status: model.StatusTodo, DueDate: &overdueDate}); !strings.Contains(got, "border-rose-200") {
 		t.Fatalf("overdue class = %q", got)
 	}
+	today, err := model.ParseDate(time.Now().Format(model.DateLayout))
+	if err != nil {
+		t.Fatalf("ParseDate today: %v", err)
+	}
+	if got := uiDueBadgeClass(model.Issue{Status: model.StatusTodo, DueDate: &today}); !strings.Contains(got, "border-amber-200") {
+		t.Fatalf("today class = %q", got)
+	}
+	if got := uiDueBadgeIcon(model.Issue{Status: model.StatusTodo, DueDate: &today}); got != "clock" {
+		t.Fatalf("today icon = %q", got)
+	}
+	if got := uiDueBadgeLabel(model.Issue{Status: model.StatusTodo, DueDate: &today}); got != "Today" {
+		t.Fatalf("today label = %q", got)
+	}
+	tomorrow := model.DateFromTime(time.Now().AddDate(0, 0, 1))
+	if got := uiDueBadgeLabel(model.Issue{Status: model.StatusTodo, DueDate: &tomorrow}); got != "1 day" {
+		t.Fatalf("tomorrow label = %q", got)
+	}
+	sixDays := model.DateFromTime(time.Now().AddDate(0, 0, 6))
+	if got := uiDueBadgeLabel(model.Issue{Status: model.StatusTodo, DueDate: &sixDays}); got != "6 days" {
+		t.Fatalf("six-day label = %q", got)
+	}
 	if got := uiDueBadgeClass(model.Issue{}); !strings.Contains(got, "border-slate-200") {
 		t.Fatalf("neutral class = %q", got)
+	}
+	if got := uiDueBadgeIcon(model.Issue{}); got != "calendar" {
+		t.Fatalf("neutral icon = %q", got)
+	}
+	if got := uiDueBadgeLabel(model.Issue{}); got != "" {
+		t.Fatalf("nil label = %q", got)
 	}
 }
 

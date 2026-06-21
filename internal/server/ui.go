@@ -69,6 +69,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectView":               uiProjectViewPath,
 	"projectIcon":               uiProjectIcon,
 	"dueBadgeClass":             uiDueBadgeClass,
+	"dueBadgeIcon":              uiDueBadgeIcon,
+	"dueBadgeLabel":             uiDueBadgeLabel,
 	"dueDateFull":               uiDueDateFull,
 	"dueDateShort":              uiDueDateShort,
 	"dueDateValue":              uiDueDateValue,
@@ -2913,17 +2915,53 @@ func uiDueBadgeClass(issue model.Issue) string {
 	if uiIssueOverdue(issue, time.Now()) {
 		return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200"
 	}
+	if uiIssueDueSoon(issue, time.Now()) {
+		return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+	}
 	return "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
 }
 
+func uiDueBadgeIcon(issue model.Issue) string {
+	if uiIssueDueSoon(issue, time.Now()) {
+		return "clock"
+	}
+	return "calendar"
+}
+
+func uiDueBadgeLabel(issue model.Issue) string {
+	if issue.DueDate == nil {
+		return ""
+	}
+	if days, ok := uiIssueDueDays(issue, time.Now()); ok && days >= 0 && days < 7 {
+		if days == 0 {
+			return "Today"
+		}
+		if days == 1 {
+			return "1 day"
+		}
+		return fmt.Sprintf("%d days", days)
+	}
+	return uiDueDateShort(issue.DueDate)
+}
+
 func uiIssueOverdue(issue model.Issue, now time.Time) bool {
+	days, ok := uiIssueDueDays(issue, now)
+	return ok && days < 0
+}
+
+func uiIssueDueSoon(issue model.Issue, now time.Time) bool {
+	days, ok := uiIssueDueDays(issue, now)
+	return ok && days >= 0 && days < 7
+}
+
+func uiIssueDueDays(issue model.Issue, now time.Time) (int, bool) {
 	if issue.DueDate == nil || issue.Status == model.StatusDone {
-		return false
+		return 0, false
 	}
 	current := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	due := issue.DueDate.Time()
 	due = time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, current.Location())
-	return due.Before(current)
+	return int(due.Sub(current).Hours() / 24), true
 }
 
 func uiStatusLabel(s model.Status) string {
