@@ -3,13 +3,16 @@ package testutil
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -23,6 +26,8 @@ const (
 	maxPostgresIdentifierLen = 63
 	testDatabaseTimeout      = 30 * time.Second
 )
+
+var errTemplateClosing = errors.New("test database template cleanup in progress")
 
 var activeTemplate struct {
 	sync.Mutex
@@ -58,7 +63,23 @@ func RunWithMigratedTemplate(m *testing.M) int {
 	activeTemplate.manager = manager
 	activeTemplate.Unlock()
 
+	signals := make(chan os.Signal, 1)
+	done := make(chan struct{})
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-signals:
+			if err := manager.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "test database template cleanup after %s: %v\n", sig, err)
+			}
+			os.Exit(signalExitCode(sig))
+		case <-done:
+		}
+	}()
+
 	code := m.Run()
+	signal.Stop(signals)
+	close(done)
 
 	activeTemplate.Lock()
 	activeTemplate.manager = nil
@@ -137,6 +158,10 @@ type templateManager struct {
 	prefix       string
 	seq          atomic.Uint64
 	mu           sync.Mutex
+	databases    map[string]struct{}
+	closing      atomic.Bool
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 func newTemplateManager(baseURL string) (*templateManager, error) {
@@ -168,6 +193,7 @@ func newTemplateManager(baseURL string) (*templateManager, error) {
 		adminDB:      adminDB,
 		templateName: buildDatabaseName(prefix, "template", strconv.Itoa(os.Getpid()), strconv.FormatInt(time.Now().UnixNano(), 36)),
 		prefix:       prefix,
+		databases:    make(map[string]struct{}),
 	}
 	if err := manager.createTemplate(); err != nil {
 		_ = adminDB.Close()
@@ -177,7 +203,7 @@ func newTemplateManager(baseURL string) (*templateManager, error) {
 }
 
 func (m *templateManager) createTemplate() error {
-	if err := m.createDatabase(m.templateName, ""); err != nil {
+	if err := m.createDatabase(m.templateName, "", false); err != nil {
 		return fmt.Errorf("create template database %s: %w", m.templateName, err)
 	}
 
@@ -221,7 +247,10 @@ func (m *templateManager) newDatabase(t testing.TB, migrated bool) *Database {
 	if migrated {
 		templateName = m.templateName
 	}
-	if err := m.createDatabase(dbName, templateName); err != nil {
+	if err := m.createDatabase(dbName, templateName, true); err != nil {
+		if errors.Is(err, errTemplateClosing) {
+			t.Skip("test database cleanup in progress after interrupt")
+		}
 		t.Fatalf("create ephemeral database %s: %v", dbName, err)
 	}
 
@@ -280,9 +309,13 @@ func (m *templateManager) newDatabase(t testing.TB, migrated bool) *Database {
 	return db
 }
 
-func (m *templateManager) createDatabase(name, templateName string) error {
+func (m *templateManager) createDatabase(name, templateName string, track bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if track && m.closing.Load() {
+		return errTemplateClosing
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), testDatabaseTimeout)
 	defer cancel()
@@ -291,12 +324,22 @@ func (m *templateManager) createDatabase(name, templateName string) error {
 		if err := m.terminateConnections(templateName); err != nil {
 			return err
 		}
-		_, err := m.adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", quoteIdent(name), quoteIdent(templateName)))
-		return err
+		if _, err := m.adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s TEMPLATE %s", quoteIdent(name), quoteIdent(templateName))); err != nil {
+			return err
+		}
+		if track {
+			m.databases[name] = struct{}{}
+		}
+		return nil
 	}
 
-	_, err := m.adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", quoteIdent(name)))
-	return err
+	if _, err := m.adminDB.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", quoteIdent(name))); err != nil {
+		return err
+	}
+	if track {
+		m.databases[name] = struct{}{}
+	}
+	return nil
 }
 
 func (m *templateManager) dropDatabase(name string) error {
@@ -309,8 +352,11 @@ func (m *templateManager) dropDatabase(name string) error {
 	if err := m.terminateConnections(name); err != nil {
 		return err
 	}
-	_, err := m.adminDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+quoteIdent(name))
-	return err
+	if _, err := m.adminDB.ExecContext(ctx, "DROP DATABASE IF EXISTS "+quoteIdent(name)); err != nil {
+		return err
+	}
+	delete(m.databases, name)
+	return nil
 }
 
 func (m *templateManager) terminateConnections(name string) error {
@@ -327,14 +373,32 @@ func (m *templateManager) terminateConnections(name string) error {
 }
 
 func (m *templateManager) Close() error {
-	var closeErr error
-	if err := m.dropDatabase(m.templateName); err != nil {
-		closeErr = err
+	m.closing.Store(true)
+	m.closeOnce.Do(func() {
+		for _, name := range m.databaseNames() {
+			if err := m.dropDatabase(name); err != nil && m.closeErr == nil {
+				m.closeErr = err
+			}
+		}
+		if err := m.dropDatabase(m.templateName); err != nil && m.closeErr == nil {
+			m.closeErr = err
+		}
+		if err := m.adminDB.Close(); err != nil && m.closeErr == nil {
+			m.closeErr = err
+		}
+	})
+	return m.closeErr
+}
+
+func (m *templateManager) databaseNames() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	names := make([]string, 0, len(m.databases))
+	for name := range m.databases {
+		names = append(names, name)
 	}
-	if err := m.adminDB.Close(); closeErr == nil && err != nil {
-		closeErr = err
-	}
-	return closeErr
+	return names
 }
 
 func requireTemplateManager(t testing.TB) *templateManager {
@@ -430,4 +494,11 @@ func buildDatabaseName(parts ...string) string {
 		return name[:maxPostgresIdentifierLen]
 	}
 	return parts[0][:min(len(parts[0]), prefixLen)] + suffix
+}
+
+func signalExitCode(sig os.Signal) int {
+	if sysSig, ok := sig.(syscall.Signal); ok {
+		return 128 + int(sysSig)
+	}
+	return 1
 }

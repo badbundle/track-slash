@@ -1,7 +1,9 @@
 package testutil
 
 import (
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -80,5 +82,16 @@ func TestQuoteIdent(t *testing.T) {
 
 	if got := quoteIdent(`track"test`); got != `"track""test"` {
 		t.Fatalf("quoteIdent = %q", got)
+	}
+}
+
+func TestSignalExitCode(t *testing.T) {
+	t.Parallel()
+
+	if got := signalExitCode(os.Interrupt); got != 130 {
+		t.Fatalf("interrupt exit code = %d, want 130", got)
+	}
+	if got := signalExitCode(syscall.SIGTERM); got != 143 {
+		t.Fatalf("sigterm exit code = %d, want 143", got)
 	}
 }
