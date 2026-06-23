@@ -236,9 +236,18 @@
               <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Comments</h2>
               {{template "count-badge" (len .Comments)}}
             </div>
-            {{if .CommentsHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+            {{if .CommentsHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing latest 200</p>{{end}}
           </div>
         </header>
+        <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
+          <div class="flex items-start gap-2">
+            <textarea name="body" rows="1" placeholder="Add a comment" data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
+            <button type="submit" aria-label="Post comment" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+              <i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          {{if .CommentError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.CommentError}}</div>{{end}}
+        </form>
         {{if .Comments}}
         <div class="space-y-3">
           {{range .Comments}}
@@ -247,29 +256,38 @@
               <span class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{initials .AuthorName .AuthorEmail}}</span>
               <span class="text-xs font-medium text-slate-600 dark:text-slate-300">{{.AuthorName}}</span>
               <span class="text-xs text-slate-500 dark:text-slate-400">{{tokenTime .Comment.CreatedAt}}</span>
-              <button type="button" disabled aria-label="Edit comment" class="grid h-5 w-5 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-white text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500">
+              {{if .Comment.EditedAt}}<span class="text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">•</span><span class="text-xs text-slate-500 dark:text-slate-400">Edited {{tokenTime .Comment.EditedAt}}</span>{{end}}
+              {{if and .CanEdit (ne $.EditCommentID .Comment.ID)}}
+              <button type="button" aria-label="Edit comment" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-5 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>
               </button>
+              {{end}}
             </div>
+            {{if eq $.EditCommentID .Comment.ID}}
+            <form method="post" action="{{issueComment $.Issue .Comment}}" hx-post="{{issueComment $.Issue .Comment}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="w-full max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25">
+              <textarea name="body" rows="2" autofocus data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-h-16 w-full resize-y rounded-md border border-indigo-100 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-indigo-900/60 dark:bg-slate-950 dark:text-slate-100">{{$.CommentEditBody}}</textarea>
+              <div class="mt-2 flex items-center gap-2">
+                <button type="submit" aria-label="Save comment" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing comment" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </button>
+                <span class="text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to save</span>
+              </div>
+              {{if $.CommentEditError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.CommentEditError}}</div>{{end}}
+            </form>
+            {{else}}
             <div class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25">
               <div class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800 dark:text-slate-200">{{.Comment.Body}}</div>
             </div>
+            {{end}}
           </article>
           {{end}}
         </div>
         {{else}}
         <div class="text-sm text-slate-500 dark:text-slate-400">No comments.</div>
         {{end}}
-        <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
-          <div class="flex items-start gap-2">
-            <textarea name="body" rows="1" placeholder="Add a comment" data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
-            <button type="submit" aria-label="Post comment" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
-              <i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
-          </div>
-          <div class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to send</div>
-          {{if .CommentError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.CommentError}}</div>{{end}}
-        </form>
       </section>
     </div>
 

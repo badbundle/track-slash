@@ -120,7 +120,16 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 	if !s.requireProjectAccess(w, r, issue.ProjectID) {
 		return
 	}
-	c, err := s.store.UpdateComment(r.Context(), comment.ID, body)
+	user := currentUser(r)
+	if comment.AuthorID != user.ID {
+		writeForbidden(w)
+		return
+	}
+	c, err := s.store.UpdateComment(r.Context(), store.UpdateCommentParams{
+		ID:       comment.ID,
+		AuthorID: user.ID,
+		Body:     body,
+	})
 	if err != nil {
 		writeStoreError(w, err)
 		return

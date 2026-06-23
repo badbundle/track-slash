@@ -19,6 +19,12 @@ type CreateCommentParams struct {
 	Body     string
 }
 
+type UpdateCommentParams struct {
+	ID       uuid.UUID
+	AuthorID uuid.UUID
+	Body     string
+}
+
 type commentScanner interface {
 	Scan(dest ...any) error
 }
@@ -30,6 +36,10 @@ func scanComment(row commentScanner) (model.Comment, error) {
 		return model.Comment{}, err
 	}
 	out.Ref = model.CommentRef(out.Number)
+	if out.UpdatedAt.After(out.CreatedAt) {
+		editedAt := out.UpdatedAt
+		out.EditedAt = &editedAt
+	}
 	return out, nil
 }
 
@@ -117,9 +127,10 @@ type CommentsCursor struct {
 }
 
 type ListCommentsForIssueParams struct {
-	IssueID uuid.UUID
-	Cursor  *CommentsCursor
-	Limit   int
+	IssueID     uuid.UUID
+	Cursor      *CommentsCursor
+	Limit       int
+	NewestFirst bool
 }
 
 func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssueParams) ([]model.Comment, bool, error) {
@@ -140,10 +151,18 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += fmt.Sprintf(" AND (c.created_at, c.id) > ($%d, $%d)", len(args)-1, len(args))
+		op := ">"
+		if p.NewestFirst {
+			op = "<"
+		}
+		q += fmt.Sprintf(" AND (c.created_at, c.id) %s ($%d, $%d)", op, len(args)-1, len(args))
 	}
 	args = append(args, p.Limit+1)
-	q += fmt.Sprintf(" ORDER BY c.created_at ASC, c.id ASC LIMIT $%d", len(args))
+	order := "ASC"
+	if p.NewestFirst {
+		order = "DESC"
+	}
+	q += fmt.Sprintf(" ORDER BY c.created_at %s, c.id %s LIMIT $%d", order, order, len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
@@ -172,13 +191,27 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 	return out, hasMore, nil
 }
 
-func (s *Store) UpdateComment(ctx context.Context, id uuid.UUID, body string) (model.Comment, error) {
+func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model.Comment, error) {
 	const q = `
-		UPDATE comments SET body = $1, updated_at = now()
-		WHERE id = $2
-		RETURNING id, issue_id, number, author_id, body, created_at, updated_at
+		WITH existing AS (
+			SELECT id, issue_id, number, author_id, body, created_at, updated_at
+			FROM comments
+			WHERE id = $1 AND author_id = $2
+		), updated AS (
+			UPDATE comments c
+			SET body = $3,
+				updated_at = GREATEST(clock_timestamp(), c.created_at + interval '1 microsecond')
+			FROM existing e
+			WHERE c.id = e.id AND c.body IS DISTINCT FROM $3
+			RETURNING c.id, c.issue_id, c.number, c.author_id, c.body, c.created_at, c.updated_at
+		)
+		SELECT id, issue_id, number, author_id, body, created_at, updated_at FROM updated
+		UNION ALL
+		SELECT id, issue_id, number, author_id, body, created_at, updated_at
+		FROM existing
+		WHERE NOT EXISTS (SELECT 1 FROM updated)
 	`
-	out, err := scanComment(s.db.QueryRow(ctx, q, body, id))
+	out, err := scanComment(s.db.QueryRow(ctx, q, p.ID, p.AuthorID, p.Body))
 	if err != nil {
 		if isNoRows(err) {
 			return model.Comment{}, ErrNotFound

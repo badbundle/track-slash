@@ -44,6 +44,9 @@ func TestCreateGetUpdateDeleteComment(t *testing.T) {
 	if c.IssueID != iss.ID || c.AuthorID != author.ID || c.Body != "hello" {
 		t.Fatalf("comment mismatch: %+v", c)
 	}
+	if c.EditedAt != nil {
+		t.Fatalf("new comment EditedAt = %v, want nil", c.EditedAt)
+	}
 
 	got, err := env.store.GetComment(env.ctx, c.ID)
 	if err != nil {
@@ -52,13 +55,47 @@ func TestCreateGetUpdateDeleteComment(t *testing.T) {
 	if got.ID != c.ID || got.Body != "hello" {
 		t.Fatalf("GetComment mismatch: %+v", got)
 	}
+	if got.EditedAt != nil {
+		t.Fatalf("GetComment EditedAt = %v, want nil", got.EditedAt)
+	}
 
-	updated, err := env.store.UpdateComment(env.ctx, c.ID, "edited")
+	updated, err := env.store.UpdateComment(env.ctx, store.UpdateCommentParams{
+		ID:       c.ID,
+		AuthorID: author.ID,
+		Body:     "edited",
+	})
 	if err != nil {
 		t.Fatalf("UpdateComment: %v", err)
 	}
 	if updated.Body != "edited" {
 		t.Fatalf("Body = %q, want edited", updated.Body)
+	}
+	if updated.EditedAt == nil || !updated.EditedAt.Equal(updated.UpdatedAt) || !updated.UpdatedAt.After(updated.CreatedAt) {
+		t.Fatalf("updated times = created %v updated %v edited %v, want edited_at from updated_at", updated.CreatedAt, updated.UpdatedAt, updated.EditedAt)
+	}
+
+	same, err := env.store.UpdateComment(env.ctx, store.UpdateCommentParams{
+		ID:       c.ID,
+		AuthorID: author.ID,
+		Body:     "edited",
+	})
+	if err != nil {
+		t.Fatalf("UpdateComment same body: %v", err)
+	}
+	if same.Body != "edited" || !same.UpdatedAt.Equal(updated.UpdatedAt) || same.EditedAt == nil || !same.EditedAt.Equal(*updated.EditedAt) {
+		t.Fatalf("same-body update = %+v, want body and edit timestamp preserved from %+v", same, updated)
+	}
+
+	other := mustCreateUser(t, env, "other-commenter-"+uniqueDigits(timeNow(t), 8)+"@example.com")
+	if _, err := env.store.UpdateComment(env.ctx, store.UpdateCommentParams{ID: c.ID, AuthorID: other.ID, Body: "not yours"}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("wrong author err = %v, want ErrNotFound", err)
+	}
+	got, err = env.store.GetComment(env.ctx, c.ID)
+	if err != nil {
+		t.Fatalf("GetComment after wrong author: %v", err)
+	}
+	if got.Body != "edited" {
+		t.Fatalf("wrong author changed body to %q", got.Body)
 	}
 
 	if err := env.store.DeleteComment(env.ctx, c.ID); err != nil {
@@ -105,13 +142,21 @@ func TestCreateCommentForeignKeysAndBodyCheck(t *testing.T) {
 		t.Fatalf("empty body err = %v, want ErrConflict", err)
 	}
 
-	_, err = env.store.UpdateComment(env.ctx, uuid.New(), "body")
+	_, err = env.store.UpdateComment(env.ctx, store.UpdateCommentParams{
+		ID:       uuid.New(),
+		AuthorID: author.ID,
+		Body:     "body",
+	})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("update missing err = %v, want ErrNotFound", err)
 	}
 
 	c := mustCreateComment(t, env, iss.ID, author.ID, "ok")
-	_, err = env.store.UpdateComment(env.ctx, c.ID, strings.Repeat("x", 10001))
+	_, err = env.store.UpdateComment(env.ctx, store.UpdateCommentParams{
+		ID:       c.ID,
+		AuthorID: author.ID,
+		Body:     strings.Repeat("x", 10001),
+	})
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("long update err = %v, want ErrConflict", err)
 	}
@@ -159,6 +204,31 @@ func TestListCommentsForIssuePagination(t *testing.T) {
 	}
 	if more || len(page2) != 1 || page2[0].ID != third.ID {
 		t.Fatalf("page2 = %+v more=%v", page2, more)
+	}
+
+	newestPage1, more, err := env.store.ListCommentsForIssue(env.ctx, store.ListCommentsForIssueParams{
+		IssueID:     iss.ID,
+		Limit:       2,
+		NewestFirst: true,
+	})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue newest page1: %v", err)
+	}
+	if !more || len(newestPage1) != 2 || newestPage1[0].ID != third.ID || newestPage1[1].ID != second.ID {
+		t.Fatalf("newest page1 = %+v more=%v", newestPage1, more)
+	}
+
+	newestPage2, more, err := env.store.ListCommentsForIssue(env.ctx, store.ListCommentsForIssueParams{
+		IssueID:     iss.ID,
+		Cursor:      &store.CommentsCursor{CreatedAt: newestPage1[1].CreatedAt, ID: newestPage1[1].ID},
+		Limit:       2,
+		NewestFirst: true,
+	})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue newest page2: %v", err)
+	}
+	if more || len(newestPage2) != 1 || newestPage2[0].ID != first.ID {
+		t.Fatalf("newest page2 = %+v more=%v", newestPage2, more)
 	}
 }
 

@@ -755,7 +755,6 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`method="post" action="` + e.issueCommentsPath(issue) + `"`,
 		`hx-post="` + e.issueCommentsPath(issue) + `"`,
 		`data-submit-shortcut="meta-enter"`,
-		"disabled",
 		`method="post" action="` + e.issuePath(issue) + `/delete"`,
 		`hx-post="` + e.issuePath(issue) + `/delete"`,
 		`hx-push-url="` + e.projectPath() + `/backlog"`,
@@ -1978,12 +1977,38 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 			t.Fatalf("comment post response missing %q: %s", want, body)
 		}
 	}
+	composerStart := strings.Index(body, `placeholder="Add a comment"`)
+	firstCommentStart := strings.Index(body, "new ui comment")
+	if composerStart < 0 || firstCommentStart < 0 || composerStart > firstCommentStart {
+		t.Fatalf("comment composer should render above comments: %s", body)
+	}
 	comments, _, err := e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListCommentsForIssue: %v", err)
 	}
 	if len(comments) != 1 || comments[0].Body != "new ui comment" || comments[0].AuthorID != user.ID {
 		t.Fatalf("comments = %+v, want one new comment by %s", comments, user.ID)
+	}
+
+	second := url.Values{"body": {"second ui comment"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueCommentsPath(issue), token, strings.NewReader(second.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("second code = %d body = %s", res.StatusCode, body)
+	}
+	secondCommentStart := strings.Index(body, "second ui comment")
+	firstCommentStart = strings.Index(body, "new ui comment")
+	composerStart = strings.Index(body, `placeholder="Add a comment"`)
+	if composerStart < 0 || secondCommentStart < 0 || firstCommentStart < 0 || composerStart > secondCommentStart || secondCommentStart > firstCommentStart {
+		t.Fatalf("comments should render newest-first below the composer: %s", body)
+	}
+	comments, _, err = e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue after second comment: %v", err)
+	}
+	if len(comments) != 2 || comments[0].Body != "new ui comment" || comments[1].Body != "second ui comment" {
+		t.Fatalf("store comments = %+v, want API/store default oldest-first", comments)
 	}
 
 	empty := url.Values{"body": {"   "}}
@@ -2000,8 +2025,110 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCommentsForIssue after validation: %v", err)
 	}
-	if len(comments) != 1 {
+	if len(comments) != 2 {
 		t.Fatalf("empty comment should not create a row, comments = %+v", comments)
+	}
+}
+
+func TestUIEditCommentAuthorOnly(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	author, authorToken := e.mustProjectMemberToken(t, "ui-comment-author")
+	_, otherToken := e.mustProjectMemberToken(t, "ui-comment-other")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "editable comment issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	comment, err := e.store.CreateComment(e.ctx, store.CreateCommentParams{
+		IssueID:  issue.ID,
+		AuthorID: author.ID,
+		Body:     "original ui comment",
+	})
+	if err != nil {
+		t.Fatalf("CreateComment: %v", err)
+	}
+	commentPath := e.issueCommentsPath(issue) + "/" + comment.Ref
+	editPath := commentPath + "/edit"
+
+	body := e.uiGet(t, e.issuePath(issue), authorToken)
+	for _, want := range []string{
+		"original ui comment",
+		`aria-label="Edit comment"`,
+		`hx-get="` + editPath + `"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("author issue body missing %q: %s", want, body)
+		}
+	}
+	otherBody := e.uiGet(t, e.issuePath(issue), otherToken)
+	for _, notWant := range []string{`aria-label="Edit comment"`, `hx-get="` + editPath + `"`} {
+		if strings.Contains(otherBody, notWant) {
+			t.Fatalf("non-author issue body included edit control %q: %s", notWant, otherBody)
+		}
+	}
+
+	edit := e.uiGet(t, editPath, authorToken)
+	for _, want := range []string{
+		`method="post" action="` + commentPath + `"`,
+		`hx-post="` + commentPath + `"`,
+		`<textarea name="body" rows="2"`,
+		"original ui comment",
+		`aria-label="Save comment"`,
+		`aria-label="Cancel editing comment"`,
+		"⌘ + Enter to save",
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("edit response missing %q: %s", want, edit)
+		}
+	}
+
+	empty := url.Values{"body": {"   "}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, commentPath, authorToken, strings.NewReader(empty.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("empty edit code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{"Comment required, max 10000 chars.", `aria-label="Save comment"`, ">   </textarea>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty edit response missing %q: %s", want, body)
+		}
+	}
+
+	form := url.Values{"body": {"edited ui comment"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, commentPath, authorToken, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("edit code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "edited ui comment") || !strings.Contains(body, ">•</span>") || !strings.Contains(body, "Edited ") || strings.Contains(body, "original ui comment") || strings.Contains(body, `aria-label="Save comment"`) {
+		t.Fatalf("edit response did not return edited read mode: %s", body)
+	}
+	updated, err := e.store.GetComment(e.ctx, comment.ID)
+	if err != nil {
+		t.Fatalf("GetComment after edit: %v", err)
+	}
+	if updated.Body != "edited ui comment" || updated.EditedAt == nil {
+		t.Fatalf("updated comment = %+v, want edited body and edited_at", updated)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, editPath, otherToken, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-author edit GET code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, commentPath, otherToken, strings.NewReader(url.Values{"body": {"not yours"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-author edit POST code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	got, err := e.store.GetComment(e.ctx, comment.ID)
+	if err != nil {
+		t.Fatalf("GetComment after non-author edit: %v", err)
+	}
+	if got.Body != "edited ui comment" {
+		t.Fatalf("non-author changed body to %q", got.Body)
 	}
 }
 
@@ -2167,6 +2294,14 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssueLink: %v", err)
 	}
+	comment, err := e.store.CreateComment(e.ctx, store.CreateCommentParams{
+		IssueID:  issue.ID,
+		AuthorID: e.adminID,
+		Body:     "protected comment",
+	})
+	if err != nil {
+		t.Fatalf("CreateComment protected: %v", err)
+	}
 	deletedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "protected deleted issue"})
 	if err != nil {
 		t.Fatalf("CreateIssue deleted: %v", err)
@@ -2185,6 +2320,16 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue comment code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issueCommentsPath(issue)+"/"+comment.Ref+"/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue comment edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueCommentsPath(issue)+"/"+comment.Ref, token, strings.NewReader(url.Values{"body": {"denied edit"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue comment update code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/description/edit", token, nil)
 	defer res.Body.Close()
