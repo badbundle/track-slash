@@ -1948,8 +1948,20 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("delete link code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "No linked issues.") || strings.Contains(body, "link ui replacement") {
-		t.Fatalf("delete link response did not return empty link state: %s", body)
+	for _, want := range []string{
+		">Linked issues</h2>",
+		`aria-label="Linked issue progress: no linked issues"`,
+		`aria-label="Add link"`,
+		"w-full sm:w-1/3",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("delete link response missing empty link state %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"No linked issues.", "link ui replacement"} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("delete link response included stale linked issue state %q: %s", notWant, body)
+		}
 	}
 	if _, err := e.store.GetIssueLink(e.ctx, link.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetIssueLink after delete err = %v, want ErrNotFound", err)
