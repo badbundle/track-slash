@@ -246,7 +246,6 @@
               <i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>
             </button>
           </div>
-          <div class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to send</div>
           {{if .CommentError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.CommentError}}</div>{{end}}
         </form>
         {{if .Comments}}
@@ -257,9 +256,9 @@
               <span class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{initials .AuthorName .AuthorEmail}}</span>
               <span class="text-xs font-medium text-slate-600 dark:text-slate-300">{{.AuthorName}}</span>
               <span class="text-xs text-slate-500 dark:text-slate-400">{{tokenTime .Comment.CreatedAt}}</span>
-              {{if .Comment.EditedAt}}<span class="text-xs text-slate-500 dark:text-slate-400">Edited {{tokenTime .Comment.EditedAt}}</span>{{end}}
+              {{if .Comment.EditedAt}}<span class="text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">•</span><span class="text-xs text-slate-500 dark:text-slate-400">Edited {{tokenTime .Comment.EditedAt}}</span>{{end}}
               {{if and .CanEdit (ne $.EditCommentID .Comment.ID)}}
-              <button type="button" aria-label="Edit comment" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit comment" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-5 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>
               </button>
               {{end}}

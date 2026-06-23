@@ -465,14 +465,12 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`data-submit-shortcut="meta-enter"`,
 		`data-autogrow-textarea`,
 		`<textarea name="body" rows="1"`,
-		`⌘ + Enter to send`,
 		`data-lucide="send-horizontal"`,
 		`class="order-2 min-w-0 space-y-6 lg:order-1"`,
 		`class="order-1 min-w-0 lg:order-2"`,
 		`class="flex items-start gap-2"`,
 		`class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
 		`class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700`,
-		`class="mt-1 pl-1 text-[11px] leading-4 text-slate-400 dark:text-slate-500"`,
 		`class="space-y-3 px-4"`,
 		`class="flex items-start gap-2"`,
 		`class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
@@ -498,6 +496,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 	if got := strings.Count(body, "bg-blue-50/45 dark:bg-blue-950/15"); got != 1 {
 		t.Fatalf("issue panel should tint the title card only, got %d matches: %s", got, body)
+	}
+	if strings.Contains(body, "⌘ + Enter to send") {
+		t.Fatalf("issue panel should not render command-enter helper text: %s", body)
 	}
 	requireInlineCount(t, body, "Sub-issues", 0)
 	requireInlineCount(t, body, "Linked issues", 1)

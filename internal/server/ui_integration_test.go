@@ -2102,7 +2102,7 @@ func TestUIEditCommentAuthorOnly(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("edit code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "edited ui comment") || !strings.Contains(body, "Edited ") || strings.Contains(body, "original ui comment") || strings.Contains(body, `aria-label="Save comment"`) {
+	if !strings.Contains(body, "edited ui comment") || !strings.Contains(body, ">•</span>") || !strings.Contains(body, "Edited ") || strings.Contains(body, "original ui comment") || strings.Contains(body, `aria-label="Save comment"`) {
 		t.Fatalf("edit response did not return edited read mode: %s", body)
 	}
 	updated, err := e.store.GetComment(e.ctx, comment.ID)
