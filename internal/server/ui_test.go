@@ -561,6 +561,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
 		t.Fatalf("issue panel should render comment metadata above the body: %s", body)
 	}
+	commentComposerStart := strings.Index(commentsBlock, `placeholder="Add a comment"`)
+	if commentComposerStart < 0 || commentsSectionStart+commentComposerStart > commentMetaStart {
+		t.Fatalf("comment composer should render above the comment list: %s", body)
+	}
 	commentBubbleStart := strings.Index(body, `class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2`)
 	if commentBubbleStart < 0 || commentBubbleStart < commentMetaStart || commentBubbleStart > commentBodyStart {
 		t.Fatalf("comment body should render inside the bubble after metadata: %s", body)

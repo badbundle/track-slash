@@ -127,9 +127,10 @@ type CommentsCursor struct {
 }
 
 type ListCommentsForIssueParams struct {
-	IssueID uuid.UUID
-	Cursor  *CommentsCursor
-	Limit   int
+	IssueID     uuid.UUID
+	Cursor      *CommentsCursor
+	Limit       int
+	NewestFirst bool
 }
 
 func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssueParams) ([]model.Comment, bool, error) {
@@ -150,10 +151,18 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += fmt.Sprintf(" AND (c.created_at, c.id) > ($%d, $%d)", len(args)-1, len(args))
+		op := ">"
+		if p.NewestFirst {
+			op = "<"
+		}
+		q += fmt.Sprintf(" AND (c.created_at, c.id) %s ($%d, $%d)", op, len(args)-1, len(args))
 	}
 	args = append(args, p.Limit+1)
-	q += fmt.Sprintf(" ORDER BY c.created_at ASC, c.id ASC LIMIT $%d", len(args))
+	order := "ASC"
+	if p.NewestFirst {
+		order = "DESC"
+	}
+	q += fmt.Sprintf(" ORDER BY c.created_at %s, c.id %s LIMIT $%d", order, order, len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {

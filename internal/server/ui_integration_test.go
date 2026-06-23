@@ -1977,12 +1977,38 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 			t.Fatalf("comment post response missing %q: %s", want, body)
 		}
 	}
+	composerStart := strings.Index(body, `placeholder="Add a comment"`)
+	firstCommentStart := strings.Index(body, "new ui comment")
+	if composerStart < 0 || firstCommentStart < 0 || composerStart > firstCommentStart {
+		t.Fatalf("comment composer should render above comments: %s", body)
+	}
 	comments, _, err := e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("ListCommentsForIssue: %v", err)
 	}
 	if len(comments) != 1 || comments[0].Body != "new ui comment" || comments[0].AuthorID != user.ID {
 		t.Fatalf("comments = %+v, want one new comment by %s", comments, user.ID)
+	}
+
+	second := url.Values{"body": {"second ui comment"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueCommentsPath(issue), token, strings.NewReader(second.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("second code = %d body = %s", res.StatusCode, body)
+	}
+	secondCommentStart := strings.Index(body, "second ui comment")
+	firstCommentStart = strings.Index(body, "new ui comment")
+	composerStart = strings.Index(body, `placeholder="Add a comment"`)
+	if composerStart < 0 || secondCommentStart < 0 || firstCommentStart < 0 || composerStart > secondCommentStart || secondCommentStart > firstCommentStart {
+		t.Fatalf("comments should render newest-first below the composer: %s", body)
+	}
+	comments, _, err = e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue after second comment: %v", err)
+	}
+	if len(comments) != 2 || comments[0].Body != "new ui comment" || comments[1].Body != "second ui comment" {
+		t.Fatalf("store comments = %+v, want API/store default oldest-first", comments)
 	}
 
 	empty := url.Values{"body": {"   "}}
@@ -1999,7 +2025,7 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListCommentsForIssue after validation: %v", err)
 	}
-	if len(comments) != 1 {
+	if len(comments) != 2 {
 		t.Fatalf("empty comment should not create a row, comments = %+v", comments)
 	}
 }

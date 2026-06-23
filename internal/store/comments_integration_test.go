@@ -205,6 +205,31 @@ func TestListCommentsForIssuePagination(t *testing.T) {
 	if more || len(page2) != 1 || page2[0].ID != third.ID {
 		t.Fatalf("page2 = %+v more=%v", page2, more)
 	}
+
+	newestPage1, more, err := env.store.ListCommentsForIssue(env.ctx, store.ListCommentsForIssueParams{
+		IssueID:     iss.ID,
+		Limit:       2,
+		NewestFirst: true,
+	})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue newest page1: %v", err)
+	}
+	if !more || len(newestPage1) != 2 || newestPage1[0].ID != third.ID || newestPage1[1].ID != second.ID {
+		t.Fatalf("newest page1 = %+v more=%v", newestPage1, more)
+	}
+
+	newestPage2, more, err := env.store.ListCommentsForIssue(env.ctx, store.ListCommentsForIssueParams{
+		IssueID:     iss.ID,
+		Cursor:      &store.CommentsCursor{CreatedAt: newestPage1[1].CreatedAt, ID: newestPage1[1].ID},
+		Limit:       2,
+		NewestFirst: true,
+	})
+	if err != nil {
+		t.Fatalf("ListCommentsForIssue newest page2: %v", err)
+	}
+	if more || len(newestPage2) != 1 || newestPage2[0].ID != first.ID {
+		t.Fatalf("newest page2 = %+v more=%v", newestPage2, more)
+	}
 }
 
 func TestListCommentsForUnknownIssue(t *testing.T) {

@@ -2238,8 +2238,9 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		}
 	}
 	comments, commentsHasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{
-		IssueID: issueID,
-		Limit:   MaxLimit,
+		IssueID:     issueID,
+		Limit:       MaxLimit,
+		NewestFirst: true,
 	})
 	if err != nil {
 		return nil, err
