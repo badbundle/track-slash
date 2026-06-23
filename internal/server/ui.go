@@ -31,6 +31,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":                  uiInitials,
 	"issueAssignee":             uiIssueAssigneePath,
 	"issueAssigneeEdit":         uiIssueAssigneeEditPath,
+	"issueComment":              uiIssueCommentPath,
+	"issueCommentEdit":          uiIssueCommentEditPath,
 	"issueComments":             uiIssueCommentsPath,
 	"issueDelete":               uiIssueDeletePath,
 	"issueDescription":          uiIssueDescriptionPath,
@@ -140,6 +142,7 @@ type uiIssueCommentItem struct {
 	Comment     model.Comment
 	AuthorName  string
 	AuthorEmail string
+	CanEdit     bool
 }
 
 type uiIssueLinkItem struct {
@@ -267,6 +270,9 @@ type uiIssuePanelData struct {
 	CommentsHasMore  bool
 	CommentBody      string
 	CommentError     string
+	EditCommentID    uuid.UUID
+	CommentEditBody  string
+	CommentEditError string
 	Links            []uiIssueLinkItem
 	LinksHasMore     bool
 	AddLink          bool
@@ -355,6 +361,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/sub-issues/new", s.uiNewSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/sub-issues", s.uiCreateSubIssue)
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
+		r.Get("/{owner}/issues/{issueRef}/comments/{commentRef}/edit", s.uiEditComment)
+		r.Post("/{owner}/issues/{issueRef}/comments/{commentRef}", s.uiUpdateComment)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
 		r.Get("/{owner}/projects/{key}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
 		r.Get("/{owner}/projects/{key}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
@@ -1565,6 +1573,82 @@ func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiEditComment(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	user := currentUser(r)
+	if err := s.uiRequireProjectAccess(r.Context(), user, issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	comment, ok := s.uiCommentFromRoute(w, r, issue)
+	if !ok {
+		return
+	}
+	if comment.AuthorID != user.ID {
+		writeUIStoreError(w, errUIForbidden)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditCommentID = comment.ID
+	panel.CommentEditBody = comment.Body
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateComment(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	user := currentUser(r)
+	if err := s.uiRequireProjectAccess(r.Context(), user, issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	comment, ok := s.uiCommentFromRoute(w, r, issue)
+	if !ok {
+		return
+	}
+	if comment.AuthorID != user.ID {
+		writeUIStoreError(w, errUIForbidden)
+		return
+	}
+	body := strings.TrimSpace(r.Form.Get("body"))
+	if body == "" || len(body) > 10000 {
+		s.renderUIIssuePanelWithCommentEditError(w, r, issue.ID, comment.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")
+		return
+	}
+	updated, err := s.store.UpdateComment(r.Context(), store.UpdateCommentParams{
+		ID:       comment.ID,
+		AuthorID: user.ID,
+		Body:     body,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithCommentEditError(w, r, issue.ID, comment.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.IssueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) renderUIIssuePanelWithSubIssueError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, title, message string) {
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
 	if err != nil {
@@ -1585,6 +1669,18 @@ func (s *Server) renderUIIssuePanelWithCommentError(w http.ResponseWriter, r *ht
 	}
 	panel.CommentBody = body
 	panel.CommentError = message
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithCommentEditError(w http.ResponseWriter, r *http.Request, issueID, commentID uuid.UUID, body, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditCommentID = commentID
+	panel.CommentEditBody = body
+	panel.CommentEditError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2154,7 +2250,11 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		if err != nil {
 			return nil, err
 		}
-		item := uiIssueCommentItem{Comment: comment, AuthorName: "Unknown user"}
+		item := uiIssueCommentItem{
+			Comment:    comment,
+			AuthorName: "Unknown user",
+			CanEdit:    comment.AuthorID == currentUser(r).ID,
+		}
 		if author != nil {
 			item.AuthorName = author.Name
 			item.AuthorEmail = author.Email
@@ -2562,6 +2662,20 @@ func (s *Server) uiIssueLinkFromRoute(w http.ResponseWriter, r *http.Request, is
 	return link, true
 }
 
+func (s *Server) uiCommentFromRoute(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.Comment, bool) {
+	number, err := parseTypedRef(chi.URLParam(r, "commentRef"), "comment")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return model.Comment{}, false
+	}
+	comment, err := s.store.GetCommentForIssueByNumber(r.Context(), issue.ID, number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Comment{}, false
+	}
+	return comment, true
+}
+
 func (s *Server) uiIssueLinkFormParams(ctx context.Context, issue model.Issue, targetRaw, relation string) (store.UpdateIssueLinkParams, string, error) {
 	if targetRaw == "" {
 		return store.UpdateIssueLinkParams{}, "Linked issue required.", nil
@@ -2641,6 +2755,14 @@ func uiIssueRestorePath(issue any) string {
 
 func uiIssueCommentsPath(issue any) string {
 	return uiIssuePath(issue) + "/comments"
+}
+
+func uiIssueCommentPath(issue any, comment any) string {
+	return uiIssueCommentsPath(issue) + "/" + uiCommentRef(comment)
+}
+
+func uiIssueCommentEditPath(issue any, comment any) string {
+	return uiIssueCommentPath(issue, comment) + "/edit"
 }
 
 func uiIssueDescriptionPath(issue any) string {
@@ -2756,6 +2878,25 @@ func uiIssueLinkRef(v any) string {
 		return model.IssueLinkRef(link.Number)
 	}
 	return "link-0"
+}
+
+func uiCommentRef(v any) string {
+	var comment model.Comment
+	switch c := v.(type) {
+	case model.Comment:
+		comment = c
+	case *model.Comment:
+		if c != nil {
+			comment = *c
+		}
+	}
+	if comment.Ref != "" {
+		return comment.Ref
+	}
+	if comment.Number > 0 {
+		return model.CommentRef(comment.Number)
+	}
+	return "comment-0"
 }
 
 func redirectUILogin(w http.ResponseWriter, r *http.Request) {

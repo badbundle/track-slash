@@ -378,9 +378,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		Reporter:      &reporter,
 		CanEditSprint: true,
 		Comments: []uiIssueCommentItem{{
-			Comment:     model.Comment{ID: commentID, IssueID: issueID, AuthorID: userID, Body: "Looks ready.", CreatedAt: when, UpdatedAt: when},
+			Comment:     model.Comment{ID: commentID, IssueID: issueID, Number: 2, Ref: "comment-2", AuthorID: userID, Body: "Looks ready.", CreatedAt: when, UpdatedAt: when},
 			AuthorName:  "Ada Lovelace",
 			AuthorEmail: "ada@example.com",
+			CanEdit:     true,
 		}},
 		Links: []uiIssueLinkItem{{
 			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, Number: 4, Ref: "link-4", SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},
@@ -435,6 +436,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit link"`,
 		`hx-get="/bradley/issues/TRACK-7/links/link-4/edit"`,
 		`aria-label="Edit comment"`,
+		`hx-get="/bradley/issues/TRACK-7/comments/comment-2/edit"`,
 		`aria-label="Change status"`,
 		`aria-expanded="false"`,
 		`hx-get="/bradley/issues/TRACK-7/status/edit"`,

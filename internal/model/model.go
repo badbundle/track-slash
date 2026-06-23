@@ -234,14 +234,15 @@ func CommentRef(number int) string {
 }
 
 type Comment struct {
-	ID        uuid.UUID `json:"id"`
-	IssueID   uuid.UUID `json:"issue_id"`
-	Number    int       `json:"number"`
-	Ref       string    `json:"ref"`
-	AuthorID  uuid.UUID `json:"author_id"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID  `json:"id"`
+	IssueID   uuid.UUID  `json:"issue_id"`
+	Number    int        `json:"number"`
+	Ref       string     `json:"ref"`
+	AuthorID  uuid.UUID  `json:"author_id"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	EditedAt  *time.Time `json:"edited_at"`
 }
 
 type Sprint struct {

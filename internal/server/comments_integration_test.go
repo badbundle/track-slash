@@ -54,7 +54,13 @@ func TestHTTPCommentsCRUDAndPagination(t *testing.T) {
 		if code != http.StatusCreated {
 			t.Fatalf("create %q code = %d body = %s", txt, code, body)
 		}
+		if !strings.Contains(string(body), `"edited_at":null`) {
+			t.Fatalf("create response missing edited_at null: %s", body)
+		}
 		c := decode[model.Comment](t, body)
+		if c.EditedAt != nil {
+			t.Fatalf("new comment EditedAt = %v, want nil", c.EditedAt)
+		}
 		comments = append(comments, c)
 	}
 
@@ -81,6 +87,10 @@ func TestHTTPCommentsCRUDAndPagination(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("get code = %d body = %s", code, body)
 	}
+	got := decode[model.Comment](t, body)
+	if got.EditedAt != nil || !strings.Contains(string(body), `"edited_at":null`) {
+		t.Fatalf("get edited_at = %v body = %s, want null", got.EditedAt, body)
+	}
 
 	code, body = e.do(t, http.MethodPatch, commentPath, map[string]any{"body": "edited"})
 	if code != http.StatusOK {
@@ -89,6 +99,32 @@ func TestHTTPCommentsCRUDAndPagination(t *testing.T) {
 	updated := decode[model.Comment](t, body)
 	if updated.Body != "edited" {
 		t.Fatalf("Body = %q, want edited", updated.Body)
+	}
+	if updated.EditedAt == nil || !updated.EditedAt.Equal(updated.UpdatedAt) {
+		t.Fatalf("updated edited_at = %v updated_at = %v, want edited_at from updated_at", updated.EditedAt, updated.UpdatedAt)
+	}
+
+	code, body = e.do(t, http.MethodPatch, commentPath, map[string]any{"body": "edited"})
+	if code != http.StatusOK {
+		t.Fatalf("same patch code = %d body = %s", code, body)
+	}
+	same := decode[model.Comment](t, body)
+	if same.Body != "edited" || !same.UpdatedAt.Equal(updated.UpdatedAt) || same.EditedAt == nil || !same.EditedAt.Equal(*updated.EditedAt) {
+		t.Fatalf("same patch = %+v, want timestamp preserved from %+v", same, updated)
+	}
+
+	_, otherToken := e.mustProjectMemberToken(t, "comment-other")
+	code, body = e.doWithToken(t, otherToken, http.MethodPatch, commentPath, map[string]any{"body": "not yours"})
+	if code != http.StatusForbidden {
+		t.Fatalf("wrong author patch code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, commentPath, nil)
+	if code != http.StatusOK {
+		t.Fatalf("get after wrong author code = %d body = %s", code, body)
+	}
+	got = decode[model.Comment](t, body)
+	if got.Body != "edited" {
+		t.Fatalf("wrong author changed body to %q", got.Body)
 	}
 
 	code, body = e.do(t, http.MethodDelete, commentPath, nil)
