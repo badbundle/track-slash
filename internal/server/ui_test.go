@@ -31,6 +31,28 @@ func requireInlineCount(t *testing.T, body, heading string, count int) {
 	}
 }
 
+func sectionClassForHeading(t *testing.T, body, heading string) string {
+	t.Helper()
+	headingIndex := strings.Index(body, ">"+heading+"</h")
+	if headingIndex < 0 {
+		t.Fatalf("missing heading %q: %s", heading, body)
+	}
+	sectionStart := strings.LastIndex(body[:headingIndex], "<section")
+	if sectionStart < 0 {
+		t.Fatalf("missing section before heading %q: %s", heading, body)
+	}
+	classStart := strings.Index(body[sectionStart:headingIndex], `class="`)
+	if classStart < 0 {
+		t.Fatalf("missing section class before heading %q: %s", heading, body)
+	}
+	classStart += sectionStart + len(`class="`)
+	classEnd := strings.Index(body[classStart:headingIndex], `"`)
+	if classEnd < 0 {
+		t.Fatalf("unterminated section class before heading %q: %s", heading, body)
+	}
+	return body[classStart : classStart+classEnd]
+}
+
 func TestUIProjectIcon(t *testing.T) {
 	t.Parallel()
 
@@ -480,7 +502,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`inline-flex w-fit justify-self-start items-center whitespace-nowrap rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px]`,
 		`class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200"`,
 		`class="min-w-0 truncate text-slate-900 dark:text-slate-100">Linked work</span>`,
-		`class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"`,
+		`class="min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 w-full"`,
 		`class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Sub-issues</h2>`,
 		`class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h2>`,
 		`class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs`,
@@ -1188,6 +1210,112 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
 		t.Fatalf("linked issue progress bar should render after the title row controls: %s", body)
 	}
+}
+
+func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	linkedID := uuid.MustParse("ae77b9b8-9dcf-4a18-8b69-42b97bd4a4b5")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	basePanel := func() uiIssuePanelData {
+		return uiIssuePanelData{
+			Issue: model.Issue{
+				ID:            issueID,
+				ProjectID:     projectID,
+				OwnerUsername: "bradley",
+				ProjectKey:    "TRACK",
+				Identifier:    "TRACK-7",
+				Title:         "Parent issue",
+				Status:        model.StatusTodo,
+				CreatedAt:     when,
+				UpdatedAt:     when,
+			},
+			Project:   model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+			BackHref:  "/bradley/projects/TRACK/backlog",
+			BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+			BackLabel: "Backlog",
+		}
+	}
+	render := func(t *testing.T, panel uiIssuePanelData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &panel); err != nil {
+			t.Fatalf("ExecuteTemplate: %v", err)
+		}
+		return buf.String()
+	}
+	requireHeadingOrder := func(t *testing.T, body, first, second string) {
+		t.Helper()
+		firstIndex := strings.Index(body, ">"+first+"</h2>")
+		secondIndex := strings.Index(body, ">"+second+"</h2>")
+		if firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex {
+			t.Fatalf("heading %q should render before %q: %s", first, second, body)
+		}
+	}
+
+	emptyBody := render(t, basePanel())
+	for _, notWant := range []string{"No sub-issues.", "No linked issues."} {
+		if strings.Contains(emptyBody, notWant) {
+			t.Fatalf("empty relationship section should not render %q: %s", notWant, emptyBody)
+		}
+	}
+	if !strings.Contains(emptyBody, `class="flex flex-wrap gap-6"`) {
+		t.Fatalf("relationship sections should share a wrapping row: %s", emptyBody)
+	}
+	if got := strings.Count(emptyBody, `w-full sm:w-1/3`); got != 2 {
+		t.Fatalf("both empty relationship sections should render third-width, got %d: %s", got, emptyBody)
+	}
+	emptySubClass := sectionClassForHeading(t, emptyBody, "Sub-issues")
+	emptyLinkClass := sectionClassForHeading(t, emptyBody, "Linked issues")
+	for _, cls := range []string{emptySubClass, emptyLinkClass} {
+		if !strings.Contains(cls, `w-full sm:w-1/3`) {
+			t.Fatalf("empty relationship section should be third-width, got class %q: %s", cls, emptyBody)
+		}
+	}
+	requireHeadingOrder(t, emptyBody, "Sub-issues", "Linked issues")
+
+	populatedLinksPanel := basePanel()
+	populatedLinksPanel.Links = []uiIssueLinkItem{{
+		Link:        model.IssueLink{ID: uuid.MustParse("48c98f2e-bad8-4054-89d7-5a45a68af54f"), ProjectID: projectID, Number: 1, Ref: "link-1", SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeRelatesTo, CreatedAt: when, UpdatedAt: when},
+		LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusTodo},
+		HasIssue:    true,
+	}}
+	populatedLinksBody := render(t, populatedLinksPanel)
+	populatedSubClass := sectionClassForHeading(t, populatedLinksBody, "Sub-issues")
+	populatedLinkClass := sectionClassForHeading(t, populatedLinksBody, "Linked issues")
+	if !strings.Contains(populatedSubClass, `w-full sm:w-1/3`) {
+		t.Fatalf("empty sub-issues section should sit below populated links at third width, got %q: %s", populatedSubClass, populatedLinksBody)
+	}
+	if !strings.Contains(populatedLinkClass, "w-full") || strings.Contains(populatedLinkClass, "sm:w-[calc") {
+		t.Fatalf("populated linked issues section should remain full width above the empty one, got %q: %s", populatedLinkClass, populatedLinksBody)
+	}
+	requireHeadingOrder(t, populatedLinksBody, "Linked issues", "Sub-issues")
+
+	populatedSubIssuesPanel := basePanel()
+	populatedSubIssuesPanel.SubIssues = []model.Issue{{
+		ID:            uuid.MustParse("1e533f98-310a-4090-a8ff-7cc4c4a69df2"),
+		ProjectID:     projectID,
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Identifier:    "TRACK-8",
+		Title:         "Existing child",
+		Status:        model.StatusTodo,
+		Priority:      model.PriorityP2,
+		CreatedAt:     when,
+		UpdatedAt:     when,
+	}}
+	populatedSubIssuesBody := render(t, populatedSubIssuesPanel)
+	populatedSubIssuesClass := sectionClassForHeading(t, populatedSubIssuesBody, "Sub-issues")
+	populatedEmptyLinkClass := sectionClassForHeading(t, populatedSubIssuesBody, "Linked issues")
+	if !strings.Contains(populatedSubIssuesClass, "w-full") || strings.Contains(populatedSubIssuesClass, "sm:w-[calc") {
+		t.Fatalf("populated sub-issues section should remain full width above the empty one, got %q: %s", populatedSubIssuesClass, populatedSubIssuesBody)
+	}
+	if !strings.Contains(populatedEmptyLinkClass, `w-full sm:w-1/3`) {
+		t.Fatalf("empty linked issues section should sit below populated sub-issues at third width, got %q: %s", populatedEmptyLinkClass, populatedSubIssuesBody)
+	}
+	requireHeadingOrder(t, populatedSubIssuesBody, "Sub-issues", "Linked issues")
 }
 
 func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
