@@ -84,6 +84,7 @@ func TestUIStatusClass(t *testing.T) {
 		{status: model.StatusTodo, want: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"},
 		{status: model.StatusInProgress, want: "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-500/40 dark:bg-blue-950/40 dark:text-blue-200"},
 		{status: model.StatusDone, want: "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"},
+		{status: model.StatusClosed, want: "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"},
 		{status: model.Status("custom"), want: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"},
 	}
 
@@ -104,6 +105,7 @@ func TestUIStatusRowClass(t *testing.T) {
 		{status: model.StatusTodo, want: "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"},
 		{status: model.StatusInProgress, want: "bg-blue-50/45 hover:bg-blue-50 dark:bg-blue-950/15 dark:hover:bg-blue-950/30"},
 		{status: model.StatusDone, want: "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"},
+		{status: model.StatusClosed, want: "bg-zinc-50/70 hover:bg-zinc-100/80 dark:bg-zinc-900/35 dark:hover:bg-zinc-800/70"},
 		{status: model.Status("custom"), want: "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"},
 	}
 
@@ -124,6 +126,7 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 		{status: model.StatusTodo, want: "bg-slate-50/70 dark:bg-slate-900/30"},
 		{status: model.StatusInProgress, want: "bg-blue-50/45 dark:bg-blue-950/15"},
 		{status: model.StatusDone, want: "bg-emerald-50/45 dark:bg-emerald-950/15"},
+		{status: model.StatusClosed, want: "bg-zinc-50/70 dark:bg-zinc-900/35"},
 		{status: model.Status("custom"), want: "bg-white dark:bg-slate-900"},
 	}
 
@@ -145,18 +148,39 @@ func TestUISubIssueProgress(t *testing.T) {
 	mixed := uiSubIssueProgress([]model.Issue{
 		{Status: model.StatusDone},
 		{Status: model.StatusDone},
+		{Status: model.StatusClosed},
 		{Status: model.StatusInProgress},
 		{Status: model.StatusTodo},
 		{Status: model.Status("custom")},
 	})
-	if mixed.Total != 5 || mixed.Done != 2 || mixed.InProgress != 1 || mixed.Todo != 2 {
+	if mixed.Total != 6 || mixed.Done != 3 || mixed.InProgress != 1 || mixed.Todo != 2 {
 		t.Fatalf("mixed counts = %+v", mixed)
 	}
-	if mixed.DonePercent != "40.00%" || mixed.InProgressPercent != "20.00%" || mixed.TodoPercent != "40.00%" {
+	if mixed.DonePercent != "50.00%" || mixed.InProgressPercent != "16.67%" || mixed.TodoPercent != "33.33%" {
 		t.Fatalf("mixed percentages = %+v", mixed)
 	}
-	if mixed.Label != "Sub-issue progress: 2 done, 1 in progress, 2 to do" {
+	if mixed.Label != "Sub-issue progress: 3 done, 1 in progress, 2 to do" {
 		t.Fatalf("mixed label = %q", mixed.Label)
+	}
+}
+
+func TestUIIssueColumnStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   model.Status
+	}{
+		{status: model.StatusTodo, want: model.StatusTodo},
+		{status: model.StatusInProgress, want: model.StatusInProgress},
+		{status: model.StatusDone, want: model.StatusDone},
+		{status: model.StatusClosed, want: model.StatusDone},
+		{status: model.Status("custom"), want: model.Status("custom")},
+	}
+	for _, tt := range tests {
+		if got := uiIssueColumnStatus(tt.status); got != tt.want {
+			t.Fatalf("uiIssueColumnStatus(%q) = %q, want %q", tt.status, got, tt.want)
+		}
 	}
 }
 
@@ -784,10 +808,12 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 		`name="status" value="todo"`,
 		`name="status" value="in_progress"`,
 		`name="status" value="done"`,
+		`name="status" value="closed"`,
 		`role="option" aria-selected="true"`,
 		"To do",
 		"In progress",
 		"Done",
+		"Closed",
 		`data-lucide="check"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -1084,6 +1110,59 @@ func TestUIIssuePanelDoneDisablesSprintEdit(t *testing.T) {
 	}
 }
 
+func TestUIIssuePanelClosedDisablesSprintEdit(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	sprintID := uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Closed issue",
+			Status:        model.StatusClosed,
+			SprintID:      &sprintID,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:   model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		Sprint:    &model.Sprint{ID: sprintID, Name: "Closed Work"},
+		BackHref:  "/bradley/projects/TRACK/sprint",
+		BackHXGet: "/bradley/projects/TRACK/sprint/panel",
+		BackLabel: "Sprint",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		"Closed Work",
+		`aria-label="Edit sprint"`,
+		"disabled",
+		"cursor-not-allowed",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("closed sprint row missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{
+		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
+		`method="post" action="/bradley/issues/TRACK-7/sprint"`,
+		`name="sprint"`,
+	} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("closed sprint row included %q: %s", notWant, body)
+		}
+	}
+}
+
 func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	t.Parallel()
 
@@ -1106,6 +1185,7 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 		Project: model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
 		SubIssues: []model.Issue{
 			{Status: model.StatusDone},
+			{Status: model.StatusClosed},
 			{Status: model.StatusInProgress},
 			{Status: model.StatusTodo},
 		},
@@ -1119,11 +1199,11 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`,
+		`role="img" aria-label="Sub-issue progress: 2 done, 1 in progress, 1 to do"`,
 		`class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
 		`class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs`,
-		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
-		`bg-blue-400 dark:bg-blue-500" style="width: 33.33%;"`,
+		`bg-emerald-500 dark:bg-emerald-400" style="width: 50.00%;"`,
+		`bg-blue-400 dark:bg-blue-500" style="width: 25.00%;"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sub-issue progress bar missing %q: %s", want, body)
@@ -1132,9 +1212,9 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	if strings.Contains(body, "max-w-xs") {
 		t.Fatalf("sub-issue progress bar should fill the available width: %s", body)
 	}
-	requireInlineCount(t, body, "Sub-issues", 3)
+	requireInlineCount(t, body, "Sub-issues", 4)
 	addIndex := strings.Index(body, `aria-label="Add sub-issue"`)
-	progressIndex := strings.Index(body, `role="img" aria-label="Sub-issue progress: 1 done, 1 in progress, 1 to do"`)
+	progressIndex := strings.Index(body, `role="img" aria-label="Sub-issue progress: 2 done, 1 in progress, 1 to do"`)
 	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
 		t.Fatalf("sub-issue progress bar should render after the title row controls: %s", body)
 	}
@@ -1146,6 +1226,7 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
 	doneID := uuid.MustParse("ae77b9b8-9dcf-4a18-8b69-42b97bd4a4b5")
+	closedID := uuid.MustParse("550e8400-e29b-41d4-a716-446655440000")
 	progressID := uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2")
 	todoID := uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c")
 	deletedID := uuid.MustParse("0e4c50a0-ae1a-46e9-a7b5-75989e4f3ec3")
@@ -1168,6 +1249,11 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 			{
 				Link:        model.IssueLink{ID: uuid.MustParse("48c98f2e-bad8-4054-89d7-5a45a68af54f"), ProjectID: projectID, Number: 1, Ref: "link-1", SourceID: issueID, TargetID: doneID, LinkType: model.LinkTypeRelatesTo, CreatedAt: when, UpdatedAt: when},
 				LinkedIssue: model.Issue{ID: doneID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Done link", Status: model.StatusDone},
+				HasIssue:    true,
+			},
+			{
+				Link:        model.IssueLink{ID: uuid.MustParse("4f6df8d9-f343-40f9-9c65-861d2967af90"), ProjectID: projectID, Number: 5, Ref: "link-5", SourceID: issueID, TargetID: closedID, LinkType: model.LinkTypeRelatesTo, CreatedAt: when, UpdatedAt: when},
+				LinkedIssue: model.Issue{ID: closedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Closed link", Status: model.StatusClosed},
 				HasIssue:    true,
 			},
 			{
@@ -1195,18 +1281,18 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`role="img" aria-label="Linked issue progress: 1 done, 1 in progress, 1 to do"`,
-		`bg-emerald-500 dark:bg-emerald-400" style="width: 33.33%;"`,
-		`bg-blue-400 dark:bg-blue-500" style="width: 33.33%;"`,
+		`role="img" aria-label="Linked issue progress: 2 done, 1 in progress, 1 to do"`,
+		`bg-emerald-500 dark:bg-emerald-400" style="width: 50.00%;"`,
+		`bg-blue-400 dark:bg-blue-500" style="width: 25.00%;"`,
 		"Deleted issue",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("linked issue progress missing %q: %s", want, body)
 		}
 	}
-	requireInlineCount(t, body, "Linked issues", 4)
+	requireInlineCount(t, body, "Linked issues", 5)
 	addIndex := strings.Index(body, `aria-label="Add link"`)
-	progressIndex := strings.Index(body, `role="img" aria-label="Linked issue progress: 1 done, 1 in progress, 1 to do"`)
+	progressIndex := strings.Index(body, `role="img" aria-label="Linked issue progress: 2 done, 1 in progress, 1 to do"`)
 	if addIndex < 0 || progressIndex < 0 || addIndex > progressIndex {
 		t.Fatalf("linked issue progress bar should render after the title row controls: %s", body)
 	}
@@ -1989,6 +2075,9 @@ func TestUIDueBadgeClassOverdueOnlyForOpenPastIssues(t *testing.T) {
 	if uiIssueOverdue(model.Issue{Status: model.StatusDone, DueDate: &past}, now) {
 		t.Fatal("done past issue should not be overdue")
 	}
+	if uiIssueOverdue(model.Issue{Status: model.StatusClosed, DueDate: &past}, now) {
+		t.Fatal("closed past issue should not be overdue")
+	}
 	if uiIssueOverdue(model.Issue{Status: model.StatusTodo, DueDate: &future}, now) {
 		t.Fatal("future issue should not be overdue")
 	}
@@ -2024,6 +2113,9 @@ func TestUIDueBadgeClassOverdueOnlyForOpenPastIssues(t *testing.T) {
 	}
 	if days, ok := uiIssueDueDays(model.Issue{Status: model.StatusDone, DueDate: &today}, now); ok || days != 0 {
 		t.Fatalf("done days = %d, ok = %v, want 0 false", days, ok)
+	}
+	if days, ok := uiIssueDueDays(model.Issue{Status: model.StatusClosed, DueDate: &today}, now); ok || days != 0 {
+		t.Fatalf("closed days = %d, ok = %v, want 0 false", days, ok)
 	}
 }
 

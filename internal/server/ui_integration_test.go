@@ -388,12 +388,23 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue progress: %v", err)
 	}
+	closedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board closed issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue closed: %v", err)
+	}
 	if _, err := e.store.UpdateIssue(e.ctx, todo.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
 		t.Fatalf("assign todo: %v", err)
 	}
 	inProgressStatus := model.StatusInProgress
 	if _, err := e.store.UpdateIssue(e.ctx, inProgress.ID, store.UpdateIssueParams{SprintID: &sp.ID, Status: &inProgressStatus}); err != nil {
 		t.Fatalf("assign progress: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
+		t.Fatalf("assign closed: %v", err)
+	}
+	closedStatus := model.StatusClosed
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closedStatus}); err != nil {
+		t.Fatalf("close issue: %v", err)
 	}
 	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other UI Project", "")
 	if err != nil {
@@ -423,7 +434,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
-	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "board todo issue", "board progress issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Assignee filter"`} {
+	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Assignee filter"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}
@@ -878,10 +889,12 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 		`name="status" value="todo"`,
 		`name="status" value="in_progress"`,
 		`name="status" value="done"`,
+		`name="status" value="closed"`,
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		"To do",
 		"In progress",
 		"Done",
+		"Closed",
 	} {
 		if !strings.Contains(edit, want) {
 			t.Fatalf("status edit response missing %q: %s", want, edit)
@@ -946,6 +959,24 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 	}
 	if updated.Status != model.StatusInProgress {
 		t.Fatalf("bad form changed Status = %q, want %q", updated.Status, model.StatusInProgress)
+	}
+
+	closedStatus := url.Values{"status": {string(model.StatusClosed)}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(closedStatus.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("closed status code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Closed") || strings.Contains(body, `role="option"`) {
+		t.Fatalf("closed status response did not return read mode with new status: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after closed status: %v", err)
+	}
+	if updated.Status != model.StatusClosed {
+		t.Fatalf("closed Status = %q, want %q", updated.Status, model.StatusClosed)
 	}
 }
 
@@ -1821,6 +1852,38 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 	if updated.SprintID == nil || *updated.SprintID != current.ID {
 		t.Fatalf("SprintID = %v, want %s", updated.SprintID, current.ID)
 	}
+
+	closedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "closed sprint issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue closed: %v", err)
+	}
+	closed := model.StatusClosed
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{SprintID: &current.ID}); err != nil {
+		t.Fatalf("assign closed current: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closed}); err != nil {
+		t.Fatalf("mark closed: %v", err)
+	}
+	body = e.uiGet(t, e.issuePath(closedIssue), token)
+	if !strings.Contains(body, "Current Sprint") || !strings.Contains(body, "cursor-not-allowed") || strings.Contains(body, `/sprint/edit`) {
+		t.Fatalf("closed detail did not render read-only sprint: %s", body)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(closedIssue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {next.Ref}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusConflict {
+		t.Fatalf("closed sprint post code = %d body = %s", res.StatusCode, body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, closedIssue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue closed after rejected post: %v", err)
+	}
+	if updated.SprintID == nil || *updated.SprintID != current.ID {
+		t.Fatalf("closed SprintID = %v, want %s", updated.SprintID, current.ID)
+	}
 }
 
 func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
@@ -2645,7 +2708,16 @@ func TestUIIssueDueDateEditorRoundtrip(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("clear due date code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "None") || strings.Contains(body, "Jun 24") {
+	dueIndex := strings.Index(body, ">Due date</dt>")
+	if dueIndex < 0 {
+		t.Fatalf("clear due date response missing due date row: %s", body)
+	}
+	dueEnd := dueIndex + 500
+	if dueEnd > len(body) {
+		dueEnd = len(body)
+	}
+	dueBlock := body[dueIndex:dueEnd]
+	if !strings.Contains(dueBlock, "None") || strings.Contains(dueBlock, "Jun 24") {
 		t.Fatalf("clear due date response missing empty state: %s", body)
 	}
 	got, err = e.store.GetIssue(e.ctx, issue.ID)

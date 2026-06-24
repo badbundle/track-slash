@@ -57,7 +57,7 @@ func TestHTTPCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("get code = %d", code)
 	}
-	if decode[model.Issue](t, body).Status != model.StatusDone {
+	if decode[model.Issue](t, body).Status != model.StatusClosed {
 		t.Fatalf("source not closed")
 	}
 }
@@ -421,8 +421,8 @@ func TestHTTPUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetIssue: %v", err)
 	}
-	if updated.Status != model.StatusDone {
-		t.Fatalf("source status = %s, want done", updated.Status)
+	if updated.Status != model.StatusClosed {
+		t.Fatalf("source status = %s, want closed", updated.Status)
 	}
 }
 

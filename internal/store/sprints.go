@@ -317,9 +317,9 @@ func validateSprintTransition(from, to model.SprintStatus) error {
 	return fmt.Errorf("invalid sprint transition %s -> %s: %w", from, to, ErrConflict)
 }
 
-// CompleteSprint marks the sprint completed. Non-done issues roll into the
+// CompleteSprint marks the sprint completed. Non-terminal issues roll into the
 // next planned sprint when one exists, otherwise they fall back to the backlog;
-// done issues stay attached so historical velocity is preserved.
+// done-equivalent issues stay attached so historical velocity is preserved.
 func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint, error) {
 	var out model.Sprint
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
@@ -354,12 +354,12 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		if isNoRows(nextErr) {
 			_, err = tx.Exec(ctx, `
 				UPDATE issues SET sprint_id = NULL, updated_at = now()
-				WHERE sprint_id = $1 AND status <> 'done' AND deleted_at IS NULL
+				WHERE sprint_id = $1 AND status NOT IN ('done', 'closed') AND deleted_at IS NULL
 			`, id)
 		} else {
 			_, err = tx.Exec(ctx, `
 				UPDATE issues SET sprint_id = $2, updated_at = now()
-				WHERE sprint_id = $1 AND status <> 'done' AND deleted_at IS NULL
+				WHERE sprint_id = $1 AND status NOT IN ('done', 'closed') AND deleted_at IS NULL
 			`, id, nextSprintID)
 		}
 		if err != nil {

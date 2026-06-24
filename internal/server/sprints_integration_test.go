@@ -647,9 +647,14 @@ func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue done: %v", err)
 	}
+	closedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "closed stays"})
+	if err != nil {
+		t.Fatalf("CreateIssue closed: %v", err)
+	}
 	progressStatus := model.StatusInProgress
 	doneStatus := model.StatusDone
-	for _, issue := range []model.Issue{todo, inProgress, doneIssue} {
+	closedStatus := model.StatusClosed
+	for _, issue := range []model.Issue{todo, inProgress, doneIssue, closedIssue} {
 		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &active.ID}); err != nil {
 			t.Fatalf("assign issue %s: %v", issue.ID, err)
 		}
@@ -659,6 +664,9 @@ func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	}
 	if _, err := e.store.UpdateIssue(e.ctx, doneIssue.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
 		t.Fatalf("mark done: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closedStatus}); err != nil {
+		t.Fatalf("mark closed: %v", err)
 	}
 
 	code, body := e.do(t, http.MethodPost, e.sprintPath(active)+"/complete", nil)
@@ -680,6 +688,13 @@ func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	}
 	if gotDone.SprintID == nil || *gotDone.SprintID != active.ID {
 		t.Fatalf("done sprint = %v, want %s", gotDone.SprintID, active.ID)
+	}
+	gotClosed, err := e.store.GetIssue(e.ctx, closedIssue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue closed: %v", err)
+	}
+	if gotClosed.SprintID == nil || *gotClosed.SprintID != active.ID {
+		t.Fatalf("closed sprint = %v, want %s", gotClosed.SprintID, active.ID)
 	}
 }
 
@@ -823,6 +838,21 @@ func TestHTTPPatchDoneIssueRejectsSprintEdit(t *testing.T) {
 	})
 	if code != http.StatusConflict {
 		t.Fatalf("status plus sprint code = %d body = %s", code, body)
+	}
+
+	becomingClosed, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "closed plus sprint",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue becoming closed: %v", err)
+	}
+	code, body = e.do(t, http.MethodPatch, e.issuePath(becomingClosed), map[string]any{
+		"status": string(model.StatusClosed),
+		"sprint": next.Ref,
+	})
+	if code != http.StatusConflict {
+		t.Fatalf("closed plus sprint code = %d body = %s", code, body)
 	}
 }
 
@@ -1046,6 +1076,31 @@ func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
 	got = decodePage[model.Issue](t, body).Items
 	if len(got) != 1 || got[0].ID != bobIssue.ID {
 		t.Fatalf("assignee+status list = %+v, want bob done", got)
+	}
+
+	closedFiltered, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "bob closed sprint issue",
+		AssigneeID: &bob.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue closed filtered: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, closedFiltered.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
+		t.Fatalf("assign closed filtered: %v", err)
+	}
+	closed := model.StatusClosed
+	if _, err := e.store.UpdateIssue(e.ctx, closedFiltered.ID, store.UpdateIssueParams{Status: &closed}); err != nil {
+		t.Fatalf("set closed filtered: %v", err)
+	}
+	code, body = e.do(t, http.MethodGet,
+		e.projectIssuesPath()+"?sprint="+sp.Ref+"&status=closed&assignee_id="+bob.ID.String(), nil)
+	if code != http.StatusOK {
+		t.Fatalf("assignee+closed code = %d body = %s", code, body)
+	}
+	got = decodePage[model.Issue](t, body).Items
+	if len(got) != 1 || got[0].ID != closedFiltered.ID {
+		t.Fatalf("assignee+closed list = %+v, want bob closed", got)
 	}
 
 	code, _ = e.do(t, http.MethodGet, e.projectIssuesPath()+"?assignee_id=nope", nil)
@@ -1328,6 +1383,24 @@ func TestHTTPUpdateIssueBadStatus(t *testing.T) {
 		map[string]any{"status": "blocked"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
+	}
+}
+
+func TestHTTPUpdateIssueClosedStatus(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "closed via api"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	code, body := e.do(t, http.MethodPatch, e.issuePath(iss),
+		map[string]any{"status": string(model.StatusClosed)})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body = %s", code, body)
+	}
+	got := decode[model.Issue](t, body)
+	if got.Status != model.StatusClosed {
+		t.Fatalf("status = %s, want closed", got.Status)
 	}
 }
 
