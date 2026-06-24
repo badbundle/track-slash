@@ -109,8 +109,8 @@ func TestCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetIssue: %v", err)
 	}
-	if src.Status != model.StatusDone {
-		t.Fatalf("source status = %s, want done", src.Status)
+	if src.Status != model.StatusClosed {
+		t.Fatalf("source status = %s, want closed", src.Status)
 	}
 
 	tgt, err := env.store.GetIssue(env.ctx, b.ID)
@@ -298,8 +298,8 @@ func TestUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetIssue: %v", err)
 	}
-	if src.Status != model.StatusDone {
-		t.Fatalf("source status = %s, want done", src.Status)
+	if src.Status != model.StatusClosed {
+		t.Fatalf("source status = %s, want closed", src.Status)
 	}
 }
 

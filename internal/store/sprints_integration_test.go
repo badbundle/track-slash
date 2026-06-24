@@ -399,11 +399,13 @@ func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	i2 := mustCreateIssue(t, env, "todo-2")
 	i3 := mustCreateIssue(t, env, "in-prog")
 	i4 := mustCreateIssue(t, env, "done")
-	for _, id := range []uuid.UUID{i1.ID, i2.ID, i3.ID, i4.ID} {
+	i5 := mustCreateIssue(t, env, "closed")
+	for _, id := range []uuid.UUID{i1.ID, i2.ID, i3.ID, i4.ID, i5.ID} {
 		assignIssueToSprint(t, env, id, active.ID)
 	}
 	setIssueStatus(t, env, i3.ID, model.StatusInProgress)
 	setIssueStatus(t, env, i4.ID, model.StatusDone)
+	setIssueStatus(t, env, i5.ID, model.StatusClosed)
 
 	out, err := env.store.CompleteSprint(env.ctx, active.ID)
 	if err != nil {
@@ -432,6 +434,13 @@ func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	}
 	if done.SprintID == nil || *done.SprintID != active.ID {
 		t.Fatalf("done issue sprint = %v, want %s (stays)", done.SprintID, active.ID)
+	}
+	closed, err := env.store.GetIssue(env.ctx, i5.ID)
+	if err != nil {
+		t.Fatalf("GetIssue closed: %v", err)
+	}
+	if closed.SprintID == nil || *closed.SprintID != active.ID {
+		t.Fatalf("closed issue sprint = %v, want %s (stays)", closed.SprintID, active.ID)
 	}
 	gotNext, err := env.store.GetSprint(env.ctx, next.ID)
 	if err != nil {
@@ -855,6 +864,23 @@ func TestUpdateIssueDoneRejectsSprintEdit(t *testing.T) {
 		t.Fatalf("SprintID = %v, want %s", got.SprintID, current.ID)
 	}
 
+	closedIssue := mustCreateIssue(t, env, "closed")
+	assignIssueToSprint(t, env, closedIssue.ID, current.ID)
+	setIssueStatus(t, env, closedIssue.ID, model.StatusClosed)
+	if _, err := env.store.UpdateIssue(env.ctx, closedIssue.ID, store.UpdateIssueParams{SprintID: &next.ID}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("set closed sprint err = %v, want ErrConflict", err)
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, closedIssue.ID, store.UpdateIssueParams{ClearSprint: true}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("clear closed sprint err = %v, want ErrConflict", err)
+	}
+	got, err = env.store.GetIssue(env.ctx, closedIssue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue closed: %v", err)
+	}
+	if got.SprintID == nil || *got.SprintID != current.ID {
+		t.Fatalf("closed SprintID = %v, want %s", got.SprintID, current.ID)
+	}
+
 	becomingDone := mustCreateIssue(t, env, "done-with-move")
 	done := model.StatusDone
 	if _, err := env.store.UpdateIssue(env.ctx, becomingDone.ID, store.UpdateIssueParams{
@@ -869,6 +895,22 @@ func TestUpdateIssueDoneRejectsSprintEdit(t *testing.T) {
 	}
 	if got.Status != model.StatusTodo || got.SprintID != nil {
 		t.Fatalf("issue after rejected update = status %s sprint %v, want todo/no sprint", got.Status, got.SprintID)
+	}
+
+	becomingClosed := mustCreateIssue(t, env, "closed-with-move")
+	closed := model.StatusClosed
+	if _, err := env.store.UpdateIssue(env.ctx, becomingClosed.ID, store.UpdateIssueParams{
+		Status:   &closed,
+		SprintID: &next.ID,
+	}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("status closed plus sprint err = %v, want ErrConflict", err)
+	}
+	got, err = env.store.GetIssue(env.ctx, becomingClosed.ID)
+	if err != nil {
+		t.Fatalf("GetIssue becoming closed: %v", err)
+	}
+	if got.Status != model.StatusTodo || got.SprintID != nil {
+		t.Fatalf("closed issue after rejected update = status %s sprint %v, want todo/no sprint", got.Status, got.SprintID)
 	}
 }
 

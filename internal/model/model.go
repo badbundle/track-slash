@@ -55,11 +55,20 @@ const (
 	StatusTodo       Status = "todo"
 	StatusInProgress Status = "in_progress"
 	StatusDone       Status = "done"
+	StatusClosed     Status = "closed"
 )
 
 func (s Status) Valid() bool {
 	switch s {
-	case StatusTodo, StatusInProgress, StatusDone:
+	case StatusTodo, StatusInProgress, StatusDone, StatusClosed:
+		return true
+	}
+	return false
+}
+
+func (s Status) CountsAsDone() bool {
+	switch s {
+	case StatusDone, StatusClosed:
 		return true
 	}
 	return false

@@ -1307,7 +1307,7 @@ func (s *Server) uiUpdateIssueSprint(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	if issue.ParentIssueID != nil || issue.Status == model.StatusDone {
+	if issue.ParentIssueID != nil || issue.Status.CountsAsDone() {
 		writeUIStoreError(w, store.ErrConflict)
 		return
 	}
@@ -2089,7 +2089,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		for _, issue := range sprintIssues {
 			item := uiIssueItem{Issue: issue, Project: project, Sprint: panel.ActiveSprint}
 			for i := range panel.SprintColumns {
-				if panel.SprintColumns[i].Status == issue.Status {
+				if panel.SprintColumns[i].Status == uiIssueColumnStatus(issue.Status) {
 					panel.SprintColumns[i].Issues = append(panel.SprintColumns[i].Issues, item)
 					break
 				}
@@ -2295,7 +2295,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		Sprint:           sprint,
 		Assignee:         assignee,
 		Reporter:         reporter,
-		CanEditSprint:    issue.ParentIssueID == nil && issue.Status != model.StatusDone,
+		CanEditSprint:    issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
 		SubIssues:        subIssues,
 		SubIssuesHasMore: subIssuesHasMore,
 		Comments:         commentItems,
@@ -3126,7 +3126,7 @@ func uiIssueDueSoon(issue model.Issue, now time.Time) bool {
 }
 
 func uiIssueDueDays(issue model.Issue, now time.Time) (int, bool) {
-	if issue.DueDate == nil || issue.Status == model.StatusDone {
+	if issue.DueDate == nil || issue.Status.CountsAsDone() {
 		return 0, false
 	}
 	current := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
@@ -3143,6 +3143,8 @@ func uiStatusLabel(s model.Status) string {
 		return "In progress"
 	case model.StatusDone:
 		return "Done"
+	case model.StatusClosed:
+		return "Closed"
 	default:
 		return string(s)
 	}
@@ -3156,6 +3158,8 @@ func uiStatusClass(s model.Status) string {
 		return "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-500/40 dark:bg-blue-950/40 dark:text-blue-200"
 	case model.StatusDone:
 		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
+	case model.StatusClosed:
+		return "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
 	default:
 		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
 	}
@@ -3171,6 +3175,7 @@ func uiStatusOptions() []uiStatusOption {
 		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
 		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
 		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+		{Status: model.StatusClosed, Label: uiStatusLabel(model.StatusClosed)},
 	}
 }
 
@@ -3188,10 +3193,10 @@ type uiSubIssueProgressData struct {
 func uiSubIssueProgress(issues []model.Issue) uiSubIssueProgressData {
 	out := uiSubIssueProgressData{Total: len(issues)}
 	for _, issue := range issues {
-		switch issue.Status {
-		case model.StatusDone:
+		switch {
+		case issue.Status.CountsAsDone():
 			out.Done++
-		case model.StatusInProgress:
+		case issue.Status == model.StatusInProgress:
 			out.InProgress++
 		default:
 			out.Todo++
@@ -3215,10 +3220,10 @@ func uiLinkedIssueProgress(links []uiIssueLinkItem) uiSubIssueProgressData {
 			continue
 		}
 		out.Total++
-		switch link.LinkedIssue.Status {
-		case model.StatusDone:
+		switch {
+		case link.LinkedIssue.Status.CountsAsDone():
 			out.Done++
-		case model.StatusInProgress:
+		case link.LinkedIssue.Status == model.StatusInProgress:
 			out.InProgress++
 		default:
 			out.Todo++
@@ -3302,6 +3307,8 @@ func uiStatusRowClass(s model.Status) string {
 		return "bg-blue-50/45 hover:bg-blue-50 dark:bg-blue-950/15 dark:hover:bg-blue-950/30"
 	case model.StatusDone:
 		return "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"
+	case model.StatusClosed:
+		return "bg-zinc-50/70 hover:bg-zinc-100/80 dark:bg-zinc-900/35 dark:hover:bg-zinc-800/70"
 	default:
 		return "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"
 	}
@@ -3315,9 +3322,18 @@ func uiStatusSurfaceClass(s model.Status) string {
 		return "bg-blue-50/45 dark:bg-blue-950/15"
 	case model.StatusDone:
 		return "bg-emerald-50/45 dark:bg-emerald-950/15"
+	case model.StatusClosed:
+		return "bg-zinc-50/70 dark:bg-zinc-900/35"
 	default:
 		return "bg-white dark:bg-slate-900"
 	}
+}
+
+func uiIssueColumnStatus(s model.Status) model.Status {
+	if s.CountsAsDone() {
+		return model.StatusDone
+	}
+	return s
 }
 
 func uiIssueColumns() []uiIssueColumn {

@@ -40,7 +40,7 @@ func scanIssueLink(row issueLinkScanner) (model.IssueLink, error) {
 }
 
 // CreateIssueLink inserts a typed link between two issues in the same project.
-// A 'duplicates' link atomically closes the source issue (status=done) so the
+// A 'duplicates' link atomically closes the source issue (status=closed) so the
 // canonical JIRA "this is a dup of X" flow is one round trip.
 func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (model.IssueLink, error) {
 	var out model.IssueLink
@@ -106,9 +106,9 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 			return err
 		}
 
-		if p.LinkType == model.LinkTypeDuplicates && sourceStatus != model.StatusDone {
+		if p.LinkType == model.LinkTypeDuplicates && !sourceStatus.CountsAsDone() {
 			if _, err := tx.Exec(ctx, `
-				UPDATE issues SET status = 'done', updated_at = now() WHERE id = $1
+				UPDATE issues SET status = 'closed', updated_at = now() WHERE id = $1
 			`, p.SourceID); err != nil {
 				return err
 			}
@@ -199,9 +199,9 @@ func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssue
 			return err // defensive: non-pg or unmapped pg error
 		}
 
-		if p.LinkType == model.LinkTypeDuplicates && sourceStatus != model.StatusDone {
+		if p.LinkType == model.LinkTypeDuplicates && !sourceStatus.CountsAsDone() {
 			if _, err := tx.Exec(ctx, `
-				UPDATE issues SET status = 'done', updated_at = now() WHERE id = $1
+				UPDATE issues SET status = 'closed', updated_at = now() WHERE id = $1
 			`, p.SourceID); err != nil {
 				return err
 			}

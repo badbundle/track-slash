@@ -608,7 +608,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 				}
 			}
 			if editSprint {
-				if issueStatus == model.StatusDone || (p.Status != nil && *p.Status == model.StatusDone) {
+				if issueStatus.CountsAsDone() || (p.Status != nil && p.Status.CountsAsDone()) {
 					return fmt.Errorf("cannot edit sprint for completed issue: %w", ErrConflict)
 				}
 				if parentIssueID != nil {
