@@ -57,8 +57,12 @@ func TestHTTPCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("get code = %d", code)
 	}
-	if decode[model.Issue](t, body).Status != model.StatusClosed {
+	issue := decode[model.Issue](t, body)
+	if issue.Status != model.StatusClosed {
 		t.Fatalf("source not closed")
+	}
+	if issue.CloseReason == nil || *issue.CloseReason != model.CloseReasonDuplicate {
+		t.Fatalf("source close reason = %v, want duplicate", issue.CloseReason)
 	}
 }
 
@@ -423,6 +427,9 @@ func TestHTTPUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	}
 	if updated.Status != model.StatusClosed {
 		t.Fatalf("source status = %s, want closed", updated.Status)
+	}
+	if updated.CloseReason == nil || *updated.CloseReason != model.CloseReasonDuplicate {
+		t.Fatalf("source close reason = %v, want duplicate", updated.CloseReason)
 	}
 }
 

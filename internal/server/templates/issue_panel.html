@@ -45,6 +45,14 @@
 
   {{template "issue-delete-notice" .DeleteNotice}}
 
+  {{if .PendingCloseReason}}
+  {{template "modal-open" (closeReasonModal .)}}
+    <div class="mt-4">
+      {{template "option-dropdown" (issueCloseReasonDropdown .)}}
+    </div>
+  {{template "modal-close" .}}
+  {{end}}
+
   <section class="grid gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
     <div class="order-2 min-w-0 space-y-6 lg:order-1">
       <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -217,6 +225,7 @@
               <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.LinkedIssue.Title}}</span>
               {{template "issue-due-badge" .LinkedIssue}}
               {{template "status-badge" .LinkedIssue.Status}}
+              {{if eq .LinkedIssue.Status "closed"}}{{template "close-reason-badge" .LinkedIssue.CloseReason}}{{end}}
             </a>
             {{else}}
             <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
@@ -302,48 +311,50 @@
         <dl class="mt-4 space-y-4 text-sm">
           <div>
             <style>
-              @keyframes status-picker-enter {
+              @keyframes option-dropdown-enter {
                 from { opacity: 0; transform: translateY(-0.25rem); }
                 to { opacity: 1; transform: translateY(0); }
               }
-              @keyframes status-pill-settle {
+              @keyframes option-dropdown-settle {
                 from { opacity: 0.85; transform: translateY(-0.125rem); }
                 to { opacity: 1; transform: translateY(0); }
               }
               @media (prefers-reduced-motion: no-preference) {
-                [data-status-toggle] {
-                  animation: status-pill-settle 120ms ease-out both;
+                [data-option-dropdown-toggle] {
+                  animation: option-dropdown-settle 120ms ease-out both;
                 }
-                [data-status-list] {
-                  animation: status-picker-enter 140ms ease-out both;
+                [data-option-dropdown-list] {
+                  animation: option-dropdown-enter 140ms ease-out both;
                   transform-origin: top;
                 }
               }
             </style>
             {{if .EditStatus}}
-            <div class="space-y-2">
-              <div>
-                <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="true" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-status-toggle class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
-                  <span>{{statusLabel .Issue.Status}}</span>
-                  <i data-lucide="chevron-up" class="h-4 w-4" aria-hidden="true"></i>
-                </button>
-              </div>
-              <form method="post" action="{{issueStatus .Issue}}" hx-post="{{issueStatus .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue status" data-status-list class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-                {{range statusOptions}}
-                <button type="submit" name="status" value="{{.Status}}" role="option" aria-selected="{{if eq $.Issue.Status .Status}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
-                  <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .Status}}">{{.Label}}</span>
-                  {{if eq $.Issue.Status .Status}}<i data-lucide="check" class="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>{{end}}
-                </button>
-                {{end}}
-              </form>
-            </div>
+            {{template "option-dropdown" (issueStatusDropdown .)}}
             {{else}}
-            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-status-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
+            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-option-dropdown-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
               <span>{{statusLabel .Issue.Status}}</span>
               <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
             </button>
             {{end}}
           </div>
+          {{if or .EditCloseReason (eq .Issue.Status "closed")}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Close reason</dt>
+            {{if .EditCloseReason}}
+            <div class="mt-1">
+              {{template "option-dropdown" (issueCloseReasonDropdown .)}}
+            </div>
+            {{else}}
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.CloseReason}}{{template "close-reason-badge" .Issue.CloseReason}}{{else}}{{template "missing-close-reason-badge" .}}{{end}}</span>
+              <button type="button" aria-label="Edit close reason" hx-get="{{issueCloseReasonEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
+            {{end}}
+          </div>
+          {{end}}
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Priority</dt>
             <dd class="mt-1">
@@ -502,6 +513,7 @@
         {{template "issue-key" .Issue.Identifier}}
         {{template "priority-badge" .Issue.Priority}}
         {{template "status-badge" .Issue.Status}}
+        {{if eq .Issue.Status "closed"}}{{template "close-reason-badge" .Issue.CloseReason}}{{end}}
       </div>
       <p class="mt-5 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Deleted issue</p>
       <h1 class="mt-2 text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">This issue has been deleted</h1>

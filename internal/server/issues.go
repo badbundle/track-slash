@@ -353,10 +353,11 @@ func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateIssueReq struct {
-	Title       *string              `json:"title,omitempty"`
-	Description *string              `json:"description,omitempty"`
-	Status      *model.Status        `json:"status,omitempty"`
-	Priority    *model.IssuePriority `json:"priority,omitempty"`
+	Title       *string                 `json:"title,omitempty"`
+	Description *string                 `json:"description,omitempty"`
+	Status      *model.Status           `json:"status,omitempty"`
+	CloseReason *model.IssueCloseReason `json:"close_reason,omitempty"`
+	Priority    *model.IssuePriority    `json:"priority,omitempty"`
 	// AssigneeID: pointer-to-pointer pattern via json.RawMessage would be cleaner,
 	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
 	AssigneeID    *uuid.UUID  `json:"assignee_id,omitempty"`
@@ -394,6 +395,22 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	if req.CloseReason != nil && !req.CloseReason.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid close_reason")
+		return
+	}
+	if req.Status != nil && *req.Status == model.StatusClosed && issue.Status != model.StatusClosed && req.CloseReason == nil {
+		writeError(w, http.StatusBadRequest, "close_reason required when closing issue")
+		return
+	}
+	effectiveStatus := issue.Status
+	if req.Status != nil {
+		effectiveStatus = *req.Status
+	}
+	if req.CloseReason != nil && effectiveStatus != model.StatusClosed {
+		writeError(w, http.StatusBadRequest, "close_reason only applies to closed issues")
+		return
+	}
 	if req.Priority != nil && !req.Priority.Valid() {
 		writeError(w, http.StatusBadRequest, "invalid priority")
 		return
@@ -417,6 +434,7 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Title:         req.Title,
 		Description:   req.Description,
 		Status:        req.Status,
+		CloseReason:   req.CloseReason,
 		Priority:      req.Priority,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,

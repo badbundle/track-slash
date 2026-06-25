@@ -108,7 +108,9 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 
 		if p.LinkType == model.LinkTypeDuplicates && !sourceStatus.CountsAsDone() {
 			if _, err := tx.Exec(ctx, `
-				UPDATE issues SET status = 'closed', updated_at = now() WHERE id = $1
+				UPDATE issues
+				SET status = 'closed', close_reason = 'duplicate', updated_at = now()
+				WHERE id = $1
 			`, p.SourceID); err != nil {
 				return err
 			}
@@ -201,7 +203,9 @@ func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssue
 
 		if p.LinkType == model.LinkTypeDuplicates && !sourceStatus.CountsAsDone() {
 			if _, err := tx.Exec(ctx, `
-				UPDATE issues SET status = 'closed', updated_at = now() WHERE id = $1
+				UPDATE issues
+				SET status = 'closed', close_reason = 'duplicate', updated_at = now()
+				WHERE id = $1
 			`, p.SourceID); err != nil {
 				return err
 			}

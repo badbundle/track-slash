@@ -34,6 +34,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueComment":              uiIssueCommentPath,
 	"issueCommentEdit":          uiIssueCommentEditPath,
 	"issueComments":             uiIssueCommentsPath,
+	"issueCloseReason":          uiIssueCloseReasonPath,
+	"issueCloseReasonEdit":      uiIssueCloseReasonEditPath,
 	"issueDelete":               uiIssueDeletePath,
 	"issueDescription":          uiIssueDescriptionPath,
 	"issueDescriptionEdit":      uiIssueDescriptionEditPath,
@@ -63,6 +65,11 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"linkLabel":                 uiIssueLinkLabel,
 	"linkOptions":               uiIssueLinkOptions,
 	"linkedIssueProgress":       uiLinkedIssueProgress,
+	"closeReasonLabel":          uiCloseReasonLabel,
+	"closeReasonModal":          uiCloseReasonModal,
+	"issueCloseReasonDropdown":  uiIssueCloseReasonDropdown,
+	"issueStatusDropdown":       uiIssueStatusDropdown,
+	"closeReasonOptions":        uiCloseReasonOptions,
 	"issueColumnCount":          uiIssueColumnCount,
 	"priorityClass":             uiPriorityClass,
 	"priorityLabel":             uiPriorityLabel,
@@ -161,6 +168,27 @@ type uiAutocompleteOption struct {
 	Label string
 }
 
+type uiOptionDropdownData struct {
+	Action       string
+	HXTarget     string
+	HXPushURL    string
+	CancelHXGet  string
+	ToggleLabel  string
+	ListLabel    string
+	Name         string
+	CurrentValue string
+	CurrentLabel string
+	CurrentClass string
+	Error        string
+	Options      []uiOptionDropdownOption
+}
+
+type uiOptionDropdownOption struct {
+	Value string
+	Label string
+	Class string
+}
+
 type uiAutocompleteEditData struct {
 	Label       string
 	Action      string
@@ -173,6 +201,22 @@ type uiAutocompleteEditData struct {
 	CancelLabel string
 	Error       string
 	Options     []uiAutocompleteOption
+}
+
+type uiModalData struct {
+	ID              string
+	Title           string
+	Description     string
+	WidthClass      string
+	CancelLabel     string
+	CancelHXGet     string
+	CancelHXPushURL string
+	Badges          []uiModalBadge
+}
+
+type uiModalBadge struct {
+	Label string
+	Class string
 }
 
 type uiIssueDeleteNotice struct {
@@ -237,53 +281,57 @@ type uiDeletedIssuePanelData struct {
 }
 
 type uiIssuePanelData struct {
-	Issue            model.Issue
-	Project          model.Project
-	ParentIssue      *model.Issue
-	Sprint           *model.Sprint
-	Assignee         *model.User
-	Reporter         *model.User
-	EditDescription  bool
-	EditStatus       bool
-	EditPriority     bool
-	EditDueDate      bool
-	EditAssignee     bool
-	EditReporter     bool
-	EditSprint       bool
-	CanEditSprint    bool
-	AssigneeInput    string
-	ReporterInput    string
-	SprintInput      string
-	DueDateInput     string
-	AssigneeError    string
-	ReporterError    string
-	SprintError      string
-	DueDateError     string
-	MemberOptions    []model.User
-	SprintOptions    []uiIssueSprintOption
-	SubIssues        []model.Issue
-	SubIssuesHasMore bool
-	AddSubIssue      bool
-	SubIssueTitle    string
-	SubIssueError    string
-	Comments         []uiIssueCommentItem
-	CommentsHasMore  bool
-	CommentBody      string
-	CommentError     string
-	EditCommentID    uuid.UUID
-	CommentEditBody  string
-	CommentEditError string
-	Links            []uiIssueLinkItem
-	LinksHasMore     bool
-	AddLink          bool
-	EditLinkID       uuid.UUID
-	LinkTarget       string
-	LinkRelation     string
-	LinkError        string
-	BackHref         string
-	BackHXGet        string
-	BackLabel        string
-	DeleteNotice     *uiIssueDeleteNotice
+	Issue              model.Issue
+	Project            model.Project
+	ParentIssue        *model.Issue
+	Sprint             *model.Sprint
+	Assignee           *model.User
+	Reporter           *model.User
+	EditDescription    bool
+	EditStatus         bool
+	PendingCloseReason bool
+	EditCloseReason    bool
+	EditPriority       bool
+	EditDueDate        bool
+	EditAssignee       bool
+	EditReporter       bool
+	EditSprint         bool
+	CanEditSprint      bool
+	AssigneeInput      string
+	ReporterInput      string
+	SprintInput        string
+	DueDateInput       string
+	CloseReasonInput   string
+	AssigneeError      string
+	ReporterError      string
+	SprintError        string
+	DueDateError       string
+	CloseReasonError   string
+	MemberOptions      []model.User
+	SprintOptions      []uiIssueSprintOption
+	SubIssues          []model.Issue
+	SubIssuesHasMore   bool
+	AddSubIssue        bool
+	SubIssueTitle      string
+	SubIssueError      string
+	Comments           []uiIssueCommentItem
+	CommentsHasMore    bool
+	CommentBody        string
+	CommentError       string
+	EditCommentID      uuid.UUID
+	CommentEditBody    string
+	CommentEditError   string
+	Links              []uiIssueLinkItem
+	LinksHasMore       bool
+	AddLink            bool
+	EditLinkID         uuid.UUID
+	LinkTarget         string
+	LinkRelation       string
+	LinkError          string
+	BackHref           string
+	BackHXGet          string
+	BackLabel          string
+	DeleteNotice       *uiIssueDeleteNotice
 }
 
 type uiProjectsPanelData struct {
@@ -343,6 +391,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
 		r.Post("/{owner}/issues/{issueRef}/status", s.uiUpdateIssueStatus)
+		r.Get("/{owner}/issues/{issueRef}/close-reason/edit", s.uiEditIssueCloseReason)
+		r.Post("/{owner}/issues/{issueRef}/close-reason", s.uiUpdateIssueCloseReason)
 		r.Get("/{owner}/issues/{issueRef}/priority/edit", s.uiEditIssuePriority)
 		r.Post("/{owner}/issues/{issueRef}/priority", s.uiUpdateIssuePriority)
 		r.Get("/{owner}/issues/{issueRef}/due-date/edit", s.uiEditIssueDueDate)
@@ -1036,6 +1086,18 @@ func (s *Server) uiUpdateIssueStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid status", http.StatusBadRequest)
 		return
 	}
+	if status == model.StatusClosed && issue.CloseReason == nil {
+		panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel.PendingCloseReason = true
+		panel.Issue.Status = model.StatusClosed
+		panel.CanEditSprint = false
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
 	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -1043,6 +1105,67 @@ func (s *Server) uiUpdateIssueStatus(w http.ResponseWriter, r *http.Request) {
 	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
 		Status: &status,
 	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueCloseReason(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if issue.Status == model.StatusClosed {
+		panel.EditCloseReason = true
+	}
+	if issue.CloseReason != nil {
+		panel.CloseReasonInput = string(*issue.CloseReason)
+	} else if issue.Status != model.StatusClosed {
+		panel.PendingCloseReason = true
+		panel.Issue.Status = model.StatusClosed
+		panel.CanEditSprint = false
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueCloseReason(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	reason := model.IssueCloseReason(strings.TrimSpace(r.Form.Get("close_reason")))
+	if !reason.Valid() {
+		s.renderUIIssuePanelWithCloseReasonError(w, r, issue.ID, string(reason), "Choose a close reason.")
+		return
+	}
+	params := store.UpdateIssueParams{
+		CloseReason: &reason,
+	}
+	if issue.Status != model.StatusClosed {
+		status := model.StatusClosed
+		params.Status = &status
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, params)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -1741,6 +1864,24 @@ func (s *Server) renderUIIssuePanelWithDueDateError(w http.ResponseWriter, r *ht
 	panel.EditDueDate = true
 	panel.DueDateInput = input
 	panel.DueDateError = message
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithCloseReasonError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if panel.Issue.Status == model.StatusClosed {
+		panel.EditCloseReason = true
+	} else {
+		panel.PendingCloseReason = true
+		panel.Issue.Status = model.StatusClosed
+		panel.CanEditSprint = false
+	}
+	panel.CloseReasonInput = input
+	panel.CloseReasonError = message
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2782,6 +2923,14 @@ func uiIssueStatusEditPath(issue any) string {
 	return uiIssueStatusPath(issue) + "/edit"
 }
 
+func uiIssueCloseReasonPath(issue any) string {
+	return uiIssuePath(issue) + "/close-reason"
+}
+
+func uiIssueCloseReasonEditPath(issue any) string {
+	return uiIssueCloseReasonPath(issue) + "/edit"
+}
+
 func uiIssuePriorityPath(issue any) string {
 	return uiIssuePath(issue) + "/priority"
 }
@@ -2992,7 +3141,7 @@ func safeUIIssuePath(path string) bool {
 		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "delete" || parts[3] == "restore"
 	}
 	if len(parts) == 5 {
-		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
+		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new")
 	}
@@ -3176,6 +3325,126 @@ func uiStatusOptions() []uiStatusOption {
 		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
 		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
 		{Status: model.StatusClosed, Label: uiStatusLabel(model.StatusClosed)},
+	}
+}
+
+func uiIssueStatusDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
+	options := make([]uiOptionDropdownOption, 0, len(uiStatusOptions()))
+	for _, option := range uiStatusOptions() {
+		options = append(options, uiOptionDropdownOption{
+			Value: string(option.Status),
+			Label: option.Label,
+			Class: uiStatusClass(option.Status),
+		})
+	}
+	return uiOptionDropdownData{
+		Action:       uiIssueStatusPath(panel.Issue),
+		HXTarget:     "#main",
+		HXPushURL:    uiIssuePath(panel.Issue),
+		CancelHXGet:  uiIssuePanelPath(panel.Issue),
+		ToggleLabel:  "Change status",
+		ListLabel:    "Issue status",
+		Name:         "status",
+		CurrentValue: string(panel.Issue.Status),
+		CurrentLabel: uiStatusLabel(panel.Issue.Status),
+		CurrentClass: uiStatusClass(panel.Issue.Status),
+		Options:      options,
+	}
+}
+
+func uiCloseReasonLabel(v any) string {
+	var reason model.IssueCloseReason
+	switch r := v.(type) {
+	case model.IssueCloseReason:
+		reason = r
+	case *model.IssueCloseReason:
+		if r == nil {
+			return ""
+		}
+		reason = *r
+	default:
+		return fmt.Sprint(v)
+	}
+	switch reason {
+	case model.CloseReasonDuplicate:
+		return "Duplicate"
+	case model.CloseReasonWontDo:
+		return "Won't Do"
+	case model.CloseReasonInvalid:
+		return "Invalid"
+	default:
+		return string(reason)
+	}
+}
+
+type uiCloseReasonOption struct {
+	Reason model.IssueCloseReason
+	Label  string
+}
+
+func uiCloseReasonOptions() []uiCloseReasonOption {
+	return []uiCloseReasonOption{
+		{Reason: model.CloseReasonDuplicate, Label: uiCloseReasonLabel(model.CloseReasonDuplicate)},
+		{Reason: model.CloseReasonWontDo, Label: uiCloseReasonLabel(model.CloseReasonWontDo)},
+		{Reason: model.CloseReasonInvalid, Label: uiCloseReasonLabel(model.CloseReasonInvalid)},
+	}
+}
+
+func uiIssueCloseReasonDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
+	currentValue := strings.TrimSpace(panel.CloseReasonInput)
+	if currentValue == "" && panel.Issue.CloseReason != nil {
+		currentValue = string(*panel.Issue.CloseReason)
+	}
+	currentReason := model.IssueCloseReason(currentValue)
+	currentLabel := "Close reason"
+	currentClass := "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+	if currentReason.Valid() {
+		currentLabel = uiCloseReasonLabel(currentReason)
+		currentClass = uiCloseReasonClass(currentReason)
+	}
+	options := make([]uiOptionDropdownOption, 0, len(uiCloseReasonOptions()))
+	for _, option := range uiCloseReasonOptions() {
+		options = append(options, uiOptionDropdownOption{
+			Value: string(option.Reason),
+			Label: option.Label,
+			Class: uiCloseReasonClass(option.Reason),
+		})
+	}
+	return uiOptionDropdownData{
+		Action:       uiIssueCloseReasonPath(panel.Issue),
+		HXTarget:     "#main",
+		HXPushURL:    uiIssuePath(panel.Issue),
+		CancelHXGet:  uiIssuePanelPath(panel.Issue),
+		ToggleLabel:  "Choose close reason",
+		ListLabel:    "Close reason",
+		Name:         "close_reason",
+		CurrentValue: currentValue,
+		CurrentLabel: currentLabel,
+		CurrentClass: currentClass,
+		Error:        panel.CloseReasonError,
+		Options:      options,
+	}
+}
+
+func uiCloseReasonClass(model.IssueCloseReason) string {
+	return "border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-slate-950 dark:text-zinc-200"
+}
+
+func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "close-reason",
+		Title:           "Close issue",
+		Description:     fmt.Sprintf("Choose a reason to close %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-sm",
+		CancelLabel:     "Cancel editing close reason",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: uiIssuePath(panel.Issue),
+		Badges: []uiModalBadge{
+			{
+				Label: uiStatusLabel(model.StatusClosed),
+				Class: uiStatusClass(model.StatusClosed),
+			},
+		},
 	}
 }
 

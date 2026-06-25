@@ -169,8 +169,9 @@
       <div class="truncate text-slate-900 group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">{{.Title}}</div>
       {{if .ParentIssueID}}<div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Sub-issue</div>{{end}}
     </a>
-    <div class="col-start-1 justify-self-start sm:col-start-auto">
+    <div class="col-start-1 flex flex-wrap items-center gap-2 justify-self-start sm:col-start-auto">
       {{template "status-badge" .Status}}
+      {{if eq .Status "closed"}}{{template "close-reason-badge" .CloseReason}}{{end}}
     </div>
     <form method="post" action="{{issueRestore .}}" hx-post="{{issueRestore .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="col-span-2 justify-self-start sm:col-span-1 sm:justify-self-end">
       <button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">

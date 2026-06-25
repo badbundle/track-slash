@@ -137,6 +137,37 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 	}
 }
 
+func TestUICloseReasonLabelAndOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		reason model.IssueCloseReason
+		want   string
+	}{
+		{reason: model.CloseReasonDuplicate, want: "Duplicate"},
+		{reason: model.CloseReasonWontDo, want: "Won't Do"},
+		{reason: model.CloseReasonInvalid, want: "Invalid"},
+		{reason: model.IssueCloseReason("custom"), want: "custom"},
+	}
+	for _, tt := range tests {
+		if got := uiCloseReasonLabel(tt.reason); got != tt.want {
+			t.Fatalf("uiCloseReasonLabel(%q) = %q, want %q", tt.reason, got, tt.want)
+		}
+		reason := tt.reason
+		if got := uiCloseReasonLabel(&reason); got != tt.want {
+			t.Fatalf("uiCloseReasonLabel(&%q) = %q, want %q", tt.reason, got, tt.want)
+		}
+	}
+
+	opts := uiCloseReasonOptions()
+	if len(opts) != 3 ||
+		opts[0].Reason != model.CloseReasonDuplicate ||
+		opts[1].Reason != model.CloseReasonWontDo ||
+		opts[2].Reason != model.CloseReasonInvalid {
+		t.Fatalf("close reason options = %+v", opts)
+	}
+}
+
 func TestUISubIssueProgress(t *testing.T) {
 	t.Parallel()
 
@@ -256,6 +287,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
+		{name: "issue close reason edit", raw: "/bradley/issues/TRACK-7/close-reason/edit", want: "/bradley/issues/TRACK-7/close-reason/edit"},
 		{name: "issue priority edit", raw: "/bradley/issues/TRACK-7/priority/edit", want: "/bradley/issues/TRACK-7/priority/edit"},
 		{name: "issue sprint edit", raw: "/bradley/issues/TRACK-7/sprint/edit", want: "/bradley/issues/TRACK-7/sprint/edit"},
 		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
@@ -794,10 +826,10 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	for _, want := range []string{
 		`aria-label="Change status"`,
 		`aria-expanded="true"`,
-		`data-status-toggle`,
-		`data-status-list`,
-		`status-picker-enter`,
-		`status-pill-settle`,
+		`data-option-dropdown-toggle`,
+		`data-option-dropdown-list`,
+		`option-dropdown-enter`,
+		`option-dropdown-settle`,
 		`data-lucide="chevron-up"`,
 		`hx-get="/bradley/issues/TRACK-7/panel"`,
 		`method="post" action="/bradley/issues/TRACK-7/status"`,
@@ -1116,6 +1148,7 @@ func TestUIIssuePanelClosedDisablesSprintEdit(t *testing.T) {
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
 	sprintID := uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08")
+	closeReason := model.CloseReasonWontDo
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
@@ -1127,6 +1160,7 @@ func TestUIIssuePanelClosedDisablesSprintEdit(t *testing.T) {
 			Identifier:    "TRACK-7",
 			Title:         "Closed issue",
 			Status:        model.StatusClosed,
+			CloseReason:   &closeReason,
 			SprintID:      &sprintID,
 			CreatedAt:     when,
 			UpdatedAt:     when,
@@ -1168,6 +1202,7 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	closeReason := model.CloseReasonWontDo
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
@@ -1185,7 +1220,7 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 		Project: model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
 		SubIssues: []model.Issue{
 			{Status: model.StatusDone},
-			{Status: model.StatusClosed},
+			{Status: model.StatusClosed, CloseReason: &closeReason},
 			{Status: model.StatusInProgress},
 			{Status: model.StatusTodo},
 		},
@@ -1230,6 +1265,7 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 	progressID := uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2")
 	todoID := uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c")
 	deletedID := uuid.MustParse("0e4c50a0-ae1a-46e9-a7b5-75989e4f3ec3")
+	closeReason := model.CloseReasonInvalid
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
@@ -1253,7 +1289,7 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 			},
 			{
 				Link:        model.IssueLink{ID: uuid.MustParse("4f6df8d9-f343-40f9-9c65-861d2967af90"), ProjectID: projectID, Number: 5, Ref: "link-5", SourceID: issueID, TargetID: closedID, LinkType: model.LinkTypeRelatesTo, CreatedAt: when, UpdatedAt: when},
-				LinkedIssue: model.Issue{ID: closedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Closed link", Status: model.StatusClosed},
+				LinkedIssue: model.Issue{ID: closedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Closed link", Status: model.StatusClosed, CloseReason: &closeReason},
 				HasIssue:    true,
 			},
 			{

@@ -48,6 +48,28 @@ func TestStatusCountsAsDone(t *testing.T) {
 	}
 }
 
+func TestIssueCloseReasonValid(t *testing.T) {
+	cases := []struct {
+		in   IssueCloseReason
+		want bool
+	}{
+		{CloseReasonDuplicate, true},
+		{CloseReasonWontDo, true},
+		{CloseReasonInvalid, true},
+		{"", false},
+		{"wontdo", false},
+		{"won't_do", false},
+		{"DUPLICATE", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.in), func(t *testing.T) {
+			if got := c.in.Valid(); got != c.want {
+				t.Fatalf("IssueCloseReason(%q).Valid() = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestDateJSONRoundTrip(t *testing.T) {
 	d, err := ParseDate("2026-06-24")
 	if err != nil {

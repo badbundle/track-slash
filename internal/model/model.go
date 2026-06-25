@@ -74,6 +74,22 @@ func (s Status) CountsAsDone() bool {
 	return false
 }
 
+type IssueCloseReason string
+
+const (
+	CloseReasonDuplicate IssueCloseReason = "duplicate"
+	CloseReasonWontDo    IssueCloseReason = "wont_do"
+	CloseReasonInvalid   IssueCloseReason = "invalid"
+)
+
+func (r IssueCloseReason) Valid() bool {
+	switch r {
+	case CloseReasonDuplicate, CloseReasonWontDo, CloseReasonInvalid:
+		return true
+	}
+	return false
+}
+
 type IssuePriority string
 
 const (
@@ -182,23 +198,24 @@ type Project struct {
 }
 
 type Issue struct {
-	ID            uuid.UUID     `json:"id"`
-	ProjectID     uuid.UUID     `json:"project_id"`
-	OwnerUsername string        `json:"owner_username"`
-	ProjectKey    string        `json:"project_key"`
-	Number        int           `json:"number"`
-	Identifier    string        `json:"identifier"`
-	Title         string        `json:"title"`
-	Description   string        `json:"description"`
-	Status        Status        `json:"status"`
-	Priority      IssuePriority `json:"priority"`
-	AssigneeID    *uuid.UUID    `json:"assignee_id,omitempty"`
-	ReporterID    *uuid.UUID    `json:"reporter_id,omitempty"`
-	SprintID      *uuid.UUID    `json:"sprint_id,omitempty"`
-	ParentIssueID *uuid.UUID    `json:"parent_issue_id,omitempty"`
-	DueDate       *Date         `json:"due_date"`
-	CreatedAt     time.Time     `json:"created_at"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	ID            uuid.UUID         `json:"id"`
+	ProjectID     uuid.UUID         `json:"project_id"`
+	OwnerUsername string            `json:"owner_username"`
+	ProjectKey    string            `json:"project_key"`
+	Number        int               `json:"number"`
+	Identifier    string            `json:"identifier"`
+	Title         string            `json:"title"`
+	Description   string            `json:"description"`
+	Status        Status            `json:"status"`
+	CloseReason   *IssueCloseReason `json:"close_reason"`
+	Priority      IssuePriority     `json:"priority"`
+	AssigneeID    *uuid.UUID        `json:"assignee_id,omitempty"`
+	ReporterID    *uuid.UUID        `json:"reporter_id,omitempty"`
+	SprintID      *uuid.UUID        `json:"sprint_id,omitempty"`
+	ParentIssueID *uuid.UUID        `json:"parent_issue_id,omitempty"`
+	DueDate       *Date             `json:"due_date"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
 type LinkType string

@@ -665,7 +665,8 @@ func TestHTTPCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	if _, err := e.store.UpdateIssue(e.ctx, doneIssue.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
 		t.Fatalf("mark done: %v", err)
 	}
-	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closedStatus}); err != nil {
+	closedReason := model.CloseReasonWontDo
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closedStatus, CloseReason: &closedReason}); err != nil {
 		t.Fatalf("mark closed: %v", err)
 	}
 
@@ -848,8 +849,9 @@ func TestHTTPPatchDoneIssueRejectsSprintEdit(t *testing.T) {
 		t.Fatalf("CreateIssue becoming closed: %v", err)
 	}
 	code, body = e.do(t, http.MethodPatch, e.issuePath(becomingClosed), map[string]any{
-		"status": string(model.StatusClosed),
-		"sprint": next.Ref,
+		"status":       string(model.StatusClosed),
+		"close_reason": string(model.CloseReasonWontDo),
+		"sprint":       next.Ref,
 	})
 	if code != http.StatusConflict {
 		t.Fatalf("closed plus sprint code = %d body = %s", code, body)
@@ -1090,7 +1092,8 @@ func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
 		t.Fatalf("assign closed filtered: %v", err)
 	}
 	closed := model.StatusClosed
-	if _, err := e.store.UpdateIssue(e.ctx, closedFiltered.ID, store.UpdateIssueParams{Status: &closed}); err != nil {
+	closedReason := model.CloseReasonWontDo
+	if _, err := e.store.UpdateIssue(e.ctx, closedFiltered.ID, store.UpdateIssueParams{Status: &closed, CloseReason: &closedReason}); err != nil {
 		t.Fatalf("set closed filtered: %v", err)
 	}
 	code, body = e.do(t, http.MethodGet,
@@ -1394,13 +1397,71 @@ func TestHTTPUpdateIssueClosedStatus(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 	code, body := e.do(t, http.MethodPatch, e.issuePath(iss),
-		map[string]any{"status": string(model.StatusClosed)})
+		map[string]any{"status": string(model.StatusClosed), "close_reason": string(model.CloseReasonWontDo)})
 	if code != http.StatusOK {
 		t.Fatalf("code = %d body = %s", code, body)
 	}
 	got := decode[model.Issue](t, body)
 	if got.Status != model.StatusClosed {
 		t.Fatalf("status = %s, want closed", got.Status)
+	}
+	if got.CloseReason == nil || *got.CloseReason != model.CloseReasonWontDo {
+		t.Fatalf("close reason = %v, want wont_do", got.CloseReason)
+	}
+}
+
+func TestHTTPUpdateIssueCloseReasonValidationAndReopen(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "close reason api"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	code, _ := e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"status": string(model.StatusClosed)})
+	if code != http.StatusBadRequest {
+		t.Fatalf("missing close_reason code = %d, want 400", code)
+	}
+	code, _ = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{
+		"status":       string(model.StatusClosed),
+		"close_reason": "bogus",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid close_reason code = %d, want 400", code)
+	}
+	code, _ = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{"close_reason": string(model.CloseReasonInvalid)})
+	if code != http.StatusBadRequest {
+		t.Fatalf("reason on open issue code = %d, want 400", code)
+	}
+
+	code, body := e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{
+		"status":       string(model.StatusClosed),
+		"close_reason": string(model.CloseReasonDuplicate),
+	})
+	if code != http.StatusOK {
+		t.Fatalf("close code = %d body = %s", code, body)
+	}
+	closed := decode[model.Issue](t, body)
+	if closed.Status != model.StatusClosed || closed.CloseReason == nil || *closed.CloseReason != model.CloseReasonDuplicate {
+		t.Fatalf("closed issue = %+v", closed)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(closed), map[string]any{"close_reason": string(model.CloseReasonInvalid)})
+	if code != http.StatusOK {
+		t.Fatalf("reason update code = %d body = %s", code, body)
+	}
+	updated := decode[model.Issue](t, body)
+	if updated.CloseReason == nil || *updated.CloseReason != model.CloseReasonInvalid {
+		t.Fatalf("updated close reason = %v, want invalid", updated.CloseReason)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.issuePath(updated), map[string]any{"status": string(model.StatusInProgress)})
+	if code != http.StatusOK {
+		t.Fatalf("reopen code = %d body = %s", code, body)
+	}
+	reopened := decode[model.Issue](t, body)
+	if reopened.Status != model.StatusInProgress || reopened.CloseReason != nil {
+		t.Fatalf("reopened issue = status %s reason %v, want in_progress/nil", reopened.Status, reopened.CloseReason)
 	}
 }
 
