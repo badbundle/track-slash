@@ -296,6 +296,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
 		{name: "issue sub-issue add", raw: "/bradley/issues/TRACK-7/sub-issues/new?x=1", want: "/bradley/issues/TRACK-7/sub-issues/new?x=1"},
+		{name: "issue context add", raw: "/bradley/issues/TRACK-7/context/new?x=1", want: "/bradley/issues/TRACK-7/context/new?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
 		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
@@ -315,6 +316,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "project all page with query", raw: "/bradley/projects/TRACK/all/page?cursor=abc", want: "/bradley/projects/TRACK/all/page?cursor=abc"},
 		{name: "project backlog panel with query", raw: "/bradley/projects/TRACK/backlog/panel?x=1", want: "/bradley/projects/TRACK/backlog/panel?x=1"},
 		{name: "project deleted panel with query", raw: "/bradley/projects/TRACK/deleted/panel?x=1", want: "/bradley/projects/TRACK/deleted/panel?x=1"},
+		{name: "project context add", raw: "/bradley/projects/TRACK/context/new?x=1", want: "/bradley/projects/TRACK/context/new?x=1"},
 		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},
 		{name: "bad project child", raw: "/bradley/projects/TRACK/issues", want: "/"},
 		{name: "bad project panel", raw: "/bradley/projects/TRACK/sprint/card", want: "/"},
@@ -1089,6 +1091,15 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 	}
 
 	body := buf.String()
+	sprintFormStart := strings.Index(body, `method="post" action="/bradley/issues/TRACK-7/sprint"`)
+	if sprintFormStart < 0 {
+		t.Fatalf("sprint edit form missing: %s", body)
+	}
+	sprintFormEnd := strings.Index(body[sprintFormStart:], `</form>`)
+	if sprintFormEnd < 0 {
+		t.Fatalf("sprint edit form did not close: %s", body)
+	}
+	sprintForm := body[sprintFormStart : sprintFormStart+sprintFormEnd]
 	for _, want := range []string{
 		`method="post" action="/bradley/issues/TRACK-7/sprint"`,
 		`hx-post="/bradley/issues/TRACK-7/sprint"`,
@@ -1129,8 +1140,8 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 		`title="Save sprint"`,
 		`title="Cancel editing sprint"`,
 	} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("sprint edit form included %q: %s", notWant, body)
+		if strings.Contains(sprintForm, notWant) {
+			t.Fatalf("sprint edit form included %q: %s", notWant, sprintForm)
 		}
 	}
 }
@@ -1424,7 +1435,7 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	}
 
 	emptyBody := render(t, basePanel())
-	for _, notWant := range []string{"No sub-issues.", "No linked issues."} {
+	for _, notWant := range []string{"No context.", "No sub-issues.", "No linked issues."} {
 		if strings.Contains(emptyBody, notWant) {
 			t.Fatalf("empty relationship section should not render %q: %s", notWant, emptyBody)
 		}
@@ -1432,17 +1443,38 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(emptyBody, `class="flex flex-wrap gap-6"`) {
 		t.Fatalf("relationship sections should share a wrapping row: %s", emptyBody)
 	}
-	if got := strings.Count(emptyBody, `w-full sm:w-1/3`); got != 2 {
-		t.Fatalf("both empty relationship sections should render third-width, got %d: %s", got, emptyBody)
+	if !strings.Contains(emptyBody, `aria-label="Add context"`) {
+		t.Fatalf("empty context section should expose add button: %s", emptyBody)
 	}
+	if strings.Contains(emptyBody, `placeholder="context-1"`) {
+		t.Fatalf("empty context section should keep attach form collapsed: %s", emptyBody)
+	}
+	if got := strings.Count(emptyBody, `w-full sm:w-1/3`); got != 3 {
+		t.Fatalf("empty context and relationship sections should render third-width, got %d: %s", got, emptyBody)
+	}
+	emptyContextClass := sectionClassForHeading(t, emptyBody, "Context")
 	emptySubClass := sectionClassForHeading(t, emptyBody, "Sub-issues")
 	emptyLinkClass := sectionClassForHeading(t, emptyBody, "Linked issues")
-	for _, cls := range []string{emptySubClass, emptyLinkClass} {
+	for _, cls := range []string{emptyContextClass, emptySubClass, emptyLinkClass} {
 		if !strings.Contains(cls, `w-full sm:w-1/3`) {
-			t.Fatalf("empty relationship section should be third-width, got class %q: %s", cls, emptyBody)
+			t.Fatalf("empty context/relationship section should be third-width, got class %q: %s", cls, emptyBody)
 		}
 	}
+	requireHeadingOrder(t, emptyBody, "Context", "Sub-issues")
 	requireHeadingOrder(t, emptyBody, "Sub-issues", "Linked issues")
+
+	addingContextPanel := basePanel()
+	addingContextPanel.AddContext = true
+	addingContextBody := render(t, addingContextPanel)
+	addingContextClass := sectionClassForHeading(t, addingContextBody, "Context")
+	if !strings.Contains(addingContextClass, "w-full") || strings.Contains(addingContextClass, `sm:w-1/3`) {
+		t.Fatalf("adding context section should expand to full width, got %q: %s", addingContextClass, addingContextBody)
+	}
+	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `aria-label="Attach context"`} {
+		if !strings.Contains(addingContextBody, want) {
+			t.Fatalf("adding context section missing %q: %s", want, addingContextBody)
+		}
+	}
 
 	populatedLinksPanel := basePanel()
 	populatedLinksPanel.Links = []uiIssueLinkItem{{
@@ -1459,6 +1491,7 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(populatedLinkClass, "w-full") || strings.Contains(populatedLinkClass, "sm:w-[calc") {
 		t.Fatalf("populated linked issues section should remain full width above the empty one, got %q: %s", populatedLinkClass, populatedLinksBody)
 	}
+	requireHeadingOrder(t, populatedLinksBody, "Context", "Linked issues")
 	requireHeadingOrder(t, populatedLinksBody, "Linked issues", "Sub-issues")
 
 	populatedSubIssuesPanel := basePanel()
@@ -1483,6 +1516,7 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(populatedEmptyLinkClass, `w-full sm:w-1/3`) {
 		t.Fatalf("empty linked issues section should sit below populated sub-issues at third width, got %q: %s", populatedEmptyLinkClass, populatedSubIssuesBody)
 	}
+	requireHeadingOrder(t, populatedSubIssuesBody, "Context", "Sub-issues")
 	requireHeadingOrder(t, populatedSubIssuesBody, "Sub-issues", "Linked issues")
 }
 

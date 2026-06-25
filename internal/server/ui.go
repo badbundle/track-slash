@@ -34,6 +34,9 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueComment":              uiIssueCommentPath,
 	"issueCommentEdit":          uiIssueCommentEditPath,
 	"issueComments":             uiIssueCommentsPath,
+	"issueContext":              uiIssueContextPath,
+	"issueContextDelete":        uiIssueContextDeletePath,
+	"issueContextNew":           uiIssueContextNewPath,
 	"issueCloseReason":          uiIssueCloseReasonPath,
 	"issueCloseReasonEdit":      uiIssueCloseReasonEditPath,
 	"issueDelete":               uiIssueDeletePath,
@@ -75,6 +78,14 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"priorityLabel":             uiPriorityLabel,
 	"priorityOptions":           uiPriorityOptions,
 	"projectPanel":              uiProjectPanelPath,
+	"projectContext":            uiProjectContextPath,
+	"projectContextDelete":      uiProjectContextDeletePath,
+	"projectContextEdit":        uiProjectContextEditPath,
+	"projectContextIssueDelete": uiProjectContextIssueDeletePath,
+	"projectContextIssues":      uiProjectContextIssuesPath,
+	"projectContextModal":       uiProjectContextModal,
+	"projectContextNew":         uiProjectContextNewPath,
+	"projectContexts":           uiProjectContextsPath,
 	"projectView":               uiProjectViewPath,
 	"projectIcon":               uiProjectIcon,
 	"dueBadgeClass":             uiDueBadgeClass,
@@ -188,6 +199,19 @@ type uiIssueLinkItem struct {
 	HasIssue    bool
 }
 
+type uiProjectContextItem struct {
+	Context             model.ProjectContextSummary
+	LinkedIssues        []model.Issue
+	LinkedIssuesHasMore bool
+	LinkIssueInput      string
+	LinkIssueError      string
+}
+
+type uiProjectContextOption struct {
+	Value string
+	Label string
+}
+
 type uiIssueSprintOption struct {
 	Value string
 	Label string
@@ -295,6 +319,17 @@ type uiProjectPanelData struct {
 	AllStatusFilters     []uiProjectStatusFilterItem
 	AllPriorityFilters   []uiProjectPriorityFilterItem
 	AllSortOptions       []uiProjectSortOptionItem
+	ContextItems         []uiProjectContextItem
+	ContextHasMore       bool
+	AddContext           bool
+	ContextTitle         string
+	ContextBody          string
+	ContextError         string
+	ContextUploadError   string
+	EditContextID        uuid.UUID
+	ContextEditTitle     string
+	ContextEditBody      string
+	ContextEditError     string
 	DeleteNotice         *uiIssueDeleteNotice
 	SprintIssuesHasMore  bool
 	PlannedHasMore       bool
@@ -371,6 +406,12 @@ type uiIssuePanelData struct {
 	LinkTarget         string
 	LinkRelation       string
 	LinkError          string
+	Contexts           []model.ProjectContext
+	ContextsHasMore    bool
+	AddContext         bool
+	ContextOptions     []uiProjectContextOption
+	ContextInput       string
+	ContextError       string
 	BackHref           string
 	BackHXGet          string
 	BackLabel          string
@@ -456,9 +497,19 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/issues/{issueRef}/comments/{commentRef}/edit", s.uiEditComment)
 		r.Post("/{owner}/issues/{issueRef}/comments/{commentRef}", s.uiUpdateComment)
+		r.Get("/{owner}/issues/{issueRef}/context/new", s.uiNewIssueContextLink)
+		r.Post("/{owner}/issues/{issueRef}/context", s.uiCreateIssueContextLink)
+		r.Post("/{owner}/issues/{issueRef}/context/{contextRef}/delete", s.uiDeleteIssueContextLink)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
 		r.Get("/{owner}/projects/{key}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
 		r.Get("/{owner}/projects/{key}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
+		r.Get("/{owner}/projects/{key}/context/new", s.uiNewProjectContext)
+		r.Post("/{owner}/projects/{key}/context", s.uiCreateProjectContext)
+		r.Get("/{owner}/projects/{key}/context/{contextRef}/edit", s.uiEditProjectContext)
+		r.Post("/{owner}/projects/{key}/context/{contextRef}", s.uiUpdateProjectContext)
+		r.Post("/{owner}/projects/{key}/context/{contextRef}/delete", s.uiDeleteProjectContext)
+		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues", s.uiCreateProjectContextIssueLink)
+		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues/{issueRef}/delete", s.uiDeleteProjectContextIssueLink)
 		r.Get("/{owner}/projects/{key}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/{owner}/projects/{key}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
 		r.Get("/{owner}/projects/{key}/planned", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "planned") })
@@ -901,6 +952,281 @@ func (s *Server) uiProjectWorkPanel(w http.ResponseWriter, r *http.Request, view
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiNewProjectContext(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, func(panel *uiProjectPanelData) {
+		panel.AddContext = true
+	})
+}
+
+func (s *Server) uiCreateProjectContext(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+
+	var params store.CreateProjectContextParams
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		r.Body = http.MaxBytesReader(w, r.Body, maxProjectContextUploadBytes+1024*1024)
+		upload, err := readProjectContextUpload(r)
+		if err != nil {
+			s.renderUIProjectAboutPanel(w, r, project.ID, func(panel *uiProjectPanelData) {
+				panel.AddContext = true
+				panel.ContextUploadError = err.Error()
+			})
+			return
+		}
+		params = store.CreateProjectContextParams{
+			ProjectID:      project.ID,
+			Title:          upload.Title,
+			Kind:           model.ProjectContextKindText,
+			ContentType:    upload.ContentType,
+			Body:           upload.Body,
+			SourceFilename: upload.SourceFilename,
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "unable to read form", http.StatusBadRequest)
+			return
+		}
+		titleInput := r.Form.Get("title")
+		bodyInput := r.Form.Get("body")
+		title, err := validateProjectContextTitle(titleInput)
+		if err != nil {
+			s.renderUIProjectAboutPanel(w, r, project.ID, func(panel *uiProjectPanelData) {
+				panel.AddContext = true
+				panel.ContextTitle = titleInput
+				panel.ContextBody = bodyInput
+				panel.ContextError = err.Error()
+			})
+			return
+		}
+		body, err := validateProjectContextBody(bodyInput)
+		if err != nil {
+			s.renderUIProjectAboutPanel(w, r, project.ID, func(panel *uiProjectPanelData) {
+				panel.AddContext = true
+				panel.ContextTitle = titleInput
+				panel.ContextBody = bodyInput
+				panel.ContextError = err.Error()
+			})
+			return
+		}
+		params = store.CreateProjectContextParams{
+			ProjectID:   project.ID,
+			Title:       title,
+			Kind:        model.ProjectContextKindText,
+			ContentType: "text/plain; charset=utf-8",
+			Body:        body,
+		}
+	}
+	params.CreatedByID = currentUser(r).ID
+	if _, err := s.store.CreateProjectContext(r.Context(), params); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, nil)
+}
+
+func (s *Server) uiEditProjectContext(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, func(panel *uiProjectPanelData) {
+		panel.EditContextID = contextItem.ID
+		panel.ContextEditTitle = contextItem.Title
+		panel.ContextEditBody = contextItem.Body
+	})
+}
+
+func (s *Server) uiUpdateProjectContext(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	titleInput := r.Form.Get("title")
+	bodyInput := r.Form.Get("body")
+	title, err := validateProjectContextTitle(titleInput)
+	if err != nil {
+		s.renderUIProjectContextEditError(w, r, project.ID, contextItem.ID, titleInput, bodyInput, err.Error())
+		return
+	}
+	body, err := validateProjectContextBody(bodyInput)
+	if err != nil {
+		s.renderUIProjectContextEditError(w, r, project.ID, contextItem.ID, titleInput, bodyInput, err.Error())
+		return
+	}
+	if _, err := s.store.UpdateProjectContext(r.Context(), store.UpdateProjectContextParams{
+		ID:          contextItem.ID,
+		Title:       &title,
+		Body:        &body,
+		UpdatedByID: currentUser(r).ID,
+	}); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, nil)
+}
+
+func (s *Server) uiDeleteProjectContext(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, nil)
+}
+
+func (s *Server) uiCreateProjectContextIssueLink(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := strings.TrimSpace(r.Form.Get("issue"))
+	issue, message, err := s.uiProjectContextIssueInput(r.Context(), project, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIProjectContextLinkError(w, r, project.ID, contextItem.ID, input, message)
+		return
+	}
+	if _, err := s.store.CreateIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIProjectContextLinkError(w, r, project.ID, contextItem.ID, input, "Issue already linked.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, nil)
+}
+
+func (s *Server) uiDeleteProjectContextIssueLink(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	ref, err := parseIssueRef(chi.URLParam(r, "issueRef"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), project.OwnerUsername, ref.ProjectKey, ref.Number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if issue.ProjectID != project.ID {
+		writeUIStoreError(w, store.ErrNotFound)
+		return
+	}
+	if err := s.store.DeleteIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, nil)
+}
+
+func (s *Server) renderUIProjectAboutPanel(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, mutate func(*uiProjectPanelData)) {
+	panel, err := s.uiBuildProjectPanel(r.Context(), r, projectID, "about")
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if mutate != nil {
+		mutate(panel)
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) renderUIProjectContextEditError(w http.ResponseWriter, r *http.Request, projectID, contextID uuid.UUID, title, body, message string) {
+	s.renderUIProjectAboutPanel(w, r, projectID, func(panel *uiProjectPanelData) {
+		panel.EditContextID = contextID
+		panel.ContextEditTitle = title
+		panel.ContextEditBody = body
+		panel.ContextEditError = message
+	})
+}
+
+func (s *Server) renderUIProjectContextLinkError(w http.ResponseWriter, r *http.Request, projectID, contextID uuid.UUID, input, message string) {
+	s.renderUIProjectAboutPanel(w, r, projectID, func(panel *uiProjectPanelData) {
+		for i := range panel.ContextItems {
+			if panel.ContextItems[i].Context.ID == contextID {
+				panel.ContextItems[i].LinkIssueInput = input
+				panel.ContextItems[i].LinkIssueError = message
+				return
+			}
+		}
+	})
+}
+
+func (s *Server) uiProjectContextIssueInput(ctx context.Context, project model.Project, raw string) (model.Issue, string, error) {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return model.Issue{}, "Issue required.", nil
+	}
+	ref, err := parseIssueRef(input)
+	if err != nil {
+		return model.Issue{}, "Choose an issue in this project.", nil
+	}
+	issue, err := s.store.GetIssueByOwnerKeyNumber(ctx, project.OwnerUsername, ref.ProjectKey, ref.Number)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return model.Issue{}, "Issue not found.", nil
+		}
+		return model.Issue{}, "", err
+	}
+	if issue.ProjectID != project.ID {
+		return model.Issue{}, "Issue must be in this project.", nil
+	}
+	return issue, "", nil
 }
 
 func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
@@ -1530,6 +1856,90 @@ func (s *Server) uiUpdateIssueSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := strings.TrimSpace(r.Form.Get("context"))
+	contextItem, message, err := s.uiProjectContextInput(r.Context(), issue.ProjectID, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUIIssuePanelWithContextError(w, r, issue.ID, input, message)
+		return
+	}
+	if _, err := s.store.CreateIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithContextError(w, r, issue.ID, input, "Context already linked.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.AddContext = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiDeleteIssueContextLink(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	number, err := parseTypedRef(chi.URLParam(r, "contextRef"), "context")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	contextItem, err := s.store.GetProjectContextByProjectNumber(r.Context(), issue.ProjectID, number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.DeleteIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -2171,6 +2581,37 @@ func (s *Server) renderUIIssuePanelWithLinkError(w http.ResponseWriter, r *http.
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) renderUIIssuePanelWithContextError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.ContextInput = input
+	panel.ContextError = message
+	panel.AddContext = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiProjectContextInput(ctx context.Context, projectID uuid.UUID, raw string) (model.ProjectContext, string, error) {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return model.ProjectContext{}, "Context required.", nil
+	}
+	number, err := parseTypedRef(input, "context")
+	if err != nil {
+		return model.ProjectContext{}, "Choose project context.", nil
+	}
+	contextItem, err := s.store.GetProjectContextByProjectNumber(ctx, projectID, number)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return model.ProjectContext{}, "Context not found.", nil
+		}
+		return model.ProjectContext{}, "", err
+	}
+	return contextItem, "", nil
+}
+
 func (s *Server) uiBuildWorkPanel(ctx context.Context, user model.User, view string) (*uiWorkPanelData, error) {
 	projects, err := s.uiVisibleProjects(ctx, user)
 	if err != nil {
@@ -2299,6 +2740,29 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 
 	switch view {
 	case "about":
+		contexts, contextHasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
+			ProjectID: projectID,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		panel.ContextHasMore = contextHasMore
+		panel.ContextItems = make([]uiProjectContextItem, 0, len(contexts))
+		for _, contextItem := range contexts {
+			issues, issuesHasMore, err := s.store.ListIssuesForContext(ctx, store.ListIssuesForContextParams{
+				ContextID: contextItem.ID,
+				Limit:     MaxLimit,
+			})
+			if err != nil {
+				return nil, err
+			}
+			panel.ContextItems = append(panel.ContextItems, uiProjectContextItem{
+				Context:             contextItem,
+				LinkedIssues:        issues,
+				LinkedIssuesHasMore: issuesHasMore,
+			})
+		}
 		return panel, nil
 	case "sprint":
 		activeStatus := model.SprintStatusActive
@@ -2561,6 +3025,27 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		}
 		linkItems = append(linkItems, item)
 	}
+	contexts, contextsHasMore, err := s.store.ListContextsForIssue(ctx, store.ListContextsForIssueParams{
+		IssueID: issueID,
+		Limit:   MaxLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	contextSummaries, _, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
+		ProjectID: projectID,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	contextOptions := make([]uiProjectContextOption, 0, len(contextSummaries))
+	for _, contextItem := range contextSummaries {
+		contextOptions = append(contextOptions, uiProjectContextOption{
+			Value: contextItem.Ref,
+			Label: contextItem.Ref + " - " + contextItem.Title,
+		})
+	}
 
 	backHref, backHXGet, backLabel := uiIssueBackLink(project, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
@@ -2577,6 +3062,9 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		CommentsHasMore:  commentsHasMore,
 		Links:            linkItems,
 		LinksHasMore:     linksHasMore,
+		Contexts:         contexts,
+		ContextsHasMore:  contextsHasMore,
+		ContextOptions:   contextOptions,
 		BackHref:         backHref,
 		BackHXGet:        backHXGet,
 		BackLabel:        backLabel,
@@ -3147,6 +3635,24 @@ func (s *Server) uiProjectFromRoute(w http.ResponseWriter, r *http.Request) (mod
 	return project, true
 }
 
+func (s *Server) uiProjectContextFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.ProjectContext, bool) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return model.Project{}, model.ProjectContext{}, false
+	}
+	number, err := parseTypedRef(chi.URLParam(r, "contextRef"), "context")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return model.Project{}, model.ProjectContext{}, false
+	}
+	contextItem, err := s.store.GetProjectContextByProjectNumber(r.Context(), project.ID, number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Project{}, model.ProjectContext{}, false
+	}
+	return project, contextItem, true
+}
+
 func (s *Server) uiIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
 	owner, ref, ok := uiIssueRouteOwnerRef(w, r)
 	if !ok {
@@ -3322,6 +3828,34 @@ func uiProjectPanelPath(project model.Project, view string, assigneeIDs ...[]uui
 	return uiAppendAssigneeQuery(uiProjectPath(project)+"/"+view+"/panel", ids)
 }
 
+func uiProjectContextsPath(project model.Project) string {
+	return uiProjectPath(project) + "/context"
+}
+
+func uiProjectContextPath(project model.Project, contextItem any) string {
+	return uiProjectContextsPath(project) + "/" + uiProjectContextRef(contextItem)
+}
+
+func uiProjectContextNewPath(project model.Project) string {
+	return uiProjectContextsPath(project) + "/new"
+}
+
+func uiProjectContextEditPath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/edit"
+}
+
+func uiProjectContextDeletePath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/delete"
+}
+
+func uiProjectContextIssuesPath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/issues"
+}
+
+func uiProjectContextIssueDeletePath(project model.Project, contextItem any, issue any) string {
+	return uiProjectContextIssuesPath(project, contextItem) + "/" + uiIssueValue(issue).Identifier + "/delete"
+}
+
 func uiIssuePath(v any) string {
 	issue := uiIssueValue(v)
 	return "/" + issue.OwnerUsername + "/issues/" + issue.Identifier
@@ -3341,6 +3875,18 @@ func uiIssueRestorePath(issue any) string {
 
 func uiIssueCommentsPath(issue any) string {
 	return uiIssuePath(issue) + "/comments"
+}
+
+func uiIssueContextPath(issue any) string {
+	return uiIssuePath(issue) + "/context"
+}
+
+func uiIssueContextNewPath(issue any) string {
+	return uiIssueContextPath(issue) + "/new"
+}
+
+func uiIssueContextDeletePath(issue any, contextItem any) string {
+	return uiIssueContextPath(issue) + "/" + uiProjectContextRef(contextItem) + "/delete"
 }
 
 func uiIssueCommentPath(issue any, comment any) string {
@@ -3474,6 +4020,34 @@ func uiIssueLinkRef(v any) string {
 	return "link-0"
 }
 
+func uiProjectContextRef(v any) string {
+	switch contextItem := v.(type) {
+	case model.ProjectContext:
+		if contextItem.Ref != "" {
+			return contextItem.Ref
+		}
+		if contextItem.Number > 0 {
+			return model.ProjectContextRef(contextItem.Number)
+		}
+	case *model.ProjectContext:
+		if contextItem != nil {
+			return uiProjectContextRef(*contextItem)
+		}
+	case model.ProjectContextSummary:
+		if contextItem.Ref != "" {
+			return contextItem.Ref
+		}
+		if contextItem.Number > 0 {
+			return model.ProjectContextRef(contextItem.Number)
+		}
+	case *model.ProjectContextSummary:
+		if contextItem != nil {
+			return uiProjectContextRef(*contextItem)
+		}
+	}
+	return "context-0"
+}
+
 func uiCommentRef(v any) string {
 	var comment model.Comment
 	switch c := v.(type) {
@@ -3539,7 +4113,7 @@ func uiIssueUserInput(user *model.User) string {
 
 func safeUIProjectPath(path string) bool {
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(parts) != 3 && len(parts) != 4 && len(parts) != 5 {
+	if len(parts) < 3 || len(parts) > 8 {
 		return false
 	}
 	if _, err := store.NormalizeUsername(parts[0]); err != nil {
@@ -3554,6 +4128,28 @@ func safeUIProjectPath(path string) bool {
 	}
 	if len(parts) == 3 {
 		return true
+	}
+	if parts[3] == "context" {
+		if len(parts) == 4 {
+			return true
+		}
+		if len(parts) == 5 && parts[4] == "new" {
+			return true
+		}
+		if _, err := parseTypedRef(parts[4], "context"); err != nil {
+			return false
+		}
+		if len(parts) == 5 {
+			return true
+		}
+		if len(parts) == 6 {
+			return parts[5] == "edit" || parts[5] == "delete" || parts[5] == "issues"
+		}
+		if len(parts) == 8 && parts[5] == "issues" && parts[7] == "delete" {
+			_, err := parseIssueRef(parts[6])
+			return err == nil
+		}
+		return false
 	}
 	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "planned" && parts[3] != "all" && parts[3] != "backlog" && parts[3] != "deleted" {
 		return false
@@ -3582,14 +4178,19 @@ func safeUIIssuePath(path string) bool {
 		return true
 	}
 	if len(parts) == 4 {
-		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "delete" || parts[3] == "restore"
+		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "context" || parts[3] == "delete" || parts[3] == "restore"
 	}
 	if len(parts) == 5 {
 		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
-			(parts[3] == "sub-issues" && parts[4] == "new")
+			(parts[3] == "sub-issues" && parts[4] == "new") ||
+			(parts[3] == "context" && parts[4] == "new")
 	}
 	if parts[3] != "links" || parts[5] != "edit" {
+		if parts[3] == "context" && parts[5] == "delete" {
+			_, err := parseTypedRef(parts[4], "context")
+			return err == nil
+		}
 		return false
 	}
 	_, err := parseTypedRef(parts[4], "link")
@@ -3889,6 +4490,17 @@ func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
 				Class: uiStatusClass(model.StatusClosed),
 			},
 		},
+	}
+}
+
+func uiProjectContextModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:              "project-context",
+		Title:           "Add context",
+		WidthClass:      "max-w-2xl",
+		CancelLabel:     "Cancel adding context",
+		CancelHXGet:     uiProjectPanelPath(panel.Project, "about"),
+		CancelHXPushURL: uiProjectViewPath(panel.Project, "about"),
 	}
 }
 
