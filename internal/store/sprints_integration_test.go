@@ -1373,6 +1373,129 @@ func TestListIssuesAssigneeFilter(t *testing.T) {
 	}
 }
 
+func TestListIssuesMultiStatusPriorityFiltersAndSorts(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+
+	todo := mustCreateIssue(t, env, "todo p2")
+	doneIssue, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "done p0",
+		Priority:  model.PriorityP0,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	closedIssue, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "closed p1",
+		Priority:  model.PriorityP1,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue closed: %v", err)
+	}
+	progressIssue, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "progress p4",
+		Priority:  model.PriorityP4,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue progress: %v", err)
+	}
+	setIssueStatus(t, env, doneIssue.ID, model.StatusDone)
+	setIssueStatus(t, env, closedIssue.ID, model.StatusClosed)
+	setIssueStatus(t, env, progressIssue.ID, model.StatusInProgress)
+
+	filtered, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID:  env.projectID,
+		Statuses:   []model.Status{model.StatusTodo, model.StatusDone},
+		Priorities: []model.IssuePriority{model.PriorityP0, model.PriorityP2},
+		Sort:       store.ListIssuesSortPriority,
+		Limit:      10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues filtered: %v", err)
+	}
+	if got := issueIDs(filtered); !equalIssueIDs(got, []uuid.UUID{doneIssue.ID, todo.ID}) {
+		t.Fatalf("filtered ids = %v, want done/todo", got)
+	}
+
+	statusSorted, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortStatus,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues status sort: %v", err)
+	}
+	if got := issueIDs(statusSorted); !equalIssueIDs(got, []uuid.UUID{todo.ID, progressIssue.ID, doneIssue.ID, closedIssue.ID}) {
+		t.Fatalf("status-sorted ids = %v", got)
+	}
+
+	prioritySorted, hasMore, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortPriority,
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues priority page 1: %v", err)
+	}
+	if !hasMore {
+		t.Fatal("priority page 1 hasMore = false, want true")
+	}
+	if got := issueIDs(prioritySorted); !equalIssueIDs(got, []uuid.UUID{doneIssue.ID, closedIssue.ID}) {
+		t.Fatalf("priority page 1 ids = %v", got)
+	}
+	last := prioritySorted[len(prioritySorted)-1]
+	priorityPage2, hasMore, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortPriority,
+		Cursor:    &store.IssuesCursor{Number: last.Number, Priority: last.Priority},
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues priority page 2: %v", err)
+	}
+	if hasMore {
+		t.Fatal("priority page 2 hasMore = true, want false")
+	}
+	if got := issueIDs(priorityPage2); !equalIssueIDs(got, []uuid.UUID{todo.ID, progressIssue.ID}) {
+		t.Fatalf("priority page 2 ids = %v", got)
+	}
+
+	createdSorted, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortCreated,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues created sort: %v", err)
+	}
+	if got := issueIDs(createdSorted); !equalIssueIDs(got, []uuid.UUID{progressIssue.ID, closedIssue.ID, doneIssue.ID, todo.ID}) {
+		t.Fatalf("created-sorted ids = %v", got)
+	}
+}
+
+func issueIDs(issues []model.Issue) []uuid.UUID {
+	out := make([]uuid.UUID, 0, len(issues))
+	for _, issue := range issues {
+		out = append(out, issue.ID)
+	}
+	return out
+}
+
+func equalIssueIDs(got, want []uuid.UUID) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestListProjectAssigneesIncludesMembersAndAssignedUsers(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)

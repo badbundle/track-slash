@@ -501,6 +501,10 @@ func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 	}
 	aliceBacklog := createAssignedIssueForUI(t, e, "alice backlog issue", alice.ID)
 	bobBacklog := createAssignedIssueForUI(t, e, "bob backlog issue", bob.ID)
+	doneStatus := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, bobBacklog.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
+		t.Fatalf("set bob backlog done: %v", err)
+	}
 
 	aliceQuery := "?assignee_id=" + alice.ID.String()
 	body := e.uiGet(t, e.projectPath()+"/sprint"+aliceQuery, token)
@@ -512,7 +516,8 @@ func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 		"AF",
 		"BF",
 		"alice sprint issue",
-		`href="` + e.projectPath() + `/backlog?assignee_id=` + alice.ID.String() + `"`,
+		`href="` + e.projectPath() + `/planned"`,
+		`href="` + e.projectPath() + `/all"`,
 		`assignee_id=` + bob.ID.String(),
 	} {
 		if !strings.Contains(body, want) {
@@ -525,16 +530,36 @@ func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 		}
 	}
 
-	body = e.uiGet(t, e.projectPath()+"/backlog"+aliceQuery, token)
-	for _, want := range []string{"alice planned issue", "alice backlog issue"} {
+	body = e.uiGet(t, e.projectPath()+"/all"+aliceQuery, token)
+	for _, want := range []string{"alice sprint issue", "alice planned issue", "alice backlog issue"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("filtered backlog missing %q: %s", want, body)
+			t.Fatalf("filtered all issues missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"bob planned issue", "bob backlog issue"} {
+	for _, notWant := range []string{"bob sprint issue", "bob planned issue", "bob backlog issue", "unassigned sprint issue"} {
 		if strings.Contains(body, notWant) {
-			t.Fatalf("filtered backlog included %q: %s", notWant, body)
+			t.Fatalf("filtered all issues included %q: %s", notWant, body)
 		}
+	}
+
+	multiAllQuery := "?assignee_id=" + alice.ID.String() + "&assignee_id=" + bob.ID.String() + "&status=todo&status=done"
+	body = e.uiGet(t, e.projectPath()+"/all"+multiAllQuery, token)
+	for _, want := range []string{
+		`aria-label="Issue controls"`,
+		`aria-pressed="true"`,
+		"alice sprint issue",
+		"bob sprint issue",
+		"alice planned issue",
+		"bob planned issue",
+		"alice backlog issue",
+		"bob backlog issue",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("multi-filter all issues missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "unassigned sprint issue") {
+		t.Fatalf("multi-filter all issues included unassigned issue: %s", body)
 	}
 
 	body = e.uiGet(t, e.projectPath()+"/sprint"+aliceQuery+"&assignee_id="+bob.ID.String(), token)
@@ -561,7 +586,7 @@ func createAssignedIssueForUI(t *testing.T, e *httpEnv, title string, assigneeID
 	return issue
 }
 
-func TestUIRendersProjectBacklog(t *testing.T) {
+func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-backlog")
@@ -635,23 +660,38 @@ func TestUIRendersProjectBacklog(t *testing.T) {
 		t.Fatalf("assign other planned: %v", err)
 	}
 
-	body := e.uiGet(t, e.projectPath()+"/backlog", token)
-	for _, want := range []string{"Planned sprints", "Second Planned Sprint", "First Planned Sprint", "scheduled second issue", "scheduled first issue", "Backlog", backlogIssue.Title} {
+	body := e.uiGet(t, e.projectPath()+"/planned", token)
+	for _, want := range []string{"Planned", "Second Planned Sprint", "First Planned Sprint", "scheduled second issue", "scheduled first issue"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("backlog body missing %q: %s", want, body)
+			t.Fatalf("planned body missing %q: %s", want, body)
 		}
 	}
 	secondIdx := strings.Index(body, "scheduled second issue")
 	firstIdx := strings.Index(body, "scheduled first issue")
-	backlogIdx := strings.Index(body, backlogIssue.Title)
-	if secondIdx < 0 || firstIdx < 0 || backlogIdx < 0 || secondIdx > firstIdx || firstIdx > backlogIdx {
-		t.Fatalf("planned/backlog order wrong: second=%d first=%d backlog=%d body=%s", secondIdx, firstIdx, backlogIdx, body)
+	if secondIdx < 0 || firstIdx < 0 || secondIdx > firstIdx {
+		t.Fatalf("planned order wrong: second=%d first=%d body=%s", secondIdx, firstIdx, body)
 	}
-	if !strings.Contains(body, "Backlog") || !strings.Contains(body, backlogIssue.Title) {
-		t.Fatalf("backlog body missing expected issue/header: %s", body)
+	if strings.Contains(body, backlogIssue.Title) {
+		t.Fatalf("planned body included unscheduled issue: %s", body)
 	}
 	if strings.Contains(body, "other project backlog issue") || strings.Contains(body, "other project planned issue") || strings.Contains(body, "Other Planned Sprint") || strings.Contains(body, "Backlog issues across accessible projects.") {
-		t.Fatalf("backlog body included wrong scope/copy: %s", body)
+		t.Fatalf("planned body included wrong scope/copy: %s", body)
+	}
+
+	body = e.uiGet(t, e.projectPath()+"/all", token)
+	for _, want := range []string{"All issues", "Issue controls", "Status", "Priority", "Sort", "Updated", "Any", backlogIssue.Title, "scheduled first issue", "scheduled second issue"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("all body missing %q: %s", want, body)
+		}
+	}
+	backlogIdx := strings.Index(body, backlogIssue.Title)
+	firstIdx = strings.Index(body, "scheduled first issue")
+	secondIdx = strings.Index(body, "scheduled second issue")
+	if backlogIdx < 0 || firstIdx < 0 || secondIdx < 0 || secondIdx > firstIdx || firstIdx > backlogIdx {
+		t.Fatalf("all issue order wrong: backlog=%d first=%d second=%d body=%s", backlogIdx, firstIdx, secondIdx, body)
+	}
+	if strings.Contains(body, "Other Planned Sprint") || strings.Contains(body, "other project backlog issue") || strings.Contains(body, "other project planned issue") {
+		t.Fatalf("all body included wrong scope: %s", body)
 	}
 }
 
@@ -769,13 +809,13 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`data-submit-shortcut="meta-enter"`,
 		`method="post" action="` + e.issuePath(issue) + `/delete"`,
 		`hx-post="` + e.issuePath(issue) + `/delete"`,
-		`hx-push-url="` + e.projectPath() + `/backlog"`,
+		`hx-push-url="` + e.projectPath() + `/all"`,
 		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
-		`href="` + e.projectPath() + `/backlog"`,
-		`hx-get="` + e.projectPath() + `/backlog/panel"`,
+		`href="` + e.projectPath() + `/all"`,
+		`hx-get="` + e.projectPath() + `/all/panel"`,
 		`href="` + e.issuePath(linked) + `"`,
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
 		`href="` + e.issuePath(subIssue) + `"`,
@@ -1150,14 +1190,14 @@ func TestUIDeleteIssueReturnsBackTarget(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("delete code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
-	backlogNotice := e.projectPath() + "/backlog?deleted_issue=" + url.QueryEscape(issue.Identifier)
-	if loc := res.Header.Get("Location"); loc != backlogNotice {
+	allNotice := e.projectPath() + "/all?deleted_issue=" + url.QueryEscape(issue.Identifier)
+	if loc := res.Header.Get("Location"); loc != allNotice {
 		t.Fatalf("delete Location = %q", loc)
 	}
 	if _, err := e.store.GetIssue(e.ctx, issue.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetIssue deleted err = %v, want ErrNotFound", err)
 	}
-	body := e.uiGet(t, backlogNotice, token)
+	body := e.uiGet(t, allNotice, token)
 	for _, want := range []string{
 		"Issue deleted",
 		"delete target issue",
@@ -1373,7 +1413,7 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 		t.Fatalf("DeleteIssue other: %v", err)
 	}
 
-	projectBody := e.uiGet(t, e.projectPath()+"/backlog", token)
+	projectBody := e.uiGet(t, e.projectPath()+"/planned", token)
 	for _, want := range []string{
 		`aria-label="Project actions"`,
 		`data-lucide="more-horizontal"`,
@@ -2803,7 +2843,7 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 	wantHXGet := `hx-get="` + e.issuePath(issue) + `/panel"`
 	wantHXPush := `hx-push-url="` + e.issuePath(issue) + `"`
 
-	for _, path := range []string{e.projectPath() + "/backlog", "/me"} {
+	for _, path := range []string{e.projectPath() + "/all", "/me"} {
 		body := e.uiGet(t, path, token)
 		for _, want := range []string{wantHref, wantHXGet, wantHXPush, `data-main-view="projects"`} {
 			if !strings.Contains(body, want) {
@@ -2932,6 +2972,11 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 		e.projectPath() + "/about/panel",
 		e.projectPath() + "/sprint",
 		e.projectPath() + "/sprint/panel",
+		e.projectPath() + "/planned",
+		e.projectPath() + "/planned/panel",
+		e.projectPath() + "/all",
+		e.projectPath() + "/all/panel",
+		e.projectPath() + "/all/page",
 		e.projectPath() + "/backlog",
 		e.projectPath() + "/backlog/panel",
 		e.projectPath() + "/deleted",
