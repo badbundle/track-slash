@@ -319,6 +319,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "project backlog panel with query", raw: "/bradley/projects/TRACK/backlog/panel?x=1", want: "/bradley/projects/TRACK/backlog/panel?x=1"},
 		{name: "project deleted panel with query", raw: "/bradley/projects/TRACK/deleted/panel?x=1", want: "/bradley/projects/TRACK/deleted/panel?x=1"},
 		{name: "project context add", raw: "/bradley/projects/TRACK/context/new?x=1", want: "/bradley/projects/TRACK/context/new?x=1"},
+		{name: "project context issue link", raw: "/bradley/projects/TRACK/context/context-1/issues/new?x=1", want: "/bradley/projects/TRACK/context/context-1/issues/new?x=1"},
 		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},
 		{name: "bad project child", raw: "/bradley/projects/TRACK/issues", want: "/"},
 		{name: "bad project panel", raw: "/bradley/projects/TRACK/sprint/card", want: "/"},
@@ -1562,10 +1563,13 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	}
 	populatedContextPanel.ContextMode = "view"
 	populatedContextViewBody := render(t, populatedContextPanel)
-	for _, want := range []string{"Agent notes", "Use the compact path.", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
+	for _, want := range []string{"Agent notes", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
 		if !strings.Contains(populatedContextViewBody, want) {
 			t.Fatalf("populated context modal missing %q: %s", want, populatedContextViewBody)
 		}
+	}
+	if strings.Contains(populatedContextViewBody, "Use the compact path.") {
+		t.Fatalf("populated context modal should not show body preview: %s", populatedContextViewBody)
 	}
 
 	populatedLinksPanel := basePanel()
@@ -2090,6 +2094,87 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="calendar-range"`, `data-lucide="list-filter"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
+		}
+	}
+}
+
+func TestUIProjectPanelRendersCompactContextRows(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	contextID := uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	project := model.Project{
+		ID:            projectID,
+		OwnerUsername: "bradley",
+		Key:           "TRACK",
+		Name:          "Track Slash",
+	}
+	contextItem := uiProjectContextItem{
+		Context: model.ProjectContextSummary{
+			ID:               contextID,
+			ProjectID:        projectID,
+			Number:           1,
+			Ref:              "context-1",
+			Scope:            model.ProjectContextScopeProject,
+			Title:            "Architecture notes",
+			Kind:             model.ProjectContextKindText,
+			ContentType:      "text/plain; charset=utf-8",
+			LinkedIssueCount: 1,
+			CreatedAt:        when,
+			UpdatedAt:        when,
+		},
+		LinkedIssues: []model.Issue{{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-8",
+			Title:         "Linked work",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		}},
+	}
+	render := func(panel *uiProjectPanelData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", panel); err != nil {
+			t.Fatalf("ExecuteTemplate: %v", err)
+		}
+		return buf.String()
+	}
+
+	body := render(&uiProjectPanelData{
+		Project:      project,
+		View:         "about",
+		ProjectTabs:  uiProjectTabs(project, "about", nil),
+		ContextItems: []uiProjectContextItem{contextItem},
+	})
+	for _, want := range []string{"Context", "context-1", "Architecture notes", "linked issues", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("compact project context row missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`placeholder="TRACK-12"`, "Linked work", `aria-label="Unlink issue"`, `lg:grid-cols-[minmax(0,1fr)_16rem]`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project context row should keep issue linking in modal, found %q: %s", notWant, body)
+		}
+	}
+
+	contextItem.LinkIssueInput = "TRACK-9"
+	contextItem.LinkIssueError = "Issue already linked."
+	modalBody := render(&uiProjectPanelData{
+		Project:       project,
+		View:          "about",
+		ProjectTabs:   uiProjectTabs(project, "about", nil),
+		ContextItems:  []uiProjectContextItem{contextItem},
+		LinkContextID: contextID,
+	})
+	for _, want := range []string{`role="dialog" aria-modal="true"`, "Link issue", `aria-label="Cancel linking issue"`, `name="issue" value="TRACK-9" placeholder="TRACK-12" autofocus`, "Issue already linked.", "Linked issues", "TRACK-8", "Linked work", `aria-label="Unlink issue"`} {
+		if !strings.Contains(modalBody, want) {
+			t.Fatalf("project context issue modal missing %q: %s", want, modalBody)
 		}
 	}
 }

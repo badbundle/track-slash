@@ -84,6 +84,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectContextDelete":      uiProjectContextDeletePath,
 	"projectContextEdit":        uiProjectContextEditPath,
 	"projectContextIssueDelete": uiProjectContextIssueDeletePath,
+	"projectContextIssueNew":    uiProjectContextIssueNewPath,
+	"projectContextIssueModal":  uiProjectContextIssueModal,
 	"projectContextIssues":      uiProjectContextIssuesPath,
 	"projectContextModal":       uiProjectContextModal,
 	"projectContextNew":         uiProjectContextNewPath,
@@ -332,6 +334,7 @@ type uiProjectPanelData struct {
 	ContextEditTitle     string
 	ContextEditBody      string
 	ContextEditError     string
+	LinkContextID        uuid.UUID
 	DeleteNotice         *uiIssueDeleteNotice
 	SprintIssuesHasMore  bool
 	PlannedHasMore       bool
@@ -517,6 +520,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/projects/{key}/context/{contextRef}/edit", s.uiEditProjectContext)
 		r.Post("/{owner}/projects/{key}/context/{contextRef}", s.uiUpdateProjectContext)
 		r.Post("/{owner}/projects/{key}/context/{contextRef}/delete", s.uiDeleteProjectContext)
+		r.Get("/{owner}/projects/{key}/context/{contextRef}/issues/new", s.uiNewProjectContextIssueLink)
 		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues", s.uiCreateProjectContextIssueLink)
 		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues/{issueRef}/delete", s.uiDeleteProjectContextIssueLink)
 		r.Get("/{owner}/projects/{key}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
@@ -1119,6 +1123,20 @@ func (s *Server) uiDeleteProjectContext(w http.ResponseWriter, r *http.Request) 
 	s.renderUIProjectAboutPanel(w, r, project.ID, nil)
 }
 
+func (s *Server) uiNewProjectContextIssueLink(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectAboutPanel(w, r, project.ID, func(panel *uiProjectPanelData) {
+		panel.LinkContextID = contextItem.ID
+	})
+}
+
 func (s *Server) uiCreateProjectContextIssueLink(w http.ResponseWriter, r *http.Request) {
 	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
 	if !ok {
@@ -1206,6 +1224,7 @@ func (s *Server) renderUIProjectContextEditError(w http.ResponseWriter, r *http.
 
 func (s *Server) renderUIProjectContextLinkError(w http.ResponseWriter, r *http.Request, projectID, contextID uuid.UUID, input, message string) {
 	s.renderUIProjectAboutPanel(w, r, projectID, func(panel *uiProjectPanelData) {
+		panel.LinkContextID = contextID
 		for i := range panel.ContextItems {
 			if panel.ContextItems[i].Context.ID == contextID {
 				panel.ContextItems[i].LinkIssueInput = input
@@ -3977,6 +3996,10 @@ func uiProjectContextIssuesPath(project model.Project, contextItem any) string {
 	return uiProjectContextPath(project, contextItem) + "/issues"
 }
 
+func uiProjectContextIssueNewPath(project model.Project, contextItem any) string {
+	return uiProjectContextIssuesPath(project, contextItem) + "/new"
+}
+
 func uiProjectContextIssueDeletePath(project model.Project, contextItem any, issue any) string {
 	return uiProjectContextIssuesPath(project, contextItem) + "/" + uiIssueValue(issue).Identifier + "/delete"
 }
@@ -4273,6 +4296,9 @@ func safeUIProjectPath(path string) bool {
 		}
 		if len(parts) == 6 {
 			return parts[5] == "edit" || parts[5] == "delete" || parts[5] == "issues"
+		}
+		if len(parts) == 7 && parts[5] == "issues" {
+			return parts[6] == "new"
 		}
 		if len(parts) == 8 && parts[5] == "issues" && parts[7] == "delete" {
 			_, err := parseIssueRef(parts[6])
@@ -4628,6 +4654,17 @@ func uiProjectContextModal(panel *uiProjectPanelData) uiModalData {
 		Title:           "Add context",
 		WidthClass:      "max-w-2xl",
 		CancelLabel:     "Cancel adding context",
+		CancelHXGet:     uiProjectPanelPath(panel.Project, "about"),
+		CancelHXPushURL: uiProjectViewPath(panel.Project, "about"),
+	}
+}
+
+func uiProjectContextIssueModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:              "project-context-issue",
+		Title:           "Link issue",
+		WidthClass:      "max-w-xl",
+		CancelLabel:     "Cancel linking issue",
 		CancelHXGet:     uiProjectPanelPath(panel.Project, "about"),
 		CancelHXPushURL: uiProjectViewPath(panel.Project, "about"),
 	}
