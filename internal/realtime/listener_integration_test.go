@@ -316,6 +316,71 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 	waitForCommentEvent(t, commentSub, commentID, issueID, projectID, OpDelete)
 }
 
+// TestListenerReceivesProjectContextEvents verifies context and issue-context
+// link triggers include enough ids for project, issue, and context fanout.
+func TestListenerReceivesProjectContextEvents(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-context")
+	var ownerID string
+	if err := pool.QueryRow(ctx, `SELECT owner_id::text FROM projects WHERE id = $1`, projectID).Scan(&ownerID); err != nil {
+		t.Fatalf("select owner: %v", err)
+	}
+	var issueID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'context issue') RETURNING id::text
+	`, projectID).Scan(&issueID); err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+
+	projSub := newTestClient(32)
+	hub.Subscribe(projSub, "project:"+projectID)
+
+	var contextID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO project_context (project_id, number, title, body, created_by_id, updated_by_id)
+		VALUES ($1, 1, 'Architecture', 'Use the existing store.', $2, $2)
+		RETURNING id::text
+	`, projectID, ownerID).Scan(&contextID); err != nil {
+		t.Fatalf("insert project_context: %v", err)
+	}
+	waitForProjectContextEvent(t, projSub, contextID, projectID, OpInsert)
+
+	contextSub := newTestClient(32)
+	issueSub := newTestClient(32)
+	hub.Subscribe(contextSub, "project_context:"+contextID)
+	hub.Subscribe(issueSub, "issue:"+issueID)
+
+	if _, err := pool.Exec(ctx, `UPDATE project_context SET body = 'Updated' WHERE id = $1`, contextID); err != nil {
+		t.Fatalf("update project_context: %v", err)
+	}
+	waitForProjectContextEvent(t, contextSub, contextID, projectID, OpUpdate)
+
+	var linkID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issue_context_links (project_id, issue_id, context_id)
+		VALUES ($1, $2, $3)
+		RETURNING id::text
+	`, projectID, issueID, contextID).Scan(&linkID); err != nil {
+		t.Fatalf("insert issue_context_links: %v", err)
+	}
+	waitForIssueContextLinkEvent(t, issueSub, linkID, issueID, contextID, projectID, OpInsert)
+	waitForIssueContextLinkEvent(t, contextSub, linkID, issueID, contextID, projectID, OpInsert)
+
+	linkSub := newTestClient(32)
+	hub.Subscribe(linkSub, "issue_context_link:"+linkID)
+	if _, err := pool.Exec(ctx, `DELETE FROM issue_context_links WHERE id = $1`, linkID); err != nil {
+		t.Fatalf("delete issue_context_links: %v", err)
+	}
+	waitForIssueContextLinkEvent(t, linkSub, linkID, issueID, contextID, projectID, OpDelete)
+}
+
 // TestListenerReceivesSoftDeleteAsDelete verifies updating deleted_at emits a
 // realtime delete op so subscribers see the same event kind as hard deletes.
 func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {
@@ -408,6 +473,50 @@ func waitForSubIssueEvent(t *testing.T, c *Client, childID, parentID, projectID 
 			return
 		case <-deadline:
 			t.Fatalf("did not receive sub-issue %s event within 3s", op)
+		}
+	}
+}
+
+func waitForProjectContextEvent(t *testing.T, c *Client, contextID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityContext || ev.Op != op || ev.ID.String() != contextID {
+				continue
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive project context %s event within 3s", op)
+		}
+	}
+}
+
+func waitForIssueContextLinkEvent(t *testing.T, c *Client, linkID, issueID, contextID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityContextLink || ev.Op != op || ev.ID.String() != linkID {
+				continue
+			}
+			if ev.IssueID == nil || ev.IssueID.String() != issueID {
+				t.Errorf("issue_id = %v, want %s", ev.IssueID, issueID)
+			}
+			if ev.ContextID == nil || ev.ContextID.String() != contextID {
+				t.Errorf("context_id = %v, want %s", ev.ContextID, contextID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive issue context link %s event within 3s", op)
 		}
 	}
 }

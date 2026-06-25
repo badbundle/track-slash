@@ -247,12 +247,71 @@ type IssueLink struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type ProjectContextKind string
+
+const (
+	ProjectContextKindText ProjectContextKind = "text"
+)
+
+func (k ProjectContextKind) Valid() bool {
+	switch k {
+	case ProjectContextKindText:
+		return true
+	}
+	return false
+}
+
+type ProjectContext struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	Number         int                `json:"number"`
+	Ref            string             `json:"ref"`
+	Title          string             `json:"title"`
+	Kind           ProjectContextKind `json:"kind"`
+	ContentType    string             `json:"content_type"`
+	Body           string             `json:"body"`
+	SourceFilename *string            `json:"source_filename,omitempty"`
+	CreatedByID    uuid.UUID          `json:"created_by_id"`
+	UpdatedByID    uuid.UUID          `json:"updated_by_id"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+}
+
+type ProjectContextSummary struct {
+	ID               uuid.UUID          `json:"id"`
+	ProjectID        uuid.UUID          `json:"project_id"`
+	Number           int                `json:"number"`
+	Ref              string             `json:"ref"`
+	Title            string             `json:"title"`
+	Kind             ProjectContextKind `json:"kind"`
+	ContentType      string             `json:"content_type"`
+	SourceFilename   *string            `json:"source_filename,omitempty"`
+	CreatedByID      uuid.UUID          `json:"created_by_id"`
+	UpdatedByID      uuid.UUID          `json:"updated_by_id"`
+	LinkedIssueCount int                `json:"linked_issue_count"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+}
+
+type IssueContextLink struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	IssueID   uuid.UUID `json:"issue_id"`
+	ContextID uuid.UUID `json:"context_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 func SprintRef(number int) string {
 	return fmt.Sprintf("sprint-%d", number)
 }
 
 func IssueLinkRef(number int) string {
 	return fmt.Sprintf("link-%d", number)
+}
+
+func ProjectContextRef(number int) string {
+	return fmt.Sprintf("context-%d", number)
 }
 
 func CommentRef(number int) string {

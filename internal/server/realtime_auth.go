@@ -28,6 +28,10 @@ func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) 
 		projectID, err = s.store.ProjectIDForSprint(ctx, id)
 	case "issue_link":
 		projectID, err = s.store.ProjectIDForIssueLink(ctx, id)
+	case "project_context":
+		projectID, err = s.store.ProjectIDForProjectContext(ctx, id)
+	case "issue_context_link":
+		projectID, err = s.store.ProjectIDForIssueContextLink(ctx, id)
 	default:
 		return store.ErrUnauthorized
 	}
