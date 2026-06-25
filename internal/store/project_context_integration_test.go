@@ -52,6 +52,9 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if first.Ref != "context-1" || second.Ref != "context-2" {
 		t.Fatalf("refs = %q %q, want context-1/context-2", first.Ref, second.Ref)
 	}
+	if first.Scope != model.ProjectContextScopeProject || second.Scope != model.ProjectContextScopeProject {
+		t.Fatalf("project context scopes = %q %q, want project/project", first.Scope, second.Scope)
+	}
 	if second.SourceFilename == nil || *second.SourceFilename != filename {
 		t.Fatalf("source filename = %v, want %q", second.SourceFilename, filename)
 	}
@@ -90,6 +93,24 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 
 	issueA := mustCreateIssue(t, env, "A")
 	issueB := mustCreateIssue(t, env, "B")
+	issueScoped, err := env.store.CreateIssueContext(env.ctx, store.CreateIssueContextParams{
+		IssueID:     issueA.ID,
+		Title:       "Issue only",
+		Kind:        model.ProjectContextKindText,
+		ContentType: "text/plain; charset=utf-8",
+		Body:        "Only relevant here.",
+		CreatedByID: project.OwnerID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueContext: %v", err)
+	}
+	if issueScoped.Ref != "context-3" || issueScoped.Scope != model.ProjectContextScopeIssue || issueScoped.ProjectID != env.projectID {
+		t.Fatalf("issue-scoped context = %+v, want context-3 issue scope in project", issueScoped)
+	}
+	if _, err := env.store.CreateIssueContextLink(env.ctx, issueB.ID, issueScoped.ID); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("link issue-scoped context err = %v, want ErrConflict", err)
+	}
+
 	linkA, err := env.store.CreateIssueContextLink(env.ctx, issueA.ID, first.ID)
 	if err != nil {
 		t.Fatalf("CreateIssueContextLink A: %v", err)
@@ -114,8 +135,8 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListProjectContexts after links: %v", err)
 	}
-	if summaries[0].LinkedIssueCount != 2 {
-		t.Fatalf("linked count = %d, want 2", summaries[0].LinkedIssueCount)
+	if len(summaries) != 2 || summaries[0].LinkedIssueCount != 2 {
+		t.Fatalf("project context summaries = %+v, want two project contexts and first linked twice", summaries)
 	}
 
 	issueContexts, _, err := env.store.ListContextsForIssue(env.ctx, store.ListContextsForIssueParams{
@@ -125,8 +146,8 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListContextsForIssue: %v", err)
 	}
-	if len(issueContexts) != 1 || issueContexts[0].Body != first.Body {
-		t.Fatalf("issue contexts = %+v, want first body", issueContexts)
+	if len(issueContexts) != 2 || issueContexts[0].Body != first.Body || issueContexts[1].Body != issueScoped.Body {
+		t.Fatalf("issue contexts = %+v, want shared then issue-scoped body", issueContexts)
 	}
 
 	updatedBody := "Use store transactions and project context."
@@ -150,8 +171,8 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListContextsForIssue after update: %v", err)
 	}
-	if issueContexts[0].Body != updatedBody {
-		t.Fatalf("linked context body = %q, want %q", issueContexts[0].Body, updatedBody)
+	if issueContexts[0].Body != updatedBody || issueContexts[1].Body != issueScoped.Body {
+		t.Fatalf("linked context bodies = %+v, want updated shared and unchanged issue-scoped", issueContexts)
 	}
 
 	issues, _, err := env.store.ListIssuesForContext(env.ctx, store.ListIssuesForContextParams{
@@ -178,8 +199,8 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListContextsForIssue after unlink: %v", err)
 	}
-	if len(issueContexts) != 0 {
-		t.Fatalf("issue contexts after explicit unlink = %+v, want empty", issueContexts)
+	if len(issueContexts) != 1 || issueContexts[0].ID != issueScoped.ID {
+		t.Fatalf("issue contexts after explicit unlink = %+v, want issue-scoped only", issueContexts)
 	}
 	if _, err := env.store.CreateIssueContextLink(env.ctx, issueA.ID, first.ID); err != nil {
 		t.Fatalf("CreateIssueContextLink relink A: %v", err)
@@ -198,8 +219,21 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListContextsForIssue after delete: %v", err)
 	}
+	if len(issueContexts) != 1 || issueContexts[0].ID != issueScoped.ID {
+		t.Fatalf("issue contexts after context delete = %+v, want issue-scoped only", issueContexts)
+	}
+	if err := env.store.DeleteProjectContext(env.ctx, issueScoped.ID); err != nil {
+		t.Fatalf("DeleteProjectContext issue-scoped: %v", err)
+	}
+	issueContexts, _, err = env.store.ListContextsForIssue(env.ctx, store.ListContextsForIssueParams{
+		IssueID: issueA.ID,
+		Limit:   10,
+	})
+	if err != nil {
+		t.Fatalf("ListContextsForIssue after issue-scoped delete: %v", err)
+	}
 	if len(issueContexts) != 0 {
-		t.Fatalf("issue contexts after context delete = %+v, want empty", issueContexts)
+		t.Fatalf("issue contexts after issue-scoped delete = %+v, want empty", issueContexts)
 	}
 }
 

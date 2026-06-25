@@ -361,13 +361,49 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/new", token)
-	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `autofocus`, `aria-label="Attach context"`} {
+	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `autofocus`, `aria-label="Attach context"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`, `name="file"`} {
 		if !strings.Contains(issueBody, want) {
 			t.Fatalf("adding issue context body missing %q: %s", want, issueBody)
 		}
 	}
 	if contextSectionClass(issueBody) == "" || strings.Contains(contextSectionClass(issueBody), `sm:w-1/3`) {
 		t.Fatalf("adding issue context should expand the section, got class %q: %s", contextSectionClass(issueBody), issueBody)
+	}
+
+	res = e.uiDoMultipartContext(t, e.issuePath(issue)+"/context", token, nil, "image.png", "nope")
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("bad issue upload code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "file must be .txt, .md, or .markdown") || !strings.Contains(body, `aria-label="Upload issue context"`) {
+		t.Fatalf("bad issue upload body missing error/state: %s", body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context", token, strings.NewReader(url.Values{"mode": {"create"}, "title": {"Issue note"}, "body": {"Only needed here."}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("create issue-only context code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{"context-2", "Issue note", "Only needed here.", `aria-label="Remove context"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue-only context body missing %q: %s", want, body)
+		}
+	}
+	projectBody := e.uiGet(t, e.projectPath()+"/about", token)
+	if strings.Contains(projectBody, "Issue note") || strings.Contains(projectBody, "context-2") {
+		t.Fatalf("project about should not show issue-only context: %s", projectBody)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context/context-2/delete", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("delete issue-only context code = %d body = %s", res.StatusCode, body)
+	}
+	if strings.Contains(body, "Issue note") {
+		t.Fatalf("issue-only context remained after delete: %s", body)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context", token, strings.NewReader(url.Values{"context": {"context-1"}}.Encode()))

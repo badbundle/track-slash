@@ -411,7 +411,11 @@ type uiIssuePanelData struct {
 	AddContext         bool
 	ContextOptions     []uiProjectContextOption
 	ContextInput       string
+	ContextTitle       string
+	ContextBody        string
 	ContextError       string
+	ContextCreateError string
+	ContextUploadError string
 	BackHref           string
 	BackHXGet          string
 	BackLabel          string
@@ -1868,14 +1872,77 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "unable to read form", http.StatusBadRequest)
-		return
-	}
 	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
+
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		r.Body = http.MaxBytesReader(w, r.Body, maxProjectContextUploadBytes+1024*1024)
+		upload, err := readProjectContextUpload(r)
+		if err != nil {
+			s.renderUIIssuePanelWithContextUploadError(w, r, issue.ID, err.Error())
+			return
+		}
+		if _, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
+			IssueID:        issue.ID,
+			Title:          upload.Title,
+			Kind:           model.ProjectContextKindText,
+			ContentType:    upload.ContentType,
+			Body:           upload.Body,
+			SourceFilename: upload.SourceFilename,
+			CreatedByID:    currentUser(r).ID,
+		}); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if r.Form.Get("mode") == "create" {
+		titleInput := r.Form.Get("title")
+		bodyInput := r.Form.Get("body")
+		title, err := validateProjectContextTitle(titleInput)
+		if err != nil {
+			s.renderUIIssuePanelWithContextCreateError(w, r, issue.ID, titleInput, bodyInput, err.Error())
+			return
+		}
+		body, err := validateProjectContextBody(bodyInput)
+		if err != nil {
+			s.renderUIIssuePanelWithContextCreateError(w, r, issue.ID, titleInput, bodyInput, err.Error())
+			return
+		}
+		if _, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
+			IssueID:     issue.ID,
+			Title:       title,
+			Kind:        model.ProjectContextKindText,
+			ContentType: "text/plain; charset=utf-8",
+			Body:        body,
+			CreatedByID: currentUser(r).ID,
+		}); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+
 	input := strings.TrimSpace(r.Form.Get("context"))
 	contextItem, message, err := s.uiProjectContextInput(r.Context(), issue.ProjectID, input)
 	if err != nil {
@@ -1938,6 +2005,12 @@ func (s *Server) uiDeleteIssueContextLink(w http.ResponseWriter, r *http.Request
 	if err := s.store.DeleteIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
 		writeUIStoreError(w, err)
 		return
+	}
+	if contextItem.Scope == model.ProjectContextScopeIssue {
+		if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
 	if err != nil {
@@ -2593,6 +2666,30 @@ func (s *Server) renderUIIssuePanelWithContextError(w http.ResponseWriter, r *ht
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) renderUIIssuePanelWithContextCreateError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, title, body, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.ContextTitle = title
+	panel.ContextBody = body
+	panel.ContextCreateError = message
+	panel.AddContext = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) renderUIIssuePanelWithContextUploadError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.ContextUploadError = message
+	panel.AddContext = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiProjectContextInput(ctx context.Context, projectID uuid.UUID, raw string) (model.ProjectContext, string, error) {
 	input := strings.TrimSpace(raw)
 	if input == "" {
@@ -2608,6 +2705,9 @@ func (s *Server) uiProjectContextInput(ctx context.Context, projectID uuid.UUID,
 			return model.ProjectContext{}, "Context not found.", nil
 		}
 		return model.ProjectContext{}, "", err
+	}
+	if contextItem.Scope != model.ProjectContextScopeProject {
+		return model.ProjectContext{}, "Context not found.", nil
 	}
 	return contextItem, "", nil
 }
@@ -3648,6 +3748,10 @@ func (s *Server) uiProjectContextFromRoute(w http.ResponseWriter, r *http.Reques
 	contextItem, err := s.store.GetProjectContextByProjectNumber(r.Context(), project.ID, number)
 	if err != nil {
 		writeUIStoreError(w, err)
+		return model.Project{}, model.ProjectContext{}, false
+	}
+	if contextItem.Scope != model.ProjectContextScopeProject {
+		writeUIStoreError(w, store.ErrNotFound)
 		return model.Project{}, model.ProjectContext{}, false
 	}
 	return project, contextItem, true

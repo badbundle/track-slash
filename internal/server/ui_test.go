@@ -1470,7 +1470,7 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(addingContextClass, "w-full") || strings.Contains(addingContextClass, `sm:w-1/3`) {
 		t.Fatalf("adding context section should expand to full width, got %q: %s", addingContextClass, addingContextBody)
 	}
-	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `aria-label="Attach context"`} {
+	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `aria-label="Attach context"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
 		if !strings.Contains(addingContextBody, want) {
 			t.Fatalf("adding context section missing %q: %s", want, addingContextBody)
 		}

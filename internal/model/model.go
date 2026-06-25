@@ -261,36 +261,53 @@ func (k ProjectContextKind) Valid() bool {
 	return false
 }
 
+type ProjectContextScope string
+
+const (
+	ProjectContextScopeProject ProjectContextScope = "project"
+	ProjectContextScopeIssue   ProjectContextScope = "issue"
+)
+
+func (s ProjectContextScope) Valid() bool {
+	switch s {
+	case ProjectContextScopeProject, ProjectContextScopeIssue:
+		return true
+	}
+	return false
+}
+
 type ProjectContext struct {
-	ID             uuid.UUID          `json:"id"`
-	ProjectID      uuid.UUID          `json:"project_id"`
-	Number         int                `json:"number"`
-	Ref            string             `json:"ref"`
-	Title          string             `json:"title"`
-	Kind           ProjectContextKind `json:"kind"`
-	ContentType    string             `json:"content_type"`
-	Body           string             `json:"body"`
-	SourceFilename *string            `json:"source_filename,omitempty"`
-	CreatedByID    uuid.UUID          `json:"created_by_id"`
-	UpdatedByID    uuid.UUID          `json:"updated_by_id"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	ID             uuid.UUID           `json:"id"`
+	ProjectID      uuid.UUID           `json:"project_id"`
+	Number         int                 `json:"number"`
+	Ref            string              `json:"ref"`
+	Scope          ProjectContextScope `json:"scope"`
+	Title          string              `json:"title"`
+	Kind           ProjectContextKind  `json:"kind"`
+	ContentType    string              `json:"content_type"`
+	Body           string              `json:"body"`
+	SourceFilename *string             `json:"source_filename,omitempty"`
+	CreatedByID    uuid.UUID           `json:"created_by_id"`
+	UpdatedByID    uuid.UUID           `json:"updated_by_id"`
+	CreatedAt      time.Time           `json:"created_at"`
+	UpdatedAt      time.Time           `json:"updated_at"`
 }
 
 type ProjectContextSummary struct {
-	ID               uuid.UUID          `json:"id"`
-	ProjectID        uuid.UUID          `json:"project_id"`
-	Number           int                `json:"number"`
-	Ref              string             `json:"ref"`
-	Title            string             `json:"title"`
-	Kind             ProjectContextKind `json:"kind"`
-	ContentType      string             `json:"content_type"`
-	SourceFilename   *string            `json:"source_filename,omitempty"`
-	CreatedByID      uuid.UUID          `json:"created_by_id"`
-	UpdatedByID      uuid.UUID          `json:"updated_by_id"`
-	LinkedIssueCount int                `json:"linked_issue_count"`
-	CreatedAt        time.Time          `json:"created_at"`
-	UpdatedAt        time.Time          `json:"updated_at"`
+	ID               uuid.UUID           `json:"id"`
+	ProjectID        uuid.UUID           `json:"project_id"`
+	Number           int                 `json:"number"`
+	Ref              string              `json:"ref"`
+	Scope            ProjectContextScope `json:"scope"`
+	Title            string              `json:"title"`
+	Kind             ProjectContextKind  `json:"kind"`
+	ContentType      string              `json:"content_type"`
+	SourceFilename   *string             `json:"source_filename,omitempty"`
+	CreatedByID      uuid.UUID           `json:"created_by_id"`
+	UpdatedByID      uuid.UUID           `json:"updated_by_id"`
+	LinkedIssueCount int                 `json:"linked_issue_count"`
+	CreatedAt        time.Time           `json:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
 }
 
 type IssueContextLink struct {

@@ -30,9 +30,11 @@ type updateProjectContextReq struct {
 	Body  *string `json:"body,omitempty"`
 }
 
-type linkIssueContextReq struct {
+type createIssueContextReq struct {
 	Context    string `json:"context"`
 	ContextRef string `json:"context_ref"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
 }
 
 type projectContextUploadData struct {
@@ -213,7 +215,7 @@ func (s *Server) listIssueContexts(w http.ResponseWriter, r *http.Request) {
 	writePage(w, out, next)
 }
 
-func (s *Server) createIssueContextLink(w http.ResponseWriter, r *http.Request) {
+func (s *Server) createIssueContext(w http.ResponseWriter, r *http.Request) {
 	issue, ok := s.issueFromRoute(w, r)
 	if !ok {
 		return
@@ -221,7 +223,32 @@ func (s *Server) createIssueContextLink(w http.ResponseWriter, r *http.Request) 
 	if !s.requireProjectAccess(w, r, issue.ProjectID) {
 		return
 	}
-	var req linkIssueContextReq
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		r.Body = http.MaxBytesReader(w, r.Body, maxProjectContextUploadBytes+1024*1024)
+		upload, err := readProjectContextUpload(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		created, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
+			IssueID:        issue.ID,
+			Title:          upload.Title,
+			Kind:           model.ProjectContextKindText,
+			ContentType:    upload.ContentType,
+			Body:           upload.Body,
+			SourceFilename: upload.SourceFilename,
+			CreatedByID:    currentUser(r).ID,
+		})
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+		return
+	}
+
+	var req createIssueContextReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -229,6 +256,36 @@ func (s *Server) createIssueContextLink(w http.ResponseWriter, r *http.Request) 
 	raw := strings.TrimSpace(req.Context)
 	if raw == "" {
 		raw = strings.TrimSpace(req.ContextRef)
+	}
+	if raw != "" && (strings.TrimSpace(req.Title) != "" || strings.TrimSpace(req.Body) != "") {
+		writeError(w, http.StatusBadRequest, "provide either context or title/body")
+		return
+	}
+	if raw == "" {
+		title, err := validateProjectContextTitle(req.Title)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		body, err := validateProjectContextBody(req.Body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		created, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
+			IssueID:     issue.ID,
+			Title:       title,
+			Kind:        model.ProjectContextKindText,
+			ContentType: "text/plain; charset=utf-8",
+			Body:        body,
+			CreatedByID: currentUser(r).ID,
+		})
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, created)
+		return
 	}
 	number, err := parseTypedRef(raw, "context")
 	if err != nil {
@@ -238,6 +295,10 @@ func (s *Server) createIssueContextLink(w http.ResponseWriter, r *http.Request) 
 	contextItem, err := s.store.GetProjectContextByProjectNumber(r.Context(), issue.ProjectID, number)
 	if err != nil {
 		writeStoreError(w, err)
+		return
+	}
+	if contextItem.Scope != model.ProjectContextScopeProject {
+		writeStoreError(w, store.ErrNotFound)
 		return
 	}
 	if _, err := s.store.CreateIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
@@ -268,6 +329,12 @@ func (s *Server) deleteIssueContextLink(w http.ResponseWriter, r *http.Request) 
 		writeStoreError(w, err)
 		return
 	}
+	if contextItem.Scope == model.ProjectContextScopeIssue {
+		if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -283,6 +350,10 @@ func (s *Server) projectContextFromRoute(w http.ResponseWriter, r *http.Request)
 	contextItem, err := s.store.GetProjectContextByProjectNumber(r.Context(), project.ID, number)
 	if err != nil {
 		writeStoreError(w, err)
+		return model.Project{}, model.ProjectContext{}, false
+	}
+	if contextItem.Scope != model.ProjectContextScopeProject {
+		writeStoreError(w, store.ErrNotFound)
 		return model.Project{}, model.ProjectContext{}, false
 	}
 	return project, contextItem, true

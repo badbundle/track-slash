@@ -137,6 +137,23 @@ func TestProjectContextKindValid(t *testing.T) {
 	}
 }
 
+func TestProjectContextScopeValid(t *testing.T) {
+	cases := []struct {
+		in   ProjectContextScope
+		want bool
+	}{
+		{ProjectContextScopeProject, true},
+		{ProjectContextScopeIssue, true},
+		{"workspace", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := c.in.Valid(); got != c.want {
+			t.Fatalf("ProjectContextScope(%q).Valid() = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
 func TestProjectContextRef(t *testing.T) {
 	if got := ProjectContextRef(12); got != "context-12" {
 		t.Fatalf("ProjectContextRef(12) = %q, want context-12", got)

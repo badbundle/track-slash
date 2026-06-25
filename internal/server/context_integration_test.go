@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -24,6 +25,11 @@ func (e *httpEnv) issueContextPath(iss model.Issue) string {
 
 func (e *httpEnv) doMultipartContext(t *testing.T, fields map[string]string, filename, content string) (int, []byte) {
 	t.Helper()
+	return e.doMultipartContextAt(t, e.projectPath()+"/context", fields, filename, content)
+}
+
+func (e *httpEnv) doMultipartContextAt(t *testing.T, path string, fields map[string]string, filename, content string) (int, []byte) {
+	t.Helper()
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	for k, v := range fields {
@@ -41,7 +47,7 @@ func (e *httpEnv) doMultipartContext(t *testing.T, fields map[string]string, fil
 	if err := writer.Close(); err != nil {
 		t.Fatalf("writer.Close: %v", err)
 	}
-	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+apiPath(e.projectPath()+"/context"), &buf)
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+apiPath(path), &buf)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -71,7 +77,7 @@ func TestHTTPProjectContextCRUDAndIssueLinks(t *testing.T) {
 		t.Fatalf("create context code = %d body = %s", code, body)
 	}
 	contextItem := decode[model.ProjectContext](t, body)
-	if contextItem.Ref != "context-1" || contextItem.Kind != model.ProjectContextKindText || contextItem.CreatedByID != e.adminID || contextItem.UpdatedByID != e.adminID {
+	if contextItem.Ref != "context-1" || contextItem.Scope != model.ProjectContextScopeProject || contextItem.Kind != model.ProjectContextKindText || contextItem.CreatedByID != e.adminID || contextItem.UpdatedByID != e.adminID {
 		t.Fatalf("created context = %+v", contextItem)
 	}
 
@@ -114,7 +120,7 @@ func TestHTTPProjectContextCRUDAndIssueLinks(t *testing.T) {
 		t.Fatalf("multipart context code = %d body = %s", code, body)
 	}
 	uploaded := decode[model.ProjectContext](t, body)
-	if uploaded.Ref != "context-2" || uploaded.Title != "notes" || uploaded.ContentType != "text/markdown; charset=utf-8" || uploaded.SourceFilename == nil || *uploaded.SourceFilename != "notes.md" {
+	if uploaded.Ref != "context-2" || uploaded.Scope != model.ProjectContextScopeProject || uploaded.Title != "notes" || uploaded.ContentType != "text/markdown; charset=utf-8" || uploaded.SourceFilename == nil || *uploaded.SourceFilename != "notes.md" {
 		t.Fatalf("uploaded context = %+v", uploaded)
 	}
 
@@ -133,6 +139,65 @@ func TestHTTPProjectContextCRUDAndIssueLinks(t *testing.T) {
 	issueContexts := decodePage[model.ProjectContext](t, body)
 	if len(issueContexts.Items) != 1 || issueContexts.Items[0].Body != contextItem.Body {
 		t.Fatalf("issue contexts = %+v", issueContexts)
+	}
+
+	code, body = e.do(t, http.MethodPost, e.issueContextPath(issue), map[string]any{
+		"title": "Issue only",
+		"body":  "Only this issue needs it.",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create issue-only context code = %d body = %s", code, body)
+	}
+	issueOnly := decode[model.ProjectContext](t, body)
+	if issueOnly.Scope != model.ProjectContextScopeIssue || issueOnly.Ref != "context-3" || issueOnly.ProjectID != e.projectID || issueOnly.CreatedByID != e.adminID {
+		t.Fatalf("issue-only context = %+v", issueOnly)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectContextPath(issueOnly), nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("project get issue-only context code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectPath()+"/context?limit=10", nil)
+	if code != http.StatusOK {
+		t.Fatalf("project list after issue-only code = %d body = %s", code, body)
+	}
+	projectContexts := decodePage[model.ProjectContextSummary](t, body)
+	if len(projectContexts.Items) != 2 {
+		t.Fatalf("project context list = %+v, want only two project-scoped items", projectContexts)
+	}
+
+	code, body = e.doMultipartContextAt(t, e.issueContextPath(issue), map[string]string{"title": "Issue upload"}, "trace.txt", "Uploaded just for this issue.")
+	if code != http.StatusCreated {
+		t.Fatalf("issue multipart context code = %d body = %s", code, body)
+	}
+	issueUpload := decode[model.ProjectContext](t, body)
+	if issueUpload.Scope != model.ProjectContextScopeIssue || issueUpload.Ref != "context-4" || issueUpload.SourceFilename == nil || *issueUpload.SourceFilename != "trace.txt" {
+		t.Fatalf("issue upload context = %+v", issueUpload)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.issueContextPath(issue), nil)
+	if code != http.StatusOK {
+		t.Fatalf("list issue context with issue-only code = %d body = %s", code, body)
+	}
+	issueContexts = decodePage[model.ProjectContext](t, body)
+	if len(issueContexts.Items) != 3 || issueContexts.Items[0].ID != contextItem.ID || issueContexts.Items[1].ID != issueOnly.ID || issueContexts.Items[2].ID != issueUpload.ID {
+		t.Fatalf("issue contexts with issue-only = %+v", issueContexts)
+	}
+
+	code, body = e.do(t, http.MethodPost, e.issueContextPath(issue), map[string]any{
+		"context": contextItem.Ref,
+		"title":   "Ambiguous",
+		"body":    "Nope",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("ambiguous issue context code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodDelete, e.issueContextPath(issue)+"/"+issueOnly.Ref, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete issue-only context code = %d body = %s", code, body)
+	}
+	if _, err := e.store.GetProjectContext(e.ctx, issueOnly.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("issue-only context err after issue delete = %v, want ErrNotFound", err)
 	}
 	code, body = e.do(t, http.MethodPost, e.issueContextPath(issue), map[string]any{"context": contextItem.Ref})
 	if code != http.StatusConflict {
@@ -167,6 +232,19 @@ func TestHTTPProjectContextValidation(t *testing.T) {
 	code, body := e.doMultipartContext(t, nil, "image.png", "not really an image")
 	if code != http.StatusBadRequest {
 		t.Fatalf("bad upload extension code = %d body = %s", code, body)
+	}
+
+	issue, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "issue context validation"))
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	code, body = e.do(t, http.MethodPost, e.issueContextPath(issue), map[string]any{"title": "", "body": "body"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad issue context json code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartContextAt(t, e.issueContextPath(issue), nil, "image.png", "not really an image")
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad issue upload extension code = %d body = %s", code, body)
 	}
 }
 

@@ -126,7 +126,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/{issueRef}/comments/{commentRef}", s.getComment)
 					r.Patch("/{issueRef}/comments/{commentRef}", s.updateComment)
 					r.Delete("/{issueRef}/comments/{commentRef}", s.deleteComment)
-					r.Post("/{issueRef}/context", s.createIssueContextLink)
+					r.Post("/{issueRef}/context", s.createIssueContext)
 					r.Get("/{issueRef}/context", s.listIssueContexts)
 					r.Delete("/{issueRef}/context/{contextRef}", s.deleteIssueContextLink)
 					r.Post("/{issueRef}/links", s.createIssueLink)
