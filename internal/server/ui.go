@@ -2646,13 +2646,11 @@ func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Iss
 	if issue.SprintID == nil {
 		view = "all"
 	} else if sprint != nil && sprint.Status == model.SprintStatusPlanned {
-		view = "planned"
+		view = "all"
 	}
 	base := uiProjectViewPath(project, view)
 	label = "Sprint"
 	switch view {
-	case "planned":
-		label = "Planned"
 	case "all":
 		label = "All"
 	}
@@ -2674,7 +2672,7 @@ func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request,
 	if panel.Issue.SprintID == nil {
 		view = "all"
 	} else if panel.Sprint != nil && panel.Sprint.Status == model.SprintStatusPlanned {
-		view = "planned"
+		view = "all"
 	}
 	projectPanel, err := s.uiBuildProjectPanel(r.Context(), r, panel.Project.ID, view)
 	if err != nil {

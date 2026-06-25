@@ -1727,9 +1727,9 @@ func TestUIIssueBackLink(t *testing.T) {
 			name:      "planned sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusPlanned},
-			wantHref:  "/bradley/projects/TRACK/planned",
-			wantHXGet: "/bradley/projects/TRACK/planned/panel",
-			wantLabel: "Planned",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All",
 		},
 		{
 			name:      "backlog issue",
