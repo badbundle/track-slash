@@ -43,7 +43,7 @@ func scanIssue(row issueScanner) (model.Issue, error) {
 	var dueDate *time.Time
 	err := row.Scan(
 		&iss.ID, &iss.ProjectID, &iss.OwnerUsername, &iss.ProjectKey, &iss.Number,
-		&iss.Title, &iss.Description, &iss.Status, &iss.Priority, &iss.AssigneeID, &iss.ReporterID,
+		&iss.Title, &iss.Description, &iss.Status, &iss.CloseReason, &iss.Priority, &iss.AssigneeID, &iss.ReporterID,
 		&iss.SprintID, &iss.ParentIssueID, &dueDate, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
@@ -104,10 +104,10 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		err = tx.QueryRow(ctx, `
 			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, due_date)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			RETURNING id, project_id, number, title, description, status, priority,
+			RETURNING id, project_id, number, title, description, status, close_reason, priority,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
 		`, p.ProjectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, issueDueDateValue(p.DueDate)).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.Priority,
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -173,10 +173,10 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		err = tx.QueryRow(ctx, `
 			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, parent_issue_id, due_date)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			RETURNING id, project_id, number, title, description, status, priority,
+			RETURNING id, project_id, number, title, description, status, close_reason, priority,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
 		`, projectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, p.ParentIssueID, issueDueDateValue(p.DueDate)).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.Priority,
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -210,7 +210,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -229,7 +229,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -249,7 +249,7 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 
 func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -298,7 +298,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		return []model.Issue{}, nil
 	}
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -325,7 +325,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -390,7 +390,7 @@ type ListDeletedIssuesParams struct {
 func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -454,7 +454,7 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 
 	args := []any{p.ParentIssueID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -499,6 +499,7 @@ type UpdateIssueParams struct {
 	Title         *string
 	Description   *string
 	Status        *model.Status
+	CloseReason   *model.IssueCloseReason
 	Priority      *model.IssuePriority
 	AssigneeID    *uuid.UUID
 	ClearAssignee bool
@@ -527,6 +528,14 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.Status != nil {
 		sets = append(sets, fmt.Sprintf("status = $%d", i))
 		args = append(args, string(*p.Status))
+		i++
+		if *p.Status != model.StatusClosed {
+			sets = append(sets, "close_reason = NULL")
+		}
+	}
+	if p.CloseReason != nil {
+		sets = append(sets, fmt.Sprintf("close_reason = $%d", i))
+		args = append(args, string(*p.CloseReason))
 		i++
 	}
 	if p.Priority != nil {
@@ -575,9 +584,10 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 
 	validatePeople := (p.AssigneeID != nil && !p.ClearAssignee) || (p.ReporterID != nil && !p.ClearReporter)
 	editSprint := p.ClearSprint || (p.SprintID != nil && !p.ClearSprint)
+	validateCloseReason := p.Status != nil || p.CloseReason != nil
 	// Cross-row validation runs in a transaction so the update uses the same
 	// issue project observed by the member/sprint checks.
-	if validatePeople || editSprint {
+	if validatePeople || editSprint || validateCloseReason {
 		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 			var issueProject, sprintProject uuid.UUID
 			var parentIssueID *uuid.UUID
@@ -607,6 +617,24 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 					return ErrNotFound
 				}
 			}
+			if validateCloseReason {
+				if p.Status != nil && !p.Status.Valid() {
+					return fmt.Errorf("invalid issue status: %w", ErrConflict)
+				}
+				if p.CloseReason != nil && !p.CloseReason.Valid() {
+					return fmt.Errorf("invalid close reason: %w", ErrConflict)
+				}
+				effectiveStatus := issueStatus
+				if p.Status != nil {
+					effectiveStatus = *p.Status
+				}
+				if p.Status != nil && issueStatus != model.StatusClosed && *p.Status == model.StatusClosed && p.CloseReason == nil {
+					return fmt.Errorf("close reason required: %w", ErrConflict)
+				}
+				if p.CloseReason != nil && effectiveStatus != model.StatusClosed {
+					return fmt.Errorf("close reason only applies to closed issues: %w", ErrConflict)
+				}
+			}
 			if editSprint {
 				if issueStatus.CountsAsDone() || (p.Status != nil && p.Status.CountsAsDone()) {
 					return fmt.Errorf("cannot edit sprint for completed issue: %w", ErrConflict)
@@ -634,8 +662,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		})
 		if err != nil {
 			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				return model.Issue{}, fmt.Errorf("invalid assignee, reporter, or sprint: %w", ErrConflict)
+			if errors.As(err, &pgErr) {
+				switch pgErr.Code {
+				case "23503":
+					return model.Issue{}, fmt.Errorf("invalid assignee, reporter, or sprint: %w", ErrConflict)
+				case "23514":
+					return model.Issue{}, fmt.Errorf("invalid issue close reason state: %w", ErrConflict)
+				}
 			}
 			return model.Issue{}, err
 		}
@@ -645,8 +678,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	tag, err := s.db.Exec(ctx, q, args...)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return model.Issue{}, fmt.Errorf("invalid assignee or sprint: %w", ErrConflict)
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23503":
+				return model.Issue{}, fmt.Errorf("invalid assignee or sprint: %w", ErrConflict)
+			case "23514":
+				return model.Issue{}, fmt.Errorf("invalid issue close reason state: %w", ErrConflict)
+			}
 		}
 		return model.Issue{}, err
 	}

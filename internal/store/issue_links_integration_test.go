@@ -112,6 +112,9 @@ func TestCreateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	if src.Status != model.StatusClosed {
 		t.Fatalf("source status = %s, want closed", src.Status)
 	}
+	if src.CloseReason == nil || *src.CloseReason != model.CloseReasonDuplicate {
+		t.Fatalf("source close reason = %v, want duplicate", src.CloseReason)
+	}
 
 	tgt, err := env.store.GetIssue(env.ctx, b.ID)
 	if err != nil {
@@ -300,6 +303,9 @@ func TestUpdateIssueLinkDuplicatesClosesSource(t *testing.T) {
 	}
 	if src.Status != model.StatusClosed {
 		t.Fatalf("source status = %s, want closed", src.Status)
+	}
+	if src.CloseReason == nil || *src.CloseReason != model.CloseReasonDuplicate {
+		t.Fatalf("source close reason = %v, want duplicate", src.CloseReason)
 	}
 }
 

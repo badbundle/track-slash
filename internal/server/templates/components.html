@@ -27,6 +27,64 @@
 <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .}}">{{statusLabel .}}</span>
 {{end}}
 
+{{define "close-reason-badge"}}
+{{if .}}
+<span class="inline-flex items-center rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:bg-slate-950 dark:text-zinc-200">{{closeReasonLabel .}}</span>
+{{end}}
+{{end}}
+
+{{define "missing-close-reason-badge"}}
+<span class="inline-flex items-center rounded-md border border-dashed border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-500 dark:border-zinc-700 dark:bg-slate-950 dark:text-zinc-400">Missing reason</span>
+{{end}}
+
+{{define "modal-open"}}
+<div class="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 px-4 py-6" role="dialog" aria-modal="true" aria-labelledby="{{.ID}}-title">
+  <section class="w-full {{.WidthClass}} rounded-lg border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        {{if .Badges}}
+        <div class="flex flex-wrap items-center gap-2">
+          {{range .Badges}}
+          <span class="inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium {{.Class}}">{{.Label}}</span>
+          {{end}}
+        </div>
+        {{end}}
+        <h2 id="{{.ID}}-title" class="mt-3 text-base font-semibold text-slate-950 dark:text-slate-100">{{.Title}}</h2>
+        {{if .Description}}<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.Description}}</p>{{end}}
+      </div>
+      {{if .CancelHXGet}}
+      <button type="button" aria-label="{{.CancelLabel}}" hx-get="{{.CancelHXGet}}" hx-target="#main" hx-push-url="{{.CancelHXPushURL}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+      </button>
+      {{end}}
+    </div>
+{{end}}
+
+{{define "modal-close"}}
+  </section>
+</div>
+{{end}}
+
+{{define "option-dropdown"}}
+<div class="space-y-2">
+  <div>
+    <button type="button" aria-label="{{.ToggleLabel}}" aria-haspopup="listbox" aria-expanded="true" hx-get="{{.CancelHXGet}}" hx-target="{{.HXTarget}}" hx-push-url="{{.HXPushURL}}" data-option-dropdown-toggle class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{.CurrentClass}}">
+      <span class="min-w-0 truncate">{{.CurrentLabel}}</span>
+      <i data-lucide="chevron-up" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+    </button>
+  </div>
+  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="{{.HXTarget}}" hx-push-url="{{.HXPushURL}}" role="listbox" aria-label="{{.ListLabel}}" data-option-dropdown-list class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+    {{range .Options}}
+    <button type="submit" name="{{$.Name}}" value="{{.Value}}" role="option" aria-selected="{{if eq $.CurrentValue .Value}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+      <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{.Class}}">{{.Label}}</span>
+      {{if eq $.CurrentValue .Value}}<i data-lucide="check" class="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>{{end}}
+    </button>
+    {{end}}
+  </form>
+  {{if .Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.Error}}</p>{{end}}
+</div>
+{{end}}
+
 {{define "autocomplete-edit"}}
 <div>
   <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">{{.Label}}</dt>
@@ -78,6 +136,7 @@
 <span class="flex shrink-0 items-center gap-2">
   {{template "issue-due-badge" .}}
   {{template "status-badge" .Status}}
+  {{if eq .Status "closed"}}{{template "close-reason-badge" .CloseReason}}{{end}}
 </span>
 {{end}}
 

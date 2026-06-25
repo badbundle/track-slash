@@ -403,7 +403,8 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 		t.Fatalf("assign closed: %v", err)
 	}
 	closedStatus := model.StatusClosed
-	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closedStatus}); err != nil {
+	closedReason := model.CloseReasonWontDo
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closedStatus, CloseReason: &closedReason}); err != nil {
 		t.Fatalf("close issue: %v", err)
 	}
 	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other UI Project", "")
@@ -879,9 +880,9 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 		"status target issue",
 		`aria-label="Change status"`,
 		`aria-expanded="true"`,
-		`data-status-toggle`,
-		`data-status-list`,
-		`status-picker-enter`,
+		`data-option-dropdown-toggle`,
+		`data-option-dropdown-list`,
+		`option-dropdown-enter`,
 		`role="listbox" aria-label="Issue status"`,
 		`method="post" action="` + e.issuePath(issue) + `/status"`,
 		`hx-post="` + e.issuePath(issue) + `/status"`,
@@ -968,15 +969,167 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("closed status code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "Closed") || strings.Contains(body, `role="option"`) {
-		t.Fatalf("closed status response did not return read mode with new status: %s", body)
+	for _, want := range []string{
+		`role="dialog" aria-modal="true"`,
+		"Close issue",
+		"Closed",
+		"Close reason",
+		`data-option-dropdown-toggle`,
+		`data-option-dropdown-list`,
+		`method="post" action="` + e.issuePath(issue) + `/close-reason"`,
+		`name="close_reason"`,
+		"Duplicate",
+		"Won&#39;t Do",
+		"Invalid",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("closed status response missing %q: %s", want, body)
+		}
+	}
+	modalEnd := strings.Index(body, `<section class="grid gap-6`)
+	if modalEnd < 0 {
+		t.Fatalf("closed status response missing issue detail section: %s", body)
+	}
+	if strings.Contains(body[:modalEnd], "Missing reason") {
+		t.Fatalf("closed status response rendered modal missing reason indicator: %s", body[:modalEnd])
+	}
+	if !strings.Contains(body[modalEnd:], "Missing reason") {
+		t.Fatalf("closed status response missing detail-panel missing reason indicator: %s", body[modalEnd:])
+	}
+	if strings.Contains(body, ">Reason</option>") || strings.Contains(body, `aria-expanded="false"`) && strings.Contains(body, "To do") {
+		t.Fatalf("closed status response kept confusing pending close UI: %s", body)
 	}
 	updated, err = e.store.GetIssue(e.ctx, issue.ID)
 	if err != nil {
 		t.Fatalf("GetIssue after closed status: %v", err)
 	}
-	if updated.Status != model.StatusClosed {
-		t.Fatalf("closed Status = %q, want %q", updated.Status, model.StatusClosed)
+	if updated.Status != model.StatusInProgress || updated.CloseReason != nil {
+		t.Fatalf("closed status picker changed issue = status %q reason %v, want in_progress/no reason", updated.Status, updated.CloseReason)
+	}
+
+	closeReason := url.Values{"close_reason": {string(model.CloseReasonInvalid)}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/close-reason", token, strings.NewReader(closeReason.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("close reason code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Closed") || !strings.Contains(body, "Invalid") || strings.Contains(body, `name="close_reason"`) {
+		t.Fatalf("close reason response did not return read mode with reason: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after close reason: %v", err)
+	}
+	if updated.Status != model.StatusClosed || updated.CloseReason == nil || *updated.CloseReason != model.CloseReasonInvalid {
+		t.Fatalf("closed issue = status %q reason %v, want closed/invalid", updated.Status, updated.CloseReason)
+	}
+}
+
+func TestUIEditCloseReasonUpdatesAndReopenHidesReason(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-close-reason")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "close reason target",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	closed := model.StatusClosed
+	initialReason := model.CloseReasonWontDo
+	issue, err = e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{
+		Status:      &closed,
+		CloseReason: &initialReason,
+	})
+	if err != nil {
+		t.Fatalf("close issue: %v", err)
+	}
+
+	body := e.uiGet(t, e.issuePath(issue), token)
+	for _, want := range []string{
+		"close reason target",
+		"Close reason",
+		"W",
+		`hx-get="` + e.issuePath(issue) + `/close-reason/edit"`,
+		`aria-label="Edit close reason"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("closed issue detail missing %q: %s", want, body)
+		}
+	}
+	if !strings.Contains(body, "Won&#39;t Do") && !strings.Contains(body, "Won't Do") {
+		t.Fatalf("closed issue detail missing Won't Do label: %s", body)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/close-reason/edit", token)
+	for _, want := range []string{
+		`method="post" action="` + e.issuePath(issue) + `/close-reason"`,
+		`hx-post="` + e.issuePath(issue) + `/close-reason"`,
+		`data-option-dropdown-toggle`,
+		`data-option-dropdown-list`,
+		`name="close_reason"`,
+		`value="duplicate"`,
+		`value="wont_do" role="option" aria-selected="true"`,
+		`value="invalid"`,
+		`aria-label="Choose close reason"`,
+		`data-lucide="check"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("close reason edit missing %q: %s", want, edit)
+		}
+	}
+
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/close-reason", token, strings.NewReader(url.Values{"close_reason": {"bogus"}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("bad close reason code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Choose a close reason.") {
+		t.Fatalf("bad close reason response missing validation error: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad reason: %v", err)
+	}
+	if updated.CloseReason == nil || *updated.CloseReason != model.CloseReasonWontDo {
+		t.Fatalf("bad reason changed close reason = %v, want wont_do", updated.CloseReason)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/close-reason", token, strings.NewReader(url.Values{"close_reason": {string(model.CloseReasonDuplicate)}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update close reason code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Duplicate") || strings.Contains(body, `name="close_reason"`) {
+		t.Fatalf("close reason update response did not return read mode: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after reason update: %v", err)
+	}
+	if updated.CloseReason == nil || *updated.CloseReason != model.CloseReasonDuplicate {
+		t.Fatalf("updated close reason = %v, want duplicate", updated.CloseReason)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/status", token, strings.NewReader(url.Values{"status": {string(model.StatusInProgress)}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("reopen code = %d body = %s", res.StatusCode, body)
+	}
+	if strings.Contains(body, "Close reason") || strings.Contains(body, "Duplicate") {
+		t.Fatalf("reopened response still rendered close reason: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after reopen: %v", err)
+	}
+	if updated.Status != model.StatusInProgress || updated.CloseReason != nil {
+		t.Fatalf("reopened issue = status %q reason %v, want in_progress/nil", updated.Status, updated.CloseReason)
 	}
 }
 
@@ -1861,10 +2014,11 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 		t.Fatalf("CreateIssue closed: %v", err)
 	}
 	closed := model.StatusClosed
+	closedReason := model.CloseReasonWontDo
 	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{SprintID: &current.ID}); err != nil {
 		t.Fatalf("assign closed current: %v", err)
 	}
-	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closed}); err != nil {
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closed, CloseReason: &closedReason}); err != nil {
 		t.Fatalf("mark closed: %v", err)
 	}
 	body = e.uiGet(t, e.issuePath(closedIssue), token)
@@ -2425,6 +2579,16 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue status update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/close-reason/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue close reason edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/close-reason", token, strings.NewReader(url.Values{"close_reason": {string(model.CloseReasonInvalid)}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue close reason update code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/delete", token, nil)
 	defer res.Body.Close()

@@ -318,7 +318,12 @@ func createIssue(
 		}
 	}
 	if seed.Status != "" && seed.Status != model.StatusTodo {
-		created, err = st.UpdateIssue(ctx, created.ID, store.UpdateIssueParams{Status: &seed.Status})
+		params := store.UpdateIssueParams{Status: &seed.Status}
+		if seed.Status == model.StatusClosed {
+			reason := model.CloseReasonWontDo
+			params.CloseReason = &reason
+		}
+		created, err = st.UpdateIssue(ctx, created.ID, params)
 		if err != nil {
 			return err
 		}
@@ -373,7 +378,12 @@ func createSubIssue(
 	}
 
 	if seed.Status != "" && seed.Status != model.StatusTodo {
-		created, err = st.UpdateIssue(ctx, created.ID, store.UpdateIssueParams{Status: &seed.Status})
+		params := store.UpdateIssueParams{Status: &seed.Status}
+		if seed.Status == model.StatusClosed {
+			reason := model.CloseReasonWontDo
+			params.CloseReason = &reason
+		}
+		created, err = st.UpdateIssue(ctx, created.ID, params)
 		if err != nil {
 			return err
 		}

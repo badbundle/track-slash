@@ -105,7 +105,12 @@ func assignIssueToSprint(t *testing.T, env *sprintsTestEnv, issueID, sprintID uu
 
 func setIssueStatus(t *testing.T, env *sprintsTestEnv, issueID uuid.UUID, st model.Status) {
 	t.Helper()
-	if _, err := env.store.UpdateIssue(env.ctx, issueID, store.UpdateIssueParams{Status: &st}); err != nil {
+	params := store.UpdateIssueParams{Status: &st}
+	if st == model.StatusClosed {
+		reason := model.CloseReasonWontDo
+		params.CloseReason = &reason
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, issueID, params); err != nil {
 		t.Fatalf("set issue status: %v", err)
 	}
 }
@@ -899,9 +904,11 @@ func TestUpdateIssueDoneRejectsSprintEdit(t *testing.T) {
 
 	becomingClosed := mustCreateIssue(t, env, "closed-with-move")
 	closed := model.StatusClosed
+	closedReason := model.CloseReasonWontDo
 	if _, err := env.store.UpdateIssue(env.ctx, becomingClosed.ID, store.UpdateIssueParams{
-		Status:   &closed,
-		SprintID: &next.ID,
+		Status:      &closed,
+		CloseReason: &closedReason,
+		SprintID:    &next.ID,
 	}); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("status closed plus sprint err = %v, want ErrConflict", err)
 	}
@@ -1166,6 +1173,64 @@ func TestIssueDueDateRoundtrip(t *testing.T) {
 	}
 	if cleared.DueDate != nil {
 		t.Fatalf("cleared DueDate = %v, want nil", cleared.DueDate)
+	}
+}
+
+func TestIssueCloseReasonRoundtrip(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	iss := mustCreateIssue(t, env, "close reason")
+	closed := model.StatusClosed
+
+	if _, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{Status: &closed}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("close without reason err = %v, want ErrConflict", err)
+	}
+
+	reason := model.CloseReasonWontDo
+	closedIssue, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{
+		Status:      &closed,
+		CloseReason: &reason,
+	})
+	if err != nil {
+		t.Fatalf("UpdateIssue close reason: %v", err)
+	}
+	if closedIssue.Status != model.StatusClosed || closedIssue.CloseReason == nil || *closedIssue.CloseReason != model.CloseReasonWontDo {
+		t.Fatalf("closed issue = status %s reason %v, want closed/wont_do", closedIssue.Status, closedIssue.CloseReason)
+	}
+
+	updatedReason := model.CloseReasonInvalid
+	updated, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{CloseReason: &updatedReason})
+	if err != nil {
+		t.Fatalf("UpdateIssue close reason edit: %v", err)
+	}
+	if updated.CloseReason == nil || *updated.CloseReason != model.CloseReasonInvalid {
+		t.Fatalf("updated close reason = %v, want invalid", updated.CloseReason)
+	}
+
+	reopenedStatus := model.StatusInProgress
+	reopened, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{Status: &reopenedStatus})
+	if err != nil {
+		t.Fatalf("UpdateIssue reopen: %v", err)
+	}
+	if reopened.Status != model.StatusInProgress || reopened.CloseReason != nil {
+		t.Fatalf("reopened issue = status %s reason %v, want in_progress/nil", reopened.Status, reopened.CloseReason)
+	}
+
+	if _, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{CloseReason: &reason}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("reason on non-closed err = %v, want ErrConflict", err)
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{
+		Status:      &reopenedStatus,
+		CloseReason: &reason,
+	}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("non-closed status with reason err = %v, want ErrConflict", err)
+	}
+	invalidReason := model.IssueCloseReason("bogus")
+	if _, err := env.store.UpdateIssue(env.ctx, iss.ID, store.UpdateIssueParams{
+		Status:      &closed,
+		CloseReason: &invalidReason,
+	}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("invalid close reason err = %v, want ErrConflict", err)
 	}
 }
 
