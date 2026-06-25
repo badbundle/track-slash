@@ -296,6 +296,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
 		{name: "issue sub-issue add", raw: "/bradley/issues/TRACK-7/sub-issues/new?x=1", want: "/bradley/issues/TRACK-7/sub-issues/new?x=1"},
+		{name: "issue context view", raw: "/bradley/issues/TRACK-7/context?x=1", want: "/bradley/issues/TRACK-7/context?x=1"},
 		{name: "issue context add", raw: "/bradley/issues/TRACK-7/context/new?x=1", want: "/bradley/issues/TRACK-7/context/new?x=1"},
 		{name: "issue context attach", raw: "/bradley/issues/TRACK-7/context/link?x=1", want: "/bradley/issues/TRACK-7/context/link?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
@@ -531,6 +532,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Readonly description",
 		"In progress",
 		"Track Slash",
+		"Context",
 		"Ada Lovelace",
 		"Planned One",
 		"Due date",
@@ -573,6 +575,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-7/due-date/edit"`,
 		`aria-label="Edit sprint"`,
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
+		`aria-label="View context"`,
+		`hx-get="/bradley/issues/TRACK-7/context"`,
+		`data-lucide="book-open"`,
 		`<span class="min-w-0 text-slate-900 dark:text-slate-100">Ada Lovelace</span>`,
 		`<span class="min-w-0 truncate text-slate-900 dark:text-slate-100">Planned One</span>`,
 		`aria-label="Add link"`,
@@ -670,8 +675,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
 		}
 	}
-	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 4 {
-		t.Fatalf("due date, assignee, reporter, and sprint rows should align edit buttons with values, got %d rows: %s", got, body)
+	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 5 {
+		t.Fatalf("context, due date, assignee, reporter, and sprint rows should align action buttons with values, got %d rows: %s", got, body)
 	}
 	if strings.Contains(detailsBlock, `class="flex items-start justify-between gap-3"`) {
 		t.Fatalf("detail edit buttons should not align with row titles: %s", body)
@@ -1434,6 +1439,26 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 			t.Fatalf("heading %q should render before %q: %s", first, second, body)
 		}
 	}
+	requireTextOrder := func(t *testing.T, body, first, second string) {
+		t.Helper()
+		firstIndex := strings.Index(body, first)
+		secondIndex := strings.Index(body, second)
+		if firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex {
+			t.Fatalf("%q should render before %q: %s", first, second, body)
+		}
+	}
+	contextDetailBlock := func(t *testing.T, body string) string {
+		t.Helper()
+		contextLabel := strings.Index(body, ">Context</dt>")
+		if contextLabel < 0 {
+			t.Fatalf("missing context detail row: %s", body)
+		}
+		blockEnd := contextLabel + 1100
+		if blockEnd > len(body) {
+			blockEnd = len(body)
+		}
+		return body[contextLabel:blockEnd]
+	}
 
 	emptyBody := render(t, basePanel())
 	for _, notWant := range []string{"No context.", "No sub-issues.", "No linked issues."} {
@@ -1441,60 +1466,59 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 			t.Fatalf("empty relationship section should not render %q: %s", notWant, emptyBody)
 		}
 	}
-	if !strings.Contains(emptyBody, `class="flex flex-wrap gap-6"`) {
-		t.Fatalf("relationship sections should share a wrapping row: %s", emptyBody)
+	if got := strings.Count(emptyBody, `class="flex flex-wrap gap-6"`); got != 1 {
+		t.Fatalf("relationship sections should render one wrapping row, got %d: %s", got, emptyBody)
 	}
-	if !strings.Contains(emptyBody, `aria-label="Add context"`) {
-		t.Fatalf("empty context section should expose add button: %s", emptyBody)
-	}
-	if !strings.Contains(emptyBody, `aria-label="Attach context"`) {
-		t.Fatalf("empty context section should expose attach button: %s", emptyBody)
-	}
-	contextHeading := strings.Index(emptyBody, ">Context</h2>")
-	if contextHeading < 0 {
-		t.Fatalf("missing context section: %s", emptyBody)
-	}
-	contextEnd := strings.Index(emptyBody[contextHeading:], "</section>")
-	if contextEnd < 0 {
-		t.Fatalf("missing context section end: %s", emptyBody)
-	}
-	contextSection := emptyBody[contextHeading : contextHeading+contextEnd]
-	if !strings.Contains(contextSection, `data-lucide="plus"`) || !strings.Contains(contextSection, `data-lucide="link"`) {
-		t.Fatalf("empty context section should use link and plus buttons, got: %s", contextSection)
-	}
-	if strings.Contains(emptyBody, `placeholder="context-1"`) {
-		t.Fatalf("empty context section should keep attach form collapsed: %s", emptyBody)
-	}
-	if got := strings.Count(emptyBody, `w-full sm:w-1/3`); got != 3 {
-		t.Fatalf("empty context and relationship sections should render third-width, got %d: %s", got, emptyBody)
-	}
-	emptyContextClass := sectionClassForHeading(t, emptyBody, "Context")
-	emptySubClass := sectionClassForHeading(t, emptyBody, "Sub-issues")
-	emptyLinkClass := sectionClassForHeading(t, emptyBody, "Linked issues")
-	for _, cls := range []string{emptyContextClass, emptySubClass, emptyLinkClass} {
-		if !strings.Contains(cls, `w-full sm:w-1/3`) {
-			t.Fatalf("empty context/relationship section should be third-width, got class %q: %s", cls, emptyBody)
+	contextDetail := contextDetailBlock(t, emptyBody)
+	for _, want := range []string{`aria-label="View context"`, `data-lucide="book-open"`, `class="` + uiCountBadgeClass + `">0</span>`} {
+		if !strings.Contains(contextDetail, want) {
+			t.Fatalf("empty context detail row missing %q: %s", want, emptyBody)
 		}
 	}
-	requireHeadingOrder(t, emptyBody, "Context", "Sub-issues")
+	for _, notWant := range []string{`aria-label="Add context"`, `aria-label="Attach context"`, `aria-label="Remove context"`, `data-lucide="plus"`, `data-lucide="link"`} {
+		if strings.Contains(contextDetail, notWant) {
+			t.Fatalf("context detail row should show only count/view affordance, found %q: %s", notWant, emptyBody)
+		}
+	}
+	if strings.Contains(emptyBody, `placeholder="context-1"`) {
+		t.Fatalf("empty issue page should keep attach form in the modal only: %s", emptyBody)
+	}
+	if got := strings.Count(emptyBody, `w-full sm:w-1/3`); got != 2 {
+		t.Fatalf("empty relationship sections should render third-width, got %d: %s", got, emptyBody)
+	}
+	emptySubClass := sectionClassForHeading(t, emptyBody, "Sub-issues")
+	emptyLinkClass := sectionClassForHeading(t, emptyBody, "Linked issues")
+	for _, cls := range []string{emptySubClass, emptyLinkClass} {
+		if !strings.Contains(cls, `w-full sm:w-1/3`) {
+			t.Fatalf("empty relationship section should be third-width, got class %q: %s", cls, emptyBody)
+		}
+	}
 	requireHeadingOrder(t, emptyBody, "Sub-issues", "Linked issues")
+	requireHeadingOrder(t, emptyBody, "Linked issues", "Comments")
+	requireTextOrder(t, emptyBody, ">Comments</h2>", ">Details</h2>")
+	requireTextOrder(t, emptyBody, ">Details</h2>", ">Context</dt>")
+
+	viewContextPanel := basePanel()
+	viewContextPanel.ContextMode = "view"
+	viewContextBody := render(t, viewContextPanel)
+	for _, want := range []string{`role="dialog" aria-modal="true"`, `Close context`, `No context.`, `aria-label="Add context"`, `aria-label="Attach context"`} {
+		if !strings.Contains(viewContextBody, want) {
+			t.Fatalf("view context modal missing %q: %s", want, viewContextBody)
+		}
+	}
 
 	attachingContextPanel := basePanel()
 	attachingContextPanel.AddContext = true
 	attachingContextPanel.ContextMode = "attach"
 	attachingContextBody := render(t, attachingContextPanel)
-	attachingContextClass := sectionClassForHeading(t, attachingContextBody, "Context")
-	if !strings.Contains(attachingContextClass, "w-full") || strings.Contains(attachingContextClass, `sm:w-1/3`) {
-		t.Fatalf("attaching context section should expand to full width, got %q: %s", attachingContextClass, attachingContextBody)
-	}
-	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `aria-label="Attach context"`} {
+	for _, want := range []string{`role="dialog" aria-modal="true"`, `Attach context`, `aria-label="Cancel attaching context"`, `placeholder="context-1"`, `aria-label="Attach context"`} {
 		if !strings.Contains(attachingContextBody, want) {
-			t.Fatalf("attaching context section missing %q: %s", want, attachingContextBody)
+			t.Fatalf("attaching context modal missing %q: %s", want, attachingContextBody)
 		}
 	}
-	for _, notWant := range []string{`role="dialog" aria-modal="true"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
+	for _, notWant := range []string{`aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
 		if strings.Contains(attachingContextBody, notWant) {
-			t.Fatalf("attaching context section should not render %q: %s", notWant, attachingContextBody)
+			t.Fatalf("attaching context modal should not render %q: %s", notWant, attachingContextBody)
 		}
 	}
 
@@ -1502,10 +1526,6 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	addingContextPanel.AddContext = true
 	addingContextPanel.ContextMode = "create"
 	addingContextBody := render(t, addingContextPanel)
-	addingContextClass := sectionClassForHeading(t, addingContextBody, "Context")
-	if !strings.Contains(addingContextClass, "w-full") || strings.Contains(addingContextClass, `sm:w-1/3`) {
-		t.Fatalf("adding context section should expand to full width, got %q: %s", addingContextClass, addingContextBody)
-	}
 	for _, want := range []string{`role="dialog" aria-modal="true"`, `aria-label="Cancel adding context"`, `placeholder="Context"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`, `name="file"`} {
 		if !strings.Contains(addingContextBody, want) {
 			t.Fatalf("adding context modal missing %q: %s", want, addingContextBody)
@@ -1514,6 +1534,37 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	for _, notWant := range []string{`placeholder="context-1"`, `aria-label="Attach context"`} {
 		if strings.Contains(addingContextBody, notWant) {
 			t.Fatalf("adding context modal should not render %q: %s", notWant, addingContextBody)
+		}
+	}
+
+	populatedContextPanel := basePanel()
+	populatedContextPanel.Contexts = []model.ProjectContext{{
+		ID:          uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe"),
+		ProjectID:   projectID,
+		Number:      1,
+		Ref:         "context-1",
+		Title:       "Agent notes",
+		Kind:        model.ProjectContextKindText,
+		ContentType: "text/plain; charset=utf-8",
+		Body:        "Use the compact path.",
+		CreatedAt:   when,
+		UpdatedAt:   when,
+	}}
+	populatedContextBody := render(t, populatedContextPanel)
+	populatedContextDetail := contextDetailBlock(t, populatedContextBody)
+	if !strings.Contains(populatedContextDetail, `class="`+uiCountBadgeClass+`">1</span>`) {
+		t.Fatalf("populated context detail should show count only: %s", populatedContextBody)
+	}
+	for _, notWant := range []string{"Agent notes", "Use the compact path.", `aria-label="Remove context"`} {
+		if strings.Contains(populatedContextBody, notWant) {
+			t.Fatalf("populated issue page should keep context details in modal, found %q: %s", notWant, populatedContextBody)
+		}
+	}
+	populatedContextPanel.ContextMode = "view"
+	populatedContextViewBody := render(t, populatedContextPanel)
+	for _, want := range []string{"Agent notes", "Use the compact path.", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
+		if !strings.Contains(populatedContextViewBody, want) {
+			t.Fatalf("populated context modal missing %q: %s", want, populatedContextViewBody)
 		}
 	}
 
@@ -1532,8 +1583,10 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(populatedLinkClass, "w-full") || strings.Contains(populatedLinkClass, "sm:w-[calc") {
 		t.Fatalf("populated linked issues section should remain full width above the empty one, got %q: %s", populatedLinkClass, populatedLinksBody)
 	}
-	requireHeadingOrder(t, populatedLinksBody, "Context", "Linked issues")
 	requireHeadingOrder(t, populatedLinksBody, "Linked issues", "Sub-issues")
+	requireHeadingOrder(t, populatedLinksBody, "Sub-issues", "Comments")
+	requireTextOrder(t, populatedLinksBody, ">Comments</h2>", ">Details</h2>")
+	requireTextOrder(t, populatedLinksBody, ">Details</h2>", ">Context</dt>")
 
 	populatedSubIssuesPanel := basePanel()
 	populatedSubIssuesPanel.SubIssues = []model.Issue{{
@@ -1557,8 +1610,10 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(populatedEmptyLinkClass, `w-full sm:w-1/3`) {
 		t.Fatalf("empty linked issues section should sit below populated sub-issues at third width, got %q: %s", populatedEmptyLinkClass, populatedSubIssuesBody)
 	}
-	requireHeadingOrder(t, populatedSubIssuesBody, "Context", "Sub-issues")
 	requireHeadingOrder(t, populatedSubIssuesBody, "Sub-issues", "Linked issues")
+	requireHeadingOrder(t, populatedSubIssuesBody, "Linked issues", "Comments")
+	requireTextOrder(t, populatedSubIssuesBody, ">Comments</h2>", ">Details</h2>")
+	requireTextOrder(t, populatedSubIssuesBody, ">Details</h2>", ">Context</dt>")
 }
 
 func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {

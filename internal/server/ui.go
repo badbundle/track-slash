@@ -504,6 +504,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/issues/{issueRef}/comments/{commentRef}/edit", s.uiEditComment)
 		r.Post("/{owner}/issues/{issueRef}/comments/{commentRef}", s.uiUpdateComment)
+		r.Get("/{owner}/issues/{issueRef}/context", s.uiViewIssueContext)
 		r.Get("/{owner}/issues/{issueRef}/context/link", s.uiNewIssueContextLink)
 		r.Get("/{owner}/issues/{issueRef}/context/new", s.uiNewIssueContext)
 		r.Post("/{owner}/issues/{issueRef}/context", s.uiCreateIssueContextLink)
@@ -1981,6 +1982,10 @@ func (s *Server) uiNewIssueContext(w http.ResponseWriter, r *http.Request) {
 	s.uiRenderIssueContextMode(w, r, "create")
 }
 
+func (s *Server) uiViewIssueContext(w http.ResponseWriter, r *http.Request) {
+	s.uiRenderIssueContextMode(w, r, "view")
+}
+
 func (s *Server) uiRenderIssueContextMode(w http.ResponseWriter, r *http.Request, mode string) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
@@ -1991,7 +1996,7 @@ func (s *Server) uiRenderIssueContextMode(w http.ResponseWriter, r *http.Request
 		writeUIStoreError(w, err)
 		return
 	}
-	panel.AddContext = true
+	panel.AddContext = mode == "attach" || mode == "create"
 	panel.ContextMode = mode
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
@@ -4629,11 +4634,21 @@ func uiProjectContextModal(panel *uiProjectPanelData) uiModalData {
 }
 
 func uiIssueContextModal(panel *uiIssuePanelData) uiModalData {
+	title := "Add context"
+	cancelLabel := "Cancel adding context"
+	if panel.ContextMode == "attach" {
+		title = "Attach context"
+		cancelLabel = "Cancel attaching context"
+	}
+	if panel.ContextMode == "view" {
+		title = "Context"
+		cancelLabel = "Close context"
+	}
 	return uiModalData{
 		ID:              "issue-context",
-		Title:           "Add context",
+		Title:           title,
 		WidthClass:      "max-w-2xl",
-		CancelLabel:     "Cancel adding context",
+		CancelLabel:     cancelLabel,
 		CancelHXGet:     uiIssuePanelPath(panel.Issue),
 		CancelHXPushURL: uiIssuePath(panel.Issue),
 	}
