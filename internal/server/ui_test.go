@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 const uiCountBadgeClass = "inline-flex shrink-0 items-center rounded-md border border-slate-200 px-2 py-0.5 text-xs font-medium leading-4 text-slate-500 dark:border-slate-700 dark:text-slate-400"
@@ -304,8 +306,13 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "project", raw: "/bradley/projects/TRACK", want: "/bradley/projects/TRACK"},
 		{name: "project about", raw: "/bradley/projects/TRACK/about", want: "/bradley/projects/TRACK/about"},
 		{name: "project sprint", raw: "/bradley/projects/TRACK/sprint", want: "/bradley/projects/TRACK/sprint"},
+		{name: "project planned", raw: "/bradley/projects/TRACK/planned", want: "/bradley/projects/TRACK/planned"},
+		{name: "project all", raw: "/bradley/projects/TRACK/all", want: "/bradley/projects/TRACK/all"},
 		{name: "project deleted", raw: "/bradley/projects/TRACK/deleted", want: "/bradley/projects/TRACK/deleted"},
 		{name: "project about panel with query", raw: "/bradley/projects/TRACK/about/panel?x=1", want: "/bradley/projects/TRACK/about/panel?x=1"},
+		{name: "project planned panel with query", raw: "/bradley/projects/TRACK/planned/panel?x=1", want: "/bradley/projects/TRACK/planned/panel?x=1"},
+		{name: "project all panel with query", raw: "/bradley/projects/TRACK/all/panel?x=1", want: "/bradley/projects/TRACK/all/panel?x=1"},
+		{name: "project all page with query", raw: "/bradley/projects/TRACK/all/page?cursor=abc", want: "/bradley/projects/TRACK/all/page?cursor=abc"},
 		{name: "project backlog panel with query", raw: "/bradley/projects/TRACK/backlog/panel?x=1", want: "/bradley/projects/TRACK/backlog/panel?x=1"},
 		{name: "project deleted panel with query", raw: "/bradley/projects/TRACK/deleted/panel?x=1", want: "/bradley/projects/TRACK/deleted/panel?x=1"},
 		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},
@@ -320,6 +327,45 @@ func TestSafeUINextRootPaths(t *testing.T) {
 	for _, tt := range tests {
 		if got := safeUINext(tt.raw); got != tt.want {
 			t.Fatalf("%s: safeUINext(%q) = %q, want %q", tt.name, tt.raw, got, tt.want)
+		}
+	}
+}
+
+func TestUIParseProjectAllQuery(t *testing.T) {
+	t.Parallel()
+
+	assigneeID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
+	req := httptest.NewRequest("GET", "/all?status=todo&status=done&status=todo&priority=P0&priority=P0&sort=status&assignee_id="+assigneeID.String(), nil)
+	got, err := uiParseProjectAllQuery(req)
+	if err != nil {
+		t.Fatalf("uiParseProjectAllQuery: %v", err)
+	}
+	if len(got.Statuses) != 2 || got.Statuses[0] != model.StatusTodo || got.Statuses[1] != model.StatusDone {
+		t.Fatalf("statuses = %+v, want todo/done", got.Statuses)
+	}
+	if len(got.Priorities) != 1 || got.Priorities[0] != model.PriorityP0 {
+		t.Fatalf("priorities = %+v, want P0", got.Priorities)
+	}
+	if got.Sort != store.ListIssuesSortStatus {
+		t.Fatalf("sort = %q, want status", got.Sort)
+	}
+	if len(got.AssigneeIDs) != 1 || got.AssigneeIDs[0] != assigneeID {
+		t.Fatalf("assignees = %+v, want %s", got.AssigneeIDs, assigneeID)
+	}
+
+	req = httptest.NewRequest("GET", "/all", nil)
+	got, err = uiParseProjectAllQuery(req)
+	if err != nil {
+		t.Fatalf("uiParseProjectAllQuery default: %v", err)
+	}
+	if got.Sort != store.ListIssuesSortUpdated {
+		t.Fatalf("default sort = %q, want updated", got.Sort)
+	}
+
+	for _, path := range []string{"/all?status=blocked", "/all?priority=P9", "/all?sort=number"} {
+		req := httptest.NewRequest("GET", path, nil)
+		if _, err := uiParseProjectAllQuery(req); err == nil {
+			t.Fatalf("uiParseProjectAllQuery(%s) err = nil, want error", path)
 		}
 	}
 }
@@ -1681,16 +1727,16 @@ func TestUIIssueBackLink(t *testing.T) {
 			name:      "planned sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusPlanned},
-			wantHref:  "/bradley/projects/TRACK/backlog",
-			wantHXGet: "/bradley/projects/TRACK/backlog/panel",
-			wantLabel: "Backlog",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All",
 		},
 		{
 			name:      "backlog issue",
 			issue:     model.Issue{ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8"},
-			wantHref:  "/bradley/projects/TRACK/backlog",
-			wantHXGet: "/bradley/projects/TRACK/backlog/panel",
-			wantLabel: "Backlog",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All",
 		},
 		{
 			name:      "completed sprint",
@@ -1817,66 +1863,88 @@ func TestUIIssueLinkRef(t *testing.T) {
 	}
 }
 
-func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
+func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	selectedID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
 	project := model.Project{
 		ID:            projectID,
 		OwnerUsername: "bradley",
 		Key:           "TRACK",
 		Name:          "Track Slash",
 		Description:   "Fast issue tracking.",
+		CreatedAt:     time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 6, 2, 10, 45, 0, 0, time.UTC),
+	}
+	selected := []uuid.UUID{selectedID}
+	assignees := []model.ProjectAssignee{
+		{ID: selectedID, Username: "ada", Name: "Ada Lovelace"},
 	}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
-		Project:     project,
-		View:        "about",
-		ProjectTabs: uiProjectTabs(project, "about", nil),
+		Project:              project,
+		View:                 "about",
+		ProjectTabs:          uiProjectTabs(project, "about", selected),
+		AssigneeFilters:      uiProjectAssigneeFilters(project, "about", assignees, selected),
+		AssigneeFilterActive: true,
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 
 	body := buf.String()
-	headerEnd := strings.Index(body, "</header>")
+	projectHeaderStart := strings.Index(body, `<header class="rounded-lg`)
+	if projectHeaderStart < 0 {
+		t.Fatalf("project panel missing title card: %s", body)
+	}
+	headerEnd := strings.Index(body[projectHeaderStart:], "</header>")
 	if headerEnd < 0 {
 		t.Fatalf("project panel missing title card header: %s", body)
 	}
-	titleCard := strings.Index(body, `<header class="rounded-lg`)
-	if titleCard < 0 {
-		t.Fatalf("project panel missing title card: %s", body)
-	}
+	headerEnd += projectHeaderStart
+	header := body[projectHeaderStart:headerEnd]
 	backLink := strings.Index(body, `href="/projects"`)
 	if backLink < 0 {
 		t.Fatalf("project panel missing back link to projects: %s", body)
 	}
-	if backLink > titleCard {
+	if backLink > projectHeaderStart {
 		t.Fatalf("back link rendered inside or below title card: %s", body)
 	}
 	tabNav := strings.Index(body, `aria-label="Project views"`)
 	if tabNav < 0 {
 		t.Fatalf("project panel missing project view tabs: %s", body)
 	}
-	if tabNav < headerEnd {
-		t.Fatalf("project view tabs rendered inside title card: %s", body)
+	if tabNav < projectHeaderStart || tabNav > headerEnd {
+		t.Fatalf("project view tabs should render inside title card: %s", body)
 	}
-	header := body[:headerEnd]
-	for _, notWant := range []string{"About", "Sprints", "Backlog", "Fast issue tracking.", `/about/panel`, `/sprint/panel`, `/backlog/panel`} {
-		if strings.Contains(header, notWant) {
-			t.Fatalf("title card still contains tab control %q: %s", notWant, body)
+	if strings.Contains(header, "Fast issue tracking.") {
+		t.Fatalf("project description should not render inside title card: %s", body)
+	}
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="info"`, `aria-current="page"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
+		if !strings.Contains(header, want) {
+			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Fast issue tracking.", `data-lucide="info"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Details", "Owner", "@bradley", "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("project panel missing about/title markup %q: %s", want, body)
+			t.Fatalf("project about view missing markup %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`aria-label="Assignee filter"`, `assignee_id=`} {
+		if strings.Contains(header, notWant) {
+			t.Fatalf("project title card preserved about filter state %q: %s", notWant, body)
+		}
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project about view rendered assignee filter state %q: %s", notWant, body)
 		}
 	}
 	aboutIdx := strings.Index(body, `href="/bradley/projects/TRACK/about"`)
 	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
-	backlogIdx := strings.Index(body, `href="/bradley/projects/TRACK/backlog"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || backlogIdx < 0 || sprintsIdx > backlogIdx || backlogIdx > aboutIdx {
-		t.Fatalf("project tabs not ordered sprints, backlog, about: sprints=%d backlog=%d about=%d body=%s", sprintsIdx, backlogIdx, aboutIdx, body)
+	plannedIdx := strings.Index(body, `href="/bradley/projects/TRACK/planned"`)
+	allIdx := strings.Index(body, `href="/bradley/projects/TRACK/all"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprints, planned, all, about: sprints=%d planned=%d all=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, aboutIdx, body)
 	}
 	if strings.Contains(body, "Back to projects") {
 		t.Fatalf("project back link uses verbose label: %s", body)
@@ -1889,7 +1957,7 @@ func TestUIProjectPanelRendersTabsBelowTitleCard(t *testing.T) {
 	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
 		t.Fatalf("deleted rendered as project tab: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprints", "Backlog", `data-lucide="inbox"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
+	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="calendar-range"`, `data-lucide="list-filter"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
@@ -1961,7 +2029,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"Progress count issue",
 		"whitespace-pre-wrap",
 		`href="/bradley/projects/TRACK/sprint?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
-		`hx-get="/bradley/projects/TRACK/backlog/panel?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
+		`hx-get="/bradley/projects/TRACK/planned/panel"`,
+		`hx-get="/bradley/projects/TRACK/all/panel"`,
 		`href="/bradley/projects/TRACK/sprint"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -1970,8 +2039,18 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 	}
 	filterIdx := strings.Index(body, `aria-label="Assignee filter"`)
 	tabIdx := strings.Index(body, `aria-label="Project views"`)
-	if filterIdx < 0 || tabIdx < 0 || filterIdx > tabIdx {
-		t.Fatalf("assignee filter should render above tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
+	if filterIdx < 0 || tabIdx < 0 || filterIdx < tabIdx {
+		t.Fatalf("assignee filter should render below project tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
+	}
+	for _, notWant := range []string{`href="/bradley/projects/TRACK/about?assignee_id=`, `hx-get="/bradley/projects/TRACK/about/panel?assignee_id=`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("about tab should not preserve assignee filter %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{`href="/bradley/projects/TRACK/planned?assignee_id=`, `href="/bradley/projects/TRACK/all?assignee_id=`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project work tabs should not preserve sprint assignee filter %q: %s", notWant, body)
+		}
 	}
 	requireInlineCount(t, body, "Sprint", 2)
 	requireInlineCount(t, body, "To do", 1)
@@ -1979,11 +2058,12 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 	requireInlineCount(t, body, "Done", 0)
 }
 
-func TestUIProjectPanelRendersInlineBacklogCounts(t *testing.T) {
+func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	assigneeID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
 	sprint := model.Sprint{
 		ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
 		ProjectID: projectID,
@@ -1995,8 +2075,8 @@ func TestUIProjectPanelRendersInlineBacklogCounts(t *testing.T) {
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		Project:     project,
-		View:        "backlog",
-		ProjectTabs: uiProjectTabs(project, "backlog", nil),
+		View:        "planned",
+		ProjectTabs: uiProjectTabs(project, "planned", nil),
 		PlannedSprints: []uiPlannedSprint{{
 			Sprint: sprint,
 			Issues: []model.Issue{
@@ -2004,29 +2084,92 @@ func TestUIProjectPanelRendersInlineBacklogCounts(t *testing.T) {
 				{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Second planned issue", Status: model.StatusDone},
 			},
 		}},
-		BacklogIssues: []model.Issue{
-			{ID: uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-12", Title: "First backlog issue", Status: model.StatusTodo},
-			{ID: uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-13", Title: "Second backlog issue", Status: model.StatusInProgress},
-		},
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 
 	body := buf.String()
-	for _, want := range []string{
-		"First planned issue",
-		"Second planned issue",
-		"First backlog issue",
-		"Second backlog issue",
-	} {
+	for _, want := range []string{"First planned issue", "Second planned issue"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("project backlog panel missing %q: %s", want, body)
+			t.Fatalf("project planned panel missing %q: %s", want, body)
 		}
 	}
-	requireInlineCount(t, body, "Planned sprints", 1)
+	if strings.Contains(body, "All issues") || strings.Contains(body, "Backlog") {
+		t.Fatalf("planned panel included all/backlog content: %s", body)
+	}
+	requireInlineCount(t, body, "Planned", 1)
 	requireInlineCount(t, body, "First Planned Sprint", 2)
-	requireInlineCount(t, body, "Backlog", 2)
+
+	buf.Reset()
+	allIssues := []model.Issue{
+		{ID: uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-12", Title: "First all issue", Status: model.StatusTodo, Priority: model.PriorityP0},
+		{ID: uuid.MustParse("2eeaf29c-ad20-4513-af41-edbb2c9abc2c"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-13", Title: "Second all issue", Status: model.StatusInProgress, Priority: model.PriorityP1},
+	}
+	allQuery := uiProjectAllQuery{
+		Statuses:    []model.Status{model.StatusDone, model.StatusTodo},
+		Priorities:  []model.IssuePriority{model.PriorityP0},
+		Sort:        store.ListIssuesSortPriority,
+		AssigneeIDs: []uuid.UUID{assigneeID},
+	}
+	clearAssigneeQuery := allQuery
+	clearAssigneeQuery.AssigneeIDs = nil
+	nextQuery := allQuery
+	nextQuery.Cursor = "next-cursor"
+	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project:              project,
+		View:                 "all",
+		ProjectTabs:          uiProjectTabs(project, "all", nil),
+		AssigneeFilters:      uiProjectAllAssigneeFilters(project, []model.ProjectAssignee{{ID: assigneeID, Username: "ada", Name: "Ada Lovelace"}}, allQuery),
+		AssigneeFilterActive: true,
+		ClearAssigneeHref:    uiProjectAllViewPath(project, clearAssigneeQuery),
+		ClearAssigneeHXGet:   uiProjectAllPanelPath(project, clearAssigneeQuery),
+		ClearAssigneeHXPush:  uiProjectAllViewPath(project, clearAssigneeQuery),
+		AllIssues:            allIssues,
+		AllIssuePage: uiProjectAllIssuePageData{
+			Issues:    allIssues,
+			NextHXGet: uiProjectAllPagePath(project, nextQuery),
+		},
+		AllStatusFilters:   uiProjectAllStatusFilters(project, allQuery),
+		AllPriorityFilters: uiProjectAllPriorityFilters(project, allQuery),
+		AllSortOptions:     uiProjectAllSortOptions(project, allQuery),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate all: %v", err)
+	}
+	body = buf.String()
+	for _, want := range []string{
+		`aria-label="Issue controls"`,
+		"Status",
+		"Priority",
+		"Assignee",
+		"Sort",
+		"Any",
+		"Anyone",
+		"Done",
+		"To do",
+		"Updated",
+		"Created",
+		`aria-label="Priority P0"`,
+		`aria-pressed="true"`,
+		`aria-current="page"`,
+		`href="/bradley/projects/TRACK/all?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb&amp;priority=P0&amp;sort=priority&amp;status=done&amp;status=todo"`,
+		"First all issue",
+		"Second all issue",
+		`hx-get="/bradley/projects/TRACK/all/page?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb&amp;cursor=next-cursor&amp;priority=P0&amp;sort=priority&amp;status=done&amp;status=todo"`,
+		`hx-trigger="intersect once"`,
+		`hx-swap="outerHTML"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project all panel missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`aria-label="Status filter"`, `aria-label="Assignee filter"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project all panel kept separate filter box %q: %s", notWant, body)
+		}
+	}
+	requireInlineCount(t, body, "All issues", 2)
 }
 
 func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {

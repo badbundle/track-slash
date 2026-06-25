@@ -270,6 +270,10 @@ func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUserna
 type ListIssuesParams struct {
 	ProjectID uuid.UUID
 	Status    model.Status // empty = all
+	// Statuses filters to issues in any supplied status. Empty = all.
+	Statuses []model.Status
+	// Priorities filters to issues in any supplied priority. Empty = all.
+	Priorities []model.IssuePriority
 	// AssigneeIDs filters to issues assigned to any supplied users. Empty = all.
 	AssigneeIDs []uuid.UUID
 	// SprintID filters by sprint. Backlog == true means "WHERE sprint_id IS NULL"
@@ -278,15 +282,30 @@ type ListIssuesParams struct {
 	Backlog  bool
 	Cursor   *IssuesCursor
 	Limit    int
+	Sort     ListIssuesSort
 	// IncludeSubIssues is for personal/work views that should surface assigned
 	// child work. Project planning lists keep the default top-level-only shape.
 	IncludeSubIssues bool
 }
 
-// IssuesCursor keys off (project_id, number). Number is monotonic per project
-// (see CreateIssue's FOR UPDATE counter) so it's a sufficient sole key.
+type ListIssuesSort string
+
+const (
+	ListIssuesSortNumber   ListIssuesSort = ""
+	ListIssuesSortCreated  ListIssuesSort = "created"
+	ListIssuesSortUpdated  ListIssuesSort = "updated"
+	ListIssuesSortStatus   ListIssuesSort = "status"
+	ListIssuesSortPriority ListIssuesSort = "priority"
+)
+
+// IssuesCursor includes the sort key plus Number. Number is monotonic per
+// project, so it is the stable tie-breaker for every issue listing sort.
 type IssuesCursor struct {
-	Number int `json:"n"`
+	Number    int                 `json:"n,omitempty"`
+	CreatedAt time.Time           `json:"ca,omitempty"`
+	UpdatedAt time.Time           `json:"ua,omitempty"`
+	Status    model.Status        `json:"s,omitempty"`
+	Priority  model.IssuePriority `json:"p,omitempty"`
 }
 
 // ListIssuesByIDs returns the issues matching the supplied id set, in no
@@ -335,9 +354,15 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	if !p.IncludeSubIssues {
 		q += " AND i.parent_issue_id IS NULL"
 	}
-	if p.Status != "" {
-		args = append(args, string(p.Status))
-		q += fmt.Sprintf(" AND i.status = $%d", len(args))
+	statuses := issueStatusFilters(p.Status, p.Statuses)
+	if len(statuses) > 0 {
+		args = append(args, statuses)
+		q += fmt.Sprintf(" AND i.status = ANY($%d::issue_status[])", len(args))
+	}
+	priorities := issuePriorityFilters(p.Priorities)
+	if len(priorities) > 0 {
+		args = append(args, priorities)
+		q += fmt.Sprintf(" AND i.priority = ANY($%d::issue_priority[])", len(args))
 	}
 	if len(p.AssigneeIDs) > 0 {
 		args = append(args, p.AssigneeIDs)
@@ -350,12 +375,9 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		args = append(args, *p.SprintID)
 		q += fmt.Sprintf(" AND i.sprint_id = $%d", len(args))
 	}
-	if p.Cursor != nil {
-		args = append(args, p.Cursor.Number)
-		q += fmt.Sprintf(" AND i.number > $%d", len(args))
-	}
+	q = appendIssueCursor(q, p, &args)
 	args = append(args, p.Limit+1)
-	q += fmt.Sprintf(" ORDER BY i.number ASC LIMIT $%d", len(args))
+	q += fmt.Sprintf(" %s LIMIT $%d", issueOrderClause(p.Sort), len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
@@ -379,6 +401,132 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		out = out[:p.Limit]
 	}
 	return out, hasMore, nil
+}
+
+func issueStatusFilters(status model.Status, statuses []model.Status) []string {
+	out := make([]string, 0, len(statuses)+1)
+	seen := map[model.Status]struct{}{}
+	if status != "" {
+		seen[status] = struct{}{}
+		out = append(out, string(status))
+	}
+	for _, current := range statuses {
+		if current == "" {
+			continue
+		}
+		if _, ok := seen[current]; ok {
+			continue
+		}
+		seen[current] = struct{}{}
+		out = append(out, string(current))
+	}
+	return out
+}
+
+func issuePriorityFilters(priorities []model.IssuePriority) []string {
+	out := make([]string, 0, len(priorities))
+	seen := map[model.IssuePriority]struct{}{}
+	for _, current := range priorities {
+		if current == "" {
+			continue
+		}
+		if _, ok := seen[current]; ok {
+			continue
+		}
+		seen[current] = struct{}{}
+		out = append(out, string(current))
+	}
+	return out
+}
+
+func appendIssueCursor(q string, p ListIssuesParams, args *[]any) string {
+	if p.Cursor == nil {
+		return q
+	}
+	switch p.Sort {
+	case ListIssuesSortCreated:
+		*args = append(*args, p.Cursor.CreatedAt, p.Cursor.Number)
+		createdAtArg := len(*args) - 1
+		numberArg := len(*args)
+		return q + fmt.Sprintf(" AND (i.created_at < $%d OR (i.created_at = $%d AND i.number < $%d))", createdAtArg, createdAtArg, numberArg)
+	case ListIssuesSortUpdated:
+		*args = append(*args, p.Cursor.UpdatedAt, p.Cursor.Number)
+		updatedAtArg := len(*args) - 1
+		numberArg := len(*args)
+		return q + fmt.Sprintf(" AND (i.updated_at < $%d OR (i.updated_at = $%d AND i.number < $%d))", updatedAtArg, updatedAtArg, numberArg)
+	case ListIssuesSortStatus:
+		rank := issueStatusSortRank(p.Cursor.Status)
+		*args = append(*args, rank, p.Cursor.Number)
+		rankArg := len(*args) - 1
+		numberArg := len(*args)
+		rankExpr := issueStatusRankSQL()
+		return q + fmt.Sprintf(" AND ((%s) > $%d OR ((%s) = $%d AND i.number > $%d))", rankExpr, rankArg, rankExpr, rankArg, numberArg)
+	case ListIssuesSortPriority:
+		rank := issuePrioritySortRank(p.Cursor.Priority)
+		*args = append(*args, rank, p.Cursor.Number)
+		rankArg := len(*args) - 1
+		numberArg := len(*args)
+		rankExpr := issuePriorityRankSQL()
+		return q + fmt.Sprintf(" AND ((%s) > $%d OR ((%s) = $%d AND i.number > $%d))", rankExpr, rankArg, rankExpr, rankArg, numberArg)
+	default:
+		*args = append(*args, p.Cursor.Number)
+		return q + fmt.Sprintf(" AND i.number > $%d", len(*args))
+	}
+}
+
+func issueOrderClause(sort ListIssuesSort) string {
+	switch sort {
+	case ListIssuesSortCreated:
+		return "ORDER BY i.created_at DESC, i.number DESC"
+	case ListIssuesSortUpdated:
+		return "ORDER BY i.updated_at DESC, i.number DESC"
+	case ListIssuesSortStatus:
+		return "ORDER BY " + issueStatusRankSQL() + " ASC, i.number ASC"
+	case ListIssuesSortPriority:
+		return "ORDER BY " + issuePriorityRankSQL() + " ASC, i.number ASC"
+	default:
+		return "ORDER BY i.number ASC"
+	}
+}
+
+func issueStatusRankSQL() string {
+	return "CASE i.status WHEN 'todo' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'done' THEN 2 WHEN 'closed' THEN 3 ELSE 4 END"
+}
+
+func issuePriorityRankSQL() string {
+	return "CASE i.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END"
+}
+
+func issueStatusSortRank(status model.Status) int {
+	switch status {
+	case model.StatusTodo:
+		return 0
+	case model.StatusInProgress:
+		return 1
+	case model.StatusDone:
+		return 2
+	case model.StatusClosed:
+		return 3
+	default:
+		return 4
+	}
+}
+
+func issuePrioritySortRank(priority model.IssuePriority) int {
+	switch priority {
+	case model.PriorityP0:
+		return 0
+	case model.PriorityP1:
+		return 1
+	case model.PriorityP2:
+		return 2
+	case model.PriorityP3:
+		return 3
+	case model.PriorityP4:
+		return 4
+	default:
+		return 5
+	}
 }
 
 type ListDeletedIssuesParams struct {

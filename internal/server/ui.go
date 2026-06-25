@@ -145,6 +145,36 @@ type uiAssigneeFilterItem struct {
 	HXPush   string
 }
 
+type uiProjectStatusFilterItem struct {
+	Label  string
+	Href   string
+	HXGet  string
+	HXPush string
+	Active bool
+}
+
+type uiProjectPriorityFilterItem struct {
+	Priority model.IssuePriority
+	Label    string
+	Href     string
+	HXGet    string
+	HXPush   string
+	Active   bool
+}
+
+type uiProjectSortOptionItem struct {
+	Label  string
+	Href   string
+	HXGet  string
+	HXPush string
+	Active bool
+}
+
+type uiProjectAllIssuePageData struct {
+	Issues    []model.Issue
+	NextHXGet string
+}
+
 type uiIssueCommentItem struct {
 	Comment     model.Comment
 	AuthorName  string
@@ -260,11 +290,24 @@ type uiProjectPanelData struct {
 	ActiveSprint         *model.Sprint
 	SprintColumns        []uiIssueColumn
 	PlannedSprints       []uiPlannedSprint
-	BacklogIssues        []model.Issue
+	AllIssues            []model.Issue
+	AllIssuePage         uiProjectAllIssuePageData
+	AllStatusFilters     []uiProjectStatusFilterItem
+	AllPriorityFilters   []uiProjectPriorityFilterItem
+	AllSortOptions       []uiProjectSortOptionItem
 	DeleteNotice         *uiIssueDeleteNotice
 	SprintIssuesHasMore  bool
 	PlannedHasMore       bool
-	BacklogHasMore       bool
+}
+
+const uiProjectAllDefaultSort = store.ListIssuesSortUpdated
+
+type uiProjectAllQuery struct {
+	Statuses    []model.Status
+	Priorities  []model.IssuePriority
+	Sort        store.ListIssuesSort
+	AssigneeIDs []uuid.UUID
+	Cursor      string
 }
 
 type uiDeletedIssuesPanelData struct {
@@ -418,8 +461,13 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/projects/{key}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
 		r.Get("/{owner}/projects/{key}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/{owner}/projects/{key}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
-		r.Get("/{owner}/projects/{key}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "backlog") })
-		r.Get("/{owner}/projects/{key}/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "backlog") })
+		r.Get("/{owner}/projects/{key}/planned", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "planned") })
+		r.Get("/{owner}/projects/{key}/planned/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "planned") })
+		r.Get("/{owner}/projects/{key}/all", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "all") })
+		r.Get("/{owner}/projects/{key}/all/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "all") })
+		r.Get("/{owner}/projects/{key}/all/page", s.uiProjectAllIssuePage)
+		r.Get("/{owner}/projects/{key}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectLegacyBacklog(w, r, false) })
+		r.Get("/{owner}/projects/{key}/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectLegacyBacklog(w, r, true) })
 		r.Get("/{owner}/projects/{key}/deleted", s.uiProjectDeletedPage)
 		r.Get("/{owner}/projects/{key}/deleted/panel", s.uiProjectDeletedPanel)
 	})
@@ -853,6 +901,35 @@ func (s *Server) uiProjectWorkPanel(w http.ResponseWriter, r *http.Request, view
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	pageData, err := s.uiBuildProjectAllIssuePage(r.Context(), r, project)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-all-issue-page", pageData)
+}
+
+func (s *Server) uiProjectLegacyBacklog(w http.ResponseWriter, r *http.Request, panel bool) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	target := uiProjectViewPath(project, "all")
+	if panel {
+		target = uiProjectPanelPath(project, "all")
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
@@ -2178,9 +2255,19 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	if err != nil {
 		return nil, err
 	}
-	assigneeIDs, err := uiParseAssigneeFilter(r)
-	if err != nil {
-		return nil, err
+	var assigneeIDs []uuid.UUID
+	var allQuery uiProjectAllQuery
+	if view == "sprint" {
+		assigneeIDs, err = uiParseAssigneeFilter(r)
+		if err != nil {
+			return nil, err
+		}
+	} else if view == "all" {
+		allQuery, err = uiParseProjectAllQuery(r)
+		if err != nil {
+			return nil, err
+		}
+		assigneeIDs = allQuery.AssigneeIDs
 	}
 
 	panel := &uiProjectPanelData{
@@ -2193,11 +2280,22 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		ClearAssigneeHXPush:  uiProjectViewPath(project, view),
 		DeleteNotice:         deleteNotice,
 	}
-	assignees, err := s.store.ListProjectAssignees(ctx, projectID)
-	if err != nil {
-		return nil, err
+	if view == "sprint" || view == "all" {
+		assignees, err := s.store.ListProjectAssignees(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		if view == "all" {
+			panel.AssigneeFilters = uiProjectAllAssigneeFilters(project, assignees, allQuery)
+			clearAssigneeQuery := allQuery
+			clearAssigneeQuery.AssigneeIDs = nil
+			panel.ClearAssigneeHref = uiProjectAllViewPath(project, clearAssigneeQuery)
+			panel.ClearAssigneeHXGet = uiProjectAllPanelPath(project, clearAssigneeQuery)
+			panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
+		} else {
+			panel.AssigneeFilters = uiProjectAssigneeFilters(project, view, assignees, assigneeIDs)
+		}
 	}
-	panel.AssigneeFilters = uiProjectAssigneeFilters(project, view, assignees, assigneeIDs)
 
 	switch view {
 	case "about":
@@ -2236,7 +2334,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 				}
 			}
 		}
-	case "backlog":
+	case "planned":
 		plannedStatus := model.SprintStatusPlanned
 		planned, plannedHasMore, err := s.store.ListSprints(ctx, store.ListSprintsParams{
 			ProjectID: projectID,
@@ -2250,10 +2348,9 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		panel.PlannedSprints = make([]uiPlannedSprint, 0, len(planned))
 		for _, sprint := range planned {
 			issues, issuesHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-				ProjectID:   projectID,
-				AssigneeIDs: assigneeIDs,
-				SprintID:    &sprint.ID,
-				Limit:       MaxLimit,
+				ProjectID: projectID,
+				SprintID:  &sprint.ID,
+				Limit:     MaxLimit,
 			})
 			if err != nil {
 				return nil, err
@@ -2264,23 +2361,60 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 				HasMore: issuesHasMore,
 			})
 		}
-
-		backlog, backlogHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID:   projectID,
-			AssigneeIDs: assigneeIDs,
-			Backlog:     true,
-			Limit:       MaxLimit,
-		})
+	case "all":
+		pageData, err := s.uiBuildProjectAllIssuePage(ctx, r, project)
 		if err != nil {
 			return nil, err
 		}
-		panel.BacklogIssues = backlog
-		panel.BacklogHasMore = backlogHasMore
+		panel.AllIssues = pageData.Issues
+		panel.AllIssuePage = pageData
+		panel.AllStatusFilters = uiProjectAllStatusFilters(project, allQuery)
+		panel.AllPriorityFilters = uiProjectAllPriorityFilters(project, allQuery)
+		panel.AllSortOptions = uiProjectAllSortOptions(project, allQuery)
 	default:
 		return nil, store.ErrNotFound
 	}
 
 	return panel, nil
+}
+
+func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request, project model.Project) (uiProjectAllIssuePageData, error) {
+	if err := s.uiRequireProjectAccess(ctx, currentUser(r), project.ID); err != nil {
+		return uiProjectAllIssuePageData{}, err
+	}
+	allQuery, err := uiParseProjectAllQuery(r)
+	if err != nil {
+		return uiProjectAllIssuePageData{}, err
+	}
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			return uiProjectAllIssuePageData{}, fmt.Errorf("invalid all issues cursor: %w", errUIBadRequest)
+		}
+		cursor = &c
+	}
+	issues, hasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
+		ProjectID:        project.ID,
+		Statuses:         allQuery.Statuses,
+		Priorities:       allQuery.Priorities,
+		AssigneeIDs:      allQuery.AssigneeIDs,
+		Cursor:           cursor,
+		Limit:            DefaultLimit,
+		Sort:             allQuery.Sort,
+		IncludeSubIssues: true,
+	})
+	if err != nil {
+		return uiProjectAllIssuePageData{}, err
+	}
+	pageData := uiProjectAllIssuePageData{Issues: issues}
+	if hasMore {
+		last := issues[len(issues)-1]
+		nextQuery := allQuery
+		nextQuery.Cursor = encodeCursor(uiProjectAllIssueCursor(last, allQuery.Sort))
+		pageData.NextHXGet = uiProjectAllPagePath(project, nextQuery)
+	}
+	return pageData, nil
 }
 
 func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request, projectID uuid.UUID) (*uiDeletedIssuesPanelData, error) {
@@ -2509,13 +2643,16 @@ func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Iss
 		return base, base + "/panel", "Parent issue"
 	}
 	view := "sprint"
-	if issue.SprintID == nil || (sprint != nil && sprint.Status == model.SprintStatusPlanned) {
-		view = "backlog"
+	if issue.SprintID == nil {
+		view = "all"
+	} else if sprint != nil && sprint.Status == model.SprintStatusPlanned {
+		view = "all"
 	}
 	base := uiProjectViewPath(project, view)
 	label = "Sprint"
-	if view == "backlog" {
-		label = "Backlog"
+	switch view {
+	case "all":
+		label = "All"
 	}
 	return base, base + "/panel", label
 }
@@ -2532,8 +2669,10 @@ func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	view := "sprint"
-	if panel.Issue.SprintID == nil || (panel.Sprint != nil && panel.Sprint.Status == model.SprintStatusPlanned) {
-		view = "backlog"
+	if panel.Issue.SprintID == nil {
+		view = "all"
+	} else if panel.Sprint != nil && panel.Sprint.Status == model.SprintStatusPlanned {
+		view = "all"
 	}
 	projectPanel, err := s.uiBuildProjectPanel(r.Context(), r, panel.Project.ID, view)
 	if err != nil {
@@ -2545,34 +2684,47 @@ func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request,
 }
 
 func uiProjectTabs(project model.Project, view string, assigneeIDs []uuid.UUID) uiTabBarData {
+	var sprintAssigneeIDs []uuid.UUID
+	if view == "sprint" {
+		sprintAssigneeIDs = assigneeIDs
+	}
 	return uiTabBarData{
 		Label: "Project views",
 		Items: []uiTabItem{
 			{
-				Label:     "Sprints",
-				Icon:      "kanban",
-				Href:      uiProjectViewPath(project, "sprint", assigneeIDs),
-				HXGet:     uiProjectPanelPath(project, "sprint", assigneeIDs),
+				Label:     "Sprint",
+				Icon:      "person-standing",
+				Href:      uiProjectViewPath(project, "sprint", sprintAssigneeIDs),
+				HXGet:     uiProjectPanelPath(project, "sprint", sprintAssigneeIDs),
 				HXTarget:  "#main",
-				HXPushURL: uiProjectViewPath(project, "sprint", assigneeIDs),
+				HXPushURL: uiProjectViewPath(project, "sprint", sprintAssigneeIDs),
 				Active:    view == "sprint",
 			},
 			{
-				Label:     "Backlog",
-				Icon:      "inbox",
-				Href:      uiProjectViewPath(project, "backlog", assigneeIDs),
-				HXGet:     uiProjectPanelPath(project, "backlog", assigneeIDs),
+				Label:     "Planned",
+				Icon:      "calendar-range",
+				Href:      uiProjectViewPath(project, "planned"),
+				HXGet:     uiProjectPanelPath(project, "planned"),
 				HXTarget:  "#main",
-				HXPushURL: uiProjectViewPath(project, "backlog", assigneeIDs),
-				Active:    view == "backlog",
+				HXPushURL: uiProjectViewPath(project, "planned"),
+				Active:    view == "planned",
+			},
+			{
+				Label:     "All",
+				Icon:      "list-filter",
+				Href:      uiProjectViewPath(project, "all"),
+				HXGet:     uiProjectPanelPath(project, "all"),
+				HXTarget:  "#main",
+				HXPushURL: uiProjectViewPath(project, "all"),
+				Active:    view == "all",
 			},
 			{
 				Label:     "About",
 				Icon:      "info",
-				Href:      uiProjectViewPath(project, "about", assigneeIDs),
-				HXGet:     uiProjectPanelPath(project, "about", assigneeIDs),
+				Href:      uiProjectViewPath(project, "about"),
+				HXGet:     uiProjectPanelPath(project, "about"),
 				HXTarget:  "#main",
-				HXPushURL: uiProjectViewPath(project, "about", assigneeIDs),
+				HXPushURL: uiProjectViewPath(project, "about"),
 				Active:    view == "about",
 			},
 		},
@@ -2612,6 +2764,202 @@ func uiProjectAssigneeFilters(project model.Project, view string, assignees []mo
 	return out
 }
 
+func uiProjectAllAssigneeFilters(project model.Project, assignees []model.ProjectAssignee, query uiProjectAllQuery) []uiAssigneeFilterItem {
+	out := make([]uiAssigneeFilterItem, 0, len(assignees))
+	for _, assignee := range assignees {
+		nextQuery := query
+		nextIDs, selected := uiToggleAssigneeIDs(query.AssigneeIDs, assignee.ID)
+		nextQuery.AssigneeIDs = nextIDs
+		out = append(out, uiAssigneeFilterItem{
+			Assignee: assignee,
+			Selected: selected,
+			Href:     uiProjectAllViewPath(project, nextQuery),
+			HXGet:    uiProjectAllPanelPath(project, nextQuery),
+			HXPush:   uiProjectAllViewPath(project, nextQuery),
+		})
+	}
+	return out
+}
+
+func uiProjectAllStatusFilters(project model.Project, query uiProjectAllQuery) []uiProjectStatusFilterItem {
+	options := []struct {
+		Label  string
+		Status model.Status
+	}{
+		{Label: "Any", Status: ""},
+		{Label: uiStatusLabel(model.StatusTodo), Status: model.StatusTodo},
+		{Label: uiStatusLabel(model.StatusInProgress), Status: model.StatusInProgress},
+		{Label: uiStatusLabel(model.StatusDone), Status: model.StatusDone},
+		{Label: uiStatusLabel(model.StatusClosed), Status: model.StatusClosed},
+	}
+	out := make([]uiProjectStatusFilterItem, 0, len(options))
+	for _, option := range options {
+		nextQuery := query
+		active := false
+		if option.Status == "" {
+			nextQuery.Statuses = nil
+			active = len(query.Statuses) == 0
+		} else {
+			var selected bool
+			nextQuery.Statuses, selected = uiToggleStatuses(query.Statuses, option.Status)
+			active = selected
+		}
+		out = append(out, uiProjectStatusFilterItem{
+			Label:  option.Label,
+			Href:   uiProjectAllViewPath(project, nextQuery),
+			HXGet:  uiProjectAllPanelPath(project, nextQuery),
+			HXPush: uiProjectAllViewPath(project, nextQuery),
+			Active: active,
+		})
+	}
+	return out
+}
+
+func uiProjectAllPriorityFilters(project model.Project, query uiProjectAllQuery) []uiProjectPriorityFilterItem {
+	options := []struct {
+		Label    string
+		Priority model.IssuePriority
+	}{
+		{Label: "Any", Priority: ""},
+		{Label: uiPriorityLabel(model.PriorityP0), Priority: model.PriorityP0},
+		{Label: uiPriorityLabel(model.PriorityP1), Priority: model.PriorityP1},
+		{Label: uiPriorityLabel(model.PriorityP2), Priority: model.PriorityP2},
+		{Label: uiPriorityLabel(model.PriorityP3), Priority: model.PriorityP3},
+		{Label: uiPriorityLabel(model.PriorityP4), Priority: model.PriorityP4},
+	}
+	out := make([]uiProjectPriorityFilterItem, 0, len(options))
+	for _, option := range options {
+		nextQuery := query
+		active := false
+		if option.Priority == "" {
+			nextQuery.Priorities = nil
+			active = len(query.Priorities) == 0
+		} else {
+			var selected bool
+			nextQuery.Priorities, selected = uiTogglePriorities(query.Priorities, option.Priority)
+			active = selected
+		}
+		out = append(out, uiProjectPriorityFilterItem{
+			Priority: option.Priority,
+			Label:    option.Label,
+			Href:     uiProjectAllViewPath(project, nextQuery),
+			HXGet:    uiProjectAllPanelPath(project, nextQuery),
+			HXPush:   uiProjectAllViewPath(project, nextQuery),
+			Active:   active,
+		})
+	}
+	return out
+}
+
+func uiProjectAllSortOptions(project model.Project, query uiProjectAllQuery) []uiProjectSortOptionItem {
+	currentSort := query.Sort
+	if currentSort == "" {
+		currentSort = uiProjectAllDefaultSort
+	}
+	options := []struct {
+		Label string
+		Sort  store.ListIssuesSort
+	}{
+		{Label: "Updated", Sort: store.ListIssuesSortUpdated},
+		{Label: "Created", Sort: store.ListIssuesSortCreated},
+		{Label: "Status", Sort: store.ListIssuesSortStatus},
+		{Label: "Priority", Sort: store.ListIssuesSortPriority},
+	}
+	out := make([]uiProjectSortOptionItem, 0, len(options))
+	for _, option := range options {
+		nextQuery := query
+		nextQuery.Sort = option.Sort
+		out = append(out, uiProjectSortOptionItem{
+			Label:  option.Label,
+			Href:   uiProjectAllViewPath(project, nextQuery),
+			HXGet:  uiProjectAllPanelPath(project, nextQuery),
+			HXPush: uiProjectAllViewPath(project, nextQuery),
+			Active: currentSort == option.Sort,
+		})
+	}
+	return out
+}
+
+func uiParseProjectAllQuery(r *http.Request) (uiProjectAllQuery, error) {
+	assigneeIDs, err := uiParseAssigneeFilter(r)
+	if err != nil {
+		return uiProjectAllQuery{}, err
+	}
+	statuses, err := uiParseProjectIssueStatusFilters(r)
+	if err != nil {
+		return uiProjectAllQuery{}, err
+	}
+	priorities, err := uiParseProjectIssuePriorityFilters(r)
+	if err != nil {
+		return uiProjectAllQuery{}, err
+	}
+	sort, err := uiParseProjectIssueSort(r)
+	if err != nil {
+		return uiProjectAllQuery{}, err
+	}
+	return uiProjectAllQuery{
+		Statuses:    statuses,
+		Priorities:  priorities,
+		Sort:        sort,
+		AssigneeIDs: assigneeIDs,
+	}, nil
+}
+
+func uiParseProjectIssueStatusFilters(r *http.Request) ([]model.Status, error) {
+	raws := r.URL.Query()["status"]
+	statuses := make([]model.Status, 0, len(raws))
+	seen := make(map[model.Status]struct{}, len(raws))
+	for _, raw := range raws {
+		status := model.Status(strings.TrimSpace(raw))
+		if status == "" {
+			continue
+		}
+		if !status.Valid() {
+			return nil, fmt.Errorf("invalid status: %w", errUIBadRequest)
+		}
+		if _, ok := seen[status]; ok {
+			continue
+		}
+		seen[status] = struct{}{}
+		statuses = append(statuses, status)
+	}
+	return statuses, nil
+}
+
+func uiParseProjectIssuePriorityFilters(r *http.Request) ([]model.IssuePriority, error) {
+	raws := r.URL.Query()["priority"]
+	priorities := make([]model.IssuePriority, 0, len(raws))
+	seen := make(map[model.IssuePriority]struct{}, len(raws))
+	for _, raw := range raws {
+		priority := model.IssuePriority(strings.TrimSpace(raw))
+		if priority == "" {
+			continue
+		}
+		if !priority.Valid() {
+			return nil, fmt.Errorf("invalid priority: %w", errUIBadRequest)
+		}
+		if _, ok := seen[priority]; ok {
+			continue
+		}
+		seen[priority] = struct{}{}
+		priorities = append(priorities, priority)
+	}
+	return priorities, nil
+}
+
+func uiParseProjectIssueSort(r *http.Request) (store.ListIssuesSort, error) {
+	sort := store.ListIssuesSort(strings.TrimSpace(r.URL.Query().Get("sort")))
+	if sort == "" {
+		return uiProjectAllDefaultSort, nil
+	}
+	switch sort {
+	case store.ListIssuesSortCreated, store.ListIssuesSortUpdated, store.ListIssuesSortStatus, store.ListIssuesSortPriority:
+		return sort, nil
+	default:
+		return "", fmt.Errorf("invalid sort: %w", errUIBadRequest)
+	}
+}
+
 func uiToggleAssigneeIDs(ids []uuid.UUID, id uuid.UUID) ([]uuid.UUID, bool) {
 	selected := false
 	for _, current := range ids {
@@ -2635,6 +2983,52 @@ func uiToggleAssigneeIDs(ids []uuid.UUID, id uuid.UUID) ([]uuid.UUID, bool) {
 	return out, true
 }
 
+func uiToggleStatuses(statuses []model.Status, status model.Status) ([]model.Status, bool) {
+	selected := false
+	for _, current := range statuses {
+		if current == status {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		out := make([]model.Status, 0, len(statuses)+1)
+		out = append(out, statuses...)
+		out = append(out, status)
+		return out, false
+	}
+	out := make([]model.Status, 0, len(statuses)-1)
+	for _, current := range statuses {
+		if current != status {
+			out = append(out, current)
+		}
+	}
+	return out, true
+}
+
+func uiTogglePriorities(priorities []model.IssuePriority, priority model.IssuePriority) ([]model.IssuePriority, bool) {
+	selected := false
+	for _, current := range priorities {
+		if current == priority {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		out := make([]model.IssuePriority, 0, len(priorities)+1)
+		out = append(out, priorities...)
+		out = append(out, priority)
+		return out, false
+	}
+	out := make([]model.IssuePriority, 0, len(priorities)-1)
+	for _, current := range priorities {
+		if current != priority {
+			out = append(out, current)
+		}
+	}
+	return out, true
+}
+
 func uiAppendAssigneeQuery(path string, assigneeIDs []uuid.UUID) string {
 	if len(assigneeIDs) == 0 {
 		return path
@@ -2642,6 +3036,56 @@ func uiAppendAssigneeQuery(path string, assigneeIDs []uuid.UUID) string {
 	values := url.Values{}
 	for _, id := range assigneeIDs {
 		values.Add("assignee_id", id.String())
+	}
+	return path + "?" + values.Encode()
+}
+
+func uiProjectAllIssueCursor(issue model.Issue, sort store.ListIssuesSort) store.IssuesCursor {
+	cursor := store.IssuesCursor{Number: issue.Number}
+	switch sort {
+	case store.ListIssuesSortCreated:
+		cursor.CreatedAt = issue.CreatedAt
+	case store.ListIssuesSortUpdated:
+		cursor.UpdatedAt = issue.UpdatedAt
+	case store.ListIssuesSortStatus:
+		cursor.Status = issue.Status
+	case store.ListIssuesSortPriority:
+		cursor.Priority = issue.Priority
+	}
+	return cursor
+}
+
+func uiProjectAllViewPath(project model.Project, query uiProjectAllQuery) string {
+	return uiProjectAllPath(uiProjectPath(project)+"/all", query)
+}
+
+func uiProjectAllPanelPath(project model.Project, query uiProjectAllQuery) string {
+	return uiProjectAllPath(uiProjectPath(project)+"/all/panel", query)
+}
+
+func uiProjectAllPagePath(project model.Project, query uiProjectAllQuery) string {
+	return uiProjectAllPath(uiProjectPath(project)+"/all/page", query)
+}
+
+func uiProjectAllPath(path string, query uiProjectAllQuery) string {
+	values := url.Values{}
+	for _, status := range query.Statuses {
+		values.Add("status", string(status))
+	}
+	for _, priority := range query.Priorities {
+		values.Add("priority", string(priority))
+	}
+	if query.Sort != "" && query.Sort != uiProjectAllDefaultSort {
+		values.Set("sort", string(query.Sort))
+	}
+	for _, id := range query.AssigneeIDs {
+		values.Add("assignee_id", id.String())
+	}
+	if query.Cursor != "" {
+		values.Set("cursor", query.Cursor)
+	}
+	if len(values) == 0 {
+		return path
 	}
 	return path + "?" + values.Encode()
 }
@@ -3111,13 +3555,13 @@ func safeUIProjectPath(path string) bool {
 	if len(parts) == 3 {
 		return true
 	}
-	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "backlog" && parts[3] != "deleted" {
+	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "planned" && parts[3] != "all" && parts[3] != "backlog" && parts[3] != "deleted" {
 		return false
 	}
 	if len(parts) == 4 {
 		return true
 	}
-	return parts[4] == "panel"
+	return parts[4] == "panel" || (parts[3] == "all" && parts[4] == "page")
 }
 
 func safeUIIssuePath(path string) bool {
