@@ -348,7 +348,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue), token)
-	for _, want := range []string{"Context", `aria-label="Add context"`, `sm:w-1/3`} {
+	for _, want := range []string{"Context", `aria-label="Add context"`, `aria-label="Attach context"`, `sm:w-1/3`} {
 		if !strings.Contains(issueBody, want) {
 			t.Fatalf("empty issue context body missing compact marker %q: %s", want, issueBody)
 		}
@@ -361,13 +361,30 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/new", token)
-	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `autofocus`, `aria-label="Attach context"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`, `name="file"`} {
+	for _, want := range []string{`role="dialog" aria-modal="true"`, `aria-label="Cancel adding context"`, `placeholder="Context"`, `autofocus`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`, `name="file"`} {
 		if !strings.Contains(issueBody, want) {
-			t.Fatalf("adding issue context body missing %q: %s", want, issueBody)
+			t.Fatalf("adding issue context modal missing %q: %s", want, issueBody)
+		}
+	}
+	for _, notWant := range []string{`placeholder="context-1"`, `aria-label="Attach context"`} {
+		if strings.Contains(issueBody, notWant) {
+			t.Fatalf("adding issue context modal should not include %q: %s", notWant, issueBody)
 		}
 	}
 	if contextSectionClass(issueBody) == "" || strings.Contains(contextSectionClass(issueBody), `sm:w-1/3`) {
 		t.Fatalf("adding issue context should expand the section, got class %q: %s", contextSectionClass(issueBody), issueBody)
+	}
+
+	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/link", token)
+	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `autofocus`, `aria-label="Attach context"`} {
+		if !strings.Contains(issueBody, want) {
+			t.Fatalf("attaching issue context body missing %q: %s", want, issueBody)
+		}
+	}
+	for _, notWant := range []string{`role="dialog" aria-modal="true"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
+		if strings.Contains(issueBody, notWant) {
+			t.Fatalf("attaching issue context body should not include %q: %s", notWant, issueBody)
+		}
 	}
 
 	res = e.uiDoMultipartContext(t, e.issuePath(issue)+"/context", token, nil, "image.png", "nope")

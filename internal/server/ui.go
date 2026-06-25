@@ -36,6 +36,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueComments":             uiIssueCommentsPath,
 	"issueContext":              uiIssueContextPath,
 	"issueContextDelete":        uiIssueContextDeletePath,
+	"issueContextLinkNew":       uiIssueContextLinkNewPath,
+	"issueContextModal":         uiIssueContextModal,
 	"issueContextNew":           uiIssueContextNewPath,
 	"issueCloseReason":          uiIssueCloseReasonPath,
 	"issueCloseReasonEdit":      uiIssueCloseReasonEditPath,
@@ -409,6 +411,7 @@ type uiIssuePanelData struct {
 	Contexts           []model.ProjectContext
 	ContextsHasMore    bool
 	AddContext         bool
+	ContextMode        string
 	ContextOptions     []uiProjectContextOption
 	ContextInput       string
 	ContextTitle       string
@@ -501,7 +504,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/comments", s.uiCreateComment)
 		r.Get("/{owner}/issues/{issueRef}/comments/{commentRef}/edit", s.uiEditComment)
 		r.Post("/{owner}/issues/{issueRef}/comments/{commentRef}", s.uiUpdateComment)
-		r.Get("/{owner}/issues/{issueRef}/context/new", s.uiNewIssueContextLink)
+		r.Get("/{owner}/issues/{issueRef}/context/link", s.uiNewIssueContextLink)
+		r.Get("/{owner}/issues/{issueRef}/context/new", s.uiNewIssueContext)
 		r.Post("/{owner}/issues/{issueRef}/context", s.uiCreateIssueContextLink)
 		r.Post("/{owner}/issues/{issueRef}/context/{contextRef}/delete", s.uiDeleteIssueContextLink)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
@@ -1970,6 +1974,14 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
+	s.uiRenderIssueContextMode(w, r, "attach")
+}
+
+func (s *Server) uiNewIssueContext(w http.ResponseWriter, r *http.Request) {
+	s.uiRenderIssueContextMode(w, r, "create")
+}
+
+func (s *Server) uiRenderIssueContextMode(w http.ResponseWriter, r *http.Request, mode string) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
 		return
@@ -1980,6 +1992,7 @@ func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	panel.AddContext = true
+	panel.ContextMode = mode
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2663,6 +2676,7 @@ func (s *Server) renderUIIssuePanelWithContextError(w http.ResponseWriter, r *ht
 	panel.ContextInput = input
 	panel.ContextError = message
 	panel.AddContext = true
+	panel.ContextMode = "attach"
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2676,6 +2690,7 @@ func (s *Server) renderUIIssuePanelWithContextCreateError(w http.ResponseWriter,
 	panel.ContextBody = body
 	panel.ContextCreateError = message
 	panel.AddContext = true
+	panel.ContextMode = "create"
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -2687,6 +2702,7 @@ func (s *Server) renderUIIssuePanelWithContextUploadError(w http.ResponseWriter,
 	}
 	panel.ContextUploadError = message
 	panel.AddContext = true
+	panel.ContextMode = "create"
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -3989,6 +4005,10 @@ func uiIssueContextNewPath(issue any) string {
 	return uiIssueContextPath(issue) + "/new"
 }
 
+func uiIssueContextLinkNewPath(issue any) string {
+	return uiIssueContextPath(issue) + "/link"
+}
+
 func uiIssueContextDeletePath(issue any, contextItem any) string {
 	return uiIssueContextPath(issue) + "/" + uiProjectContextRef(contextItem) + "/delete"
 }
@@ -4288,7 +4308,7 @@ func safeUIIssuePath(path string) bool {
 		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new") ||
-			(parts[3] == "context" && parts[4] == "new")
+			(parts[3] == "context" && (parts[4] == "new" || parts[4] == "link"))
 	}
 	if parts[3] != "links" || parts[5] != "edit" {
 		if parts[3] == "context" && parts[5] == "delete" {
@@ -4605,6 +4625,17 @@ func uiProjectContextModal(panel *uiProjectPanelData) uiModalData {
 		CancelLabel:     "Cancel adding context",
 		CancelHXGet:     uiProjectPanelPath(panel.Project, "about"),
 		CancelHXPushURL: uiProjectViewPath(panel.Project, "about"),
+	}
+}
+
+func uiIssueContextModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "issue-context",
+		Title:           "Add context",
+		WidthClass:      "max-w-2xl",
+		CancelLabel:     "Cancel adding context",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: uiIssuePath(panel.Issue),
 	}
 }
 

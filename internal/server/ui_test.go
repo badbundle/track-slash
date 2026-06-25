@@ -297,6 +297,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue link add", raw: "/bradley/issues/TRACK-7/links/new?x=1", want: "/bradley/issues/TRACK-7/links/new?x=1"},
 		{name: "issue sub-issue add", raw: "/bradley/issues/TRACK-7/sub-issues/new?x=1", want: "/bradley/issues/TRACK-7/sub-issues/new?x=1"},
 		{name: "issue context add", raw: "/bradley/issues/TRACK-7/context/new?x=1", want: "/bradley/issues/TRACK-7/context/new?x=1"},
+		{name: "issue context attach", raw: "/bradley/issues/TRACK-7/context/link?x=1", want: "/bradley/issues/TRACK-7/context/link?x=1"},
 		{name: "issue link edit", raw: "/bradley/issues/TRACK-7/links/link-2/edit", want: "/bradley/issues/TRACK-7/links/link-2/edit"},
 		{name: "bad issue id", raw: "/bradley/issues/nope", want: "/"},
 		{name: "bad issue child", raw: "/bradley/issues/TRACK-7/activity", want: "/"},
@@ -1446,6 +1447,21 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	if !strings.Contains(emptyBody, `aria-label="Add context"`) {
 		t.Fatalf("empty context section should expose add button: %s", emptyBody)
 	}
+	if !strings.Contains(emptyBody, `aria-label="Attach context"`) {
+		t.Fatalf("empty context section should expose attach button: %s", emptyBody)
+	}
+	contextHeading := strings.Index(emptyBody, ">Context</h2>")
+	if contextHeading < 0 {
+		t.Fatalf("missing context section: %s", emptyBody)
+	}
+	contextEnd := strings.Index(emptyBody[contextHeading:], "</section>")
+	if contextEnd < 0 {
+		t.Fatalf("missing context section end: %s", emptyBody)
+	}
+	contextSection := emptyBody[contextHeading : contextHeading+contextEnd]
+	if !strings.Contains(contextSection, `data-lucide="plus"`) || !strings.Contains(contextSection, `data-lucide="link"`) {
+		t.Fatalf("empty context section should use link and plus buttons, got: %s", contextSection)
+	}
 	if strings.Contains(emptyBody, `placeholder="context-1"`) {
 		t.Fatalf("empty context section should keep attach form collapsed: %s", emptyBody)
 	}
@@ -1463,16 +1479,41 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	requireHeadingOrder(t, emptyBody, "Context", "Sub-issues")
 	requireHeadingOrder(t, emptyBody, "Sub-issues", "Linked issues")
 
+	attachingContextPanel := basePanel()
+	attachingContextPanel.AddContext = true
+	attachingContextPanel.ContextMode = "attach"
+	attachingContextBody := render(t, attachingContextPanel)
+	attachingContextClass := sectionClassForHeading(t, attachingContextBody, "Context")
+	if !strings.Contains(attachingContextClass, "w-full") || strings.Contains(attachingContextClass, `sm:w-1/3`) {
+		t.Fatalf("attaching context section should expand to full width, got %q: %s", attachingContextClass, attachingContextBody)
+	}
+	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `aria-label="Attach context"`} {
+		if !strings.Contains(attachingContextBody, want) {
+			t.Fatalf("attaching context section missing %q: %s", want, attachingContextBody)
+		}
+	}
+	for _, notWant := range []string{`role="dialog" aria-modal="true"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
+		if strings.Contains(attachingContextBody, notWant) {
+			t.Fatalf("attaching context section should not render %q: %s", notWant, attachingContextBody)
+		}
+	}
+
 	addingContextPanel := basePanel()
 	addingContextPanel.AddContext = true
+	addingContextPanel.ContextMode = "create"
 	addingContextBody := render(t, addingContextPanel)
 	addingContextClass := sectionClassForHeading(t, addingContextBody, "Context")
 	if !strings.Contains(addingContextClass, "w-full") || strings.Contains(addingContextClass, `sm:w-1/3`) {
 		t.Fatalf("adding context section should expand to full width, got %q: %s", addingContextClass, addingContextBody)
 	}
-	for _, want := range []string{`aria-label="Cancel adding context"`, `placeholder="context-1"`, `aria-label="Attach context"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
+	for _, want := range []string{`role="dialog" aria-modal="true"`, `aria-label="Cancel adding context"`, `placeholder="Context"`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`, `name="file"`} {
 		if !strings.Contains(addingContextBody, want) {
-			t.Fatalf("adding context section missing %q: %s", want, addingContextBody)
+			t.Fatalf("adding context modal missing %q: %s", want, addingContextBody)
+		}
+	}
+	for _, notWant := range []string{`placeholder="context-1"`, `aria-label="Attach context"`} {
+		if strings.Contains(addingContextBody, notWant) {
+			t.Fatalf("adding context modal should not render %q: %s", notWant, addingContextBody)
 		}
 	}
 
