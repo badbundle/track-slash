@@ -1483,8 +1483,8 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 			t.Fatalf("context detail row should show only count/view affordance, found %q: %s", notWant, emptyBody)
 		}
 	}
-	if strings.Contains(emptyBody, `placeholder="context-1"`) {
-		t.Fatalf("empty issue page should keep attach form in the modal only: %s", emptyBody)
+	if strings.Contains(emptyBody, `placeholder="Search context by title"`) {
+		t.Fatalf("empty issue page should keep attach form in the manager only: %s", emptyBody)
 	}
 	if got := strings.Count(emptyBody, `w-full sm:w-1/3`); got != 2 {
 		t.Fatalf("empty relationship sections should render third-width, got %d: %s", got, emptyBody)
@@ -1591,7 +1591,7 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 			BackHref:       "/bradley/issues/TRACK-7",
 			BackHXGet:      "/bradley/issues/TRACK-7/panel",
 			BackLabel:      "Issue",
-			ContextOptions: []uiProjectContextOption{{Value: "context-1", Label: "context-1 - Agent notes"}},
+			ContextOptions: []uiProjectContextOption{{Value: "Agent notes", Label: "text/plain; charset=utf-8"}},
 		}
 	}
 	renderManager := func(panel uiContextManagerData) string {
@@ -1621,19 +1621,22 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 			t.Fatalf("issue context create state missing %q: %s", want, createBody)
 		}
 	}
-	if strings.Contains(createBody, `placeholder="context-1"`) {
+	if strings.Contains(createBody, `placeholder="Search context by title"`) {
 		t.Fatalf("issue context create state should not render attach form: %s", createBody)
 	}
 
 	attachPanel := base()
 	attachPanel.Action = "attach"
-	attachPanel.ContextInput = "context-1"
+	attachPanel.ContextInput = "Agent notes"
 	attachPanel.ContextError = "Context already linked."
 	attachBody := renderManager(attachPanel)
-	for _, want := range []string{`placeholder="context-1"`, `value="context-1"`, "Context already linked.", `aria-label="Attach context"`} {
+	for _, want := range []string{`placeholder="Search context by title"`, `value="Agent notes"`, "Context already linked.", `aria-label="Attach context"`} {
 		if !strings.Contains(attachBody, want) {
 			t.Fatalf("issue context attach state missing %q: %s", want, attachBody)
 		}
+	}
+	if strings.Contains(attachBody, "context-1") {
+		t.Fatalf("issue context attach state should not expose context refs: %s", attachBody)
 	}
 	if strings.Contains(attachBody, `aria-label="Create issue context"`) || strings.Contains(attachBody, `aria-label="Upload issue context"`) {
 		t.Fatalf("issue context attach state rendered create-only controls: %s", attachBody)
@@ -1651,10 +1654,13 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 		UpdatedAt:      when,
 	}}
 	populatedBody := renderManager(populatedPanel)
-	for _, want := range []string{"context-1", "Agent notes", "Issue-only", `aria-label="View context"`, `aria-label="Edit context"`, `aria-label="Remove context"`} {
+	for _, want := range []string{"Agent notes", "Issue-only", `aria-label="View context"`, `aria-label="Edit context"`, `aria-label="Remove context"`} {
 		if !strings.Contains(populatedBody, want) {
 			t.Fatalf("populated issue context manager missing %q: %s", want, populatedBody)
 		}
+	}
+	if strings.Contains(populatedBody, `font-mono`) {
+		t.Fatalf("populated issue context manager should not render context refs as badges: %s", populatedBody)
 	}
 	if strings.Contains(populatedBody, "Use the compact path.") {
 		t.Fatalf("populated issue context manager should not show body preview: %s", populatedBody)
@@ -2265,10 +2271,13 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		Items:     []uiContextManagerItem{managerItem},
 	}
 	body = renderManager(manager)
-	for _, want := range []string{"Context", "context-1", "Architecture notes", "linked issues", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
+	for _, want := range []string{"Context", "Architecture notes", "linked issues", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context manager row missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `font-mono`) {
+		t.Fatalf("project context manager row should not render context refs as badges: %s", body)
 	}
 	for _, notWant := range []string{`placeholder="TRACK-12"`, "Linked work", `aria-label="Unlink issue"`, "Use the body."} {
 		if strings.Contains(body, notWant) {

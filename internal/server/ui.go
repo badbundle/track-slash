@@ -1370,8 +1370,8 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 	contextOptions := make([]uiProjectContextOption, 0, len(contextSummaries))
 	for _, contextItem := range contextSummaries {
 		contextOptions = append(contextOptions, uiProjectContextOption{
-			Value: contextItem.Ref,
-			Label: contextItem.Ref + " - " + contextItem.Title,
+			Value: contextItem.Title,
+			Label: uiProjectContextOptionLabel(contextItem),
 		})
 	}
 	items := make([]uiContextManagerItem, 0, len(contexts))
@@ -1417,6 +1417,13 @@ func uiContextManagerItemFromContext(contextItem model.ProjectContext) uiContext
 		SourceFilename: contextItem.SourceFilename,
 		UpdatedAt:      contextItem.UpdatedAt,
 	}
+}
+
+func uiProjectContextOptionLabel(contextItem model.ProjectContextSummary) string {
+	if contextItem.SourceFilename != nil && strings.TrimSpace(*contextItem.SourceFilename) != "" {
+		return *contextItem.SourceFilename
+	}
+	return contextItem.ContentType
 }
 
 func (s *Server) renderUIProjectContextEditError(w http.ResponseWriter, r *http.Request, projectID, contextID uuid.UUID, title, body, message string) {
@@ -3036,9 +3043,39 @@ func (s *Server) uiProjectContextInput(ctx context.Context, projectID uuid.UUID,
 	if input == "" {
 		return model.ProjectContext{}, "Context required.", nil
 	}
+	contexts, _, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
+		ProjectID: projectID,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return model.ProjectContext{}, "", err
+	}
+	var match model.ProjectContextSummary
+	matches := 0
+	for _, contextItem := range contexts {
+		if strings.EqualFold(contextItem.Title, input) {
+			match = contextItem
+			matches++
+		}
+	}
+	switch matches {
+	case 1:
+		contextItem, err := s.store.GetProjectContextByProjectNumber(ctx, projectID, match.Number)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return model.ProjectContext{}, "Context not found.", nil
+			}
+			return model.ProjectContext{}, "", err
+		}
+		return contextItem, "", nil
+	case 0:
+	default:
+		return model.ProjectContext{}, "Multiple context items match that title.", nil
+	}
+
 	number, err := parseTypedRef(input, "context")
 	if err != nil {
-		return model.ProjectContext{}, "Choose project context.", nil
+		return model.ProjectContext{}, "Choose project context by title.", nil
 	}
 	contextItem, err := s.store.GetProjectContextByProjectNumber(ctx, projectID, number)
 	if err != nil {
