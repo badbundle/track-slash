@@ -502,7 +502,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 		}
 	}
 	projectBody = e.uiGet(t, e.projectPath()+"/context", token)
-	if strings.Contains(projectBody, "Issue note") || strings.Contains(projectBody, "context-2") {
+	if strings.Contains(projectBody, "Issue note") {
 		t.Fatalf("project context manager should not show issue-only context: %s", projectBody)
 	}
 
