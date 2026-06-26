@@ -105,6 +105,8 @@
       {{template "deleted-issue-panel" .DeletedIssuePanel}}
       {{else if .IssuePanel}}
       {{template "issue-panel" .IssuePanel}}
+      {{else if .ContextManager}}
+      {{template "context-manager-panel" .ContextManager}}
       {{else if .TokenPanel}}
       {{template "token-panel" .TokenPanel}}
       {{else if .SettingsPanel}}

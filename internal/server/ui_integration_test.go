@@ -223,27 +223,32 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/about", token)
-	for _, want := range []string{"Context", `aria-label="Add context"`} {
+	for _, want := range []string{"Context", `aria-label="Manage context"`, `href="` + e.projectPath() + `/context"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("about context body missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{`placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`} {
+	for _, notWant := range []string{`role="dialog" aria-modal="true"`, `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`, `aria-label="Add context"`} {
 		if strings.Contains(body, notWant) {
-			t.Fatalf("about context body should keep creation controls in modal, found %q: %s", notWant, body)
+			t.Fatalf("about context body should stay compact, found %q: %s", notWant, body)
 		}
 	}
-	for _, notWant := range []string{`rounded-md border border-slate-200 p-3`, `rounded-md border border-slate-200 dark:border-slate-800`} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("about context body still has nested box %q: %s", notWant, body)
+
+	body = e.uiGet(t, e.projectPath()+"/context", token)
+	for _, want := range []string{"Context", "No context.", `aria-label="Add context"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project context manager missing %q: %s", want, body)
 		}
 	}
 
 	body = e.uiGet(t, e.projectPath()+"/context/new", token)
-	for _, want := range []string{`role="dialog" aria-modal="true"`, "Add context", `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`} {
+	for _, want := range []string{"New context", "Upload text", `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("project context modal missing %q: %s", want, body)
+			t.Fatalf("project context create manager missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `role="dialog" aria-modal="true"`) {
+		t.Fatalf("project context create should not render a modal: %s", body)
 	}
 
 	res := e.uiDoMultipartContext(t, e.projectPath()+"/context", token, nil, "image.png", "nope")
@@ -252,10 +257,13 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("bad upload code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{`role="dialog" aria-modal="true"`, "file must be .txt, .md, or .markdown", `aria-label="Upload context"`} {
+	for _, want := range []string{"file must be .txt, .md, or .markdown", `aria-label="Upload context"`} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("bad upload modal missing %q: %s", want, body)
+			t.Fatalf("bad upload manager missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `role="dialog" aria-modal="true"`) {
+		t.Fatalf("bad upload should stay in manager, not modal: %s", body)
 	}
 
 	form := url.Values{"title": {"Architecture"}, "body": {"Use the existing store path."}}
@@ -265,21 +273,24 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create context code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"context-1", "Architecture", `aria-label="Link issue"`} {
+	for _, want := range []string{"context-1", "Architecture", `aria-label="Link issue"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("created context body missing %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, `placeholder="`+e.projKey+`-12"`) {
-		t.Fatalf("created context body should keep issue linker in modal: %s", body)
+	if strings.Contains(body, "Use the existing store path.") || strings.Contains(body, `placeholder="`+e.projKey+`-12"`) {
+		t.Fatalf("created context row should stay compact: %s", body)
 	}
 	contextPath := e.projectPath() + "/context/context-1"
 
 	body = e.uiGet(t, contextPath+"/issues/new", token)
-	for _, want := range []string{`role="dialog" aria-modal="true"`, "Link issue", `aria-label="Cancel linking issue"`, `placeholder="` + e.projKey + `-12"`, "No linked issues."} {
+	for _, want := range []string{"Linked issues", `placeholder="` + e.projKey + `-12"`, "No linked issues.", `aria-label="Link issue"`} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("project context issue link modal missing %q: %s", want, body)
+			t.Fatalf("project context issue link manager missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `role="dialog" aria-modal="true"`) {
+		t.Fatalf("project context issue link should not render a modal: %s", body)
 	}
 
 	body = e.uiGet(t, contextPath+"/edit", token)
@@ -305,7 +316,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("bad project link context code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, `role="dialog" aria-modal="true"`) || !strings.Contains(body, "Choose an issue in this project.") || !strings.Contains(body, `value="bad"`) {
+	if strings.Contains(body, `role="dialog" aria-modal="true"`) || !strings.Contains(body, "Choose an issue in this project.") || !strings.Contains(body, `value="bad"`) {
 		t.Fatalf("bad project link context body missing error/state: %s", body)
 	}
 
@@ -315,12 +326,12 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("project link context code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, `aria-label="Link issue"`) || strings.Contains(body, `placeholder="`+e.projKey+`-12"`) {
+	if !strings.Contains(body, `aria-label="Link issue"`) || strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || !strings.Contains(body, `>1</span>`) {
 		t.Fatalf("project link context response should return compact context row: %s", body)
 	}
 	body = e.uiGet(t, contextPath+"/issues/new", token)
 	if !strings.Contains(body, issue.Identifier) || !strings.Contains(body, `aria-label="Unlink issue"`) {
-		t.Fatalf("project link context modal missing linked issue: %s", body)
+		t.Fatalf("project link context manager missing linked issue: %s", body)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, contextPath+"/issues", token, strings.NewReader(url.Values{"issue": {issue.Identifier}}.Encode()))
@@ -329,7 +340,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("duplicate project link context code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, `role="dialog" aria-modal="true"`) || !strings.Contains(body, "Issue already linked.") {
+	if strings.Contains(body, `role="dialog" aria-modal="true"`) || !strings.Contains(body, "Issue already linked.") {
 		t.Fatalf("duplicate project link context body missing conflict error: %s", body)
 	}
 
@@ -343,27 +354,54 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if !strings.Contains(body, "Architecture v2") {
 		t.Fatalf("updated context body missing title: %s", body)
 	}
+	if strings.Contains(body, "Use the updated store path.") {
+		t.Fatalf("updated context row should not show body preview: %s", body)
+	}
 
 	issueBody := e.uiGet(t, e.issuePath(issue), token)
 	contextDetail := issueContextDetailBlock(t, issueBody)
-	for _, want := range []string{"Context", `aria-label="View context"`, ">1</span>"} {
+	for _, want := range []string{"Context", `aria-label="Manage context"`, ">1</span>", `hx-get="` + e.issuePath(issue) + `/context"`} {
 		if !strings.Contains(contextDetail, want) {
 			t.Fatalf("issue context detail after project edit missing %q: %s", want, issueBody)
 		}
 	}
 	for _, notWant := range []string{"context-1", "Architecture v2", "Use the updated store path.", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
 		if strings.Contains(issueBody, notWant) {
-			t.Fatalf("issue page should keep context details in modal, found %q: %s", notWant, issueBody)
+			t.Fatalf("issue page should keep context details in manager, found %q: %s", notWant, issueBody)
 		}
 	}
-	issueContextModal := e.uiGet(t, e.issuePath(issue)+"/context", token)
-	for _, want := range []string{`role="dialog" aria-modal="true"`, "Context", "context-1", "Architecture v2", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
-		if !strings.Contains(issueContextModal, want) {
-			t.Fatalf("issue context modal after project edit missing %q: %s", want, issueContextModal)
+	issueContextManager := e.uiGet(t, e.issuePath(issue)+"/context", token)
+	for _, want := range []string{"Context", "context-1", "Architecture v2", `aria-label="Edit context"`, `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
+		if !strings.Contains(issueContextManager, want) {
+			t.Fatalf("issue context manager after project edit missing %q: %s", want, issueContextManager)
 		}
 	}
-	if strings.Contains(issueContextModal, "Use the updated store path.") {
-		t.Fatalf("issue context modal should not show context body preview: %s", issueContextModal)
+	if strings.Contains(issueContextManager, "Use the updated store path.") || strings.Contains(issueContextManager, `role="dialog" aria-modal="true"`) {
+		t.Fatalf("issue context manager should not show body preview or modal: %s", issueContextManager)
+	}
+	issueContextManager = e.uiGet(t, e.issuePath(issue)+"/context/context-1", token)
+	if !strings.Contains(issueContextManager, "Use the updated store path.") {
+		t.Fatalf("issue context item view missing latest body: %s", issueContextManager)
+	}
+	issueContextManager = e.uiGet(t, e.issuePath(issue)+"/context/context-1/edit", token)
+	for _, want := range []string{`value="Architecture v2"`, "Use the updated store path.", `aria-label="Save context"`} {
+		if !strings.Contains(issueContextManager, want) {
+			t.Fatalf("issue context edit manager missing project-linked %q: %s", want, issueContextManager)
+		}
+	}
+	form = url.Values{"title": {"Architecture v3"}, "body": {"Use the issue manager edit path."}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context/context-1", token, strings.NewReader(form.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("issue edit project context code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Architecture v3") || strings.Contains(body, "Use the issue manager edit path.") {
+		t.Fatalf("issue edit project context response should show compact updated row: %s", body)
+	}
+	projectBody := e.uiGet(t, e.projectPath()+"/context", token)
+	if !strings.Contains(projectBody, "Architecture v3") {
+		t.Fatalf("project context manager missing issue-edited project context: %s", projectBody)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, contextPath+"/issues/"+issue.Identifier+"/delete", token, nil)
@@ -378,7 +416,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 
 	issueBody = e.uiGet(t, e.issuePath(issue), token)
 	contextDetail = issueContextDetailBlock(t, issueBody)
-	for _, want := range []string{"Context", `aria-label="View context"`, ">0</span>"} {
+	for _, want := range []string{"Context", `aria-label="Manage context"`, ">0</span>"} {
 		if !strings.Contains(contextDetail, want) {
 			t.Fatalf("empty issue context detail missing %q: %s", want, issueBody)
 		}
@@ -388,27 +426,30 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 			t.Fatalf("empty issue page should keep context controls in modal, found %q: %s", notWant, issueBody)
 		}
 	}
-	issueContextModal = e.uiGet(t, e.issuePath(issue)+"/context", token)
-	for _, want := range []string{`role="dialog" aria-modal="true"`, "No context.", `aria-label="Add context"`, `aria-label="Attach context"`} {
-		if !strings.Contains(issueContextModal, want) {
-			t.Fatalf("empty issue context modal missing %q: %s", want, issueContextModal)
+	issueContextManager = e.uiGet(t, e.issuePath(issue)+"/context", token)
+	for _, want := range []string{"No context.", `aria-label="Add context"`, `aria-label="Attach context"`} {
+		if !strings.Contains(issueContextManager, want) {
+			t.Fatalf("empty issue context manager missing %q: %s", want, issueContextManager)
 		}
+	}
+	if strings.Contains(issueContextManager, `role="dialog" aria-modal="true"`) {
+		t.Fatalf("empty issue context manager should not render modal: %s", issueContextManager)
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/new", token)
-	for _, want := range []string{`role="dialog" aria-modal="true"`, `aria-label="Cancel adding context"`, `placeholder="Context"`, `autofocus`, `aria-label="Create issue context"`, `aria-label="Upload issue context"`, `name="file"`} {
+	for _, want := range []string{"New context", `placeholder="Context"`, `autofocus`, `aria-label="Create context"`, `aria-label="Upload context"`, `name="file"`} {
 		if !strings.Contains(issueBody, want) {
-			t.Fatalf("adding issue context modal missing %q: %s", want, issueBody)
+			t.Fatalf("adding issue context manager missing %q: %s", want, issueBody)
 		}
 	}
-	for _, notWant := range []string{`placeholder="context-1"`, `aria-label="Attach context"`} {
+	for _, notWant := range []string{`placeholder="context-1"`} {
 		if strings.Contains(issueBody, notWant) {
-			t.Fatalf("adding issue context modal should not include %q: %s", notWant, issueBody)
+			t.Fatalf("adding issue context manager should not include %q: %s", notWant, issueBody)
 		}
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/link", token)
-	for _, want := range []string{`role="dialog" aria-modal="true"`, `aria-label="Cancel attaching context"`, `placeholder="context-1"`, `autofocus`, `aria-label="Attach context"`} {
+	for _, want := range []string{`placeholder="context-1"`, `autofocus`, `aria-label="Attach context"`} {
 		if !strings.Contains(issueBody, want) {
 			t.Fatalf("attaching issue context body missing %q: %s", want, issueBody)
 		}
@@ -418,6 +459,9 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 			t.Fatalf("attaching issue context body should not include %q: %s", notWant, issueBody)
 		}
 	}
+	if strings.Contains(issueBody, `role="dialog" aria-modal="true"`) {
+		t.Fatalf("attaching issue context should not render modal: %s", issueBody)
+	}
 
 	res = e.uiDoMultipartContext(t, e.issuePath(issue)+"/context", token, nil, "image.png", "nope")
 	defer res.Body.Close()
@@ -425,7 +469,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("bad issue upload code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "file must be .txt, .md, or .markdown") || !strings.Contains(body, `aria-label="Upload issue context"`) {
+	if !strings.Contains(body, "file must be .txt, .md, or .markdown") || !strings.Contains(body, `aria-label="Upload context"`) {
 		t.Fatalf("bad issue upload body missing error/state: %s", body)
 	}
 
@@ -435,29 +479,27 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create issue-only context code = %d body = %s", res.StatusCode, body)
 	}
-	contextDetail = issueContextDetailBlock(t, body)
-	for _, want := range []string{"Context", `aria-label="View context"`, ">1</span>"} {
-		if !strings.Contains(contextDetail, want) {
-			t.Fatalf("issue-only context response detail missing %q: %s", want, body)
+	for _, want := range []string{"context-2", "Issue note", "Issue-only", `aria-label="Edit context"`, `aria-label="Remove context"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue-only context response missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"context-2", "Issue note", "Only needed here.", `aria-label="Remove context"`} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("issue-only context response should keep details in modal, found %q: %s", notWant, body)
+	if strings.Contains(body, "Only needed here.") {
+		t.Fatalf("issue-only context row should not show body preview: %s", body)
+	}
+	issueContextManager = e.uiGet(t, e.issuePath(issue)+"/context/context-2", token)
+	if !strings.Contains(issueContextManager, "Only needed here.") {
+		t.Fatalf("issue-only context view missing body: %s", issueContextManager)
+	}
+	issueContextManager = e.uiGet(t, e.issuePath(issue)+"/context/context-2/edit", token)
+	for _, want := range []string{`value="Issue note"`, "Only needed here.", `aria-label="Save context"`} {
+		if !strings.Contains(issueContextManager, want) {
+			t.Fatalf("issue-only context edit manager missing %q: %s", want, issueContextManager)
 		}
 	}
-	issueContextModal = e.uiGet(t, e.issuePath(issue)+"/context", token)
-	for _, want := range []string{"context-2", "Issue note", `aria-label="Remove context"`} {
-		if !strings.Contains(issueContextModal, want) {
-			t.Fatalf("issue-only context modal missing %q: %s", want, issueContextModal)
-		}
-	}
-	if strings.Contains(issueContextModal, "Only needed here.") {
-		t.Fatalf("issue-only context modal should not show context body preview: %s", issueContextModal)
-	}
-	projectBody := e.uiGet(t, e.projectPath()+"/about", token)
+	projectBody = e.uiGet(t, e.projectPath()+"/context", token)
 	if strings.Contains(projectBody, "Issue note") || strings.Contains(projectBody, "context-2") {
-		t.Fatalf("project about should not show issue-only context: %s", projectBody)
+		t.Fatalf("project context manager should not show issue-only context: %s", projectBody)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context/context-2/delete", token, nil)
@@ -466,8 +508,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("delete issue-only context code = %d body = %s", res.StatusCode, body)
 	}
-	contextDetail = issueContextDetailBlock(t, body)
-	if !strings.Contains(contextDetail, ">0</span>") || strings.Contains(body, "Issue note") {
+	if !strings.Contains(body, "No context.") || strings.Contains(body, "Issue note") {
 		t.Fatalf("issue-only context remained after delete: %s", body)
 	}
 
@@ -477,25 +518,13 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("link context code = %d body = %s", res.StatusCode, body)
 	}
-	contextDetail = issueContextDetailBlock(t, body)
-	for _, want := range []string{"Context", `aria-label="View context"`, ">1</span>"} {
-		if !strings.Contains(contextDetail, want) {
-			t.Fatalf("linked issue context response detail missing %q: %s", want, body)
+	for _, want := range []string{"context-1", "Architecture v3", `aria-label="Edit context"`, `aria-label="Remove context"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("linked issue context manager missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"context-1", "Architecture v2", "Use the updated store path.", `aria-label="Remove context"`} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("linked issue context response should keep details in modal, found %q: %s", notWant, body)
-		}
-	}
-	issueContextModal = e.uiGet(t, e.issuePath(issue)+"/context", token)
-	for _, want := range []string{"context-1", "Architecture v2", `aria-label="Remove context"`} {
-		if !strings.Contains(issueContextModal, want) {
-			t.Fatalf("linked issue context modal missing %q: %s", want, issueContextModal)
-		}
-	}
-	if strings.Contains(issueContextModal, "Use the updated store path.") {
-		t.Fatalf("linked issue context modal should not show context body preview: %s", issueContextModal)
+	if strings.Contains(body, "Use the updated store path.") {
+		t.Fatalf("linked issue context manager should not show context body preview: %s", body)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context/context-1/delete", token, nil)
@@ -504,8 +533,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("issue unlink context code = %d body = %s", res.StatusCode, body)
 	}
-	contextDetail = issueContextDetailBlock(t, body)
-	if !strings.Contains(contextDetail, ">0</span>") || strings.Contains(body, "Use the updated store path.") {
+	if !strings.Contains(body, "No context.") || strings.Contains(body, "Use the updated store path.") {
 		t.Fatalf("issue unlink context body still shows context: %s", body)
 	}
 
@@ -515,7 +543,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("delete context code = %d body = %s", res.StatusCode, body)
 	}
-	if strings.Contains(body, "context-1") || strings.Contains(body, "Architecture v2") {
+	if strings.Contains(body, "context-1") || strings.Contains(body, "Architecture v3") {
 		t.Fatalf("delete context body still shows deleted context: %s", body)
 	}
 }

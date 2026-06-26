@@ -31,4 +31,8 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 - `issue-summary-row-cells`: shared issue list row cells with key, priority, title, due date, status, and close reason.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
 
+## Feature Panels
+
+- `context-manager-panel`: shared project/issue context manager page in `internal/server/templates/context_manager.html`; expects `uiContextManagerData`.
+
 When adding a reusable component, document its template name, purpose, and expected data shape here.
