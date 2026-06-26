@@ -223,12 +223,13 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/about", token)
-	for _, want := range []string{"Context", `aria-label="Manage context"`, `href="` + e.projectPath() + `/context"`} {
-		if !strings.Contains(body, want) {
+	projectContextDetail := issueContextDetailBlock(t, body)
+	for _, want := range []string{`aria-label="Manage context"`, `href="` + e.projectPath() + `/context"`, ">0</span>"} {
+		if !strings.Contains(projectContextDetail, want) {
 			t.Fatalf("about context body missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{`role="dialog" aria-modal="true"`, `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`, `aria-label="Add context"`} {
+	for _, notWant := range []string{`role="dialog" aria-modal="true"`, "No context.", "context items", `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`, `aria-label="Add context"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("about context body should stay compact, found %q: %s", notWant, body)
 		}

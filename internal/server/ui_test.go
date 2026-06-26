@@ -2077,6 +2077,15 @@ func TestUIIssueLinkRef(t *testing.T) {
 	}
 }
 
+func requireMarkupOrder(t *testing.T, body, first, second string) {
+	t.Helper()
+	firstIndex := strings.Index(body, first)
+	secondIndex := strings.Index(body, second)
+	if firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex {
+		t.Fatalf("%q should render before %q: %s", first, second, body)
+	}
+}
+
 func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	t.Parallel()
 
@@ -2140,11 +2149,15 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"Description", "Fast issue tracking.", "Details", "Owner", "@bradley", "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Details", "Owner", "@bradley", "Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about view missing markup %q: %s", want, body)
 		}
 	}
+	if !strings.Contains(body, `class="`+uiCountBadgeClass+`">0</span>`) {
+		t.Fatalf("project about context detail should show count only: %s", body)
+	}
+	requireMarkupOrder(t, body, ">Details</h2>", ">Context</dt>")
 	for _, notWant := range []string{`aria-label="Assignee filter"`, `assignee_id=`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("project title card preserved about filter state %q: %s", notWant, body)
@@ -2240,16 +2253,26 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		ProjectTabs:  uiProjectTabs(project, "about", nil),
 		ContextItems: []uiProjectContextItem{contextItem},
 	})
-	for _, want := range []string{"Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, `>1</span>`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("compact project about context section missing %q: %s", want, body)
+	contextLabel := strings.Index(body, ">Context</dt>")
+	if contextLabel < 0 {
+		t.Fatalf("project about context detail missing: %s", body)
+	}
+	contextBlockEnd := contextLabel + 1100
+	if contextBlockEnd > len(body) {
+		contextBlockEnd = len(body)
+	}
+	contextBlock := body[contextLabel:contextBlockEnd]
+	for _, want := range []string{`aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, `class="` + uiCountBadgeClass + `">1</span>`} {
+		if !strings.Contains(contextBlock, want) {
+			t.Fatalf("project about context detail missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"context-1", "Architecture notes", `aria-label="Link issue"`, `aria-label="Edit context"`, `aria-label="Delete context"`, `placeholder="TRACK-12"`} {
+	for _, notWant := range []string{"context-1", "Architecture notes", "context items", "No context.", `aria-label="Link issue"`, `aria-label="Edit context"`, `aria-label="Delete context"`, `placeholder="TRACK-12"`} {
 		if strings.Contains(body, notWant) {
-			t.Fatalf("project about context section should stay compact, found %q: %s", notWant, body)
+			t.Fatalf("project about context detail should stay compact, found %q: %s", notWant, body)
 		}
 	}
+	requireMarkupOrder(t, body, ">Details</h2>", ">Context</dt>")
 
 	managerItem := uiContextManagerItem{
 		ID:               contextID,
