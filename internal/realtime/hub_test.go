@@ -164,6 +164,84 @@ func TestCommentEventFansOutToCommentIssueAndProjectTopics(t *testing.T) {
 	}
 }
 
+func TestContextEventFansOutToContextAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	contextID := uuid.New()
+
+	contextSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(contextSub, ProjectContextTopic(contextID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, ProjectContextTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpUpdate,
+		Entity:    EntityContext,
+		ID:        contextID,
+		ProjectID: &projectID,
+		Version:   2,
+	})
+
+	if _, ok := recv(t, contextSub, time.Second); !ok {
+		t.Fatal("context subscriber did not receive event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive context event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated context subscriber received event")
+	}
+}
+
+func TestIssueContextLinkEventFansOutToLinkIssueContextAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	issueID := uuid.New()
+	contextID := uuid.New()
+	linkID := uuid.New()
+
+	linkSub := newTestClient(4)
+	issueSub := newTestClient(4)
+	contextSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(linkSub, IssueContextLinkTopic(linkID))
+	hub.Subscribe(issueSub, IssueTopic(issueID))
+	hub.Subscribe(contextSub, ProjectContextTopic(contextID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, IssueContextLinkTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpInsert,
+		Entity:    EntityContextLink,
+		ID:        linkID,
+		IssueID:   &issueID,
+		ContextID: &contextID,
+		ProjectID: &projectID,
+		Version:   1,
+	})
+
+	if _, ok := recv(t, linkSub, time.Second); !ok {
+		t.Fatal("link subscriber did not receive event")
+	}
+	if _, ok := recv(t, issueSub, time.Second); !ok {
+		t.Fatal("issue subscriber did not receive context link event")
+	}
+	if _, ok := recv(t, contextSub, time.Second); !ok {
+		t.Fatal("context subscriber did not receive context link event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive context link event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated issue_context_link subscriber received event")
+	}
+}
+
 func TestHubDeduplicatesAcrossTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
@@ -269,10 +347,14 @@ func TestParseTopic(t *testing.T) {
 		{"project:" + id.String(), "project", false},
 		{"sprint:" + id.String(), "sprint", false},
 		{"comment:" + id.String(), "comment", false},
+		{"project_context:" + id.String(), "project_context", false},
+		{"issue_context_link:" + id.String(), "issue_context_link", false},
 		{"user:" + id.String(), "", true},
 		{"issue:not-a-uuid", "", true},
 		{"sprint:not-a-uuid", "", true},
 		{"comment:not-a-uuid", "", true},
+		{"project_context:not-a-uuid", "", true},
+		{"issue_context_link:not-a-uuid", "", true},
 		{"", "", true},
 	}
 	for _, tc := range cases {

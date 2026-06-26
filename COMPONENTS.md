@@ -30,5 +30,18 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 - `issue-summary-row-cells`: shared issue list row cells with key, priority, title, due date, status, and close reason.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
+- Context detail row: parent project/issue pages should use a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open manage link. Keep create/attach/edit/delete controls out of parent panels.
+
+## Feature Panels
+
+- `context-manager-panel`: shared project/issue context manager page in `internal/server/templates/context_manager.html`; expects `uiContextManagerData`. Use this as the full context workflow surface for project and issue modes, not a modal or inline parent-page form.
+
+### Context Manager Conventions
+
+- Project manager route: `/{owner}/projects/{key}/context`. Issue manager route: `/{owner}/issues/{issueRef}/context`.
+- Project mode supports project-scoped create/upload/edit/delete and linked-issue management. Issue mode supports creating issue-scoped context, attaching existing project context, viewing/editing linked context, and removing links.
+- Rows stay compact by default: show title, metadata, scope/link counts, and icon actions. Do not show body previews in rows.
+- Body text appears only in explicit view/edit manager states, rendered as escaped pre-wrapped text.
+- User-facing attach/search controls use context titles. Do not present refs such as `context-1` as visible identifiers, badges, placeholders, or option labels.
 
 When adding a reusable component, document its template name, purpose, and expected data shape here.

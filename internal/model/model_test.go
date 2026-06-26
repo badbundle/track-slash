@@ -121,6 +121,45 @@ func TestIssuePriorityValid(t *testing.T) {
 	}
 }
 
+func TestProjectContextKindValid(t *testing.T) {
+	cases := []struct {
+		in   ProjectContextKind
+		want bool
+	}{
+		{ProjectContextKindText, true},
+		{"image", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := c.in.Valid(); got != c.want {
+			t.Fatalf("ProjectContextKind(%q).Valid() = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestProjectContextScopeValid(t *testing.T) {
+	cases := []struct {
+		in   ProjectContextScope
+		want bool
+	}{
+		{ProjectContextScopeProject, true},
+		{ProjectContextScopeIssue, true},
+		{"workspace", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := c.in.Valid(); got != c.want {
+			t.Fatalf("ProjectContextScope(%q).Valid() = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+func TestProjectContextRef(t *testing.T) {
+	if got := ProjectContextRef(12); got != "context-12" {
+		t.Fatalf("ProjectContextRef(12) = %q, want context-12", got)
+	}
+}
+
 func TestSprintStatusValid(t *testing.T) {
 	cases := []struct {
 		in   SprintStatus

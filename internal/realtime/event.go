@@ -19,11 +19,13 @@ const (
 type Entity string
 
 const (
-	EntityIssue     Entity = "issue"
-	EntityProject   Entity = "project"
-	EntitySprint    Entity = "sprint"
-	EntityIssueLink Entity = "issue_link"
-	EntityComment   Entity = "comment"
+	EntityIssue       Entity = "issue"
+	EntityProject     Entity = "project"
+	EntitySprint      Entity = "sprint"
+	EntityIssueLink   Entity = "issue_link"
+	EntityComment     Entity = "comment"
+	EntityContext     Entity = "project_context"
+	EntityContextLink Entity = "issue_context_link"
 )
 
 // Event is the wire envelope sent over both pg_notify and the WebSocket.
@@ -34,6 +36,7 @@ type Event struct {
 	Entity        Entity     `json:"entity"`
 	ID            uuid.UUID  `json:"id"`
 	IssueID       *uuid.UUID `json:"issue_id,omitempty"`
+	ContextID     *uuid.UUID `json:"context_id,omitempty"`
 	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
 	ProjectID     *uuid.UUID `json:"project_id,omitempty"`
 	Version       int64      `json:"version"`
@@ -76,20 +79,40 @@ func (e Event) Topics() []string {
 			topics = append(topics, ProjectTopic(*e.ProjectID))
 		}
 		return topics
+	case EntityContext:
+		topics := []string{ProjectContextTopic(e.ID)}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		return topics
+	case EntityContextLink:
+		topics := []string{IssueContextLinkTopic(e.ID)}
+		if e.IssueID != nil {
+			topics = append(topics, IssueTopic(*e.IssueID))
+		}
+		if e.ContextID != nil {
+			topics = append(topics, ProjectContextTopic(*e.ContextID))
+		}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		return topics
 	}
 	return nil
 }
 
-func IssueTopic(id uuid.UUID) string     { return "issue:" + id.String() }
-func ProjectTopic(id uuid.UUID) string   { return "project:" + id.String() }
-func SprintTopic(id uuid.UUID) string    { return "sprint:" + id.String() }
-func IssueLinkTopic(id uuid.UUID) string { return "issue_link:" + id.String() }
-func CommentTopic(id uuid.UUID) string   { return "comment:" + id.String() }
+func IssueTopic(id uuid.UUID) string            { return "issue:" + id.String() }
+func ProjectTopic(id uuid.UUID) string          { return "project:" + id.String() }
+func SprintTopic(id uuid.UUID) string           { return "sprint:" + id.String() }
+func IssueLinkTopic(id uuid.UUID) string        { return "issue_link:" + id.String() }
+func CommentTopic(id uuid.UUID) string          { return "comment:" + id.String() }
+func ProjectContextTopic(id uuid.UUID) string   { return "project_context:" + id.String() }
+func IssueContextLinkTopic(id uuid.UUID) string { return "issue_context_link:" + id.String() }
 
 // ParseTopic validates a client-supplied topic string and returns its
 // prefix and uuid component.
 func ParseTopic(t string) (kind string, id uuid.UUID, err error) {
-	for _, prefix := range []string{"issue_link:", "comment:", "issue:", "project:", "sprint:"} {
+	for _, prefix := range []string{"issue_context_link:", "project_context:", "issue_link:", "comment:", "issue:", "project:", "sprint:"} {
 		if len(t) > len(prefix) && t[:len(prefix)] == prefix {
 			id, err = uuid.Parse(t[len(prefix):])
 			if err != nil {
@@ -98,5 +121,5 @@ func ParseTopic(t string) (kind string, id uuid.UUID, err error) {
 			return prefix[:len(prefix)-1], id, nil
 		}
 	}
-	return "", uuid.Nil, fmt.Errorf("unknown topic format %q (want issue:<uuid>, project:<uuid>, sprint:<uuid>, issue_link:<uuid>, or comment:<uuid>)", t)
+	return "", uuid.Nil, fmt.Errorf("unknown topic format %q (want issue:<uuid>, project:<uuid>, sprint:<uuid>, issue_link:<uuid>, comment:<uuid>, project_context:<uuid>, or issue_context_link:<uuid>)", t)
 }

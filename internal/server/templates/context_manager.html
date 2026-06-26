@@ -1,0 +1,202 @@
+{{define "context-manager-panel"}}
+<section class="mx-auto max-w-6xl px-6 py-6">
+  <a data-main-view="projects" href="{{.BackHref}}" hx-get="{{.BackHXGet}}" hx-target="#main" hx-push-url="{{.BackHref}}" class="mb-3 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+    <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
+    {{.BackLabel}}
+  </a>
+
+  <header class="rounded-lg border border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-lg font-semibold tracking-normal text-slate-950 dark:text-slate-100">Context</h1>
+          {{template "count-badge" (len .Items)}}
+          {{if .HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+        </div>
+        <p class="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
+          {{if eq .Mode "issue"}}{{.Issue.Identifier}} · {{.Issue.Title}}{{else}}{{.Project.Name}}{{end}}
+        </p>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        {{if eq .Mode "issue"}}
+        <a href="{{issueContextLinkNew .Issue}}" aria-label="Attach context" hx-get="{{issueContextLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextLinkNew .Issue}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
+        </a>
+        <a href="{{issueContextNew .Issue}}" aria-label="Add context" hx-get="{{issueContextNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextNew .Issue}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+        </a>
+        {{else}}
+        <a href="{{projectContextNew .Project}}" aria-label="Add context" hx-get="{{projectContextNew .Project}}" hx-target="#main" hx-push-url="{{projectContextNew .Project}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+        </a>
+        {{end}}
+      </div>
+    </div>
+  </header>
+
+  <section class="mt-4 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    {{if eq .Action "create"}}
+    <div class="border-b border-slate-100 p-4 dark:border-slate-800">
+      <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.75fr)]">
+        <form method="post" action="{{if eq .Mode "issue"}}{{issueContext .Issue}}{{else}}{{projectContexts .Project}}{{end}}" hx-post="{{if eq .Mode "issue"}}{{issueContext .Issue}}{{else}}{{projectContexts .Project}}{{end}}" hx-target="#main" class="min-w-0">
+          {{if eq .Mode "issue"}}<input type="hidden" name="mode" value="create">{{end}}
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">New context</h2>
+            <button type="submit" aria-label="Create context" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          <input name="title" value="{{.ContextTitle}}" placeholder="Title" autofocus class="mt-3 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <textarea name="body" rows="8" data-submit-shortcut="meta-enter" data-autogrow-textarea placeholder="Context" class="mt-2 min-h-44 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.ContextBody}}</textarea>
+          {{if or .ContextError .ContextCreateError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{if .ContextError}}{{.ContextError}}{{else}}{{.ContextCreateError}}{{end}}</div>{{end}}
+        </form>
+
+        <form method="post" enctype="multipart/form-data" hx-encoding="multipart/form-data" action="{{if eq .Mode "issue"}}{{issueContext .Issue}}{{else}}{{projectContexts .Project}}{{end}}" hx-post="{{if eq .Mode "issue"}}{{issueContext .Issue}}{{else}}{{projectContexts .Project}}{{end}}" hx-target="#main" class="min-w-0 border-t border-slate-100 pt-4 dark:border-slate-800 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Upload text</h2>
+            <button type="submit" aria-label="Upload context" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+              <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          <input name="title" placeholder="Title" class="mt-3 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <input name="file" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" class="mt-3 w-full min-w-0 text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200 dark:text-slate-300 dark:file:bg-slate-800 dark:file:text-slate-200 dark:hover:file:bg-slate-700">
+          {{if .ContextUploadError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{.ContextUploadError}}</div>{{end}}
+        </form>
+      </div>
+    </div>
+    {{end}}
+
+    {{if eq .Action "attach"}}
+    <div class="border-b border-slate-100 p-4 dark:border-slate-800">
+      <form method="post" action="{{issueContext .Issue}}" hx-post="{{issueContext .Issue}}" hx-target="#main" class="max-w-2xl">
+        <input type="hidden" name="mode" value="attach">
+        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <input name="context" value="{{.ContextInput}}" list="context-options-{{.Issue.Number}}" placeholder="Search context by title" autofocus class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <datalist id="context-options-{{.Issue.Number}}">
+            {{range .ContextOptions}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+          </datalist>
+          <button type="submit" aria-label="Attach context" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+            <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+        </div>
+        {{if .ContextError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{.ContextError}}</div>{{end}}
+      </form>
+    </div>
+    {{end}}
+
+    {{if .Items}}
+    <div class="divide-y divide-slate-100 dark:divide-slate-800">
+      {{range .Items}}
+      {{$item := .}}
+      <article class="px-4 py-3">
+        {{if and (eq $.Action "edit") (eq $.ActiveContextID .ID)}}
+        <form method="post" action="{{if eq $.Mode "issue"}}{{issueContextItem $.Issue .}}{{else}}{{projectContext $.Project .}}{{end}}" hx-post="{{if eq $.Mode "issue"}}{{issueContextItem $.Issue .}}{{else}}{{projectContext $.Project .}}{{end}}" hx-target="#main">
+          <div class="flex flex-wrap items-center gap-2">
+            <input name="title" value="{{$.ContextEditTitle}}" autofocus class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <button type="submit" aria-label="Save context" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </button>
+            <a href="{{if eq $.Mode "issue"}}{{issueContext $.Issue}}{{else}}{{projectContexts $.Project}}{{end}}" aria-label="Cancel editing context" hx-get="{{if eq $.Mode "issue"}}{{issueContext $.Issue}}{{else}}{{projectContexts $.Project}}{{end}}" hx-target="#main" hx-push-url="{{if eq $.Mode "issue"}}{{issueContext $.Issue}}{{else}}{{projectContexts $.Project}}{{end}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </a>
+          </div>
+          <textarea name="body" rows="8" data-submit-shortcut="meta-enter" data-autogrow-textarea class="mt-2 min-h-44 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{$.ContextEditBody}}</textarea>
+          {{if $.ContextEditError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{$.ContextEditError}}</div>{{end}}
+        </form>
+        {{else}}
+        <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div class="min-w-0">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{.Title}}</h2>
+              {{if eq $.Mode "project"}}
+              {{template "count-badge" .LinkedIssueCount}}
+              <span class="text-xs text-slate-500 dark:text-slate-400">linked issues</span>
+              {{else if eq .Scope "issue"}}
+              <span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Issue-only</span>
+              {{end}}
+            </div>
+            <p class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{{.ContentType}}{{with .SourceFilename}} · {{.}}{{end}} · Updated {{tokenTime .UpdatedAt}}</p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            {{if eq $.Mode "project"}}
+            <a href="{{projectContextIssueNew $.Project .}}" aria-label="Link issue" hx-get="{{projectContextIssueNew $.Project .}}" hx-target="#main" hx-push-url="{{projectContextIssueNew $.Project .}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </a>
+            <a href="{{projectContextEdit $.Project .}}" aria-label="Edit context" hx-get="{{projectContextEdit $.Project .}}" hx-target="#main" hx-push-url="{{projectContextEdit $.Project .}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </a>
+            <form method="post" action="{{projectContextDelete $.Project .}}" hx-post="{{projectContextDelete $.Project .}}" hx-target="#main" hx-confirm="Delete this context?">
+              <button type="submit" aria-label="Delete context" class="grid h-7 w-7 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+                <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+            </form>
+            {{else}}
+            <a href="{{issueContextItem $.Issue .}}" aria-label="View context" hx-get="{{issueContextItem $.Issue .}}" hx-target="#main" hx-push-url="{{issueContextItem $.Issue .}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="book-open" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </a>
+            <a href="{{issueContextEdit $.Issue .}}" aria-label="Edit context" hx-get="{{issueContextEdit $.Issue .}}" hx-target="#main" hx-push-url="{{issueContextEdit $.Issue .}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </a>
+            <form method="post" action="{{issueContextDelete $.Issue .}}" hx-post="{{issueContextDelete $.Issue .}}" hx-target="#main">
+              <button type="submit" aria-label="Remove context" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+            </form>
+            {{end}}
+          </div>
+        </div>
+
+        {{if and (eq $.Mode "issue") (eq $.Action "view") (eq $.ActiveContextID .ID)}}
+        <div class="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-800 dark:bg-slate-950 dark:text-slate-200">{{$.ActiveContext.Body}}</pre>
+        </div>
+        {{end}}
+
+        {{if and (eq $.Mode "project") (eq $.Action "link") (eq $.ActiveContextID .ID)}}
+        <div class="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <form method="post" action="{{projectContextIssues $.Project .}}" hx-post="{{projectContextIssues $.Project .}}" hx-target="#main" class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <input name="issue" value="{{$.LinkIssueInput}}" placeholder="{{$.Project.Key}}-12" autofocus class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <button type="submit" aria-label="Link issue" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            {{if $.LinkIssueError}}<div class="text-sm text-rose-700 dark:text-rose-300 sm:col-span-2">{{$.LinkIssueError}}</div>{{end}}
+          </form>
+
+          <div class="mt-3">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Linked issues</h3>
+              {{template "count-badge" .LinkedIssueCount}}
+              {{if .LinkedIssuesHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+            </div>
+            {{if .LinkedIssues}}
+            <div class="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+              {{range .LinkedIssues}}
+              <div class="flex min-w-0 items-center justify-between gap-3 py-2 text-sm">
+                <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="flex min-w-0 items-center gap-2 text-slate-700 hover:text-indigo-700 dark:text-slate-200 dark:hover:text-indigo-200">
+                  {{template "issue-key" .Identifier}}
+                  <span class="min-w-0 truncate">{{.Title}}</span>
+                </a>
+                <form method="post" action="{{projectContextIssueDelete $.Project $item .}}" hx-post="{{projectContextIssueDelete $.Project $item .}}" hx-target="#main">
+                  <button type="submit" aria-label="Unlink issue" class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:hover:bg-slate-800 dark:hover:text-rose-300 dark:focus:ring-offset-slate-900">
+                    <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                  </button>
+                </form>
+              </div>
+              {{end}}
+            </div>
+            {{else}}
+            <div class="mt-2 text-sm text-slate-500 dark:text-slate-400">No linked issues.</div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+        {{end}}
+      </article>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="p-5 text-sm text-slate-500 dark:text-slate-400">No context.</div>
+    {{end}}
+  </section>
+</section>
+{{end}}
