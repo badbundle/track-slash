@@ -186,6 +186,28 @@ type ProjectAssignee struct {
 	Name     string    `json:"name"`
 }
 
+type ProjectIssueStatusCounts struct {
+	Total      int `json:"total"`
+	Todo       int `json:"todo"`
+	InProgress int `json:"in_progress"`
+	Done       int `json:"done"`
+	Closed     int `json:"closed"`
+}
+
+type ProjectAssigneeIssueStats struct {
+	UserID   uuid.UUID                `json:"user_id"`
+	Username string                   `json:"username"`
+	Name     string                   `json:"name"`
+	Counts   ProjectIssueStatusCounts `json:"counts"`
+}
+
+type ProjectStats struct {
+	ProjectID    uuid.UUID                   `json:"project_id"`
+	AllTime      ProjectIssueStatusCounts    `json:"all_time"`
+	Last7Days    ProjectIssueStatusCounts    `json:"last_7_days"`
+	TopAssignees []ProjectAssigneeIssueStats `json:"top_assignees"`
+}
+
 type Project struct {
 	ID            uuid.UUID `json:"id"`
 	OwnerID       uuid.UUID `json:"owner_id"`

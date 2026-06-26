@@ -360,6 +360,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody := e.uiGet(t, e.issuePath(issue), token)
+	issueMain := mainContentBlock(t, issueBody)
 	contextDetail := issueContextDetailBlock(t, issueBody)
 	for _, want := range []string{"Context", `aria-label="Manage context"`, ">1</span>", `hx-get="` + e.issuePath(issue) + `/context"`} {
 		if !strings.Contains(contextDetail, want) {
@@ -367,7 +368,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 		}
 	}
 	for _, notWant := range []string{"context-1", "Architecture v2", "Use the updated store path.", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
-		if strings.Contains(issueBody, notWant) {
+		if strings.Contains(issueMain, notWant) {
 			t.Fatalf("issue page should keep context details in manager, found %q: %s", notWant, issueBody)
 		}
 	}
@@ -450,12 +451,13 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/link", token)
+	issueMain = mainContentBlock(t, issueBody)
 	for _, want := range []string{`placeholder="Search context by title"`, `value="Architecture v3"`, `autofocus`, `aria-label="Attach context"`} {
 		if !strings.Contains(issueBody, want) {
 			t.Fatalf("attaching issue context body missing %q: %s", want, issueBody)
 		}
 	}
-	if strings.Contains(issueBody, "context-1") {
+	if strings.Contains(issueMain, "context-1") {
 		t.Fatalf("attaching issue context should not expose context refs: %s", issueBody)
 	}
 	for _, notWant := range []string{`aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
@@ -549,6 +551,43 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 	if strings.Contains(body, "context-1") || strings.Contains(body, "Architecture v3") {
 		t.Fatalf("delete context body still shows deleted context: %s", body)
+	}
+}
+
+func TestUIProjectAboutStats(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-stats")
+	todoIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "about stats todo",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue todo: %v", err)
+	}
+	_ = todoIssue
+	doneIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "about stats done",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, doneIssue.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("UpdateIssue done: %v", err)
+	}
+
+	body := e.uiGet(t, e.projectPath()+"/about", token)
+	for _, want := range []string{"Issue stats", "All time", "Last 7 days", "Top assignees", "ui-stats", ">2</td>", ">1</td>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project about stats missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "No assigned issues.") {
+		t.Fatalf("project about stats rendered empty assignee state: %s", body)
 	}
 }
 
@@ -3505,6 +3544,24 @@ func issueContextDetailBlock(t *testing.T, body string) string {
 		blockEnd = len(body)
 	}
 	return body[contextLabel:blockEnd]
+}
+
+func mainContentBlock(t *testing.T, body string) string {
+	t.Helper()
+	mainStart := strings.Index(body, `<main id="main"`)
+	if mainStart < 0 {
+		t.Fatalf("missing main content: %s", body)
+	}
+	contentStart := strings.Index(body[mainStart:], ">")
+	if contentStart < 0 {
+		t.Fatalf("malformed main content: %s", body)
+	}
+	contentStart += mainStart + 1
+	contentEnd := strings.Index(body[contentStart:], "</main>")
+	if contentEnd < 0 {
+		t.Fatalf("missing main content end: %s", body)
+	}
+	return body[contentStart : contentStart+contentEnd]
 }
 
 func TestUIHomeRedirectsToFirstProject(t *testing.T) {

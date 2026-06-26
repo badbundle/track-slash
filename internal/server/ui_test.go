@@ -2111,6 +2111,35 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 		ProjectTabs:          uiProjectTabs(project, "about", selected),
 		AssigneeFilters:      uiProjectAssigneeFilters(project, "about", assignees, selected),
 		AssigneeFilterActive: true,
+		ProjectStats: model.ProjectStats{
+			ProjectID: projectID,
+			AllTime: model.ProjectIssueStatusCounts{
+				Total:      9,
+				Todo:       3,
+				InProgress: 2,
+				Done:       3,
+				Closed:     1,
+			},
+			Last7Days: model.ProjectIssueStatusCounts{
+				Total:      4,
+				Todo:       1,
+				InProgress: 1,
+				Done:       1,
+				Closed:     1,
+			},
+			TopAssignees: []model.ProjectAssigneeIssueStats{{
+				UserID:   selectedID,
+				Username: "ada",
+				Name:     "Ada Lovelace",
+				Counts: model.ProjectIssueStatusCounts{
+					Total:      5,
+					Todo:       2,
+					InProgress: 1,
+					Done:       1,
+					Closed:     1,
+				},
+			}},
+		},
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -2149,10 +2178,13 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"Description", "Fast issue tracking.", "Details", "Owner", "@bradley", "Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about view missing markup %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "No assigned issues.") {
+		t.Fatalf("project about populated stats rendered empty assignee state: %s", body)
 	}
 	if !strings.Contains(body, `class="`+uiCountBadgeClass+`">0</span>`) {
 		t.Fatalf("project about context detail should show count only: %s", body)
@@ -2187,6 +2219,34 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="calendar-range"`, `data-lucide="list-filter"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
+		}
+	}
+}
+
+func TestUIProjectAboutStatsEmptyTopAssignees(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{
+		ID:            uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"),
+		OwnerUsername: "bradley",
+		Key:           "TRACK",
+		Name:          "Track Slash",
+	}
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project:      project,
+		View:         "about",
+		ProjectTabs:  uiProjectTabs(project, "about", nil),
+		ProjectStats: model.ProjectStats{ProjectID: project.ID},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{"Issue stats", "Top assignees", "No assigned issues.", `<td class="px-4 py-2 text-right tabular-nums text-slate-700 dark:text-slate-300">0</td>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty project about stats missing %q: %s", want, body)
 		}
 	}
 }

@@ -103,6 +103,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"statusOptions":             uiStatusOptions,
 	"statusRow":                 uiStatusRowClass,
 	"statusSurface":             uiStatusSurfaceClass,
+	"statusValue":               uiStatusValue,
 	"subIssueProgress":          uiSubIssueProgress,
 	"tokenTime":                 uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
@@ -364,6 +365,7 @@ type uiProjectPanelData struct {
 	AllStatusFilters     []uiProjectStatusFilterItem
 	AllPriorityFilters   []uiProjectPriorityFilterItem
 	AllSortOptions       []uiProjectSortOptionItem
+	ProjectStats         model.ProjectStats
 	ContextItems         []uiProjectContextItem
 	ContextHasMore       bool
 	DeleteNotice         *uiIssueDeleteNotice
@@ -3218,6 +3220,11 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 
 	switch view {
 	case "about":
+		stats, err := s.store.GetProjectStats(ctx, store.ProjectStatsParams{ProjectID: projectID})
+		if err != nil {
+			return nil, err
+		}
+		panel.ProjectStats = stats
 		contexts, contextHasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
 			ProjectID: projectID,
 			Limit:     MaxLimit,
@@ -4845,6 +4852,10 @@ func uiStatusLabel(s model.Status) string {
 	default:
 		return string(s)
 	}
+}
+
+func uiStatusValue(raw string) model.Status {
+	return model.Status(raw)
 }
 
 func uiStatusClass(s model.Status) string {
