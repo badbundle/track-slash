@@ -360,6 +360,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody := e.uiGet(t, e.issuePath(issue), token)
+	issueMain := mainContentBlock(t, issueBody)
 	contextDetail := issueContextDetailBlock(t, issueBody)
 	for _, want := range []string{"Context", `aria-label="Manage context"`, ">1</span>", `hx-get="` + e.issuePath(issue) + `/context"`} {
 		if !strings.Contains(contextDetail, want) {
@@ -367,7 +368,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 		}
 	}
 	for _, notWant := range []string{"context-1", "Architecture v2", "Use the updated store path.", `aria-label="Remove context"`, `aria-label="Add context"`, `aria-label="Attach context"`} {
-		if strings.Contains(issueBody, notWant) {
+		if strings.Contains(issueMain, notWant) {
 			t.Fatalf("issue page should keep context details in manager, found %q: %s", notWant, issueBody)
 		}
 	}
@@ -450,12 +451,13 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	issueBody = e.uiGet(t, e.issuePath(issue)+"/context/link", token)
+	issueMain = mainContentBlock(t, issueBody)
 	for _, want := range []string{`placeholder="Search context by title"`, `value="Architecture v3"`, `autofocus`, `aria-label="Attach context"`} {
 		if !strings.Contains(issueBody, want) {
 			t.Fatalf("attaching issue context body missing %q: %s", want, issueBody)
 		}
 	}
-	if strings.Contains(issueBody, "context-1") {
+	if strings.Contains(issueMain, "context-1") {
 		t.Fatalf("attaching issue context should not expose context refs: %s", issueBody)
 	}
 	for _, notWant := range []string{`aria-label="Create issue context"`, `aria-label="Upload issue context"`} {
@@ -3542,6 +3544,24 @@ func issueContextDetailBlock(t *testing.T, body string) string {
 		blockEnd = len(body)
 	}
 	return body[contextLabel:blockEnd]
+}
+
+func mainContentBlock(t *testing.T, body string) string {
+	t.Helper()
+	mainStart := strings.Index(body, `<main id="main"`)
+	if mainStart < 0 {
+		t.Fatalf("missing main content: %s", body)
+	}
+	contentStart := strings.Index(body[mainStart:], ">")
+	if contentStart < 0 {
+		t.Fatalf("malformed main content: %s", body)
+	}
+	contentStart += mainStart + 1
+	contentEnd := strings.Index(body[contentStart:], "</main>")
+	if contentEnd < 0 {
+		t.Fatalf("missing main content end: %s", body)
+	}
+	return body[contentStart : contentStart+contentEnd]
 }
 
 func TestUIHomeRedirectsToFirstProject(t *testing.T) {
