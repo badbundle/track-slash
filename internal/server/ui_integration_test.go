@@ -552,6 +552,43 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 }
 
+func TestUIProjectAboutStats(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-stats")
+	todoIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "about stats todo",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue todo: %v", err)
+	}
+	_ = todoIssue
+	doneIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "about stats done",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, doneIssue.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("UpdateIssue done: %v", err)
+	}
+
+	body := e.uiGet(t, e.projectPath()+"/about", token)
+	for _, want := range []string{"Issue stats", "All time", "Last 7 days", "Top assignees", "ui-stats", ">2</td>", ">1</td>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project about stats missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "No assigned issues.") {
+		t.Fatalf("project about stats rendered empty assignee state: %s", body)
+	}
+}
+
 func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

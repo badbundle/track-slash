@@ -1145,6 +1145,79 @@ func TestHTTPListProjectAssignees(t *testing.T) {
 	}
 }
 
+func TestHTTPGetProjectStats(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	member, memberToken := e.mustProjectMemberToken(t, "project-stats-member")
+	todoIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "stats todo",
+		AssigneeID: &member.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue todo: %v", err)
+	}
+	_ = todoIssue
+	doneIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "stats done",
+		AssigneeID: &member.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, doneIssue.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("UpdateIssue done: %v", err)
+	}
+	closedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "stats closed",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue closed: %v", err)
+	}
+	closed := model.StatusClosed
+	reason := model.CloseReasonWontDo
+	if _, err := e.store.UpdateIssue(e.ctx, closedIssue.ID, store.UpdateIssueParams{Status: &closed, CloseReason: &reason}); err != nil {
+		t.Fatalf("UpdateIssue closed: %v", err)
+	}
+
+	code, body := e.doWithToken(t, memberToken, http.MethodGet, e.projectPath()+"/stats", nil)
+	if code != http.StatusOK {
+		t.Fatalf("stats code = %d body = %s", code, body)
+	}
+	stats := decode[model.ProjectStats](t, body)
+	if stats.ProjectID != e.projectID {
+		t.Fatalf("stats project id = %s, want %s", stats.ProjectID, e.projectID)
+	}
+	wantCounts := model.ProjectIssueStatusCounts{Total: 3, Todo: 1, Done: 1, Closed: 1}
+	if stats.AllTime != wantCounts || stats.Last7Days != wantCounts {
+		t.Fatalf("stats counts = all %+v week %+v, want %+v", stats.AllTime, stats.Last7Days, wantCounts)
+	}
+	if len(stats.TopAssignees) != 1 || stats.TopAssignees[0].UserID != member.ID || stats.TopAssignees[0].Counts.Total != 2 {
+		t.Fatalf("top assignees = %+v, want member with 2 assigned issues", stats.TopAssignees)
+	}
+
+	_, deniedToken := e.mustUserToken(t, "project-stats-denied")
+	code, _ = e.doWithToken(t, deniedToken, http.MethodGet, e.projectPath()+"/stats", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("denied stats code = %d", code)
+	}
+	code, _ = e.do(t, http.MethodGet, "/bad!/projects/"+e.projKey+"/stats", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad owner stats code = %d", code)
+	}
+	code, _ = e.do(t, http.MethodGet, "/"+e.ownerUsername+"/projects/bad!/stats", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad key stats code = %d", code)
+	}
+	code, _ = e.do(t, http.MethodGet, "/"+e.ownerUsername+"/projects/"+uniqueProjectKey(t)+"/stats", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("missing project stats code = %d", code)
+	}
+}
+
 func httpProjectAssigneesContain(in []model.ProjectAssignee, id uuid.UUID) bool {
 	for _, assignee := range in {
 		if assignee.ID == id {

@@ -89,6 +89,7 @@ func (s *Server) Router() http.Handler {
 				r.Route("/projects/{key}", func(r chi.Router) {
 					r.Get("/", s.getProject)
 					r.Delete("/", s.deleteProject)
+					r.Get("/stats", s.getProjectStats)
 					r.Get("/members/search", s.searchProjectMembers)
 					r.Get("/members", s.listProjectMembers)
 					r.Get("/assignees", s.listProjectAssignees)
