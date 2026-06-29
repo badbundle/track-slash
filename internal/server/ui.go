@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -180,10 +181,26 @@ type uiProjectPriorityFilterItem struct {
 
 type uiProjectSortOptionItem struct {
 	Label  string
+	Icon   string
 	Href   string
 	HXGet  string
 	HXPush string
 	Active bool
+}
+
+type uiIssueControlsData struct {
+	StatusFilters        []uiProjectStatusFilterItem
+	PriorityFilters      []uiProjectPriorityFilterItem
+	SortOptions          []uiProjectSortOptionItem
+	SortLabel            string
+	DirectionOptions     []uiProjectSortOptionItem
+	DirectionLabel       string
+	DirectionIcon        string
+	AssigneeFilters      []uiAssigneeFilterItem
+	AssigneeFilterActive bool
+	ClearAssigneeHref    string
+	ClearAssigneeHXGet   string
+	ClearAssigneeHXPush  string
 }
 
 type uiProjectAllIssuePageData struct {
@@ -339,13 +356,16 @@ type uiTabItem struct {
 }
 
 type uiWorkPanelData struct {
-	View         string
-	Title        string
-	Subtitle     string
-	Issues       []uiIssueItem
-	Columns      []uiIssueColumn
-	HasMore      bool
-	ProjectCount int
+	View           string
+	Title          string
+	Subtitle       string
+	IssueListLabel string
+	Issues         []uiIssueItem
+	Columns        []uiIssueColumn
+	HasMore        bool
+	ProjectCount   int
+	WorkTabs       uiTabBarData
+	IssueControls  uiIssueControlsData
 }
 
 type uiProjectPanelData struct {
@@ -359,12 +379,11 @@ type uiProjectPanelData struct {
 	ClearAssigneeHXPush  string
 	ActiveSprint         *model.Sprint
 	SprintColumns        []uiIssueColumn
+	SprintControls       uiIssueControlsData
 	PlannedSprints       []uiPlannedSprint
 	AllIssues            []model.Issue
 	AllIssuePage         uiProjectAllIssuePageData
-	AllStatusFilters     []uiProjectStatusFilterItem
-	AllPriorityFilters   []uiProjectPriorityFilterItem
-	AllSortOptions       []uiProjectSortOptionItem
+	AllControls          uiIssueControlsData
 	ProjectStats         model.ProjectStats
 	ContextItems         []uiProjectContextItem
 	ContextHasMore       bool
@@ -373,15 +392,19 @@ type uiProjectPanelData struct {
 	PlannedHasMore       bool
 }
 
-const uiProjectAllDefaultSort = store.ListIssuesSortUpdated
+const uiIssueListDefaultSort = store.ListIssuesSortUpdated
+const uiProjectAllDefaultSort = uiIssueListDefaultSort
 
-type uiProjectAllQuery struct {
+type uiIssueListQuery struct {
 	Statuses    []model.Status
 	Priorities  []model.IssuePriority
 	Sort        store.ListIssuesSort
+	Direction   store.ListIssuesSortDirection
 	AssigneeIDs []uuid.UUID
 	Cursor      string
 }
+
+type uiProjectAllQuery = uiIssueListQuery
 
 type uiDeletedIssuesPanelData struct {
 	Project model.Project
@@ -488,8 +511,10 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(s.uiAuthMiddleware)
 		r.Get("/", s.uiHome)
-		r.Get("/me", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "me") })
-		r.Get("/me/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "me") })
+		r.Get("/me", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "active") })
+		r.Get("/me/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "active") })
+		r.Get("/me/all", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "all") })
+		r.Get("/me/all/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "all") })
 		r.Get("/projects", s.uiProjectsPage)
 		r.Get("/projects/panel", s.uiProjectsPanel)
 		r.Get("/projects/new", s.uiNewProjectPage)
@@ -837,9 +862,9 @@ func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string) {
-	panel, err := s.uiBuildWorkPanel(r.Context(), currentUser(r), view)
+	panel, err := s.uiBuildWorkPanel(r.Context(), r, currentUser(r), view)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIStoreError(w, err)
 		return
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
@@ -850,15 +875,15 @@ func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string)
 	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
 		User:        currentUser(r),
 		Projects:    projects,
-		CurrentView: view,
+		CurrentView: "me",
 		WorkPanel:   panel,
 	})
 }
 
 func (s *Server) uiWorkPanel(w http.ResponseWriter, r *http.Request, view string) {
-	panel, err := s.uiBuildWorkPanel(r.Context(), currentUser(r), view)
+	panel, err := s.uiBuildWorkPanel(r.Context(), r, currentUser(r), view)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIStoreError(w, err)
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "work-panel", panel)
@@ -3092,20 +3117,31 @@ func (s *Server) uiProjectContextInput(ctx context.Context, projectID uuid.UUID,
 	return contextItem, "", nil
 }
 
-func (s *Server) uiBuildWorkPanel(ctx context.Context, user model.User, view string) (*uiWorkPanelData, error) {
+func (s *Server) uiBuildWorkPanel(ctx context.Context, r *http.Request, user model.User, view string) (*uiWorkPanelData, error) {
 	projects, err := s.uiVisibleProjects(ctx, user)
 	if err != nil {
 		return nil, err
 	}
+	query, err := uiParseIssueListQuery(r)
+	if err != nil {
+		return nil, err
+	}
 	panel := &uiWorkPanelData{
-		View:         view,
-		ProjectCount: len(projects),
+		View:          view,
+		Title:         "Me",
+		ProjectCount:  len(projects),
+		WorkTabs:      uiWorkTabs(view, query),
+		IssueControls: uiWorkIssueControls(view, query),
 	}
 	switch view {
-	case "me":
-		panel.Title = "Me"
+	case "active":
+		panel.Subtitle = "Active sprint issues assigned to you across accessible projects."
+		panel.IssueListLabel = "Active sprint issues"
+		panel.Issues, panel.HasMore, err = s.uiAssignedActiveSprintIssues(ctx, projects, user.ID, query)
+	case "all":
 		panel.Subtitle = "Issues assigned to you across accessible projects."
-		panel.Issues, panel.HasMore, err = s.uiAssignedIssues(ctx, projects, user.ID)
+		panel.IssueListLabel = "All assigned issues"
+		panel.Issues, panel.HasMore, err = s.uiAssignedIssues(ctx, projects, user.ID, query)
 	default:
 		return nil, store.ErrNotFound
 	}
@@ -3142,13 +3178,18 @@ func (s *Server) uiBuildProjectsPanel(ctx context.Context, user model.User) (*ui
 	}, nil
 }
 
-func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project, userID uuid.UUID) ([]uiIssueItem, bool, error) {
+func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project, userID uuid.UUID, query uiIssueListQuery) ([]uiIssueItem, bool, error) {
 	var out []uiIssueItem
 	var hasMore bool
 	for _, project := range projects {
 		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 			ProjectID:        project.ID,
+			Statuses:         query.Statuses,
+			Priorities:       query.Priorities,
+			AssigneeIDs:      []uuid.UUID{userID},
 			Limit:            MaxLimit,
+			Sort:             query.Sort,
+			Direction:        query.Direction,
 			IncludeSubIssues: true,
 		})
 		if err != nil {
@@ -3156,11 +3197,48 @@ func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project,
 		}
 		hasMore = hasMore || more
 		for _, issue := range issues {
-			if issue.AssigneeID != nil && *issue.AssigneeID == userID {
-				out = append(out, uiIssueItem{Issue: issue, Project: project})
-			}
+			out = append(out, uiIssueItem{Issue: issue, Project: project})
 		}
 	}
+	uiSortIssueItems(out, query.Sort, query.Direction)
+	return out, hasMore, nil
+}
+
+func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []model.Project, userID uuid.UUID, query uiIssueListQuery) ([]uiIssueItem, bool, error) {
+	var out []uiIssueItem
+	var hasMore bool
+	for _, project := range projects {
+		activeSprints, _, err := s.store.ListSprints(ctx, store.ListSprintsParams{
+			ProjectID: project.ID,
+			Status:    model.SprintStatusActive,
+			Limit:     1,
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		if len(activeSprints) == 0 {
+			continue
+		}
+		sprint := activeSprints[0]
+		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
+			ProjectID:   project.ID,
+			Statuses:    query.Statuses,
+			Priorities:  query.Priorities,
+			AssigneeIDs: []uuid.UUID{userID},
+			SprintID:    &sprint.ID,
+			Limit:       MaxLimit,
+			Sort:        query.Sort,
+			Direction:   query.Direction,
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		hasMore = hasMore || more
+		for _, issue := range issues {
+			out = append(out, uiIssueItem{Issue: issue, Project: project, Sprint: &sprint})
+		}
+	}
+	uiSortIssueItems(out, query.Sort, query.Direction)
 	return out, hasMore, nil
 }
 
@@ -3177,12 +3255,14 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		return nil, err
 	}
 	var assigneeIDs []uuid.UUID
+	var sprintQuery uiIssueListQuery
 	var allQuery uiProjectAllQuery
 	if view == "sprint" {
-		assigneeIDs, err = uiParseAssigneeFilter(r)
+		sprintQuery, err = uiParseProjectAllQuery(r)
 		if err != nil {
 			return nil, err
 		}
+		assigneeIDs = sprintQuery.AssigneeIDs
 	} else if view == "all" {
 		allQuery, err = uiParseProjectAllQuery(r)
 		if err != nil {
@@ -3214,7 +3294,12 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			panel.ClearAssigneeHXGet = uiProjectAllPanelPath(project, clearAssigneeQuery)
 			panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
 		} else {
-			panel.AssigneeFilters = uiProjectAssigneeFilters(project, view, assignees, assigneeIDs)
+			panel.AssigneeFilters = uiProjectSprintAssigneeFilters(project, assignees, sprintQuery)
+			clearAssigneeQuery := sprintQuery
+			clearAssigneeQuery.AssigneeIDs = nil
+			panel.ClearAssigneeHref = uiProjectSprintViewPath(project, clearAssigneeQuery)
+			panel.ClearAssigneeHXGet = uiProjectSprintPanelPath(project, clearAssigneeQuery)
+			panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
 		}
 	}
 
@@ -3260,15 +3345,20 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.SprintColumns = uiIssueColumns()
+		panel.SprintControls = uiProjectSprintIssueControls(project, sprintQuery, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
 		if len(activeSprints) == 0 {
 			return panel, nil
 		}
 		panel.ActiveSprint = &activeSprints[0]
 		sprintIssues, sprintHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 			ProjectID:   projectID,
+			Statuses:    sprintQuery.Statuses,
+			Priorities:  sprintQuery.Priorities,
 			AssigneeIDs: assigneeIDs,
 			SprintID:    &panel.ActiveSprint.ID,
 			Limit:       MaxLimit,
+			Sort:        sprintQuery.Sort,
+			Direction:   sprintQuery.Direction,
 		})
 		if err != nil {
 			return nil, err
@@ -3317,9 +3407,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		}
 		panel.AllIssues = pageData.Issues
 		panel.AllIssuePage = pageData
-		panel.AllStatusFilters = uiProjectAllStatusFilters(project, allQuery)
-		panel.AllPriorityFilters = uiProjectAllPriorityFilters(project, allQuery)
-		panel.AllSortOptions = uiProjectAllSortOptions(project, allQuery)
+		panel.AllControls = uiProjectAllIssueControls(project, allQuery, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
 	default:
 		return nil, store.ErrNotFound
 	}
@@ -3351,6 +3439,7 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 		Cursor:           cursor,
 		Limit:            DefaultLimit,
 		Sort:             allQuery.Sort,
+		Direction:        allQuery.Direction,
 		IncludeSubIssues: true,
 	})
 	if err != nil {
@@ -3689,6 +3778,37 @@ func uiProjectTabs(project model.Project, view string, assigneeIDs []uuid.UUID) 
 	}
 }
 
+func uiWorkTabs(view string, query uiIssueListQuery) uiTabBarData {
+	return uiTabBarData{
+		Label: "Me views",
+		Items: []uiTabItem{
+			{
+				Label:     "Active Sprints",
+				Icon:      "person-standing",
+				Href:      uiWorkViewPath("active", query),
+				HXGet:     uiWorkPanelPath("active", query),
+				HXTarget:  "#main",
+				HXPushURL: uiWorkViewPath("active", query),
+				Active:    view == "active",
+			},
+			{
+				Label:     "All",
+				Icon:      "list-filter",
+				Href:      uiWorkViewPath("all", query),
+				HXGet:     uiWorkPanelPath("all", query),
+				HXTarget:  "#main",
+				HXPushURL: uiWorkViewPath("all", query),
+				Active:    view == "all",
+			},
+		},
+	}
+}
+
+func uiWorkIssueControls(view string, query uiIssueListQuery) uiIssueControlsData {
+	paths := uiWorkIssueListPaths(view)
+	return uiIssueControls(query, paths)
+}
+
 func uiParseAssigneeFilter(r *http.Request) ([]uuid.UUID, error) {
 	raws := r.URL.Query()["assignee_id"]
 	ids := make([]uuid.UUID, 0, len(raws))
@@ -3739,7 +3859,80 @@ func uiProjectAllAssigneeFilters(project model.Project, assignees []model.Projec
 	return out
 }
 
+func uiProjectSprintAssigneeFilters(project model.Project, assignees []model.ProjectAssignee, query uiIssueListQuery) []uiAssigneeFilterItem {
+	out := make([]uiAssigneeFilterItem, 0, len(assignees))
+	for _, assignee := range assignees {
+		nextQuery := query
+		nextIDs, selected := uiToggleAssigneeIDs(query.AssigneeIDs, assignee.ID)
+		nextQuery.AssigneeIDs = nextIDs
+		out = append(out, uiAssigneeFilterItem{
+			Assignee: assignee,
+			Selected: selected,
+			Href:     uiProjectSprintViewPath(project, nextQuery),
+			HXGet:    uiProjectSprintPanelPath(project, nextQuery),
+			HXPush:   uiProjectSprintViewPath(project, nextQuery),
+		})
+	}
+	return out
+}
+
+type uiIssueListPaths func(uiIssueListQuery) (href, hxGet, hxPush string)
+
+func uiProjectAllIssueListPaths(project model.Project) uiIssueListPaths {
+	return func(query uiIssueListQuery) (string, string, string) {
+		href := uiProjectAllViewPath(project, query)
+		return href, uiProjectAllPanelPath(project, query), href
+	}
+}
+
+func uiProjectSprintIssueListPaths(project model.Project) uiIssueListPaths {
+	return func(query uiIssueListQuery) (string, string, string) {
+		href := uiProjectSprintViewPath(project, query)
+		return href, uiProjectSprintPanelPath(project, query), href
+	}
+}
+
+func uiWorkIssueListPaths(view string) uiIssueListPaths {
+	return func(query uiIssueListQuery) (string, string, string) {
+		href := uiWorkViewPath(view, query)
+		return href, uiWorkPanelPath(view, query), href
+	}
+}
+
+func uiIssueControls(query uiIssueListQuery, paths uiIssueListPaths) uiIssueControlsData {
+	return uiIssueControlsWithAssignees(query, paths, nil, false, "", "", "")
+}
+
+func uiProjectSprintIssueControls(project model.Project, query uiIssueListQuery, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
+	return uiIssueControlsWithAssignees(query, uiProjectSprintIssueListPaths(project), assignees, assigneeActive, clearHref, clearHXGet, clearHXPush)
+}
+
+func uiProjectAllIssueControls(project model.Project, query uiProjectAllQuery, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
+	return uiIssueControlsWithAssignees(query, uiProjectAllIssueListPaths(project), assignees, assigneeActive, clearHref, clearHXGet, clearHXPush)
+}
+
+func uiIssueControlsWithAssignees(query uiIssueListQuery, paths uiIssueListPaths, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
+	return uiIssueControlsData{
+		StatusFilters:        uiIssueStatusFilters(query, paths),
+		PriorityFilters:      uiIssuePriorityFilters(query, paths),
+		SortOptions:          uiIssueSortOptions(query, paths),
+		SortLabel:            uiIssueSortLabel(uiIssueListSort(query)),
+		DirectionOptions:     uiIssueSortDirectionOptions(query, paths),
+		DirectionLabel:       uiIssueSortDirectionLabel(uiIssueListDirection(query)),
+		DirectionIcon:        uiIssueSortDirectionIcon(uiIssueListDirection(query)),
+		AssigneeFilters:      assignees,
+		AssigneeFilterActive: assigneeActive,
+		ClearAssigneeHref:    clearHref,
+		ClearAssigneeHXGet:   clearHXGet,
+		ClearAssigneeHXPush:  clearHXPush,
+	}
+}
+
 func uiProjectAllStatusFilters(project model.Project, query uiProjectAllQuery) []uiProjectStatusFilterItem {
+	return uiIssueStatusFilters(query, uiProjectAllIssueListPaths(project))
+}
+
+func uiIssueStatusFilters(query uiIssueListQuery, paths uiIssueListPaths) []uiProjectStatusFilterItem {
 	options := []struct {
 		Label  string
 		Status model.Status
@@ -3762,11 +3955,13 @@ func uiProjectAllStatusFilters(project model.Project, query uiProjectAllQuery) [
 			nextQuery.Statuses, selected = uiToggleStatuses(query.Statuses, option.Status)
 			active = selected
 		}
+		nextQuery.Cursor = ""
+		href, hxGet, hxPush := paths(nextQuery)
 		out = append(out, uiProjectStatusFilterItem{
 			Label:  option.Label,
-			Href:   uiProjectAllViewPath(project, nextQuery),
-			HXGet:  uiProjectAllPanelPath(project, nextQuery),
-			HXPush: uiProjectAllViewPath(project, nextQuery),
+			Href:   href,
+			HXGet:  hxGet,
+			HXPush: hxPush,
 			Active: active,
 		})
 	}
@@ -3774,6 +3969,10 @@ func uiProjectAllStatusFilters(project model.Project, query uiProjectAllQuery) [
 }
 
 func uiProjectAllPriorityFilters(project model.Project, query uiProjectAllQuery) []uiProjectPriorityFilterItem {
+	return uiIssuePriorityFilters(query, uiProjectAllIssueListPaths(project))
+}
+
+func uiIssuePriorityFilters(query uiIssueListQuery, paths uiIssueListPaths) []uiProjectPriorityFilterItem {
 	options := []struct {
 		Label    string
 		Priority model.IssuePriority
@@ -3797,12 +3996,14 @@ func uiProjectAllPriorityFilters(project model.Project, query uiProjectAllQuery)
 			nextQuery.Priorities, selected = uiTogglePriorities(query.Priorities, option.Priority)
 			active = selected
 		}
+		nextQuery.Cursor = ""
+		href, hxGet, hxPush := paths(nextQuery)
 		out = append(out, uiProjectPriorityFilterItem{
 			Priority: option.Priority,
 			Label:    option.Label,
-			Href:     uiProjectAllViewPath(project, nextQuery),
-			HXGet:    uiProjectAllPanelPath(project, nextQuery),
-			HXPush:   uiProjectAllViewPath(project, nextQuery),
+			Href:     href,
+			HXGet:    hxGet,
+			HXPush:   hxPush,
 			Active:   active,
 		})
 	}
@@ -3810,10 +4011,11 @@ func uiProjectAllPriorityFilters(project model.Project, query uiProjectAllQuery)
 }
 
 func uiProjectAllSortOptions(project model.Project, query uiProjectAllQuery) []uiProjectSortOptionItem {
-	currentSort := query.Sort
-	if currentSort == "" {
-		currentSort = uiProjectAllDefaultSort
-	}
+	return uiIssueSortOptions(query, uiProjectAllIssueListPaths(project))
+}
+
+func uiIssueSortOptions(query uiIssueListQuery, paths uiIssueListPaths) []uiProjectSortOptionItem {
+	currentSort := uiIssueListSort(query)
 	options := []struct {
 		Label string
 		Sort  store.ListIssuesSort
@@ -3822,20 +4024,129 @@ func uiProjectAllSortOptions(project model.Project, query uiProjectAllQuery) []u
 		{Label: "Created", Sort: store.ListIssuesSortCreated},
 		{Label: "Status", Sort: store.ListIssuesSortStatus},
 		{Label: "Priority", Sort: store.ListIssuesSortPriority},
+		{Label: "Due date", Sort: store.ListIssuesSortDueDate},
 	}
 	out := make([]uiProjectSortOptionItem, 0, len(options))
 	for _, option := range options {
 		nextQuery := query
 		nextQuery.Sort = option.Sort
+		nextQuery.Direction = uiDefaultIssueSortDirection(option.Sort)
+		nextQuery.Cursor = ""
+		href, hxGet, hxPush := paths(nextQuery)
 		out = append(out, uiProjectSortOptionItem{
 			Label:  option.Label,
-			Href:   uiProjectAllViewPath(project, nextQuery),
-			HXGet:  uiProjectAllPanelPath(project, nextQuery),
-			HXPush: uiProjectAllViewPath(project, nextQuery),
+			Href:   href,
+			HXGet:  hxGet,
+			HXPush: hxPush,
 			Active: currentSort == option.Sort,
 		})
 	}
 	return out
+}
+
+func uiIssueSortDirectionOptions(query uiIssueListQuery, paths uiIssueListPaths) []uiProjectSortOptionItem {
+	currentDirection := uiIssueListDirection(query)
+	options := []struct {
+		Label     string
+		Icon      string
+		Direction store.ListIssuesSortDirection
+	}{
+		{Label: "Asc", Icon: "arrow-up", Direction: store.ListIssuesSortAscending},
+		{Label: "Desc", Icon: "arrow-down", Direction: store.ListIssuesSortDescending},
+	}
+	out := make([]uiProjectSortOptionItem, 0, len(options))
+	for _, option := range options {
+		nextQuery := query
+		nextQuery.Direction = option.Direction
+		nextQuery.Cursor = ""
+		href, hxGet, hxPush := paths(nextQuery)
+		out = append(out, uiProjectSortOptionItem{
+			Label:  option.Label,
+			Icon:   option.Icon,
+			Href:   href,
+			HXGet:  hxGet,
+			HXPush: hxPush,
+			Active: currentDirection == option.Direction,
+		})
+	}
+	return out
+}
+
+func uiIssueListSort(query uiIssueListQuery) store.ListIssuesSort {
+	if query.Sort == "" {
+		return uiIssueListDefaultSort
+	}
+	return query.Sort
+}
+
+func uiIssueListDirection(query uiIssueListQuery) store.ListIssuesSortDirection {
+	if query.Direction != "" {
+		return query.Direction
+	}
+	return uiDefaultIssueSortDirection(uiIssueListSort(query))
+}
+
+func uiDefaultIssueSortDirection(sort store.ListIssuesSort) store.ListIssuesSortDirection {
+	switch sort {
+	case store.ListIssuesSortCreated, store.ListIssuesSortUpdated:
+		return store.ListIssuesSortDescending
+	default:
+		return store.ListIssuesSortAscending
+	}
+}
+
+func uiIssueSortLabel(sort store.ListIssuesSort) string {
+	switch sort {
+	case store.ListIssuesSortCreated:
+		return "Created"
+	case store.ListIssuesSortStatus:
+		return "Status"
+	case store.ListIssuesSortPriority:
+		return "Priority"
+	case store.ListIssuesSortDueDate:
+		return "Due date"
+	default:
+		return "Updated"
+	}
+}
+
+func uiIssueSortDirectionLabel(direction store.ListIssuesSortDirection) string {
+	if direction == store.ListIssuesSortAscending {
+		return "Asc"
+	}
+	return "Desc"
+}
+
+func uiIssueSortDirectionIcon(direction store.ListIssuesSortDirection) string {
+	if direction == store.ListIssuesSortAscending {
+		return "arrow-up"
+	}
+	return "arrow-down"
+}
+
+func uiParseIssueListQuery(r *http.Request) (uiIssueListQuery, error) {
+	statuses, err := uiParseProjectIssueStatusFilters(r)
+	if err != nil {
+		return uiIssueListQuery{}, err
+	}
+	priorities, err := uiParseProjectIssuePriorityFilters(r)
+	if err != nil {
+		return uiIssueListQuery{}, err
+	}
+	sort, err := uiParseProjectIssueSort(r)
+	if err != nil {
+		return uiIssueListQuery{}, err
+	}
+	direction, err := uiParseProjectIssueSortDirection(r, sort)
+	if err != nil {
+		return uiIssueListQuery{}, err
+	}
+	return uiIssueListQuery{
+		Statuses:   statuses,
+		Priorities: priorities,
+		Sort:       sort,
+		Direction:  direction,
+	}, nil
 }
 
 func uiParseProjectAllQuery(r *http.Request) (uiProjectAllQuery, error) {
@@ -3843,24 +4154,12 @@ func uiParseProjectAllQuery(r *http.Request) (uiProjectAllQuery, error) {
 	if err != nil {
 		return uiProjectAllQuery{}, err
 	}
-	statuses, err := uiParseProjectIssueStatusFilters(r)
+	query, err := uiParseIssueListQuery(r)
 	if err != nil {
 		return uiProjectAllQuery{}, err
 	}
-	priorities, err := uiParseProjectIssuePriorityFilters(r)
-	if err != nil {
-		return uiProjectAllQuery{}, err
-	}
-	sort, err := uiParseProjectIssueSort(r)
-	if err != nil {
-		return uiProjectAllQuery{}, err
-	}
-	return uiProjectAllQuery{
-		Statuses:    statuses,
-		Priorities:  priorities,
-		Sort:        sort,
-		AssigneeIDs: assigneeIDs,
-	}, nil
+	query.AssigneeIDs = assigneeIDs
+	return query, nil
 }
 
 func uiParseProjectIssueStatusFilters(r *http.Request) ([]model.Status, error) {
@@ -3908,13 +4207,164 @@ func uiParseProjectIssuePriorityFilters(r *http.Request) ([]model.IssuePriority,
 func uiParseProjectIssueSort(r *http.Request) (store.ListIssuesSort, error) {
 	sort := store.ListIssuesSort(strings.TrimSpace(r.URL.Query().Get("sort")))
 	if sort == "" {
-		return uiProjectAllDefaultSort, nil
+		return uiIssueListDefaultSort, nil
 	}
 	switch sort {
-	case store.ListIssuesSortCreated, store.ListIssuesSortUpdated, store.ListIssuesSortStatus, store.ListIssuesSortPriority:
+	case store.ListIssuesSortCreated, store.ListIssuesSortUpdated, store.ListIssuesSortStatus, store.ListIssuesSortPriority, store.ListIssuesSortDueDate:
 		return sort, nil
 	default:
 		return "", fmt.Errorf("invalid sort: %w", errUIBadRequest)
+	}
+}
+
+func uiParseProjectIssueSortDirection(r *http.Request, sort store.ListIssuesSort) (store.ListIssuesSortDirection, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get("direction"))
+	if raw == "" {
+		return uiDefaultIssueSortDirection(sort), nil
+	}
+	direction := store.ListIssuesSortDirection(raw)
+	switch direction {
+	case store.ListIssuesSortAscending, store.ListIssuesSortDescending:
+		return direction, nil
+	default:
+		return "", fmt.Errorf("invalid direction: %w", errUIBadRequest)
+	}
+}
+
+func uiSortIssueItems(items []uiIssueItem, sortBy store.ListIssuesSort, direction store.ListIssuesSortDirection) {
+	currentSort := sortBy
+	if currentSort == "" {
+		currentSort = uiIssueListDefaultSort
+	}
+	currentDirection := direction
+	if currentDirection == "" {
+		currentDirection = uiDefaultIssueSortDirection(currentSort)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return uiIssueItemLess(items[i], items[j], currentSort, currentDirection)
+	})
+}
+
+func uiIssueItemLess(a, b uiIssueItem, sortBy store.ListIssuesSort, direction store.ListIssuesSortDirection) bool {
+	switch sortBy {
+	case store.ListIssuesSortCreated:
+		if !a.Issue.CreatedAt.Equal(b.Issue.CreatedAt) {
+			if direction == store.ListIssuesSortAscending {
+				return a.Issue.CreatedAt.Before(b.Issue.CreatedAt)
+			}
+			return a.Issue.CreatedAt.After(b.Issue.CreatedAt)
+		}
+	case store.ListIssuesSortUpdated:
+		if !a.Issue.UpdatedAt.Equal(b.Issue.UpdatedAt) {
+			if direction == store.ListIssuesSortAscending {
+				return a.Issue.UpdatedAt.Before(b.Issue.UpdatedAt)
+			}
+			return a.Issue.UpdatedAt.After(b.Issue.UpdatedAt)
+		}
+	case store.ListIssuesSortStatus:
+		aRank := uiIssueStatusSortRank(a.Issue.Status)
+		bRank := uiIssueStatusSortRank(b.Issue.Status)
+		if aRank != bRank {
+			if direction == store.ListIssuesSortDescending {
+				return aRank > bRank
+			}
+			return aRank < bRank
+		}
+	case store.ListIssuesSortPriority:
+		aRank := uiIssuePrioritySortRank(a.Issue.Priority)
+		bRank := uiIssuePrioritySortRank(b.Issue.Priority)
+		if aRank != bRank {
+			if direction == store.ListIssuesSortDescending {
+				return aRank > bRank
+			}
+			return aRank < bRank
+		}
+	case store.ListIssuesSortDueDate:
+		if less, ok := uiIssueDueDateLess(a.Issue.DueDate, b.Issue.DueDate, direction); ok {
+			return less
+		}
+	}
+	return uiIssueItemTieLess(a, b)
+}
+
+func uiIssueDueDateLess(a, b *model.Date, direction store.ListIssuesSortDirection) (bool, bool) {
+	switch {
+	case a == nil && b == nil:
+		return false, false
+	case a == nil:
+		return false, true
+	case b == nil:
+		return true, true
+	}
+	aTime := a.Time()
+	bTime := b.Time()
+	if aTime.Equal(bTime) {
+		return false, false
+	}
+	if direction == store.ListIssuesSortAscending {
+		return aTime.Before(bTime), true
+	}
+	return aTime.After(bTime), true
+}
+
+func uiIssueItemTieLess(a, b uiIssueItem) bool {
+	aOwner := a.Project.OwnerUsername
+	if aOwner == "" {
+		aOwner = a.Issue.OwnerUsername
+	}
+	bOwner := b.Project.OwnerUsername
+	if bOwner == "" {
+		bOwner = b.Issue.OwnerUsername
+	}
+	if aOwner != bOwner {
+		return aOwner < bOwner
+	}
+	aKey := a.Project.Key
+	if aKey == "" {
+		aKey = a.Issue.ProjectKey
+	}
+	bKey := b.Project.Key
+	if bKey == "" {
+		bKey = b.Issue.ProjectKey
+	}
+	if aKey != bKey {
+		return aKey < bKey
+	}
+	if a.Issue.Number != b.Issue.Number {
+		return a.Issue.Number < b.Issue.Number
+	}
+	return a.Issue.ID.String() < b.Issue.ID.String()
+}
+
+func uiIssueStatusSortRank(status model.Status) int {
+	switch status {
+	case model.StatusTodo:
+		return 0
+	case model.StatusInProgress:
+		return 1
+	case model.StatusDone:
+		return 2
+	case model.StatusClosed:
+		return 3
+	default:
+		return 4
+	}
+}
+
+func uiIssuePrioritySortRank(priority model.IssuePriority) int {
+	switch priority {
+	case model.PriorityP0:
+		return 0
+	case model.PriorityP1:
+		return 1
+	case model.PriorityP2:
+		return 2
+	case model.PriorityP3:
+		return 3
+	case model.PriorityP4:
+		return 4
+	default:
+		return 5
 	}
 }
 
@@ -4009,16 +4459,42 @@ func uiProjectAllIssueCursor(issue model.Issue, sort store.ListIssuesSort) store
 		cursor.Status = issue.Status
 	case store.ListIssuesSortPriority:
 		cursor.Priority = issue.Priority
+	case store.ListIssuesSortDueDate:
+		cursor.DueDate = issue.DueDate
 	}
 	return cursor
+}
+
+func uiWorkViewPath(view string, query uiIssueListQuery) string {
+	path := "/me"
+	if view == "all" {
+		path = "/me/all"
+	}
+	return uiIssueListPath(path, query, false)
+}
+
+func uiWorkPanelPath(view string, query uiIssueListQuery) string {
+	path := "/me/panel"
+	if view == "all" {
+		path = "/me/all/panel"
+	}
+	return uiIssueListPath(path, query, false)
 }
 
 func uiProjectAllViewPath(project model.Project, query uiProjectAllQuery) string {
 	return uiProjectAllPath(uiProjectPath(project)+"/all", query)
 }
 
+func uiProjectSprintViewPath(project model.Project, query uiIssueListQuery) string {
+	return uiIssueListPath(uiProjectPath(project)+"/sprint", query, true)
+}
+
 func uiProjectAllPanelPath(project model.Project, query uiProjectAllQuery) string {
 	return uiProjectAllPath(uiProjectPath(project)+"/all/panel", query)
+}
+
+func uiProjectSprintPanelPath(project model.Project, query uiIssueListQuery) string {
+	return uiIssueListPath(uiProjectPath(project)+"/sprint/panel", query, true)
 }
 
 func uiProjectAllPagePath(project model.Project, query uiProjectAllQuery) string {
@@ -4026,6 +4502,10 @@ func uiProjectAllPagePath(project model.Project, query uiProjectAllQuery) string
 }
 
 func uiProjectAllPath(path string, query uiProjectAllQuery) string {
+	return uiIssueListPath(path, query, true)
+}
+
+func uiIssueListPath(path string, query uiIssueListQuery, includeAssignees bool) string {
 	values := url.Values{}
 	for _, status := range query.Statuses {
 		values.Add("status", string(status))
@@ -4033,11 +4513,18 @@ func uiProjectAllPath(path string, query uiProjectAllQuery) string {
 	for _, priority := range query.Priorities {
 		values.Add("priority", string(priority))
 	}
-	if query.Sort != "" && query.Sort != uiProjectAllDefaultSort {
-		values.Set("sort", string(query.Sort))
+	sortBy := uiIssueListSort(query)
+	if sortBy != uiIssueListDefaultSort {
+		values.Set("sort", string(sortBy))
 	}
-	for _, id := range query.AssigneeIDs {
-		values.Add("assignee_id", id.String())
+	direction := uiIssueListDirection(query)
+	if direction != uiDefaultIssueSortDirection(sortBy) {
+		values.Set("direction", string(direction))
+	}
+	if includeAssignees {
+		for _, id := range query.AssigneeIDs {
+			values.Add("assignee_id", id.String())
+		}
 	}
 	if query.Cursor != "" {
 		values.Set("cursor", query.Cursor)
@@ -4594,7 +5081,7 @@ func safeUINext(raw string) string {
 	}
 	path, _, _ := strings.Cut(raw, "?")
 	switch {
-	case path == "/", path == "/me", path == "/me/panel", path == "/projects", path == "/projects/panel", path == "/projects/new", path == "/projects/new/panel", path == "/settings", path == "/tokens":
+	case path == "/", path == "/me", path == "/me/panel", path == "/me/all", path == "/me/all/panel", path == "/projects", path == "/projects/panel", path == "/projects/new", path == "/projects/new/panel", path == "/settings", path == "/tokens":
 		return raw
 	case safeUIIssuePath(path):
 		return raw

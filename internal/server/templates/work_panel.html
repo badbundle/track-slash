@@ -8,25 +8,19 @@
       </div>
       <div class="text-xs text-slate-500 dark:text-slate-400">{{.ProjectCount}} projects</div>
     </div>
+    {{template "tab-bar" .WorkTabs}}
   </header>
 
-  {{if eq .View "sprint"}}
-  <section class="grid gap-4 py-6 lg:grid-cols-3">
-    {{range .Columns}}
-    <div class="min-w-0">
-      <div class="mb-3 flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{.Label}}</h2>
-        <span class="rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Issues}}</span>
-      </div>
-      {{template "issue-card-list" .Issues}}
-    </div>
-    {{end}}
-  </section>
-  {{else}}
   <section class="py-6">
+    {{template "issue-list-controls" .IssueControls}}
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{.IssueListLabel}}</h2>
+        {{template "count-badge" (len .Issues)}}
+      </div>
+    </div>
     {{template "issue-row-list" .Issues}}
   </section>
-  {{end}}
 
   {{if .HasMore}}<div class="border-t border-slate-200 pt-4 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">Showing first 200 per project.</div>{{end}}
 </section>

@@ -709,20 +709,94 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-work")
-	assigned, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+
+	activeSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Personal Active Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint active: %v", err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, activeSprint.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("UpdateSprint active: %v", err)
+	}
+	plannedSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Personal Planned Sprint",
+		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint planned: %v", err)
+	}
+
+	activeTodoP0, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
 		ProjectID:  e.projectID,
-		Title:      "assigned to current user",
+		Title:      "active assigned todo p0",
+		Priority:   model.PriorityP0,
 		AssigneeID: &user.ID,
 	})
 	if err != nil {
-		t.Fatalf("CreateIssue assigned: %v", err)
+		t.Fatalf("CreateIssue active todo: %v", err)
 	}
-	if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "not assigned to current user"}); err != nil {
-		t.Fatalf("CreateIssue unassigned: %v", err)
+	if _, err := e.store.UpdateIssue(e.ctx, activeTodoP0.ID, store.UpdateIssueParams{SprintID: &activeSprint.ID}); err != nil {
+		t.Fatalf("assign active todo: %v", err)
+	}
+	activeDoneP1, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "active assigned done p1",
+		Priority:   model.PriorityP1,
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue active done: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, activeDoneP1.ID, store.UpdateIssueParams{SprintID: &activeSprint.ID}); err != nil {
+		t.Fatalf("assign active done: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, activeDoneP1.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("set active done: %v", err)
+	}
+	activeUnassigned, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "active unassigned issue",
+		Priority:  model.PriorityP0,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue active unassigned: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, activeUnassigned.ID, store.UpdateIssueParams{SprintID: &activeSprint.ID}); err != nil {
+		t.Fatalf("assign active unassigned: %v", err)
+	}
+	plannedAssigned, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "planned assigned issue",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue planned assigned: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, plannedAssigned.ID, store.UpdateIssueParams{SprintID: &plannedSprint.ID}); err != nil {
+		t.Fatalf("assign planned: %v", err)
+	}
+	backlogAssigned, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  e.projectID,
+		Title:      "backlog assigned issue",
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue backlog assigned: %v", err)
 	}
 	parent, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "parent with child"})
 	if err != nil {
 		t.Fatalf("CreateIssue parent: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, parent.ID, store.UpdateIssueParams{SprintID: &activeSprint.ID}); err != nil {
+		t.Fatalf("assign parent active: %v", err)
 	}
 	child, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{
 		ParentIssueID: parent.ID,
@@ -732,16 +806,87 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSubIssue assigned child: %v", err)
 	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other Personal Project", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	if _, err := e.store.GrantProjectAccess(e.ctx, otherProject.ID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess other: %v", err)
+	}
+	otherActive, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: otherProject.ID,
+		Name:      "Other Active Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint other active: %v", err)
+	}
+	if _, err := e.store.UpdateSprint(e.ctx, otherActive.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("UpdateSprint other active: %v", err)
+	}
+	otherP0, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID:  otherProject.ID,
+		Title:      "other project active p0",
+		Priority:   model.PriorityP0,
+		AssigneeID: &user.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue other active: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, otherP0.ID, store.UpdateIssueParams{SprintID: &otherActive.ID}); err != nil {
+		t.Fatalf("assign other active: %v", err)
+	}
 
 	meBody := e.uiGet(t, "/me", token)
-	if !strings.Contains(meBody, assigned.Title) {
-		t.Fatalf("me body missing assigned issue: %s", meBody)
+	for _, want := range []string{"Active Sprints", "All", "Issue controls", "active assigned todo p0", "active assigned done p1", "other project active p0"} {
+		if !strings.Contains(meBody, want) {
+			t.Fatalf("me body missing %q: %s", want, meBody)
+		}
 	}
-	if !strings.Contains(meBody, child.Title) {
-		t.Fatalf("me body missing assigned sub-issue: %s", meBody)
+	for _, notWant := range []string{activeUnassigned.Title, plannedAssigned.Title, backlogAssigned.Title, child.Title} {
+		if strings.Contains(meBody, notWant) {
+			t.Fatalf("me body included %q: %s", notWant, meBody)
+		}
 	}
-	if strings.Contains(meBody, "not assigned to current user") {
-		t.Fatalf("me body included unassigned issue: %s", meBody)
+
+	allBody := e.uiGet(t, "/me/all", token)
+	for _, want := range []string{"All assigned issues", activeTodoP0.Title, activeDoneP1.Title, plannedAssigned.Title, backlogAssigned.Title, child.Title, otherP0.Title} {
+		if !strings.Contains(allBody, want) {
+			t.Fatalf("me all body missing %q: %s", want, allBody)
+		}
+	}
+	if strings.Contains(allBody, activeUnassigned.Title) {
+		t.Fatalf("me all body included unassigned issue: %s", allBody)
+	}
+
+	filteredActive := e.uiGet(t, "/me?status=done&priority=P1", token)
+	if !strings.Contains(filteredActive, "active assigned done p1") {
+		t.Fatalf("filtered active missing done p1: %s", filteredActive)
+	}
+	for _, notWant := range []string{activeTodoP0.Title, otherP0.Title, plannedAssigned.Title} {
+		if strings.Contains(filteredActive, notWant) {
+			t.Fatalf("filtered active included %q: %s", notWant, filteredActive)
+		}
+	}
+
+	filteredAll := e.uiGet(t, "/me/all?status=todo&priority=P0", token)
+	for _, want := range []string{activeTodoP0.Title, otherP0.Title} {
+		if !strings.Contains(filteredAll, want) {
+			t.Fatalf("filtered all missing %q: %s", want, filteredAll)
+		}
+	}
+	for _, notWant := range []string{activeDoneP1.Title, plannedAssigned.Title, backlogAssigned.Title, child.Title} {
+		if strings.Contains(filteredAll, notWant) {
+			t.Fatalf("filtered all included %q: %s", notWant, filteredAll)
+		}
+	}
+
+	priorityBody := e.uiGet(t, "/me?sort=priority", token)
+	otherIdx := strings.Index(priorityBody, "other project active p0")
+	doneIdx := strings.Index(priorityBody, "active assigned done p1")
+	if otherIdx < 0 || doneIdx < 0 || otherIdx > doneIdx {
+		t.Fatalf("priority sort order wrong: other=%d done=%d body=%s", otherIdx, doneIdx, priorityBody)
 	}
 }
 
@@ -763,11 +908,23 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	if _, err := e.store.UpdateSprint(e.ctx, sp.ID, store.UpdateSprintParams{Status: &active}); err != nil {
 		t.Fatalf("UpdateSprint active: %v", err)
 	}
-	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board todo issue"})
+	earlyDue, err := model.ParseDate("2099-06-24")
+	if err != nil {
+		t.Fatalf("ParseDate early: %v", err)
+	}
+	lateDue, err := model.ParseDate("2099-06-26")
+	if err != nil {
+		t.Fatalf("ParseDate late: %v", err)
+	}
+	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board todo issue", DueDate: &earlyDue})
 	if err != nil {
 		t.Fatalf("CreateIssue todo: %v", err)
 	}
-	inProgress, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board progress issue"})
+	laterTodo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board later todo issue", Priority: model.PriorityP1, DueDate: &lateDue})
+	if err != nil {
+		t.Fatalf("CreateIssue later todo: %v", err)
+	}
+	inProgress, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board progress issue", Priority: model.PriorityP0})
 	if err != nil {
 		t.Fatalf("CreateIssue progress: %v", err)
 	}
@@ -777,6 +934,9 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	}
 	if _, err := e.store.UpdateIssue(e.ctx, todo.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
 		t.Fatalf("assign todo: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, laterTodo.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
+		t.Fatalf("assign later todo: %v", err)
 	}
 	inProgressStatus := model.StatusInProgress
 	if _, err := e.store.UpdateIssue(e.ctx, inProgress.ID, store.UpdateIssueParams{SprintID: &sp.ID, Status: &inProgressStatus}); err != nil {
@@ -818,13 +978,30 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
-	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Assignee filter"`} {
+	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board later todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Issue controls"`, "Status", "Priority", "Sort", "Direction", "Due date", "Asc", "Desc", `data-lucide="arrow-up"`, `data-lucide="arrow-down"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}
 	}
 	if strings.Contains(body, "other project sprint issue") || strings.Contains(body, "Active sprint issues across accessible projects.") {
 		t.Fatalf("sprint body included wrong scope/copy: %s", body)
+	}
+
+	filteredBody := e.uiGet(t, e.projectPath()+"/sprint?status=in_progress&priority=P0", token)
+	if !strings.Contains(filteredBody, "board progress issue") {
+		t.Fatalf("filtered sprint missing progress issue: %s", filteredBody)
+	}
+	for _, notWant := range []string{"board todo issue", "board later todo issue", "board closed issue"} {
+		if strings.Contains(filteredBody, notWant) {
+			t.Fatalf("filtered sprint included %q: %s", notWant, filteredBody)
+		}
+	}
+
+	dueDescBody := e.uiGet(t, e.projectPath()+"/sprint?sort=due&direction=desc", token)
+	laterIdx := strings.Index(dueDescBody, "board later todo issue")
+	earlyIdx := strings.Index(dueDescBody, "board todo issue")
+	if laterIdx < 0 || earlyIdx < 0 || laterIdx > earlyIdx {
+		t.Fatalf("due desc sprint order wrong: later=%d early=%d body=%s", laterIdx, earlyIdx, dueDescBody)
 	}
 }
 
@@ -892,7 +1069,7 @@ func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 	aliceQuery := "?assignee_id=" + alice.ID.String()
 	body := e.uiGet(t, e.projectPath()+"/sprint"+aliceQuery, token)
 	for _, want := range []string{
-		`aria-label="Assignee filter"`,
+		`aria-label="Issue controls"`,
 		`aria-label="Toggle Alice Filter"`,
 		`aria-label="Toggle Bob Filter"`,
 		`aria-pressed="true"`,
@@ -3222,11 +3399,27 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
+	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Linked Active Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, sp.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("UpdateSprint active: %v", err)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
+		t.Fatalf("assign sprint: %v", err)
+	}
 	wantHref := `href="` + e.issuePath(issue) + `"`
 	wantHXGet := `hx-get="` + e.issuePath(issue) + `/panel"`
 	wantHXPush := `hx-push-url="` + e.issuePath(issue) + `"`
 
-	for _, path := range []string{e.projectPath() + "/all", "/me"} {
+	for _, path := range []string{e.projectPath() + "/all", "/me", "/me/all"} {
 		body := e.uiGet(t, path, token)
 		for _, want := range []string{wantHref, wantHXGet, wantHXPush, `data-main-view="projects"`} {
 			if !strings.Contains(body, want) {
