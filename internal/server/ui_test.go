@@ -342,7 +342,7 @@ func TestUIParseProjectAllQuery(t *testing.T) {
 	t.Parallel()
 
 	assigneeID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
-	req := httptest.NewRequest("GET", "/all?status=todo&status=done&status=todo&priority=P0&priority=P0&sort=status&assignee_id="+assigneeID.String(), nil)
+	req := httptest.NewRequest("GET", "/all?status=todo&status=done&status=todo&priority=P0&priority=P0&sort=status&direction=desc&assignee_id="+assigneeID.String(), nil)
 	got, err := uiParseProjectAllQuery(req)
 	if err != nil {
 		t.Fatalf("uiParseProjectAllQuery: %v", err)
@@ -356,6 +356,9 @@ func TestUIParseProjectAllQuery(t *testing.T) {
 	if got.Sort != store.ListIssuesSortStatus {
 		t.Fatalf("sort = %q, want status", got.Sort)
 	}
+	if got.Direction != store.ListIssuesSortDescending {
+		t.Fatalf("direction = %q, want desc", got.Direction)
+	}
 	if len(got.AssigneeIDs) != 1 || got.AssigneeIDs[0] != assigneeID {
 		t.Fatalf("assignees = %+v, want %s", got.AssigneeIDs, assigneeID)
 	}
@@ -368,13 +371,216 @@ func TestUIParseProjectAllQuery(t *testing.T) {
 	if got.Sort != store.ListIssuesSortUpdated {
 		t.Fatalf("default sort = %q, want updated", got.Sort)
 	}
+	if got.Direction != store.ListIssuesSortDescending {
+		t.Fatalf("default direction = %q, want desc", got.Direction)
+	}
 
-	for _, path := range []string{"/all?status=blocked", "/all?priority=P9", "/all?sort=number"} {
+	for _, path := range []string{"/all?status=blocked", "/all?priority=P9", "/all?sort=number", "/all?direction=sideways"} {
 		req := httptest.NewRequest("GET", path, nil)
 		if _, err := uiParseProjectAllQuery(req); err == nil {
 			t.Fatalf("uiParseProjectAllQuery(%s) err = nil, want error", path)
 		}
 	}
+}
+
+func TestUIParseIssueListQuery(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest("GET", "/me?status=todo&status=done&status=todo&priority=P0&priority=P0&sort=due&direction=asc", nil)
+	got, err := uiParseIssueListQuery(req)
+	if err != nil {
+		t.Fatalf("uiParseIssueListQuery: %v", err)
+	}
+	if len(got.Statuses) != 2 || got.Statuses[0] != model.StatusTodo || got.Statuses[1] != model.StatusDone {
+		t.Fatalf("statuses = %+v, want todo/done", got.Statuses)
+	}
+	if len(got.Priorities) != 1 || got.Priorities[0] != model.PriorityP0 {
+		t.Fatalf("priorities = %+v, want P0", got.Priorities)
+	}
+	if got.Sort != store.ListIssuesSortDueDate {
+		t.Fatalf("sort = %q, want due", got.Sort)
+	}
+	if got.Direction != store.ListIssuesSortAscending {
+		t.Fatalf("direction = %q, want asc", got.Direction)
+	}
+	if got.AssigneeIDs != nil {
+		t.Fatalf("assignees = %+v, want nil", got.AssigneeIDs)
+	}
+
+	req = httptest.NewRequest("GET", "/me", nil)
+	got, err = uiParseIssueListQuery(req)
+	if err != nil {
+		t.Fatalf("uiParseIssueListQuery default: %v", err)
+	}
+	if got.Sort != store.ListIssuesSortUpdated {
+		t.Fatalf("default sort = %q, want updated", got.Sort)
+	}
+	if got.Direction != store.ListIssuesSortDescending {
+		t.Fatalf("default direction = %q, want desc", got.Direction)
+	}
+
+	for _, path := range []string{"/me?status=blocked", "/me?priority=P9", "/me?sort=number", "/me?direction=sideways"} {
+		req := httptest.NewRequest("GET", path, nil)
+		if _, err := uiParseIssueListQuery(req); err == nil {
+			t.Fatalf("uiParseIssueListQuery(%s) err = nil, want error", path)
+		}
+	}
+}
+
+func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	query := uiIssueListQuery{
+		Statuses:   []model.Status{model.StatusDone},
+		Priorities: []model.IssuePriority{model.PriorityP0},
+		Sort:       store.ListIssuesSortPriority,
+	}
+	issue := model.Issue{
+		ID:            uuid.MustParse("138095fe-77d7-4644-b127-d0b995757ff2"),
+		ProjectID:     projectID,
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Number:        12,
+		Identifier:    "TRACK-12",
+		Title:         "Done active issue",
+		Status:        model.StatusDone,
+		Priority:      model.PriorityP0,
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "work-panel", &uiWorkPanelData{
+		View:           "active",
+		Title:          "Me",
+		Subtitle:       "Active sprint issues assigned to you across accessible projects.",
+		IssueListLabel: "Active sprint issues",
+		ProjectCount:   1,
+		WorkTabs:       uiWorkTabs("active", query),
+		IssueControls:  uiWorkIssueControls("active", query),
+		Issues:         []uiIssueItem{{Issue: issue, Project: project}},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"Active Sprints",
+		"All",
+		`aria-label="Me views"`,
+		`aria-label="Issue controls"`,
+		"Status",
+		"Priority",
+		"Sort",
+		"Direction",
+		"Asc",
+		`data-lucide="arrow-up"`,
+		"Due date",
+		"Done",
+		`aria-label="Priority P0"`,
+		`href="/me/all?priority=P0&amp;sort=priority&amp;status=done"`,
+		`hx-get="/me/all/panel?priority=P0&amp;sort=priority&amp;status=done"`,
+		`href="/me?priority=P0&amp;sort=priority&amp;status=done"`,
+		`hx-get="/me/panel?priority=P0&amp;sort=priority&amp;status=done"`,
+		`aria-current="page"`,
+		`aria-pressed="true"`,
+		"Active sprint issues",
+		"Done active issue",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("work panel missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Assignee") || strings.Contains(body, "Anyone") {
+		t.Fatalf("work panel rendered assignee controls: %s", body)
+	}
+}
+
+func TestUISortIssueItems(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	earlyDue, err := model.ParseDate("2026-06-18")
+	if err != nil {
+		t.Fatalf("ParseDate early: %v", err)
+	}
+	midDue, err := model.ParseDate("2026-06-20")
+	if err != nil {
+		t.Fatalf("ParseDate mid: %v", err)
+	}
+	lateDue, err := model.ParseDate("2026-06-22")
+	if err != nil {
+		t.Fatalf("ParseDate late: %v", err)
+	}
+	items := []uiIssueItem{
+		sortTestIssue("todo p3 older", "ALPHA", 2, model.StatusTodo, model.PriorityP3, base, base.Add(2*time.Hour)),
+		sortTestIssue("done p0 newest", "BETA", 1, model.StatusDone, model.PriorityP0, base.Add(2*time.Hour), base.Add(4*time.Hour)),
+		sortTestIssue("progress p1", "ALPHA", 1, model.StatusInProgress, model.PriorityP1, base.Add(time.Hour), base.Add(3*time.Hour)),
+		sortTestIssue("closed p4", "GAMMA", 1, model.StatusClosed, model.PriorityP4, base.Add(3*time.Hour), base.Add(time.Hour)),
+	}
+	items[0].Issue.DueDate = &midDue
+	items[2].Issue.DueDate = &earlyDue
+	items[3].Issue.DueDate = &lateDue
+
+	cases := []struct {
+		name      string
+		sort      store.ListIssuesSort
+		direction store.ListIssuesSortDirection
+		want      []string
+	}{
+		{name: "updated", sort: store.ListIssuesSortUpdated, want: []string{"done p0 newest", "progress p1", "todo p3 older", "closed p4"}},
+		{name: "updated asc", sort: store.ListIssuesSortUpdated, direction: store.ListIssuesSortAscending, want: []string{"closed p4", "todo p3 older", "progress p1", "done p0 newest"}},
+		{name: "created", sort: store.ListIssuesSortCreated, want: []string{"closed p4", "done p0 newest", "progress p1", "todo p3 older"}},
+		{name: "status", sort: store.ListIssuesSortStatus, want: []string{"todo p3 older", "progress p1", "done p0 newest", "closed p4"}},
+		{name: "priority", sort: store.ListIssuesSortPriority, want: []string{"done p0 newest", "progress p1", "todo p3 older", "closed p4"}},
+		{name: "priority desc", sort: store.ListIssuesSortPriority, direction: store.ListIssuesSortDescending, want: []string{"closed p4", "todo p3 older", "progress p1", "done p0 newest"}},
+		{name: "due", sort: store.ListIssuesSortDueDate, want: []string{"progress p1", "todo p3 older", "closed p4", "done p0 newest"}},
+		{name: "due desc", sort: store.ListIssuesSortDueDate, direction: store.ListIssuesSortDescending, want: []string{"closed p4", "todo p3 older", "progress p1", "done p0 newest"}},
+	}
+	for _, tt := range cases {
+		got := append([]uiIssueItem(nil), items...)
+		uiSortIssueItems(got, tt.sort, tt.direction)
+		if titles := issueItemTitles(got); strings.Join(titles, "|") != strings.Join(tt.want, "|") {
+			t.Fatalf("%s titles = %+v, want %+v", tt.name, titles, tt.want)
+		}
+	}
+
+	tied := []uiIssueItem{
+		sortTestIssue("beta one", "BETA", 1, model.StatusTodo, model.PriorityP2, base, base),
+		sortTestIssue("alpha two", "ALPHA", 2, model.StatusTodo, model.PriorityP2, base, base),
+		sortTestIssue("alpha one", "ALPHA", 1, model.StatusTodo, model.PriorityP2, base, base),
+	}
+	uiSortIssueItems(tied, store.ListIssuesSortUpdated, "")
+	if titles := issueItemTitles(tied); strings.Join(titles, "|") != "alpha one|alpha two|beta one" {
+		t.Fatalf("tie titles = %+v, want alpha one/alpha two/beta one", titles)
+	}
+}
+
+func sortTestIssue(title, projectKey string, number int, status model.Status, priority model.IssuePriority, createdAt, updatedAt time.Time) uiIssueItem {
+	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(title))
+	return uiIssueItem{
+		Project: model.Project{OwnerUsername: "bradley", Key: projectKey},
+		Issue: model.Issue{
+			ID:            id,
+			OwnerUsername: "bradley",
+			ProjectKey:    projectKey,
+			Number:        number,
+			Identifier:    projectKey + "-" + strconv.Itoa(number),
+			Title:         title,
+			Status:        status,
+			Priority:      priority,
+			CreatedAt:     createdAt,
+			UpdatedAt:     updatedAt,
+		},
+	}
+}
+
+func issueItemTitles(items []uiIssueItem) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.Issue.Title)
+	}
+	return out
 }
 
 func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
@@ -2425,17 +2631,22 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		Issue:   model.Issue{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Progress count issue", Status: model.StatusInProgress},
 		Project: project,
 	})
+	sprintQuery := uiIssueListQuery{AssigneeIDs: selected}
+	assigneeFilters := uiProjectSprintAssigneeFilters(project, assignees, sprintQuery)
+	clearAssigneeHref := uiProjectSprintViewPath(project, uiIssueListQuery{})
+	clearAssigneeHXGet := uiProjectSprintPanelPath(project, uiIssueListQuery{})
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		Project:              project,
 		View:                 "sprint",
 		ProjectTabs:          uiProjectTabs(project, "sprint", selected),
-		AssigneeFilters:      uiProjectAssigneeFilters(project, "sprint", assignees, selected),
+		AssigneeFilters:      assigneeFilters,
 		AssigneeFilterActive: true,
-		ClearAssigneeHref:    uiProjectViewPath(project, "sprint"),
-		ClearAssigneeHXGet:   uiProjectPanelPath(project, "sprint"),
-		ClearAssigneeHXPush:  uiProjectViewPath(project, "sprint"),
+		ClearAssigneeHref:    clearAssigneeHref,
+		ClearAssigneeHXGet:   clearAssigneeHXGet,
+		ClearAssigneeHXPush:  clearAssigneeHref,
+		SprintControls:       uiProjectSprintIssueControls(project, sprintQuery, assigneeFilters, true, clearAssigneeHref, clearAssigneeHXGet, clearAssigneeHref),
 		ActiveSprint: &model.Sprint{
 			ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
 			ProjectID: projectID,
@@ -2452,11 +2663,19 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`aria-label="Assignee filter"`,
+		`aria-label="Issue controls"`,
 		`aria-pressed="true"`,
 		`aria-pressed="false"`,
 		`aria-label="Toggle Ada Lovelace"`,
 		`aria-label="Toggle Grace Hopper"`,
+		"Status",
+		"Priority",
+		"Assignee",
+		"Sort",
+		"Direction",
+		"Due date",
+		"Desc",
+		`data-lucide="arrow-down"`,
 		"AL",
 		"GH",
 		"Ship filtering\nPolish sprint goals",
@@ -2472,10 +2691,10 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 			t.Fatalf("project panel missing %q: %s", want, body)
 		}
 	}
-	filterIdx := strings.Index(body, `aria-label="Assignee filter"`)
+	filterIdx := strings.Index(body, `aria-label="Issue controls"`)
 	tabIdx := strings.Index(body, `aria-label="Project views"`)
 	if filterIdx < 0 || tabIdx < 0 || filterIdx < tabIdx {
-		t.Fatalf("assignee filter should render below project tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
+		t.Fatalf("issue controls should render below project tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
 	}
 	for _, notWant := range []string{`href="/bradley/projects/TRACK/about?assignee_id=`, `hx-get="/bradley/projects/TRACK/about/panel?assignee_id=`} {
 		if strings.Contains(body, notWant) {
@@ -2551,11 +2770,13 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	clearAssigneeQuery.AssigneeIDs = nil
 	nextQuery := allQuery
 	nextQuery.Cursor = "next-cursor"
+	assigneeFilters := uiProjectAllAssigneeFilters(project, []model.ProjectAssignee{{ID: assigneeID, Username: "ada", Name: "Ada Lovelace"}}, allQuery)
+	allControls := uiProjectAllIssueControls(project, allQuery, assigneeFilters, true, uiProjectAllViewPath(project, clearAssigneeQuery), uiProjectAllPanelPath(project, clearAssigneeQuery), uiProjectAllViewPath(project, clearAssigneeQuery))
 	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		Project:              project,
 		View:                 "all",
 		ProjectTabs:          uiProjectTabs(project, "all", nil),
-		AssigneeFilters:      uiProjectAllAssigneeFilters(project, []model.ProjectAssignee{{ID: assigneeID, Username: "ada", Name: "Ada Lovelace"}}, allQuery),
+		AssigneeFilters:      assigneeFilters,
 		AssigneeFilterActive: true,
 		ClearAssigneeHref:    uiProjectAllViewPath(project, clearAssigneeQuery),
 		ClearAssigneeHXGet:   uiProjectAllPanelPath(project, clearAssigneeQuery),
@@ -2565,9 +2786,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 			Issues:    allIssues,
 			NextHXGet: uiProjectAllPagePath(project, nextQuery),
 		},
-		AllStatusFilters:   uiProjectAllStatusFilters(project, allQuery),
-		AllPriorityFilters: uiProjectAllPriorityFilters(project, allQuery),
-		AllSortOptions:     uiProjectAllSortOptions(project, allQuery),
+		AllControls: allControls,
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate all: %v", err)
@@ -2579,12 +2798,16 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		"Priority",
 		"Assignee",
 		"Sort",
+		"Direction",
 		"Any",
 		"Anyone",
 		"Done",
 		"To do",
 		"Updated",
 		"Created",
+		"Due date",
+		"Asc",
+		`data-lucide="arrow-up"`,
 		`aria-label="Priority P0"`,
 		`aria-pressed="true"`,
 		`aria-current="page"`,

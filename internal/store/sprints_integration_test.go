@@ -1405,6 +1405,27 @@ func TestListIssuesMultiStatusPriorityFiltersAndSorts(t *testing.T) {
 	setIssueStatus(t, env, doneIssue.ID, model.StatusDone)
 	setIssueStatus(t, env, closedIssue.ID, model.StatusClosed)
 	setIssueStatus(t, env, progressIssue.ID, model.StatusInProgress)
+	earlyDue, err := model.ParseDate("2026-06-18")
+	if err != nil {
+		t.Fatalf("ParseDate early: %v", err)
+	}
+	midDue, err := model.ParseDate("2026-06-20")
+	if err != nil {
+		t.Fatalf("ParseDate mid: %v", err)
+	}
+	lateDue, err := model.ParseDate("2026-06-22")
+	if err != nil {
+		t.Fatalf("ParseDate late: %v", err)
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, todo.ID, store.UpdateIssueParams{DueDate: &midDue}); err != nil {
+		t.Fatalf("UpdateIssue todo due: %v", err)
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, progressIssue.ID, store.UpdateIssueParams{DueDate: &earlyDue}); err != nil {
+		t.Fatalf("UpdateIssue progress due: %v", err)
+	}
+	if _, err := env.store.UpdateIssue(env.ctx, closedIssue.ID, store.UpdateIssueParams{DueDate: &lateDue}); err != nil {
+		t.Fatalf("UpdateIssue closed due: %v", err)
+	}
 
 	filtered, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
 		ProjectID:  env.projectID,
@@ -1430,6 +1451,19 @@ func TestListIssuesMultiStatusPriorityFiltersAndSorts(t *testing.T) {
 	}
 	if got := issueIDs(statusSorted); !equalIssueIDs(got, []uuid.UUID{todo.ID, progressIssue.ID, doneIssue.ID, closedIssue.ID}) {
 		t.Fatalf("status-sorted ids = %v", got)
+	}
+
+	statusDesc, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortStatus,
+		Direction: store.ListIssuesSortDescending,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues status desc: %v", err)
+	}
+	if got := issueIDs(statusDesc); !equalIssueIDs(got, []uuid.UUID{closedIssue.ID, doneIssue.ID, progressIssue.ID, todo.ID}) {
+		t.Fatalf("status-desc ids = %v", got)
 	}
 
 	prioritySorted, hasMore, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
@@ -1473,6 +1507,63 @@ func TestListIssuesMultiStatusPriorityFiltersAndSorts(t *testing.T) {
 	}
 	if got := issueIDs(createdSorted); !equalIssueIDs(got, []uuid.UUID{progressIssue.ID, closedIssue.ID, doneIssue.ID, todo.ID}) {
 		t.Fatalf("created-sorted ids = %v", got)
+	}
+
+	createdAsc, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortCreated,
+		Direction: store.ListIssuesSortAscending,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues created asc: %v", err)
+	}
+	if got := issueIDs(createdAsc); !equalIssueIDs(got, []uuid.UUID{todo.ID, doneIssue.ID, closedIssue.ID, progressIssue.ID}) {
+		t.Fatalf("created-asc ids = %v", got)
+	}
+
+	dueSorted, hasMore, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortDueDate,
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues due page 1: %v", err)
+	}
+	if !hasMore {
+		t.Fatal("due page 1 hasMore = false, want true")
+	}
+	if got := issueIDs(dueSorted); !equalIssueIDs(got, []uuid.UUID{progressIssue.ID, todo.ID}) {
+		t.Fatalf("due page 1 ids = %v", got)
+	}
+	last = dueSorted[len(dueSorted)-1]
+	duePage2, hasMore, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortDueDate,
+		Cursor:    &store.IssuesCursor{Number: last.Number, DueDate: last.DueDate},
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues due page 2: %v", err)
+	}
+	if hasMore {
+		t.Fatal("due page 2 hasMore = true, want false")
+	}
+	if got := issueIDs(duePage2); !equalIssueIDs(got, []uuid.UUID{closedIssue.ID, doneIssue.ID}) {
+		t.Fatalf("due page 2 ids = %v", got)
+	}
+
+	dueDesc, _, err := env.store.ListIssues(env.ctx, store.ListIssuesParams{
+		ProjectID: env.projectID,
+		Sort:      store.ListIssuesSortDueDate,
+		Direction: store.ListIssuesSortDescending,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues due desc: %v", err)
+	}
+	if got := issueIDs(dueDesc); !equalIssueIDs(got, []uuid.UUID{closedIssue.ID, todo.ID, progressIssue.ID, doneIssue.ID}) {
+		t.Fatalf("due-desc ids = %v", got)
 	}
 }
 
