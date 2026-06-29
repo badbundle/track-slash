@@ -278,11 +278,12 @@ type ListIssuesParams struct {
 	AssigneeIDs []uuid.UUID
 	// SprintID filters by sprint. Backlog == true means "WHERE sprint_id IS NULL"
 	// and SprintID is ignored. Both nil/false → no sprint filter.
-	SprintID *uuid.UUID
-	Backlog  bool
-	Cursor   *IssuesCursor
-	Limit    int
-	Sort     ListIssuesSort
+	SprintID  *uuid.UUID
+	Backlog   bool
+	Cursor    *IssuesCursor
+	Limit     int
+	Sort      ListIssuesSort
+	Direction ListIssuesSortDirection
 	// IncludeSubIssues is for personal/work views that should surface assigned
 	// child work. Project planning lists keep the default top-level-only shape.
 	IncludeSubIssues bool
@@ -296,6 +297,14 @@ const (
 	ListIssuesSortUpdated  ListIssuesSort = "updated"
 	ListIssuesSortStatus   ListIssuesSort = "status"
 	ListIssuesSortPriority ListIssuesSort = "priority"
+	ListIssuesSortDueDate  ListIssuesSort = "due"
+)
+
+type ListIssuesSortDirection string
+
+const (
+	ListIssuesSortAscending  ListIssuesSortDirection = "asc"
+	ListIssuesSortDescending ListIssuesSortDirection = "desc"
 )
 
 // IssuesCursor includes the sort key plus Number. Number is monotonic per
@@ -306,6 +315,7 @@ type IssuesCursor struct {
 	UpdatedAt time.Time           `json:"ua,omitempty"`
 	Status    model.Status        `json:"s,omitempty"`
 	Priority  model.IssuePriority `json:"p,omitempty"`
+	DueDate   *model.Date         `json:"d,omitempty"`
 }
 
 // ListIssuesByIDs returns the issues matching the supplied id set, in no
@@ -377,7 +387,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	}
 	q = appendIssueCursor(q, p, &args)
 	args = append(args, p.Limit+1)
-	q += fmt.Sprintf(" %s LIMIT $%d", issueOrderClause(p.Sort), len(args))
+	q += fmt.Sprintf(" %s LIMIT $%d", issueOrderClause(p.Sort, p.Direction), len(args))
 
 	rows, err := s.db.Query(ctx, q, args...)
 	if err != nil {
@@ -443,49 +453,90 @@ func appendIssueCursor(q string, p ListIssuesParams, args *[]any) string {
 	if p.Cursor == nil {
 		return q
 	}
+	direction := issueSortDirection(p.Sort, p.Direction)
+	op := ">"
+	if direction == ListIssuesSortDescending {
+		op = "<"
+	}
 	switch p.Sort {
 	case ListIssuesSortCreated:
 		*args = append(*args, p.Cursor.CreatedAt, p.Cursor.Number)
 		createdAtArg := len(*args) - 1
 		numberArg := len(*args)
-		return q + fmt.Sprintf(" AND (i.created_at < $%d OR (i.created_at = $%d AND i.number < $%d))", createdAtArg, createdAtArg, numberArg)
+		return q + fmt.Sprintf(" AND (i.created_at %s $%d OR (i.created_at = $%d AND i.number %s $%d))", op, createdAtArg, createdAtArg, op, numberArg)
 	case ListIssuesSortUpdated:
 		*args = append(*args, p.Cursor.UpdatedAt, p.Cursor.Number)
 		updatedAtArg := len(*args) - 1
 		numberArg := len(*args)
-		return q + fmt.Sprintf(" AND (i.updated_at < $%d OR (i.updated_at = $%d AND i.number < $%d))", updatedAtArg, updatedAtArg, numberArg)
+		return q + fmt.Sprintf(" AND (i.updated_at %s $%d OR (i.updated_at = $%d AND i.number %s $%d))", op, updatedAtArg, updatedAtArg, op, numberArg)
 	case ListIssuesSortStatus:
 		rank := issueStatusSortRank(p.Cursor.Status)
 		*args = append(*args, rank, p.Cursor.Number)
 		rankArg := len(*args) - 1
 		numberArg := len(*args)
 		rankExpr := issueStatusRankSQL()
-		return q + fmt.Sprintf(" AND ((%s) > $%d OR ((%s) = $%d AND i.number > $%d))", rankExpr, rankArg, rankExpr, rankArg, numberArg)
+		return q + fmt.Sprintf(" AND ((%s) %s $%d OR ((%s) = $%d AND i.number %s $%d))", rankExpr, op, rankArg, rankExpr, rankArg, op, numberArg)
 	case ListIssuesSortPriority:
 		rank := issuePrioritySortRank(p.Cursor.Priority)
 		*args = append(*args, rank, p.Cursor.Number)
 		rankArg := len(*args) - 1
 		numberArg := len(*args)
 		rankExpr := issuePriorityRankSQL()
-		return q + fmt.Sprintf(" AND ((%s) > $%d OR ((%s) = $%d AND i.number > $%d))", rankExpr, rankArg, rankExpr, rankArg, numberArg)
+		return q + fmt.Sprintf(" AND ((%s) %s $%d OR ((%s) = $%d AND i.number %s $%d))", rankExpr, op, rankArg, rankExpr, rankArg, op, numberArg)
+	case ListIssuesSortDueDate:
+		return appendIssueDueDateCursor(q, p.Cursor, args, direction)
 	default:
 		*args = append(*args, p.Cursor.Number)
-		return q + fmt.Sprintf(" AND i.number > $%d", len(*args))
+		return q + fmt.Sprintf(" AND i.number %s $%d", op, len(*args))
 	}
 }
 
-func issueOrderClause(sort ListIssuesSort) string {
+func appendIssueDueDateCursor(q string, cursor *IssuesCursor, args *[]any, direction ListIssuesSortDirection) string {
+	op := ">"
+	if direction == ListIssuesSortDescending {
+		op = "<"
+	}
+	if cursor.DueDate == nil {
+		*args = append(*args, cursor.Number)
+		return q + fmt.Sprintf(" AND i.due_date IS NULL AND i.number %s $%d", op, len(*args))
+	}
+	*args = append(*args, issueDueDateValue(cursor.DueDate), cursor.Number)
+	dueDateArg := len(*args) - 1
+	numberArg := len(*args)
+	return q + fmt.Sprintf(" AND (i.due_date IS NULL OR i.due_date %s $%d OR (i.due_date = $%d AND i.number %s $%d))", op, dueDateArg, dueDateArg, op, numberArg)
+}
+
+func issueOrderClause(sort ListIssuesSort, direction ListIssuesSortDirection) string {
+	dir := "ASC"
+	if issueSortDirection(sort, direction) == ListIssuesSortDescending {
+		dir = "DESC"
+	}
 	switch sort {
 	case ListIssuesSortCreated:
-		return "ORDER BY i.created_at DESC, i.number DESC"
+		return "ORDER BY i.created_at " + dir + ", i.number " + dir
 	case ListIssuesSortUpdated:
-		return "ORDER BY i.updated_at DESC, i.number DESC"
+		return "ORDER BY i.updated_at " + dir + ", i.number " + dir
 	case ListIssuesSortStatus:
-		return "ORDER BY " + issueStatusRankSQL() + " ASC, i.number ASC"
+		return "ORDER BY " + issueStatusRankSQL() + " " + dir + ", i.number " + dir
 	case ListIssuesSortPriority:
-		return "ORDER BY " + issuePriorityRankSQL() + " ASC, i.number ASC"
+		return "ORDER BY " + issuePriorityRankSQL() + " " + dir + ", i.number " + dir
+	case ListIssuesSortDueDate:
+		return "ORDER BY i.due_date IS NULL ASC, i.due_date " + dir + ", i.number " + dir
 	default:
-		return "ORDER BY i.number ASC"
+		return "ORDER BY i.number " + dir
+	}
+}
+
+func issueSortDirection(sort ListIssuesSort, direction ListIssuesSortDirection) ListIssuesSortDirection {
+	switch direction {
+	case ListIssuesSortAscending, ListIssuesSortDescending:
+		return direction
+	}
+	switch sort {
+	case ListIssuesSortCreated, ListIssuesSortUpdated:
+		return ListIssuesSortDescending
+	default:
+		return ListIssuesSortAscending
 	}
 }
 
