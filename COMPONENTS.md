@@ -5,7 +5,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Navigation
 
 - `tab-bar`: sibling-view navigation with optional Lucide icons. Use for project/work/settings style view switches.
-- `issue-list-controls`: shared status, priority, assignee, sort, and direction controls for issue list views. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit assignee fields for current-user scoped lists.
+- `issue-list-controls`: collapsible shared status, priority, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit assignee fields for current-user scoped lists.
 
 ## Badges
 

@@ -12,8 +12,26 @@
 {{end}}
 
 {{define "issue-list-controls"}}
-<div class="mb-4 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-label="Issue controls">
-  <div class="grid lg:grid-cols-[minmax(0,1fr)_18rem]">
+<details data-close-on-outside class="mb-4 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" aria-label="Issue controls">
+  <summary class="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
+    <span class="inline-flex min-w-0 items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
+      <i data-lucide="sliders-horizontal" class="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>
+      <span>Filters</span>
+      {{template "count-badge" .ActiveFilterCount}}
+    </span>
+    <span class="inline-flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <span class="inline-flex min-w-0 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-950">
+        <span class="font-semibold uppercase">Sort</span>
+        <span class="min-w-0 truncate text-slate-700 dark:text-slate-200">{{.SortLabel}}</span>
+      </span>
+      <span class="inline-flex min-w-0 items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-950">
+        {{if .DirectionIcon}}<i data-lucide="{{.DirectionIcon}}" class="h-3.5 w-3.5 shrink-0" aria-hidden="true"></i>{{end}}
+        <span class="min-w-0 truncate text-slate-700 dark:text-slate-200">{{.DirectionLabel}}</span>
+      </span>
+      <i data-lucide="chevron-down" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+    </span>
+  </summary>
+  <div class="grid border-t border-slate-100 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_18rem]">
     <div class="divide-y divide-slate-100 dark:divide-slate-800">
       <div class="grid gap-2 px-3 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center">
         <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Status</span>
@@ -57,7 +75,7 @@
     <div class="grid gap-3 border-t border-slate-100 px-3 py-3 dark:border-slate-800 sm:grid-cols-2 lg:border-l lg:border-t-0">
       <div class="min-w-0">
         <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Sort</span>
-        <details class="relative mt-2">
+        <details data-close-on-outside class="relative mt-2">
           <summary class="flex h-9 cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <span class="min-w-0 truncate">{{.SortLabel}}</span>
             <i data-lucide="chevron-down" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
@@ -74,7 +92,7 @@
       </div>
       <div class="min-w-0">
         <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Direction</span>
-        <details class="relative mt-2">
+        <details data-close-on-outside class="relative mt-2">
           <summary class="flex h-9 cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <span class="inline-flex min-w-0 items-center gap-2 truncate">{{if .DirectionIcon}}<i data-lucide="{{.DirectionIcon}}" class="h-4 w-4 shrink-0" aria-hidden="true"></i>{{end}}{{.DirectionLabel}}</span>
             <i data-lucide="chevron-down" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
@@ -91,7 +109,7 @@
       </div>
     </div>
   </div>
-</div>
+</details>
 {{end}}
 
 {{define "issue-key"}}
@@ -149,7 +167,7 @@
 {{end}}
 
 {{define "option-dropdown"}}
-<div class="space-y-2">
+<div data-option-dropdown-root class="space-y-2">
   <div>
     <button type="button" aria-label="{{.ToggleLabel}}" aria-haspopup="listbox" aria-expanded="true" hx-get="{{.CancelHXGet}}" hx-target="{{.HXTarget}}" hx-push-url="{{.HXPushURL}}" data-option-dropdown-toggle class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{.CurrentClass}}">
       <span class="min-w-0 truncate">{{.CurrentLabel}}</span>

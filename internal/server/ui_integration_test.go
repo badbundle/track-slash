@@ -110,7 +110,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/me", token)
-	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader", "#sidebar-toggle:checked ~ .app-shell > aside", `track-slash.sidebar.collapsed`, `data-member-menu`, `overflow-visible border-r`} {
+	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader", "#sidebar-toggle:checked ~ .app-shell > aside", `track-slash.sidebar.collapsed`, `data-member-menu`, `data-close-on-outside`, `closeOpenDropdowns`, `overflow-visible border-r`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -167,9 +167,15 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body = e.uiGet(t, "/projects/new", token)
-	for _, want := range []string{"New project", "Create project", `action="/projects"`, `id="project-key"`, `id="project-name"`, `id="project-description"`, `href="/projects"`, `hx-get="/projects/panel"`} {
+	for _, want := range []string{"New project", "Create project", `action="/projects"`, `id="project-key"`, `id="project-name"`, `id="project-description"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("new project body missing %q: %s", want, body)
+		}
+	}
+	newProjectMain := mainContentBlock(t, body)
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="/projects"`, `hx-get="/projects/panel"`} {
+		if strings.Contains(newProjectMain, notWant) {
+			t.Fatalf("new project body should not render back button markup %q: %s", notWant, body)
 		}
 	}
 
@@ -916,7 +922,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseDate late: %v", err)
 	}
-	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board todo issue", DueDate: &earlyDue})
+	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board todo issue", AssigneeID: &user.ID, DueDate: &earlyDue})
 	if err != nil {
 		t.Fatalf("CreateIssue todo: %v", err)
 	}
@@ -978,7 +984,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
-	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board later todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Issue controls"`, "Status", "Priority", "Sort", "Direction", "Due date", "Asc", "Desc", `data-lucide="arrow-up"`, `data-lucide="arrow-down"`} {
+	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board later todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Assigned to ui-board"`, ">U</span>", `aria-label="Issue controls"`, "Status", "Priority", "Sort", "Direction", "Due date", "Asc", "Desc", `data-lucide="arrow-up"`, `data-lucide="arrow-down"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}
@@ -1374,8 +1380,6 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
-		`href="` + e.projectPath() + `/all"`,
-		`hx-get="` + e.projectPath() + `/all/panel"`,
 		`href="` + e.issuePath(linked) + `"`,
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
 		`href="` + e.issuePath(subIssue) + `"`,
@@ -1409,6 +1413,11 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body still renders native title tooltip %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/all"`, `hx-get="` + e.projectPath() + `/all/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{`aria-label="Edit status"`, ">Status</dt>"} {
@@ -1871,8 +1880,6 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 		"<!doctype html>",
 		"This issue has been deleted",
 		"deleted open target",
-		`href="` + e.projectPath() + `/deleted"`,
-		`hx-get="` + e.projectPath() + `/deleted/panel"`,
 		`method="post" action="` + e.issuePath(issue) + `/restore"`,
 		`hx-post="` + e.issuePath(issue) + `/restore"`,
 		`hx-push-url="` + e.issuePath(issue) + `"`,
@@ -1881,6 +1888,11 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("deleted issue page missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/deleted"`, `hx-get="` + e.projectPath() + `/deleted/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted issue page should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{"not found", "deleted description should stay hidden", "Comments", "Sub-issues", `aria-label="Issue actions"`} {
@@ -2002,8 +2014,6 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	for _, want := range []string{
 		"Deleted issues",
 		e.projKey,
-		e.projectPath() + "/sprint",
-		e.projectPath() + "/sprint/panel",
 		deleted.Identifier,
 		deleted.Title,
 		`href="` + e.issuePath(deleted) + `"`,
@@ -2021,6 +2031,11 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("deleted body missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted body should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{live.Title, otherDeleted.Title, "Issue deleted", `aria-label="Project views"`, `aria-label="Project actions"`} {
@@ -2086,7 +2101,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		`aria-label="Priority P3"`,
 		`bg-yellow-500`,
-		`flex items-center gap-2`,
 		`flex flex-wrap items-center gap-2`,
 		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
@@ -2099,6 +2113,7 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		strings.Contains(edit, `title="Cancel priority change"`) ||
 		strings.Contains(edit, `aria-label="Cancel priority change"`) ||
 		strings.Contains(edit, `data-lucide="x"`) ||
+		strings.Contains(edit, `data-lucide="arrow-left"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
 		strings.Contains(edit, `data-lucide="chevron-up"`) ||
 		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {

@@ -1,17 +1,12 @@
 {{define "project-panel"}}
 <section class="mx-auto max-w-6xl px-6 py-6">
-  <a href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" class="mb-3 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
-    <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
-    Projects
-  </a>
-
   <header class="rounded-lg border border-slate-200 bg-white px-5 pt-5 dark:border-slate-800 dark:bg-slate-900">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         {{template "project-key" .Project.Key}}
         <h1 class="mt-1 truncate text-2xl font-semibold tracking-normal">{{.Project.Name}}</h1>
       </div>
-      <details class="relative">
+      <details data-close-on-outside class="relative">
         <summary aria-label="Project actions" class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
           <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
         </summary>
@@ -168,7 +163,6 @@
   </section>
   {{else if eq .View "sprint"}}
   <section class="py-6">
-    {{template "issue-list-controls" .SprintControls}}
     <div class="mb-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
@@ -187,6 +181,7 @@
         {{if .SprintIssuesHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
       </div>
     </div>
+    {{template "issue-list-controls" .SprintControls}}
     {{if .ActiveSprint}}
     <section class="grid gap-4 lg:grid-cols-3">
       {{range .SprintColumns}}
@@ -275,11 +270,6 @@
 
 {{define "deleted-issues-panel"}}
 <section class="mx-auto max-w-6xl px-6 py-6">
-  <a href="{{projectView .Project "sprint"}}" hx-get="{{projectPanel .Project "sprint"}}" hx-target="#main" hx-push-url="{{projectView .Project "sprint"}}" class="mb-3 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
-    <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
-    Project
-  </a>
-
   <header class="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
     <div class="min-w-0">
       {{template "project-key" .Project.Key}}
