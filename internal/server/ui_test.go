@@ -464,6 +464,9 @@ func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	body := buf.String()
+	if !strings.Contains(body, `<header class="pb-5">`) || strings.Contains(body, `<header class="border-b border-slate-200 pb-5`) {
+		t.Fatalf("work panel header should not render extra divider above controls: %s", body)
+	}
 	for _, want := range []string{
 		"Active Sprints",
 		"All",
