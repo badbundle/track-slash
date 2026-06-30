@@ -110,7 +110,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/me", token)
-	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader", "#sidebar-toggle:checked ~ .app-shell > aside", `track-slash.sidebar.collapsed`, `data-member-menu`, `overflow-visible border-r`} {
+	for _, want := range []string{">Me<", ">Projects<", `href="/settings"`, `href="/tokens"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader", "#sidebar-toggle:checked ~ .app-shell > aside", `track-slash.sidebar.collapsed`, `data-member-menu`, `data-close-on-outside`, `closeOpenDropdowns`, `overflow-visible border-r`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
@@ -916,7 +916,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseDate late: %v", err)
 	}
-	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board todo issue", DueDate: &earlyDue})
+	todo, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "board todo issue", AssigneeID: &user.ID, DueDate: &earlyDue})
 	if err != nil {
 		t.Fatalf("CreateIssue todo: %v", err)
 	}
@@ -978,7 +978,7 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/sprint", token)
-	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board later todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Issue controls"`, "Status", "Priority", "Sort", "Direction", "Due date", "Asc", "Desc", `data-lucide="arrow-up"`, `data-lucide="arrow-down"`} {
+	for _, want := range []string{"Sprint", "To do", "In progress", "Done", "Closed", "board todo issue", "board later todo issue", "board progress issue", "board closed issue", "Board Sprint", "Focus current sprint goals\nShip board clarity", `aria-label="Assigned to ui-board"`, ">U</span>", `aria-label="Issue controls"`, "Status", "Priority", "Sort", "Direction", "Due date", "Asc", "Desc", `data-lucide="arrow-up"`, `data-lucide="arrow-down"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}

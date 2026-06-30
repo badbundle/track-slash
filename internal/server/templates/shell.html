@@ -71,7 +71,7 @@
         </a>
       </nav>
 
-      <details class="relative border-t border-slate-200 p-2 dark:border-slate-800">
+      <details data-close-on-outside class="relative border-t border-slate-200 p-2 dark:border-slate-800">
         <summary data-member-summary class="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800" title="Account menu">
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-indigo-600 text-xs font-bold text-white">{{initials .User.Name .User.Email}}</span>
           <span data-member-label class="wide-only min-w-0">
@@ -202,6 +202,16 @@
           option.hidden = query !== "" && !text.includes(query);
         });
       };
+      const closeOpenDropdowns = (target) => {
+        document.querySelectorAll("details[data-close-on-outside][open]").forEach((details) => {
+          if (!details.contains(target)) details.removeAttribute("open");
+        });
+        document.querySelectorAll("[data-option-dropdown-root]").forEach((dropdown) => {
+          if (dropdown.contains(target)) return;
+          const toggle = dropdown.querySelector("[data-option-dropdown-toggle]");
+          if (toggle instanceof HTMLElement) toggle.click();
+        });
+      };
       document.body.addEventListener("input", (event) => {
         if (!(event.target instanceof Element)) return;
         const textarea = event.target.closest("[data-autogrow-textarea]");
@@ -212,6 +222,7 @@
       });
       document.body.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
+        closeOpenDropdowns(event.target);
         const option = event.target.closest("[data-search-option]");
         if (!option) return;
         const search = option.closest("[data-search]");

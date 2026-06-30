@@ -137,9 +137,10 @@ type uiShellData struct {
 }
 
 type uiIssueItem struct {
-	Issue   model.Issue
-	Project model.Project
-	Sprint  *model.Sprint
+	Issue    model.Issue
+	Project  model.Project
+	Sprint   *model.Sprint
+	Assignee *model.ProjectAssignee
 }
 
 type uiIssueColumn struct {
@@ -191,6 +192,7 @@ type uiProjectSortOptionItem struct {
 type uiIssueControlsData struct {
 	StatusFilters        []uiProjectStatusFilterItem
 	PriorityFilters      []uiProjectPriorityFilterItem
+	ActiveFilterCount    int
 	SortOptions          []uiProjectSortOptionItem
 	SortLabel            string
 	DirectionOptions     []uiProjectSortOptionItem
@@ -3257,6 +3259,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	var assigneeIDs []uuid.UUID
 	var sprintQuery uiIssueListQuery
 	var allQuery uiProjectAllQuery
+	var assignees []model.ProjectAssignee
 	if view == "sprint" {
 		sprintQuery, err = uiParseProjectAllQuery(r)
 		if err != nil {
@@ -3282,7 +3285,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		DeleteNotice:         deleteNotice,
 	}
 	if view == "sprint" || view == "all" {
-		assignees, err := s.store.ListProjectAssignees(ctx, projectID)
+		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
@@ -3364,8 +3367,9 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.SprintIssuesHasMore = sprintHasMore
+		assigneesByID := uiProjectAssigneeMap(assignees)
 		for _, issue := range sprintIssues {
-			item := uiIssueItem{Issue: issue, Project: project, Sprint: panel.ActiveSprint}
+			item := uiIssueItem{Issue: issue, Project: project, Sprint: panel.ActiveSprint, Assignee: uiIssueItemAssignee(issue, assigneesByID)}
 			for i := range panel.SprintColumns {
 				if panel.SprintColumns[i].Status == uiIssueColumnStatus(issue.Status) {
 					panel.SprintColumns[i].Issues = append(panel.SprintColumns[i].Issues, item)
@@ -3876,6 +3880,25 @@ func uiProjectSprintAssigneeFilters(project model.Project, assignees []model.Pro
 	return out
 }
 
+func uiProjectAssigneeMap(assignees []model.ProjectAssignee) map[uuid.UUID]model.ProjectAssignee {
+	out := make(map[uuid.UUID]model.ProjectAssignee, len(assignees))
+	for _, assignee := range assignees {
+		out[assignee.ID] = assignee
+	}
+	return out
+}
+
+func uiIssueItemAssignee(issue model.Issue, assignees map[uuid.UUID]model.ProjectAssignee) *model.ProjectAssignee {
+	if issue.AssigneeID == nil {
+		return nil
+	}
+	assignee, ok := assignees[*issue.AssigneeID]
+	if !ok {
+		return nil
+	}
+	return &assignee
+}
+
 type uiIssueListPaths func(uiIssueListQuery) (href, hxGet, hxPush string)
 
 func uiProjectAllIssueListPaths(project model.Project) uiIssueListPaths {
@@ -3915,6 +3938,7 @@ func uiIssueControlsWithAssignees(query uiIssueListQuery, paths uiIssueListPaths
 	return uiIssueControlsData{
 		StatusFilters:        uiIssueStatusFilters(query, paths),
 		PriorityFilters:      uiIssuePriorityFilters(query, paths),
+		ActiveFilterCount:    uiActiveIssueFilterCount(query),
 		SortOptions:          uiIssueSortOptions(query, paths),
 		SortLabel:            uiIssueSortLabel(uiIssueListSort(query)),
 		DirectionOptions:     uiIssueSortDirectionOptions(query, paths),
@@ -3926,6 +3950,10 @@ func uiIssueControlsWithAssignees(query uiIssueListQuery, paths uiIssueListPaths
 		ClearAssigneeHXGet:   clearHXGet,
 		ClearAssigneeHXPush:  clearHXPush,
 	}
+}
+
+func uiActiveIssueFilterCount(query uiIssueListQuery) int {
+	return len(query.Statuses) + len(query.Priorities) + len(query.AssigneeIDs)
 }
 
 func uiProjectAllStatusFilters(project model.Project, query uiProjectAllQuery) []uiProjectStatusFilterItem {

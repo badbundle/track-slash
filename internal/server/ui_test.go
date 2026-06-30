@@ -468,7 +468,10 @@ func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 		"Active Sprints",
 		"All",
 		`aria-label="Me views"`,
+		`<details data-close-on-outside class="mb-4`,
 		`aria-label="Issue controls"`,
+		`data-lucide="sliders-horizontal"`,
+		`class="` + uiCountBadgeClass + `">2</span>`,
 		"Status",
 		"Priority",
 		"Sort",
@@ -639,6 +642,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	for _, want := range []string{`[data-search-input]`, `[data-search-option]`, `filterSearchOptions`, `option.dataset.value`, `input.form || input.closest("form")`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing search component behavior %q: %s", want, body)
+		}
+	}
+	for _, want := range []string{`data-close-on-outside`, `closeOpenDropdowns`, `details[data-close-on-outside][open]`, `details.removeAttribute("open")`, `data-option-dropdown-root`, `toggle.click()`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing dropdown outside-click behavior %q: %s", want, body)
 		}
 	}
 }
@@ -2362,12 +2370,8 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	}
 	headerEnd += projectHeaderStart
 	header := body[projectHeaderStart:headerEnd]
-	backLink := strings.Index(body, `href="/projects"`)
-	if backLink < 0 {
-		t.Fatalf("project panel missing back link to projects: %s", body)
-	}
-	if backLink > projectHeaderStart {
-		t.Fatalf("back link rendered inside or below title card: %s", body)
+	if strings.Contains(body, `href="/projects"`) || strings.Contains(body, `hx-get="/projects/panel"`) {
+		t.Fatalf("project panel should not render projects back link: %s", body)
 	}
 	tabNav := strings.Index(body, `aria-label="Project views"`)
 	if tabNav < 0 {
@@ -2411,7 +2415,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > aboutIdx {
 		t.Fatalf("project tabs not ordered sprints, planned, all, about: sprints=%d planned=%d all=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, aboutIdx, body)
 	}
-	if strings.Contains(body, "Back to projects") {
+	if strings.Contains(body, "Back to projects") || strings.Contains(body, ">Projects</a>") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
 	tabEnd := strings.Index(body[tabNav:], "</nav>")
@@ -2422,7 +2426,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
 		t.Fatalf("deleted rendered as project tab: %s", body)
 	}
-	for _, want := range []string{"Projects", `hx-get="/projects/panel"`, "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="calendar-range"`, `data-lucide="list-filter"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
+	for _, want := range []string{"About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="calendar-range"`, `data-lucide="list-filter"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
@@ -2693,8 +2697,13 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 	}
 	filterIdx := strings.Index(body, `aria-label="Issue controls"`)
 	tabIdx := strings.Index(body, `aria-label="Project views"`)
+	sprintTitleIdx := strings.Index(body, "Current Sprint")
+	boardIdx := strings.Index(body, `class="grid gap-4 lg:grid-cols-3"`)
 	if filterIdx < 0 || tabIdx < 0 || filterIdx < tabIdx {
 		t.Fatalf("issue controls should render below project tabs: filter=%d tabs=%d body=%s", filterIdx, tabIdx, body)
+	}
+	if sprintTitleIdx < 0 || boardIdx < 0 || filterIdx < sprintTitleIdx || filterIdx > boardIdx {
+		t.Fatalf("issue controls should render below sprint title and above board: sprint=%d filter=%d board=%d body=%s", sprintTitleIdx, filterIdx, boardIdx, body)
 	}
 	for _, notWant := range []string{`href="/bradley/projects/TRACK/about?assignee_id=`, `hx-get="/bradley/projects/TRACK/about/panel?assignee_id=`} {
 		if strings.Contains(body, notWant) {
@@ -2857,7 +2866,7 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		{name: "project issue list", template: "issue-list", data: []model.Issue{issue}, hasBadge: true},
 		{name: "project inset issue list", template: "issue-list-inset", data: []model.Issue{issue}, hasBadge: true},
 		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true},
-		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project}}},
+		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project, Assignee: &model.ProjectAssignee{ID: uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb"), Username: "ada", Name: "Ada Lovelace"}}}},
 	}
 
 	for _, tt := range tests {
@@ -2884,6 +2893,13 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			for _, want := range []string{"Done", "border-emerald-300 bg-emerald-50 text-emerald-800"} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("%s missing status badge markup %q: %s", tt.name, want, body)
+				}
+			}
+		}
+		if tt.template == "issue-card-list" {
+			for _, want := range []string{`aria-label="Assigned to Ada Lovelace"`, `title="Ada Lovelace"`, ">AL</span>"} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s missing assignee avatar markup %q: %s", tt.name, want, body)
 				}
 			}
 		}
