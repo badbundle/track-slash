@@ -464,8 +464,11 @@ func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	body := buf.String()
-	if !strings.Contains(body, `<header class="pb-5">`) || strings.Contains(body, `<header class="border-b border-slate-200 pb-5`) {
-		t.Fatalf("work panel header should not render extra divider above controls: %s", body)
+	if !strings.Contains(body, "<header>") || !strings.Contains(body, `<section class="pt-4 pb-6">`) {
+		t.Fatalf("work panel should keep compact spacing between tabs and controls: %s", body)
+	}
+	if strings.Contains(body, `<header class="pb-5">`) || strings.Contains(body, `<header class="border-b border-slate-200 pb-5`) || strings.Contains(body, `<section class="py-6">`) {
+		t.Fatalf("work panel should not render extra spacing above controls: %s", body)
 	}
 	for _, want := range []string{
 		"Active Sprints",

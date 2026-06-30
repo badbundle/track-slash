@@ -1,6 +1,6 @@
 {{define "work-panel"}}
 <section class="mx-auto max-w-6xl px-6 py-6">
-  <header class="pb-5">
+  <header>
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div class="min-w-0">
         <h1 class="truncate text-2xl font-semibold tracking-normal">{{.Title}}</h1>
@@ -11,7 +11,7 @@
     {{template "tab-bar" .WorkTabs}}
   </header>
 
-  <section class="py-6">
+  <section class="pt-4 pb-6">
     {{template "issue-list-controls" .IssueControls}}
     <div class="mb-3 flex items-center justify-between gap-3">
       <div class="flex min-w-0 flex-wrap items-center gap-2">
