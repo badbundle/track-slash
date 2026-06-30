@@ -1880,8 +1880,6 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 		"<!doctype html>",
 		"This issue has been deleted",
 		"deleted open target",
-		`href="` + e.projectPath() + `/deleted"`,
-		`hx-get="` + e.projectPath() + `/deleted/panel"`,
 		`method="post" action="` + e.issuePath(issue) + `/restore"`,
 		`hx-post="` + e.issuePath(issue) + `/restore"`,
 		`hx-push-url="` + e.issuePath(issue) + `"`,
@@ -1890,6 +1888,11 @@ func TestUIOpenDeletedIssueShowsRestorePanel(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("deleted issue page missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/deleted"`, `hx-get="` + e.projectPath() + `/deleted/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted issue page should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{"not found", "deleted description should stay hidden", "Comments", "Sub-issues", `aria-label="Issue actions"`} {
@@ -2098,7 +2101,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`hx-get="` + e.issuePath(issue) + `/panel"`,
 		`aria-label="Priority P3"`,
 		`bg-yellow-500`,
-		`flex items-center gap-2`,
 		`flex flex-wrap items-center gap-2`,
 		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
@@ -2111,6 +2113,7 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		strings.Contains(edit, `title="Cancel priority change"`) ||
 		strings.Contains(edit, `aria-label="Cancel priority change"`) ||
 		strings.Contains(edit, `data-lucide="x"`) ||
+		strings.Contains(edit, `data-lucide="arrow-left"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
 		strings.Contains(edit, `data-lucide="chevron-up"`) ||
 		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {
