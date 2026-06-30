@@ -189,12 +189,9 @@
 {{define "autocomplete-edit"}}
 <div>
   <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">{{.Label}}</dt>
-  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="#main" hx-push-url="{{.IssueHref}}" data-search class="mt-1 w-full max-w-full space-y-2">
+  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="#main" hx-push-url="{{.IssueHref}}" data-search{{if .Collapsible}} data-search-collapsible{{end}}{{if .SearchClearTarget}} data-search-clear-target="{{.SearchClearTarget}}"{{end}} class="mt-1 w-full max-w-full space-y-2">
     <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
-      <div class="relative min-w-0">
-        <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" aria-hidden="true"></i>
-        <input name="{{.Name}}" value="{{.Value}}" autocomplete="off" autofocus aria-label="{{.Label}}" placeholder="{{.Placeholder}}" data-search-input class="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-      </div>
+      {{template "autocomplete-input" .}}
       <button type="submit" aria-label="{{.SaveLabel}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
         <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
       </button>
@@ -202,19 +199,35 @@
         <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
       </button>
     </div>
-    {{if .Options}}
-    <div data-search-options role="listbox" aria-label="{{.Label}} suggestions" class="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
-      {{range .Options}}
-      <button type="button" role="option" data-search-option data-value="{{.Value}}" data-search-text="{{.Value}} {{.Label}}" class="flex w-full items-start gap-2 border-b border-slate-100 px-2.5 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
-        <span class="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{{.Value}}</span>
-        <span class="min-w-0 whitespace-normal break-words leading-5 text-slate-700 dark:text-slate-200">{{.Label}}</span>
-      </button>
-      {{end}}
-    </div>
-    {{end}}
+    {{template "autocomplete-options" .}}
     {{if .Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.Error}}</p>{{end}}
   </form>
 </div>
+{{end}}
+
+{{define "autocomplete-input"}}
+<div class="relative min-w-0">
+  <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" aria-hidden="true"></i>
+  <input {{if .ID}}id="{{.ID}}"{{end}} name="{{.Name}}" value="{{.Value}}" autocomplete="off" {{if .Autofocus}}autofocus{{end}} aria-label="{{.Label}}" placeholder="{{.Placeholder}}" data-search-input {{if .InputHXGet}}hx-get="{{.InputHXGet}}"{{end}} {{if .InputHXTrigger}}hx-trigger="{{.InputHXTrigger}}"{{end}} {{if .InputHXTarget}}hx-target="{{.InputHXTarget}}"{{end}} {{if .InputHXSwap}}hx-swap="{{.InputHXSwap}}"{{end}} {{if .InputHXPushURL}}hx-push-url="{{.InputHXPushURL}}"{{end}} {{if .InputHXInclude}}hx-include="{{.InputHXInclude}}"{{end}} class="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+  {{if .HiddenName}}<input type="hidden" name="{{.HiddenName}}" value="{{.HiddenValue}}">{{end}}
+</div>
+{{end}}
+
+{{define "autocomplete-options"}}
+{{if or .Options .OptionsID .EmptyLabel}}
+<div {{if .OptionsID}}id="{{.OptionsID}}"{{end}} data-search-options{{if and .Collapsible (not .OptionsOpen)}} hidden{{end}} role="listbox" aria-label="{{.Label}} suggestions" class="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+  {{if .Options}}
+  {{range .Options}}
+  <button type="button" role="option" data-search-option data-value="{{.Value}}" {{if $.TargetName}}data-target-name="{{$.TargetName}}" data-target-value="{{.TargetValue}}"{{end}} data-search-text="{{autocompleteOptionSearchText .}}" class="flex w-full items-start gap-2 border-b border-slate-100 px-2.5 py-2 text-left text-sm last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+    <span class="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">{{if .Badge}}{{.Badge}}{{else}}{{.Value}}{{end}}</span>
+    <span class="min-w-0 whitespace-normal break-words leading-5 text-slate-700 dark:text-slate-200">{{.Label}}</span>
+  </button>
+  {{end}}
+  {{else if .EmptyLabel}}
+  <div data-search-empty class="px-2.5 py-2 text-sm text-slate-500 dark:text-slate-400">{{.EmptyLabel}}</div>
+  {{end}}
+</div>
+{{end}}
 {{end}}
 
 {{define "priority-badge"}}
