@@ -685,6 +685,9 @@ func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
 		if strings.Contains(body, "max-w-5xl") {
 			t.Fatalf("%s panel still uses narrower page width: %s", tt.name, body)
 		}
+		if strings.Contains(body, `data-lucide="arrow-left"`) {
+			t.Fatalf("%s panel should not render app-level back buttons: %s", tt.name, body)
+		}
 	}
 }
 
@@ -768,8 +771,6 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Linked work",
 		"Comments",
 		"Looks ready.",
-		`href="/bradley/projects/TRACK/backlog"`,
-		`hx-get="/bradley/projects/TRACK/backlog/panel"`,
 		`href="/bradley/issues/TRACK-8"`,
 		`hx-get="/bradley/issues/TRACK-8/panel"`,
 		`aria-label="Issue actions"`,
@@ -985,9 +986,6 @@ func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
-		`href="/bradley/projects/TRACK/deleted"`,
-		`hx-get="/bradley/projects/TRACK/deleted/panel"`,
-		"Deleted issues",
 		`rounded-lg border border-slate-300`,
 		`mx-auto max-w-lg pt-10`,
 		`Deleted issue`,
@@ -1006,6 +1004,11 @@ func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("deleted issue panel missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted issue panel should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{"Hidden deleted description", "Comments", "Sub-issues", `aria-label="Issue actions"`, `Delete issue`, `data-lucide="trash-2"`, `rounded-t-[`, `rounded-b-md`, `mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4`} {

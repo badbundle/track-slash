@@ -167,9 +167,15 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body = e.uiGet(t, "/projects/new", token)
-	for _, want := range []string{"New project", "Create project", `action="/projects"`, `id="project-key"`, `id="project-name"`, `id="project-description"`, `href="/projects"`, `hx-get="/projects/panel"`} {
+	for _, want := range []string{"New project", "Create project", `action="/projects"`, `id="project-key"`, `id="project-name"`, `id="project-description"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("new project body missing %q: %s", want, body)
+		}
+	}
+	newProjectMain := mainContentBlock(t, body)
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="/projects"`, `hx-get="/projects/panel"`} {
+		if strings.Contains(newProjectMain, notWant) {
+			t.Fatalf("new project body should not render back button markup %q: %s", notWant, body)
 		}
 	}
 
@@ -1374,8 +1380,6 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
-		`href="` + e.projectPath() + `/all"`,
-		`hx-get="` + e.projectPath() + `/all/panel"`,
 		`href="` + e.issuePath(linked) + `"`,
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
 		`href="` + e.issuePath(subIssue) + `"`,
@@ -1409,6 +1413,11 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("issue body still renders native title tooltip %q: %s", notWant, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/all"`, `hx-get="` + e.projectPath() + `/all/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue body should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{`aria-label="Edit status"`, ">Status</dt>"} {
@@ -2002,8 +2011,6 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	for _, want := range []string{
 		"Deleted issues",
 		e.projKey,
-		e.projectPath() + "/sprint",
-		e.projectPath() + "/sprint/panel",
 		deleted.Identifier,
 		deleted.Title,
 		`href="` + e.issuePath(deleted) + `"`,
@@ -2021,6 +2028,11 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("deleted body missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("deleted body should not render back button markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{live.Title, otherDeleted.Title, "Issue deleted", `aria-label="Project views"`, `aria-label="Project actions"`} {

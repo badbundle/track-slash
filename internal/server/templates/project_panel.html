@@ -270,11 +270,6 @@
 
 {{define "deleted-issues-panel"}}
 <section class="mx-auto max-w-6xl px-6 py-6">
-  <a href="{{projectView .Project "sprint"}}" hx-get="{{projectPanel .Project "sprint"}}" hx-target="#main" hx-push-url="{{projectView .Project "sprint"}}" class="mb-3 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
-    <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
-    Project
-  </a>
-
   <header class="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
     <div class="min-w-0">
       {{template "project-key" .Project.Key}}
