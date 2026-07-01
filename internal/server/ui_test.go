@@ -97,6 +97,35 @@ func TestUIStatusClass(t *testing.T) {
 	}
 }
 
+func TestUISetHXHistoryURL(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest("POST", "/bradley/projects/TRACK/context/context-1", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Current-URL", "http://track.test/bradley/projects/TRACK/context/context-1/edit")
+	res := httptest.NewRecorder()
+	uiSetHXReplaceURL(res, req, "/bradley/projects/TRACK/context")
+	if got := res.Header().Get("HX-Replace-Url"); got != "/bradley/projects/TRACK/context" {
+		t.Fatalf("HX-Replace-Url = %q, want project context path", got)
+	}
+
+	req = httptest.NewRequest("POST", "/bradley/issues/TRACK-7/description", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Current-URL", "http://track.test/bradley/issues/TRACK-7")
+	res = httptest.NewRecorder()
+	uiSetHXPushURL(res, req, "/bradley/issues/TRACK-7")
+	if got := res.Header().Get("HX-Push-Url"); got != "" {
+		t.Fatalf("same-url HX-Push-Url = %q, want empty", got)
+	}
+
+	req = httptest.NewRequest("POST", "/bradley/issues/TRACK-7/delete", nil)
+	res = httptest.NewRecorder()
+	uiSetHXPushURL(res, req, "/bradley/projects/TRACK/deleted")
+	if got := res.Header().Get("HX-Push-Url"); got != "" {
+		t.Fatalf("non-htmx HX-Push-Url = %q, want empty", got)
+	}
+}
+
 func TestUIStatusRowClass(t *testing.T) {
 	t.Parallel()
 
@@ -826,7 +855,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/comments"`,
 		`hx-post="/bradley/issues/TRACK-7/comments"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`data-submit-shortcut="meta-enter"`,
 		`data-autogrow-textarea`,
 		`<textarea name="body" rows="1"`,
@@ -1124,7 +1153,7 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/status"`,
 		`hx-post="/bradley/issues/TRACK-7/status"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`role="listbox" aria-label="Issue status"`,
 		`name="status" value="todo"`,
 		`name="status" value="in_progress"`,
@@ -1190,7 +1219,7 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/priority"`,
 		`hx-post="/bradley/issues/TRACK-7/priority"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`@keyframes priority-picker-item-enter`,
 		`@media (prefers-reduced-motion: no-preference)`,
 		`[data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }`,
@@ -1207,7 +1236,7 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`bg-yellow-500`,
 		`bg-gray-500`,
 		`role="option" aria-selected="true"`,
-		`type="button" hx-get="/bradley/issues/TRACK-7/panel" hx-target="#main" hx-push-url="/bradley/issues/TRACK-7" name="priority" value="P1"`,
+		`type="button" hx-get="/bradley/issues/TRACK-7/panel" hx-target="#main" hx-push-url="false" name="priority" value="P1"`,
 		`rounded-full p-0.5 transition`,
 		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
@@ -1267,7 +1296,7 @@ func TestUIIssuePanelRendersDescriptionEditForm(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/description"`,
 		`hx-post="/bradley/issues/TRACK-7/description"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`name="description"`,
 		`placeholder="Description"`,
 		`data-submit-shortcut="meta-enter"`,
@@ -1345,7 +1374,7 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/sprint"`,
 		`hx-post="/bradley/issues/TRACK-7/sprint"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`data-search`,
 		`name="sprint" value="sprint-2" autocomplete="off"`,
 		`data-search-input`,
@@ -1836,7 +1865,7 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	}
 
 	emptyBody := renderManager(base())
-	for _, want := range []string{"Context", "No context.", `aria-label="Add context"`, `aria-label="Attach context"`} {
+	for _, want := range []string{"Context", "No context.", `aria-label="Add context"`, `aria-label="Attach context"`, `hx-push-url="/bradley/issues/TRACK-7/context/new"`, `hx-push-url="/bradley/issues/TRACK-7/context/link"`} {
 		if !strings.Contains(emptyBody, want) {
 			t.Fatalf("empty issue context manager missing %q: %s", want, emptyBody)
 		}
@@ -1886,7 +1915,7 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 		UpdatedAt:      when,
 	}}
 	populatedBody := renderManager(populatedPanel)
-	for _, want := range []string{"Agent notes", "Issue-only", `aria-label="View context"`, `aria-label="Edit context"`, `aria-label="Remove context"`} {
+	for _, want := range []string{"Agent notes", "Issue-only", `aria-label="View context"`, `aria-label="Edit context"`, `aria-label="Remove context"`, `hx-push-url="/bradley/issues/TRACK-7/context/context-1"`, `hx-push-url="/bradley/issues/TRACK-7/context/context-1/edit"`} {
 		if !strings.Contains(populatedBody, want) {
 			t.Fatalf("populated issue context manager missing %q: %s", want, populatedBody)
 		}
@@ -1925,7 +1954,7 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	editPanel.ContextEditTitle = "Agent notes"
 	editPanel.ContextEditBody = "Use the compact path."
 	editBody := renderManager(editPanel)
-	for _, want := range []string{`action="/bradley/issues/TRACK-7/context/context-1"`, `value="Agent notes"`, "Use the compact path.", `aria-label="Save context"`} {
+	for _, want := range []string{`action="/bradley/issues/TRACK-7/context/context-1"`, `value="Agent notes"`, "Use the compact path.", `aria-label="Save context"`, `aria-label="Cancel editing context"`, `hx-replace-url="/bradley/issues/TRACK-7/context"`} {
 		if !strings.Contains(editBody, want) {
 			t.Fatalf("issue context edit state missing %q: %s", want, editBody)
 		}
@@ -1981,6 +2010,7 @@ func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
 		`aria-label="Cancel adding sub-issue"`,
 		`method="post" action="/bradley/issues/TRACK-7/sub-issues"`,
 		`hx-post="/bradley/issues/TRACK-7/sub-issues"`,
+		`hx-push-url="false"`,
 		`name="title" value="Draft child" autofocus placeholder="Title"`,
 		`aria-label="Create sub-issue"`,
 		`data-lucide="check"`,
@@ -2043,7 +2073,7 @@ func TestUIIssuePanelRendersAddLinkForm(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/links"`,
 		`hx-post="/bradley/issues/TRACK-7/links"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`name="relation" aria-label="Link relationship"`,
 		`value="relates_to"`,
 		`value="blocks"`,
@@ -2117,7 +2147,7 @@ func TestUIIssuePanelRendersLinkEditForm(t *testing.T) {
 		`method="post" action="/bradley/issues/TRACK-7/links/link-3"`,
 		`hx-post="/bradley/issues/TRACK-7/links/link-3"`,
 		`hx-target="#main"`,
-		`hx-push-url="/bradley/issues/TRACK-7"`,
+		`hx-push-url="false"`,
 		`name="relation" aria-label="Link relationship"`,
 		`value="cloned_by" selected`,
 		`name="target_issue" value="TRACK-8" placeholder="TRACK-12"`,
@@ -2487,7 +2517,7 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`data-new-issue-panel`,
 		`id="new-issue-form" method="post" action="/issues"`,
 		`hx-post="/issues"`,
-		`hx-push-url="/issues/new"`,
+		`hx-push-url="false"`,
 		`id="new-issue-project-form" method="get" action="/issues/new/panel"`,
 		`hx-get="/issues/new/panel"`,
 		`hx-include="#issue-title,#issue-description,input[name='priority']:checked,#issue-due-date,#issue-assignee,#issue-reporter"`,
@@ -2708,7 +2738,7 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		Items:     []uiContextManagerItem{managerItem},
 	}
 	body = renderManager(manager)
-	for _, want := range []string{"Context", "Architecture notes", "linked issues", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
+	for _, want := range []string{"Context", "Architecture notes", "linked issues", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/edit"`, `aria-label="Delete context"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context manager row missing %q: %s", want, body)
 		}
@@ -2746,7 +2776,7 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 	editManager.ContextEditTitle = "Architecture notes"
 	editManager.ContextEditBody = "Use the body."
 	body = renderManager(&editManager)
-	for _, want := range []string{`value="Architecture notes"`, "Use the body.", `aria-label="Save context"`} {
+	for _, want := range []string{`action="/bradley/projects/TRACK/context/context-1"`, `value="Architecture notes"`, "Use the body.", `aria-label="Save context"`, `aria-label="Cancel editing context"`, `hx-replace-url="/bradley/projects/TRACK/context"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context edit manager missing %q: %s", want, body)
 		}

@@ -1199,7 +1199,7 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		http.Redirect(w, r, uiIssuePath(created), http.StatusSeeOther)
 		return
 	}
-	w.Header().Set("HX-Push-Url", uiIssuePath(created))
+	uiSetHXPushURL(w, r, uiIssuePath(created))
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, created.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -1420,9 +1420,7 @@ func (s *Server) uiCreateProjectContext(w http.ResponseWriter, r *http.Request) 
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiProjectContextsPath(project))
-	}
+	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
 }
 
@@ -1478,9 +1476,7 @@ func (s *Server) uiUpdateProjectContext(w http.ResponseWriter, r *http.Request) 
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiProjectContextsPath(project))
-	}
+	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
 }
 
@@ -1497,9 +1493,7 @@ func (s *Server) uiDeleteProjectContext(w http.ResponseWriter, r *http.Request) 
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiProjectContextsPath(project))
-	}
+	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
 }
 
@@ -1550,9 +1544,7 @@ func (s *Server) uiCreateProjectContextIssueLink(w http.ResponseWriter, r *http.
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiProjectContextsPath(project))
-	}
+	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
 }
 
@@ -1583,9 +1575,7 @@ func (s *Server) uiDeleteProjectContextIssueLink(w http.ResponseWriter, r *http.
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiProjectContextsPath(project))
-	}
+	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
 }
 
@@ -1965,7 +1955,7 @@ func (s *Server) uiDeleteIssue(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, backHref, http.StatusSeeOther)
 		return
 	}
-	w.Header().Set("HX-Push-Url", backHref)
+	uiSetHXPushURL(w, r, backHref)
 	s.renderUIIssueBackTarget(w, r, panel, &uiIssueDeleteNotice{Issue: issue})
 }
 
@@ -1987,7 +1977,7 @@ func (s *Server) uiRestoreIssue(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, uiIssuePath(restored), http.StatusSeeOther)
 		return
 	}
-	w.Header().Set("HX-Push-Url", uiIssuePath(restored))
+	uiSetHXPushURL(w, r, uiIssuePath(restored))
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, restored.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -2477,9 +2467,7 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 			writeUIStoreError(w, err)
 			return
 		}
-		if isHTMXRequest(r) {
-			w.Header().Set("HX-Push-Url", uiIssueContextPath(issue))
-		}
+		uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
 		s.renderUIIssueContextManager(w, r, issue.ID, nil)
 		return
 	}
@@ -2522,9 +2510,7 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 			writeUIStoreError(w, err)
 			return
 		}
-		if isHTMXRequest(r) {
-			w.Header().Set("HX-Push-Url", uiIssueContextPath(issue))
-		}
+		uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
 		s.renderUIIssueContextManager(w, r, issue.ID, nil)
 		return
 	}
@@ -2555,9 +2541,7 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiIssueContextPath(issue))
-	}
+	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
 	s.renderUIIssueContextManager(w, r, issue.ID, nil)
 }
 
@@ -2675,9 +2659,7 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiIssueContextPath(issue))
-	}
+	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
 	s.renderUIIssueContextManager(w, r, issue.ID, nil)
 }
 
@@ -2733,9 +2715,7 @@ func (s *Server) uiDeleteIssueContextLink(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if isHTMXRequest(r) {
-		w.Header().Set("HX-Push-Url", uiIssueContextPath(issue))
-	}
+	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
 	s.renderUIIssueContextManager(w, r, issue.ID, nil)
 }
 
@@ -5571,6 +5551,40 @@ func isHTMXRequest(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("HX-Request"), "true")
 }
 
+func uiSetHXPushURL(w http.ResponseWriter, r *http.Request, path string) {
+	uiSetHXHistoryURL(w, r, "HX-Push-Url", path)
+}
+
+func uiSetHXReplaceURL(w http.ResponseWriter, r *http.Request, path string) {
+	uiSetHXHistoryURL(w, r, "HX-Replace-Url", path)
+}
+
+func uiSetHXHistoryURL(w http.ResponseWriter, r *http.Request, header, path string) {
+	if !isHTMXRequest(r) {
+		return
+	}
+	path = strings.TrimSpace(path)
+	if path == "" || path == uiHTMXCurrentPath(r) {
+		return
+	}
+	w.Header().Set(header, path)
+}
+
+func uiHTMXCurrentPath(r *http.Request) string {
+	if raw := strings.TrimSpace(r.Header.Get("HX-Current-URL")); raw != "" {
+		if parsed, err := url.Parse(raw); err == nil && parsed.Path != "" {
+			if parsed.RawQuery != "" {
+				return parsed.Path + "?" + parsed.RawQuery
+			}
+			return parsed.Path
+		}
+	}
+	if r.URL == nil {
+		return ""
+	}
+	return r.URL.RequestURI()
+}
+
 func uiAppendDeletedIssueQuery(path, issueRef string) string {
 	sep := "?"
 	if strings.Contains(path, "?") {
@@ -5899,7 +5913,7 @@ func uiIssueStatusDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
 	return uiOptionDropdownData{
 		Action:       uiIssueStatusPath(panel.Issue),
 		HXTarget:     "#main",
-		HXPushURL:    uiIssuePath(panel.Issue),
+		HXPushURL:    "false",
 		CancelHXGet:  uiIssuePanelPath(panel.Issue),
 		ToggleLabel:  "Change status",
 		ListLabel:    "Issue status",
@@ -5972,7 +5986,7 @@ func uiIssueCloseReasonDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
 	return uiOptionDropdownData{
 		Action:       uiIssueCloseReasonPath(panel.Issue),
 		HXTarget:     "#main",
-		HXPushURL:    uiIssuePath(panel.Issue),
+		HXPushURL:    "false",
 		CancelHXGet:  uiIssuePanelPath(panel.Issue),
 		ToggleLabel:  "Choose close reason",
 		ListLabel:    "Close reason",
@@ -5997,7 +6011,7 @@ func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
 		WidthClass:      "max-w-sm",
 		CancelLabel:     "Cancel editing close reason",
 		CancelHXGet:     uiIssuePanelPath(panel.Issue),
-		CancelHXPushURL: uiIssuePath(panel.Issue),
+		CancelHXPushURL: "false",
 		Badges: []uiModalBadge{
 			{
 				Label: uiStatusLabel(model.StatusClosed),

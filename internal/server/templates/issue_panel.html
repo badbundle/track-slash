@@ -52,14 +52,14 @@
     <div class="order-2 min-w-0 space-y-6 lg:order-1">
       <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         {{if .EditDescription}}
-        <form method="post" action="{{issueDescription .Issue}}" hx-post="{{issueDescription .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
+        <form method="post" action="{{issueDescription .Issue}}" hx-post="{{issueDescription .Issue}}" hx-target="#main" hx-push-url="false">
           <header class="flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
             <div class="flex items-center gap-2">
               <button type="submit" aria-label="Save description" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                 <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
               </button>
-              <button type="button" aria-label="Cancel editing description" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Cancel editing description" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
               </button>
             </div>
@@ -69,7 +69,7 @@
         {{else}}
         <header class="flex items-center justify-between gap-3">
           <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
-          <button type="button" aria-label="Edit description" hx-get="{{issueDescriptionEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          <button type="button" aria-label="Edit description" hx-get="{{issueDescriptionEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
           </button>
         </header>
@@ -98,11 +98,11 @@
             </div>
             <div class="flex shrink-0 items-center gap-2">
               {{if .AddSubIssue}}
-              <button type="button" aria-label="Cancel adding sub-issue" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Cancel adding sub-issue" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
               {{else}}
-              <button type="button" aria-label="Add sub-issue" hx-get="{{issueSubIssuesNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Add sub-issue" hx-get="{{issueSubIssuesNew .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
               {{end}}
@@ -115,7 +115,7 @@
           </div>
         </header>
         {{if .AddSubIssue}}
-        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
+        <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="false" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
           <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <input name="title" value="{{.SubIssueTitle}}" autofocus placeholder="Title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <div class="flex items-center sm:justify-end">
@@ -152,11 +152,11 @@
               {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
             </div>
             {{if .AddLink}}
-            <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
             {{else}}
-            <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
             {{end}}
@@ -168,7 +168,7 @@
           </div>
         </header>
         {{if .AddLink}}
-        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
+        <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="false" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
           <div class="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
             <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
               {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
@@ -178,7 +178,7 @@
               <button type="submit" aria-label="Save link" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                 <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
-              <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
             </div>
@@ -190,7 +190,7 @@
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .Links}}
           {{if eq $.EditLinkID .Link.ID}}
-          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid gap-2 border-b border-slate-100 px-4 py-3.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+          <form method="post" action="{{issueLink $.Issue .Link}}" hx-post="{{issueLink $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="grid gap-2 border-b border-slate-100 px-4 py-3.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
             <div class="grid gap-2 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
               <select name="relation" aria-label="Link relationship" class="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
                 {{range linkOptions}}<option value="{{.Value}}" {{if eq $.LinkRelation .Value}}selected{{end}}>{{.Label}}</option>{{end}}
@@ -200,10 +200,10 @@
                 <button type="submit" aria-label="Save link" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                   <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Cancel editing link" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <button type="button" aria-label="Cancel editing link" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Remove link" hx-post="{{issueLinkDelete $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+                <button type="button" aria-label="Remove link" hx-post="{{issueLinkDelete $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
                   <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
               </div>
@@ -225,7 +225,7 @@
             {{else}}
             <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
             {{end}}
-            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
           </div>
@@ -248,7 +248,7 @@
             {{if .CommentsHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing latest 200</p>{{end}}
           </div>
         </header>
-        <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
+        <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="false">
           <div class="flex items-start gap-2">
             <textarea name="body" rows="1" placeholder="Add a comment" data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
             <button type="submit" aria-label="Post comment" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
@@ -267,19 +267,19 @@
               <span class="text-xs text-slate-500 dark:text-slate-400">{{tokenTime .Comment.CreatedAt}}</span>
               {{if .Comment.EditedAt}}<span class="text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">•</span><span class="text-xs text-slate-500 dark:text-slate-400">Edited {{tokenTime .Comment.EditedAt}}</span>{{end}}
               {{if and .CanEdit (ne $.EditCommentID .Comment.ID)}}
-              <button type="button" aria-label="Edit comment" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-5 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit comment" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="false" class="grid h-5 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>
               </button>
               {{end}}
             </div>
             {{if eq $.EditCommentID .Comment.ID}}
-            <form method="post" action="{{issueComment $.Issue .Comment}}" hx-post="{{issueComment $.Issue .Comment}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="w-full max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25">
+            <form method="post" action="{{issueComment $.Issue .Comment}}" hx-post="{{issueComment $.Issue .Comment}}" hx-target="#main" hx-push-url="false" class="w-full max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25">
               <textarea name="body" rows="2" autofocus data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-h-16 w-full resize-y rounded-md border border-indigo-100 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-indigo-900/60 dark:bg-slate-950 dark:text-slate-100">{{$.CommentEditBody}}</textarea>
               <div class="mt-2 flex items-center gap-2">
                 <button type="submit" aria-label="Save comment" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                   <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Cancel editing comment" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <button type="button" aria-label="Cancel editing comment" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                 </button>
                 <span class="text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to save</span>
@@ -327,7 +327,7 @@
             {{if .EditStatus}}
             {{template "option-dropdown" (issueStatusDropdown .)}}
             {{else}}
-            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" data-option-dropdown-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
+            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="false" data-option-dropdown-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
               <span>{{statusLabel .Issue.Status}}</span>
               <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
             </button>
@@ -343,7 +343,7 @@
             {{else}}
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.CloseReason}}{{template "close-reason-badge" .Issue.CloseReason}}{{else}}{{template "missing-close-reason-badge" .}}{{end}}</span>
-              <button type="button" aria-label="Edit close reason" hx-get="{{issueCloseReasonEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit close reason" hx-get="{{issueCloseReasonEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
             </dd>
@@ -370,10 +370,10 @@
                   [data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }
                 }
               </style>
-              <form method="post" action="{{issuePriority .Issue}}" hx-post="{{issuePriority .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1">
+              <form method="post" action="{{issuePriority .Issue}}" hx-post="{{issuePriority .Issue}}" hx-target="#main" hx-push-url="false" role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1">
                 {{range priorityOptions}}
                 {{if eq $.Issue.Priority .Priority}}
-                <button type="button" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="{{issueHref $.Issue}}" name="priority" value="{{.Priority}}" role="option" aria-selected="true" class="rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 opacity-100">
+                <button type="button" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="false" name="priority" value="{{.Priority}}" role="option" aria-selected="true" class="rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 opacity-100">
                   {{template "priority-badge" .Priority}}
                 </button>
                 {{else}}
@@ -384,7 +384,7 @@
                 {{end}}
               </form>
               {{else}}
-              <button type="button" aria-label="Change priority" hx-get="{{issuePriorityEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="inline-flex items-center rounded-full p-1 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Change priority" hx-get="{{issuePriorityEdit .Issue}}" hx-target="#main" hx-push-url="false" class="inline-flex items-center rounded-full p-1 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 {{template "priority-badge" .Issue.Priority}}
               </button>
               {{end}}
@@ -393,13 +393,13 @@
           {{if .EditDueDate}}
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
-            <form method="post" action="{{issueDueDate .Issue}}" hx-post="{{issueDueDate .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="mt-1 space-y-2">
+            <form method="post" action="{{issueDueDate .Issue}}" hx-post="{{issueDueDate .Issue}}" hx-target="#main" hx-push-url="false" class="mt-1 space-y-2">
               <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
                 <input type="date" name="due_date" value="{{.DueDateInput}}" autofocus aria-label="Due date" class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
                 <button type="submit" aria-label="Save due date" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
-                <button type="button" aria-label="Cancel editing due date" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <button type="button" aria-label="Cancel editing due date" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
               </div>
@@ -411,7 +411,7 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.DueDate}}{{template "issue-due-badge" .Issue}}{{else}}None{{end}}</span>
-              <button type="button" aria-label="Edit due date" hx-get="{{issueDueDateEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit due date" hx-get="{{issueDueDateEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
             </dd>
@@ -449,7 +449,7 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</dt>
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Assignee}}{{.Assignee.Name}}{{else}}Unassigned{{end}}</span>
-              <button type="button" aria-label="Edit assignee" hx-get="{{issueAssigneeEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit assignee" hx-get="{{issueAssigneeEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
             </dd>
@@ -462,7 +462,7 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reporter</dt>
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Reporter}}{{.Reporter.Name}}{{else}}No reporter{{end}}</span>
-              <button type="button" aria-label="Edit reporter" hx-get="{{issueReporterEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit reporter" hx-get="{{issueReporterEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
             </dd>
@@ -477,7 +477,7 @@
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</span>
               {{if .CanEditSprint}}
-              <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
               {{else}}

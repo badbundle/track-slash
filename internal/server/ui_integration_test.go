@@ -292,7 +292,7 @@ func TestUINewIssueCreatesIssueWithAllFieldsAndDefaultReporter(t *testing.T) {
 		"Create issue",
 		`method="post" action="/issues"`,
 		`hx-post="/issues"`,
-		`hx-push-url="/issues/new"`,
+		`hx-push-url="false"`,
 		`id="issue-project" name="project" value="` + e.projKey + ` - http-test"`,
 		`type="hidden" name="project_id" value="` + e.projectID.String() + `"`,
 		`id="issue-title"`,
@@ -559,11 +559,20 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	form := url.Values{"title": {"Architecture"}, "body": {"Use the existing store path."}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/context", token, strings.NewReader(form.Encode()))
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.projectPath()+"/context", token, strings.NewReader(form.Encode()), map[string]string{
+		"HX-Current-URL": e.ts.URL + e.projectPath() + "/context/new",
+		"HX-Request":     "true",
+	})
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create context code = %d body = %s", res.StatusCode, body)
+	}
+	if replace := res.Header.Get("HX-Replace-Url"); replace != e.projectPath()+"/context" {
+		t.Fatalf("create context HX-Replace-Url = %q", replace)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("create context HX-Push-Url = %q, want empty", push)
 	}
 	for _, want := range []string{"Architecture", `aria-label="Link issue"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
 		if !strings.Contains(body, want) {
@@ -637,11 +646,20 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	form = url.Values{"title": {"Architecture v2"}, "body": {"Use the updated store path."}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, contextPath, token, strings.NewReader(form.Encode()))
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, contextPath, token, strings.NewReader(form.Encode()), map[string]string{
+		"HX-Current-URL": e.ts.URL + contextPath + "/edit",
+		"HX-Request":     "true",
+	})
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("update context code = %d body = %s", res.StatusCode, body)
+	}
+	if replace := res.Header.Get("HX-Replace-Url"); replace != e.projectPath()+"/context" {
+		t.Fatalf("update context HX-Replace-Url = %q", replace)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("update context HX-Push-Url = %q, want empty", push)
 	}
 	if !strings.Contains(body, "Architecture v2") {
 		t.Fatalf("updated context body missing title: %s", body)
@@ -683,11 +701,20 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 		}
 	}
 	form = url.Values{"title": {"Architecture v3"}, "body": {"Use the issue manager edit path."}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context/context-1", token, strings.NewReader(form.Encode()))
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/context/context-1", token, strings.NewReader(form.Encode()), map[string]string{
+		"HX-Current-URL": e.ts.URL + e.issuePath(issue) + "/context/context-1/edit",
+		"HX-Request":     "true",
+	})
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("issue edit project context code = %d body = %s", res.StatusCode, body)
+	}
+	if replace := res.Header.Get("HX-Replace-Url"); replace != e.issuePath(issue)+"/context" {
+		t.Fatalf("issue edit context HX-Replace-Url = %q", replace)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("issue edit context HX-Push-Url = %q, want empty", push)
 	}
 	if !strings.Contains(body, "Architecture v3") || strings.Contains(body, "Use the issue manager edit path.") {
 		t.Fatalf("issue edit project context response should show compact updated row: %s", body)
@@ -770,11 +797,20 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 		t.Fatalf("bad issue upload body missing error/state: %s", body)
 	}
 
-	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/context", token, strings.NewReader(url.Values{"mode": {"create"}, "title": {"Issue note"}, "body": {"Only needed here."}}.Encode()))
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/context", token, strings.NewReader(url.Values{"mode": {"create"}, "title": {"Issue note"}, "body": {"Only needed here."}}.Encode()), map[string]string{
+		"HX-Current-URL": e.ts.URL + e.issuePath(issue) + "/context/new",
+		"HX-Request":     "true",
+	})
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create issue-only context code = %d body = %s", res.StatusCode, body)
+	}
+	if replace := res.Header.Get("HX-Replace-Url"); replace != e.issuePath(issue)+"/context" {
+		t.Fatalf("create issue-only context HX-Replace-Url = %q", replace)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("create issue-only context HX-Push-Url = %q, want empty", push)
 	}
 	for _, want := range []string{"Issue note", "Issue-only", `aria-label="Edit context"`, `aria-label="Remove context"`} {
 		if !strings.Contains(body, want) {
@@ -1780,7 +1816,7 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 		`role="listbox" aria-label="Issue status"`,
 		`method="post" action="` + e.issuePath(issue) + `/status"`,
 		`hx-post="` + e.issuePath(issue) + `/status"`,
-		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`hx-push-url="false"`,
 		`name="status" value="todo"`,
 		`name="status" value="in_progress"`,
 		`name="status" value="done"`,
@@ -2377,7 +2413,7 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`role="listbox" aria-label="Issue priority"`,
 		`method="post" action="` + e.issuePath(issue) + `/priority"`,
 		`hx-post="` + e.issuePath(issue) + `/priority"`,
-		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`hx-push-url="false"`,
 		`name="priority" value="P0"`,
 		`name="priority" value="P1"`,
 		`name="priority" value="P2"`,
@@ -2477,7 +2513,7 @@ func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
 		"description target issue",
 		`method="post" action="` + e.issuePath(issue) + `/description"`,
 		`hx-post="` + e.issuePath(issue) + `/description"`,
-		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`hx-push-url="false"`,
 		`name="description"`,
 		`placeholder="Description"`,
 		`aria-label="Save description"`,
@@ -2494,11 +2530,20 @@ func TestUIEditDescriptionUpdatesAndClearsIssuePanel(t *testing.T) {
 	}
 
 	form := url.Values{"description": {"new description"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(form.Encode()))
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(form.Encode()), map[string]string{
+		"HX-Current-URL": e.ts.URL + e.issuePath(issue),
+		"HX-Request":     "true",
+	})
 	defer res.Body.Close()
 	body := readBody(t, res)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("update description code = %d body = %s", res.StatusCode, body)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("description update HX-Push-Url = %q, want empty", push)
+	}
+	if replace := res.Header.Get("HX-Replace-Url"); replace != "" {
+		t.Fatalf("description update HX-Replace-Url = %q, want empty", replace)
 	}
 	if !strings.Contains(body, "new description") || strings.Contains(body, "old description") || strings.Contains(body, `name="description"`) {
 		t.Fatalf("update description response did not return read mode with new body: %s", body)
@@ -2575,7 +2620,7 @@ func TestUIEditIssuePeopleUpdatesAndClearsIssuePanel(t *testing.T) {
 	for _, want := range []string{
 		`method="post" action="` + e.issuePath(issue) + `/assignee"`,
 		`hx-post="` + e.issuePath(issue) + `/assignee"`,
-		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`hx-push-url="false"`,
 		`name="assignee"`,
 		`data-search`,
 		`data-search-input`,
@@ -2652,6 +2697,7 @@ func TestUIEditIssuePeopleUpdatesAndClearsIssuePanel(t *testing.T) {
 	for _, want := range []string{
 		`method="post" action="` + e.issuePath(issue) + `/reporter"`,
 		`hx-post="` + e.issuePath(issue) + `/reporter"`,
+		`hx-push-url="false"`,
 		`name="reporter"`,
 		`value="@` + user.Username + `"`,
 		`value="@` + target.Username + `"`,
@@ -2768,7 +2814,7 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 	for _, want := range []string{
 		`method="post" action="` + e.issuePath(issue) + `/sprint"`,
 		`hx-post="` + e.issuePath(issue) + `/sprint"`,
-		`hx-push-url="` + e.issuePath(issue) + `"`,
+		`hx-push-url="false"`,
 		`name="sprint"`,
 		`data-search`,
 		`data-search-input`,
