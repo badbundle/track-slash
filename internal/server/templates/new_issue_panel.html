@@ -27,7 +27,7 @@
       </div>
       {{if .Error}}<div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>{{end}}
 
-      <form id="new-issue-project-form" method="get" action="{{issueNewPanel}}" hx-get="{{issueNewPanel}}" hx-target="#main" hx-push-url="{{issueNew}}" hx-include="#issue-title,#issue-description,input[name='priority']:checked,#issue-due-date,#issue-assignee,#issue-reporter" data-search data-project-search data-search-collapsible data-search-clear-target="project_id" class="space-y-2">
+      <form id="new-issue-project-form" method="get" action="{{issueNewPanel}}" hx-get="{{issueNewPanel}}" hx-target="#main" hx-push-url="false" hx-include="#issue-title,#issue-description,input[name='priority']:checked,#issue-due-date,#issue-assignee,#issue-reporter" data-search data-project-search data-search-collapsible data-search-clear-target="project_id" class="space-y-2">
         <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-project">Project</label>
         {{with newIssueProjectAutocomplete .}}
         {{template "autocomplete-input" .}}
@@ -35,7 +35,7 @@
         {{end}}
       </form>
 
-      <form id="new-issue-form" method="post" action="{{issues}}" hx-post="{{issues}}" hx-target="#main" hx-push-url="{{issueNew}}" class="mt-4">
+      <form id="new-issue-form" method="post" action="{{issues}}" hx-post="{{issues}}" hx-target="#main" hx-push-url="false" class="mt-4">
       <input type="hidden" name="project_id" value="{{.ProjectID}}">
       <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-title">Title</label>
       <input id="issue-title" name="title" value="{{.Title}}" autocomplete="off" {{if .HasProject}}autofocus{{end}} class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Issue title">
