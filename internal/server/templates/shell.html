@@ -144,6 +144,24 @@
       const resizeTextareas = (root = document) => {
         root.querySelectorAll("[data-autogrow-textarea]").forEach(resizeTextarea);
       };
+      const syncCheckboxReveal = (reveal) => {
+        const toggle = reveal.querySelector("[data-checkbox-reveal-toggle]");
+        const panel = reveal.querySelector("[data-checkbox-reveal-panel]");
+        if (!toggle || !panel) return;
+        const open = toggle.checked;
+        panel.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        panel.querySelectorAll("input, select, textarea").forEach((control) => {
+          control.disabled = !open;
+          if (!open) control.value = "";
+        });
+      };
+      const syncCheckboxReveals = (root = document) => {
+        if (root instanceof Element && root.matches("[data-checkbox-reveal]")) {
+          syncCheckboxReveal(root);
+        }
+        root.querySelectorAll("[data-checkbox-reveal]").forEach(syncCheckboxReveal);
+      };
       const active = ["bg-indigo-50", "text-indigo-700", "ring-1", "ring-indigo-100", "dark:bg-indigo-950/50", "dark:text-indigo-200", "dark:ring-indigo-900"];
       const inactive = ["text-slate-600", "dark:text-slate-300"];
       const links = () => document.querySelectorAll("[data-nav-link]");
@@ -256,6 +274,13 @@
         filterSearchOptions(input);
         if (search) setSearchOptionsOpen(search, !search.hasAttribute("data-project-search"));
       });
+      document.body.addEventListener("change", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const toggle = event.target.closest("[data-checkbox-reveal-toggle]");
+        if (!toggle) return;
+        const reveal = toggle.closest("[data-checkbox-reveal]");
+        if (reveal) syncCheckboxReveal(reveal);
+      });
       document.body.addEventListener("focusin", (event) => {
         if (!(event.target instanceof Element)) return;
         const input = event.target.closest("[data-search-input]");
@@ -305,15 +330,18 @@
       document.body.addEventListener("htmx:afterSwap", (event) => {
         createIcons();
         resizeTextareas(event.target);
+        syncCheckboxReveals(event.target);
       });
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", () => {
           createIcons();
           resizeTextareas();
+          syncCheckboxReveals();
         });
       } else {
         createIcons();
         resizeTextareas();
+        syncCheckboxReveals();
       }
     })();
   </script>

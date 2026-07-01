@@ -654,6 +654,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing search component behavior %q: %s", want, body)
 		}
 	}
+	for _, want := range []string{`[data-checkbox-reveal]`, `syncCheckboxReveal`, `data-checkbox-reveal-toggle`, `data-checkbox-reveal-panel`, `panel.hidden = !open`, `control.disabled = !open`, `control.value = ""`, `aria-expanded`, `syncCheckboxReveals(event.target)`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing checkbox reveal behavior %q: %s", want, body)
+		}
+	}
 	for _, want := range []string{`data-close-on-outside`, `closeOpenDropdowns`, `details[data-close-on-outside][open]`, `details.removeAttribute("open")`, `data-option-dropdown-root`, `toggle.click()`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing dropdown outside-click behavior %q: %s", want, body)
@@ -2518,6 +2523,9 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`aria-label="Priority P1"`,
 		`opacity-40`,
 		`peer-checked:opacity-100`,
+		`data-checkbox-reveal`,
+		`id="issue-due-date-toggle" type="checkbox" data-checkbox-reveal-toggle aria-controls="issue-due-date-field" aria-expanded="true" checked`,
+		`id="issue-due-date-field" data-checkbox-reveal-panel`,
 		`type="date" name="due_date" value="tomorrow"`,
 		`id="issue-assignee" name="assignee" value="@ada"`,
 		`id="issue-reporter" name="reporter" value="@grace"`,

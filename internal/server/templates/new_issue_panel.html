@@ -73,9 +73,15 @@
             {{end}}
           </div>
         </div>
-        <div class="min-w-0">
-          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-due-date">Due date</label>
-          <input id="issue-due-date" type="date" name="due_date" value="{{.DueDate}}" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+        <div class="min-w-0" data-checkbox-reveal>
+          <label class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800" for="issue-due-date-toggle">
+            <input id="issue-due-date-toggle" type="checkbox" data-checkbox-reveal-toggle aria-controls="issue-due-date-field" aria-expanded="{{if .DueDate}}true{{else}}false{{end}}" {{if .DueDate}}checked{{end}} class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
+            <span>Due date</span>
+          </label>
+          <div id="issue-due-date-field" data-checkbox-reveal-panel {{if not .DueDate}}hidden{{end}} class="mt-2">
+            <label class="sr-only" for="issue-due-date">Due date</label>
+            <input id="issue-due-date" type="date" name="due_date" value="{{.DueDate}}" {{if not .DueDate}}disabled{{end}} class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+          </div>
         </div>
         <div class="min-w-0">
           <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-assignee">Assignee</label>
