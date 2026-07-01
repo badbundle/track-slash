@@ -167,6 +167,11 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		params.AssigneeIDs = append(params.AssigneeIDs, id)
 	}
+	tagNames, ok := parseIssueTagFilters(w, r)
+	if !ok {
+		return
+	}
+	params.TagNames = tagNames
 
 	sprintParam := r.URL.Query().Get("sprint")
 	sprintIDParam := r.URL.Query().Get("sprint_id")
@@ -203,6 +208,28 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		next = &enc
 	}
 	writePage(w, out, next)
+}
+
+func parseIssueTagFilters(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+	raws := r.URL.Query()["tag"]
+	tagNames := make([]string, 0, len(raws))
+	seen := make(map[string]struct{}, len(raws))
+	for _, raw := range raws {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		name, err := model.NormalizeIssueTagName(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return nil, false
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		tagNames = append(tagNames, name)
+	}
+	return tagNames, true
 }
 
 func (s *Server) listDeletedIssues(w http.ResponseWriter, r *http.Request) {

@@ -121,6 +121,8 @@
       {{template "issue-panel" .IssuePanel}}
       {{else if .ContextManager}}
       {{template "context-manager-panel" .ContextManager}}
+      {{else if .TagManager}}
+      {{template "tag-manager-panel" .TagManager}}
       {{else if .TokenPanel}}
       {{template "token-panel" .TokenPanel}}
       {{else if .SettingsPanel}}

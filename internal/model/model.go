@@ -3,7 +3,10 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -106,6 +109,68 @@ func (p IssuePriority) Valid() bool {
 		return true
 	}
 	return false
+}
+
+const MaxIssueTagNameLength = 80
+
+type IssueTagColor string
+
+const (
+	TagColorSlate  IssueTagColor = "slate"
+	TagColorRed    IssueTagColor = "red"
+	TagColorOrange IssueTagColor = "orange"
+	TagColorAmber  IssueTagColor = "amber"
+	TagColorYellow IssueTagColor = "yellow"
+	TagColorGreen  IssueTagColor = "green"
+	TagColorTeal   IssueTagColor = "teal"
+	TagColorCyan   IssueTagColor = "cyan"
+	TagColorBlue   IssueTagColor = "blue"
+	TagColorViolet IssueTagColor = "violet"
+	TagColorPink   IssueTagColor = "pink"
+)
+
+func (c IssueTagColor) Valid() bool {
+	switch c {
+	case TagColorSlate, TagColorRed, TagColorOrange, TagColorAmber, TagColorYellow, TagColorGreen, TagColorTeal, TagColorCyan, TagColorBlue, TagColorViolet, TagColorPink:
+		return true
+	}
+	return false
+}
+
+func IssueTagColorOrDefault(c IssueTagColor) IssueTagColor {
+	if c == "" {
+		return TagColorBlue
+	}
+	return c
+}
+
+func NormalizeIssueTagName(raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	name = strings.TrimPrefix(name, "#")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("tag name required")
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return "", fmt.Errorf("tag name must not contain control characters")
+		}
+	}
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" {
+		return "", fmt.Errorf("tag name required")
+	}
+	if utf8.RuneCountInString(name) > MaxIssueTagNameLength {
+		return "", fmt.Errorf("tag name must be at most %d chars", MaxIssueTagNameLength)
+	}
+	return name, nil
+}
+
+func IssueTagDisplayName(name string) string {
+	if strings.HasPrefix(name, "#") {
+		return name
+	}
+	return "#" + name
 }
 
 type SprintStatus string
@@ -236,8 +301,34 @@ type Issue struct {
 	SprintID      *uuid.UUID        `json:"sprint_id,omitempty"`
 	ParentIssueID *uuid.UUID        `json:"parent_issue_id,omitempty"`
 	DueDate       *Date             `json:"due_date"`
+	Tags          []IssueTag        `json:"tags,omitempty"`
 	CreatedAt     time.Time         `json:"created_at"`
 	UpdatedAt     time.Time         `json:"updated_at"`
+}
+
+type IssueTag struct {
+	ID          uuid.UUID     `json:"id"`
+	ProjectID   uuid.UUID     `json:"project_id"`
+	Number      int           `json:"number"`
+	Ref         string        `json:"ref"`
+	Name        string        `json:"name"`
+	DisplayName string        `json:"display_name"`
+	Color       IssueTagColor `json:"color"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
+}
+
+type IssueTagLink struct {
+	ID        uuid.UUID `json:"id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	IssueID   uuid.UUID `json:"issue_id"`
+	TagID     uuid.UUID `json:"tag_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func IssueTagRef(number int) string {
+	return fmt.Sprintf("tag-%d", number)
 }
 
 type LinkType string

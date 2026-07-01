@@ -242,6 +242,84 @@ func TestIssueContextLinkEventFansOutToLinkIssueContextAndProjectTopics(t *testi
 	}
 }
 
+func TestIssueTagEventFansOutToTagAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	tagID := uuid.New()
+
+	tagSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(tagSub, IssueTagTopic(tagID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, IssueTagTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpInsert,
+		Entity:    EntityIssueTag,
+		ID:        tagID,
+		ProjectID: &projectID,
+		Version:   1,
+	})
+
+	if _, ok := recv(t, tagSub, time.Second); !ok {
+		t.Fatal("tag subscriber did not receive event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive tag event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated issue_tag subscriber received event")
+	}
+}
+
+func TestIssueTagLinkEventFansOutToLinkIssueTagIssueAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	issueID := uuid.New()
+	tagID := uuid.New()
+	linkID := uuid.New()
+
+	linkSub := newTestClient(4)
+	issueSub := newTestClient(4)
+	tagSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(linkSub, IssueTagLinkTopic(linkID))
+	hub.Subscribe(issueSub, IssueTopic(issueID))
+	hub.Subscribe(tagSub, IssueTagTopic(tagID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, IssueTagLinkTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpInsert,
+		Entity:    EntityIssueTagLink,
+		ID:        linkID,
+		IssueID:   &issueID,
+		TagID:     &tagID,
+		ProjectID: &projectID,
+		Version:   1,
+	})
+
+	if _, ok := recv(t, linkSub, time.Second); !ok {
+		t.Fatal("link subscriber did not receive tag link event")
+	}
+	if _, ok := recv(t, issueSub, time.Second); !ok {
+		t.Fatal("issue subscriber did not receive tag link event")
+	}
+	if _, ok := recv(t, tagSub, time.Second); !ok {
+		t.Fatal("tag subscriber did not receive tag link event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive tag link event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated issue_tag_link subscriber received event")
+	}
+}
+
 func TestHubDeduplicatesAcrossTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
@@ -349,12 +427,16 @@ func TestParseTopic(t *testing.T) {
 		{"comment:" + id.String(), "comment", false},
 		{"project_context:" + id.String(), "project_context", false},
 		{"issue_context_link:" + id.String(), "issue_context_link", false},
+		{"issue_tag:" + id.String(), "issue_tag", false},
+		{"issue_tag_link:" + id.String(), "issue_tag_link", false},
 		{"user:" + id.String(), "", true},
 		{"issue:not-a-uuid", "", true},
 		{"sprint:not-a-uuid", "", true},
 		{"comment:not-a-uuid", "", true},
 		{"project_context:not-a-uuid", "", true},
 		{"issue_context_link:not-a-uuid", "", true},
+		{"issue_tag:not-a-uuid", "", true},
+		{"issue_tag_link:not-a-uuid", "", true},
 		{"", "", true},
 	}
 	for _, tc := range cases {

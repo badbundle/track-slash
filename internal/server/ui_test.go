@@ -538,6 +538,123 @@ func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 	}
 }
 
+func TestUIProjectIssueControlsRenderTagFiltersAndBadges(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("1f58d897-0e5d-4f72-bf4f-0f7be3d964f6")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	tags := []model.IssueTag{
+		uiTestIssueTag(projectID, 1, "Customer Beta", model.TagColorGreen),
+		uiTestIssueTag(projectID, 2, "Q3 Launch", model.TagColorViolet),
+		uiTestIssueTag(projectID, 3, "Ops Review", model.TagColorAmber),
+		uiTestIssueTag(projectID, 4, "Escalated", model.TagColorRed),
+	}
+	query := uiProjectAllQuery{TagNames: []string{"Customer Beta"}}
+	issue := model.Issue{
+		ID:            uuid.MustParse("1ecf456e-3a8e-4d8f-a685-6388c058abcf"),
+		ProjectID:     projectID,
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Number:        12,
+		Identifier:    "TRACK-12",
+		Title:         "Tagged issue",
+		Status:        model.StatusTodo,
+		Priority:      model.PriorityP2,
+		Tags:          tags,
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project:     project,
+		View:        "all",
+		ProjectTabs: uiProjectTabs(project, "all", nil),
+		AllIssuePage: uiProjectAllIssuePageData{
+			Issues: []model.Issue{issue},
+		},
+		AllControls: uiProjectAllIssueControls(project, query, tags[:2], nil, false, "", "", ""),
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"Tags",
+		"#Customer Beta",
+		"#Q3 Launch",
+		`href="/bradley/projects/TRACK/all?tag=Customer&#43;Beta"`,
+		`href="/bradley/projects/TRACK/all?tag=Customer&#43;Beta&amp;tag=Q3&#43;Launch"`,
+		"Tagged issue",
+		"#Ops Review",
+		`>&#43;1</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project tag controls/badges missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Assignee") {
+		t.Fatalf("project tag controls unexpectedly rendered assignee row: %s", body)
+	}
+}
+
+func TestUITagManagerUsesTagNamesNotRefs(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("a5a29c23-62e6-4afa-a1f4-2329d9589787")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issue := model.Issue{
+		ID:            uuid.MustParse("8df3db99-219a-4a89-9f5e-9727f033c4ea"),
+		ProjectID:     projectID,
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Number:        12,
+		Identifier:    "TRACK-12",
+		Title:         "Tagged issue",
+	}
+	tags := []model.IssueTag{
+		uiTestIssueTag(projectID, 1, "Customer Beta", model.TagColorGreen),
+		uiTestIssueTag(projectID, 2, "Q3 Launch", model.TagColorViolet),
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "tag-manager-panel", &uiTagManagerData{
+		Mode:      "issue",
+		Project:   project,
+		Issue:     issue,
+		HasIssue:  true,
+		Tags:      tags[:1],
+		Available: tags[1:],
+		BackHref:  "/bradley/issues/TRACK-12",
+		BackHXGet: "/bradley/issues/TRACK-12/panel",
+		BackLabel: "Issue",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{"#Customer Beta", "#Q3 Launch", `value="Q3 Launch"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("tag manager missing %q: %s", want, body)
+		}
+	}
+	for _, unwanted := range []string{`>tag-1<`, `>tag-2<`, `value="tag-2"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("tag manager rendered ref %q: %s", unwanted, body)
+		}
+	}
+}
+
+func uiTestIssueTag(projectID uuid.UUID, number int, name string, color model.IssueTagColor) model.IssueTag {
+	return model.IssueTag{
+		ID:          uuid.NewSHA1(uuid.NameSpaceOID, []byte(name)),
+		ProjectID:   projectID,
+		Number:      number,
+		Ref:         model.IssueTagRef(number),
+		Name:        name,
+		DisplayName: model.IssueTagDisplayName(name),
+		Color:       color,
+	}
+}
+
 func TestUISortIssueItems(t *testing.T) {
 	t.Parallel()
 
@@ -2366,6 +2483,9 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	assignees := []model.ProjectAssignee{
 		{ID: selectedID, Username: "ada", Name: "Ada Lovelace"},
 	}
+	tags := []model.IssueTag{
+		uiTestIssueTag(projectID, 1, "Customer Beta", model.TagColorGreen),
+	}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		Project:              project,
@@ -2402,6 +2522,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 				},
 			}},
 		},
+		Tags: tags,
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -2436,7 +2557,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about view missing markup %q: %s", want, body)
 		}
@@ -2447,7 +2568,11 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if !strings.Contains(body, `class="`+uiCountBadgeClass+`">0</span>`) {
 		t.Fatalf("project about context detail should show count only: %s", body)
 	}
-	requireMarkupOrder(t, body, ">Details</h2>", ">Context</dt>")
+	if strings.Contains(header, ">Manage tags</span>") {
+		t.Fatalf("project title card should not render manage tags in overflow menu: %s", body)
+	}
+	requireMarkupOrder(t, body, ">Details</h2>", ">Tags</dt>")
+	requireMarkupOrder(t, body, ">Tags</dt>", ">Context</dt>")
 	for _, notWant := range []string{`aria-label="Assignee filter"`, `assignee_id=`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("project title card preserved about filter state %q: %s", notWant, body)
@@ -2824,7 +2949,7 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		ClearAssigneeHref:    clearAssigneeHref,
 		ClearAssigneeHXGet:   clearAssigneeHXGet,
 		ClearAssigneeHXPush:  clearAssigneeHref,
-		SprintControls:       uiProjectSprintIssueControls(project, sprintQuery, assigneeFilters, true, clearAssigneeHref, clearAssigneeHXGet, clearAssigneeHref),
+		SprintControls:       uiProjectSprintIssueControls(project, sprintQuery, nil, assigneeFilters, true, clearAssigneeHref, clearAssigneeHXGet, clearAssigneeHref),
 		ActiveSprint: &model.Sprint{
 			ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
 			ProjectID: projectID,
@@ -2954,7 +3079,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	nextQuery := allQuery
 	nextQuery.Cursor = "next-cursor"
 	assigneeFilters := uiProjectAllAssigneeFilters(project, []model.ProjectAssignee{{ID: assigneeID, Username: "ada", Name: "Ada Lovelace"}}, allQuery)
-	allControls := uiProjectAllIssueControls(project, allQuery, assigneeFilters, true, uiProjectAllViewPath(project, clearAssigneeQuery), uiProjectAllPanelPath(project, clearAssigneeQuery), uiProjectAllViewPath(project, clearAssigneeQuery))
+	allControls := uiProjectAllIssueControls(project, allQuery, nil, assigneeFilters, true, uiProjectAllViewPath(project, clearAssigneeQuery), uiProjectAllPanelPath(project, clearAssigneeQuery), uiProjectAllViewPath(project, clearAssigneeQuery))
 	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		Project:              project,
 		View:                 "all",

@@ -226,6 +226,24 @@ func (s *Store) ProjectIDForIssueContextLink(ctx context.Context, id uuid.UUID) 
 	`, id)
 }
 
+func (s *Store) ProjectIDForIssueTag(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return s.lookupProjectID(ctx, `
+		SELECT t.project_id
+		FROM issue_tags t
+		JOIN projects p ON p.id = t.project_id
+		WHERE t.id = $1 AND p.deleted_at IS NULL
+	`, id)
+}
+
+func (s *Store) ProjectIDForIssueTagLink(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return s.lookupProjectID(ctx, `
+		SELECT l.project_id
+		FROM issue_tag_links l
+		JOIN projects p ON p.id = l.project_id
+		WHERE l.id = $1 AND p.deleted_at IS NULL
+	`, id)
+}
+
 func (s *Store) lookupProjectID(ctx context.Context, q string, id uuid.UUID) (uuid.UUID, error) {
 	var projectID uuid.UUID
 	if err := s.db.QueryRow(ctx, q, id).Scan(&projectID); err != nil {
