@@ -507,7 +507,7 @@ func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 		"Active Sprints",
 		"All",
 		`aria-label="Me views"`,
-		`<details data-close-on-outside class="mb-4`,
+		`<details data-issue-list-controls data-close-on-outside class="mb-4`,
 		`aria-label="Issue controls"`,
 		`data-lucide="sliders-horizontal"`,
 		`class="` + uiCountBadgeClass + `">2</span>`,
@@ -581,6 +581,10 @@ func TestUIProjectIssueControlsRenderTagFiltersAndBadges(t *testing.T) {
 		"Tags",
 		"#Customer Beta",
 		"#Q3 Launch",
+		"border-green-200 bg-green-50 text-green-700",
+		"border-violet-200 bg-violet-50 text-violet-700",
+		`data-lucide="check"`,
+		"border-indigo-200 bg-indigo-50/70",
 		`href="/bradley/projects/TRACK/all?tag=Customer&#43;Beta"`,
 		`href="/bradley/projects/TRACK/all?tag=Customer&#43;Beta&amp;tag=Q3&#43;Launch"`,
 		"Tagged issue",
@@ -808,6 +812,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	for _, want := range []string{`data-close-on-outside`, `closeOpenDropdowns`, `details[data-close-on-outside][open]`, `details.removeAttribute("open")`, `data-option-dropdown-root`, `toggle.click()`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing dropdown outside-click behavior %q: %s", want, body)
+		}
+	}
+	for _, want := range []string{`data-issue-list-controls`, `rememberIssueListControls(event.target)`, `restoreIssueListControls(event.target)`, `controls.setAttribute("open", "")`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing issue control reopen behavior %q: %s", want, body)
 		}
 	}
 }
@@ -2925,9 +2934,12 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		{ID: selectedID, Username: "ada", Name: "Ada Lovelace"},
 		{ID: otherID, Username: "grace", Name: "Grace Hopper"},
 	}
+	tags := []model.IssueTag{
+		uiTestIssueTag(projectID, 1, "Sprint Visible", model.TagColorGreen),
+	}
 	columns := uiIssueColumns()
 	columns[0].Issues = append(columns[0].Issues, uiIssueItem{
-		Issue:   model.Issue{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "Todo count issue", Status: model.StatusTodo},
+		Issue:   model.Issue{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "Todo count issue", Status: model.StatusTodo, Tags: tags},
 		Project: project,
 	})
 	columns[1].Issues = append(columns[1].Issues, uiIssueItem{
@@ -2983,6 +2995,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"GH",
 		"Ship filtering\nPolish sprint goals",
 		"Todo count issue",
+		"#Sprint Visible",
+		"border-green-200 bg-green-50 text-green-700",
 		"Progress count issue",
 		"whitespace-pre-wrap",
 		`href="/bradley/projects/TRACK/sprint?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
@@ -3153,6 +3167,9 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		Status:     model.StatusDone,
 		Priority:   model.PriorityP0,
 		DueDate:    &dueDate,
+		Tags: []model.IssueTag{
+			uiTestIssueTag(uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"), 1, "Card Tag", model.TagColorViolet),
+		},
 	}
 	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
 
@@ -3196,7 +3213,7 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			}
 		}
 		if tt.template == "issue-card-list" {
-			for _, want := range []string{`aria-label="Assigned to Ada Lovelace"`, `title="Ada Lovelace"`, ">AL</span>"} {
+			for _, want := range []string{`aria-label="Assigned to Ada Lovelace"`, `title="Ada Lovelace"`, ">AL</span>", "#Card Tag", "border-violet-200 bg-violet-50 text-violet-700"} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("%s missing assignee avatar markup %q: %s", tt.name, want, body)
 				}
