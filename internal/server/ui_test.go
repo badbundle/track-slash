@@ -285,6 +285,10 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "projects panel", raw: "/projects/panel", want: "/projects/panel"},
 		{name: "new project", raw: "/projects/new", want: "/projects/new"},
 		{name: "new project panel with query", raw: "/projects/new/panel?x=1", want: "/projects/new/panel?x=1"},
+		{name: "new issue", raw: "/issues/new", want: "/issues/new"},
+		{name: "new issue panel with query", raw: "/issues/new/panel?project_id=8cc21ed4-2d69-4d43-9f0c-402736e4aa16", want: "/issues/new/panel?project_id=8cc21ed4-2d69-4d43-9f0c-402736e4aa16"},
+		{name: "new issue project options with query", raw: "/issues/new/projects?project=track", want: "/issues/new/projects?project=track"},
+		{name: "bad root issues", raw: "/issues", want: "/"},
 		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
@@ -645,9 +649,14 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing autogrowing textarea behavior %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{`[data-search-input]`, `[data-search-option]`, `filterSearchOptions`, `option.dataset.value`, `input.form || input.closest("form")`} {
+	for _, want := range []string{`[data-search-input]`, `[data-search-option]`, `filterSearchOptions`, `option.dataset.value`, `option.dataset.targetName`, `option.dataset.targetValue`, `data-search-collapsible`, `setSearchOptionsOpen`, `options.hidden = !open`, `search.dataset.searchClearTarget`, `data-project-search`, `!search.hasAttribute("data-project-search")`, `focusin`, `event.key === "Escape"`, `input.form || input.closest("form")`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing search component behavior %q: %s", want, body)
+		}
+	}
+	for _, want := range []string{`[data-checkbox-reveal]`, `syncCheckboxReveal`, `data-checkbox-reveal-toggle`, `data-checkbox-reveal-panel`, `panel.hidden = !open`, `control.disabled = !open`, `control.value = ""`, `aria-expanded`, `syncCheckboxReveals(event.target)`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing checkbox reveal behavior %q: %s", want, body)
 		}
 	}
 	for _, want := range []string{`data-close-on-outside`, `closeOpenDropdowns`, `details[data-close-on-outside][open]`, `details.removeAttribute("open")`, `data-option-dropdown-root`, `toggle.click()`} {
@@ -2392,7 +2401,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if strings.Contains(header, "Fast issue tracking.") {
 		t.Fatalf("project description should not render inside title card: %s", body)
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="info"`, `aria-current="page"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="info"`, `aria-current="page"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
@@ -2439,6 +2448,132 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
+	}
+}
+
+func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{ID: uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"), OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "new-issue-panel", &uiNewIssuePanelData{
+		Project:        project,
+		HasProject:     true,
+		ProjectID:      project.ID.String(),
+		ProjectOptions: []model.Project{project},
+		Error:          "Use YYYY-MM-DD.",
+		Title:          "Draft issue",
+		Description:    "Draft body",
+		Priority:       string(model.PriorityP1),
+		DueDate:        "tomorrow",
+		AssigneeInput:  "@ada",
+		ReporterInput:  "@grace",
+		MemberOptions: []model.User{
+			{Username: "ada", Email: "ada@example.com", Name: "Ada Lovelace"},
+			{Username: "grace", Email: "grace@example.com", Name: "Grace Hopper"},
+		},
+		BackHref:  "/bradley/projects/TRACK/all",
+		BackHXGet: "/bradley/projects/TRACK/all/panel",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		"New issue",
+		"Create issue",
+		"Use YYYY-MM-DD.",
+		`data-new-issue-panel`,
+		`id="new-issue-form" method="post" action="/issues"`,
+		`hx-post="/issues"`,
+		`hx-push-url="/issues/new"`,
+		`id="new-issue-project-form" method="get" action="/issues/new/panel"`,
+		`hx-get="/issues/new/panel"`,
+		`hx-include="#issue-title,#issue-description,input[name='priority']:checked,#issue-due-date,#issue-assignee,#issue-reporter"`,
+		`data-search`,
+		`data-project-search`,
+		`data-search-collapsible`,
+		`data-search-clear-target="project_id"`,
+		`id="issue-project" name="project" value="TRACK - Track Slash"`,
+		`data-search-input`,
+		`hx-trigger="input changed delay:300ms"`,
+		`hx-target="#new-issue-project-options"`,
+		`hx-swap="outerHTML"`,
+		`hx-push-url="false"`,
+		`hx-include="#new-issue-project-form"`,
+		`type="hidden" name="project_id" value="8cc21ed4-2d69-4d43-9f0c-402736e4aa16"`,
+		`id="new-issue-project-options"`,
+		`data-search-options hidden role="listbox" aria-label="Project suggestions"`,
+		`data-search-option`,
+		`data-target-name="project_id"`,
+		`data-target-value="8cc21ed4-2d69-4d43-9f0c-402736e4aa16"`,
+		`data-search-text="TRACK Track Slash bradley"`,
+		`hx-get="/issues/new/projects"`,
+		`TRACK - Track Slash`,
+		`id="issue-title" name="title" value="Draft issue"`,
+		`id="issue-description" name="description"`,
+		"Draft body",
+		`id="issue-priority-label">Priority</span>`,
+		`@keyframes priority-picker-item-enter`,
+		`role="listbox" aria-labelledby="issue-priority-label" data-priority-picker`,
+		`type="radio" name="priority" value="P0"`,
+		`type="radio" name="priority" value="P1" checked`,
+		`type="radio" name="priority" value="P2"`,
+		`aria-label="Priority P1"`,
+		`opacity-40`,
+		`peer-checked:opacity-100`,
+		`data-checkbox-reveal`,
+		`id="issue-due-date-toggle" type="checkbox" data-checkbox-reveal-toggle aria-controls="issue-due-date-field" aria-expanded="true" checked`,
+		`id="issue-due-date-field" data-checkbox-reveal-panel`,
+		`type="date" name="due_date" value="tomorrow"`,
+		`id="issue-assignee" name="assignee" value="@ada"`,
+		`id="issue-reporter" name="reporter" value="@grace"`,
+		`list="new-issue-members"`,
+		`<datalist id="new-issue-members">`,
+		`<option value="@ada">Ada Lovelace - ada@example.com</option>`,
+		`aria-label="Cancel creating issue"`,
+		`href="/bradley/projects/TRACK/all"`,
+		`hx-get="/bradley/projects/TRACK/all/panel"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new issue panel missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestUINewIssueProjectFilter(t *testing.T) {
+	t.Parallel()
+
+	projects := []model.Project{
+		{OwnerUsername: "bradley", Key: "CORE", Name: "Core Workflow"},
+		{OwnerUsername: "bradley", Key: "OPS", Name: "Operations Desk"},
+		{OwnerUsername: "ada", Key: "APP", Name: "Mobile Companion"},
+	}
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{name: "empty", want: []string{"CORE", "OPS", "APP"}},
+		{name: "key", raw: "ops", want: []string{"OPS"}},
+		{name: "name", raw: "mobile", want: []string{"APP"}},
+		{name: "owner", raw: "ada", want: []string{"APP"}},
+		{name: "multi token", raw: "core workflow", want: []string{"CORE"}},
+		{name: "missing", raw: "zzz", want: []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := uiFilterNewIssueProjects(projects, tt.raw)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len = %d, want %d: %+v", len(got), len(tt.want), got)
+			}
+			for i, want := range tt.want {
+				if got[i].Key != want {
+					t.Fatalf("got[%d] = %s, want %s", i, got[i].Key, want)
+				}
+			}
+		})
 	}
 }
 

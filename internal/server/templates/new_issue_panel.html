@@ -1,0 +1,118 @@
+{{define "new-issue-panel"}}
+<section data-new-issue-panel data-autocomplete-scope class="mx-auto max-w-6xl px-6 py-6">
+  <header class="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        {{if .HasProject}}
+        <div class="flex flex-wrap items-center gap-2">
+          {{template "project-key" .Project.Key}}
+          <span class="text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</span>
+        </div>
+        {{else}}
+        <div class="text-sm text-slate-500 dark:text-slate-400">Choose a project</div>
+        {{end}}
+        <h1 class="mt-2 truncate text-2xl font-semibold tracking-normal">New issue</h1>
+      </div>
+      <a href="{{.BackHref}}" hx-get="{{.BackHXGet}}" hx-target="#main" hx-push-url="{{.BackHref}}" aria-label="Cancel creating issue" class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+      </a>
+    </div>
+  </header>
+
+  <section class="py-6">
+    <div class="max-w-3xl rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Create issue</h2>
+        <i data-lucide="plus" class="h-4 w-4 text-slate-400" aria-hidden="true"></i>
+      </div>
+      {{if .Error}}<div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>{{end}}
+
+      <form id="new-issue-project-form" method="get" action="{{issueNewPanel}}" hx-get="{{issueNewPanel}}" hx-target="#main" hx-push-url="{{issueNew}}" hx-include="#issue-title,#issue-description,input[name='priority']:checked,#issue-due-date,#issue-assignee,#issue-reporter" data-search data-project-search data-search-collapsible data-search-clear-target="project_id" class="space-y-2">
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-project">Project</label>
+        {{with newIssueProjectAutocomplete .}}
+        {{template "autocomplete-input" .}}
+        {{template "autocomplete-options" .}}
+        {{end}}
+      </form>
+
+      <form id="new-issue-form" method="post" action="{{issues}}" hx-post="{{issues}}" hx-target="#main" hx-push-url="{{issueNew}}" class="mt-4">
+      <input type="hidden" name="project_id" value="{{.ProjectID}}">
+      <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-title">Title</label>
+      <input id="issue-title" name="title" value="{{.Title}}" autocomplete="off" {{if .HasProject}}autofocus{{end}} class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Issue title">
+
+      <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-description">Description</label>
+      <textarea id="issue-description" name="description" rows="5" data-autogrow-textarea class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">{{.Description}}</textarea>
+
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div class="min-w-0">
+          <span class="block text-xs font-medium text-slate-500 dark:text-slate-400" id="issue-priority-label">Priority</span>
+          <style>
+            @keyframes priority-picker-item-enter {
+              from { opacity: 0; transform: translateY(-0.25rem) scale(0.88); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            @media (prefers-reduced-motion: no-preference) {
+              [data-priority-picker] > label {
+                animation: priority-picker-item-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+                transform-origin: center;
+              }
+              [data-priority-picker] > label:nth-child(2) { animation-delay: 20ms; }
+              [data-priority-picker] > label:nth-child(3) { animation-delay: 40ms; }
+              [data-priority-picker] > label:nth-child(4) { animation-delay: 60ms; }
+              [data-priority-picker] > label:nth-child(5) { animation-delay: 80ms; }
+            }
+          </style>
+          <div class="mt-2 flex flex-wrap items-center gap-1" role="listbox" aria-labelledby="issue-priority-label" data-priority-picker>
+            {{range priorityOptions}}
+            <label role="option" aria-selected="{{if eq (newIssueSelectedPriority $) .Priority}}true{{else}}false{{end}}" class="rounded-full p-0.5 transition hover:opacity-80">
+              <input class="peer sr-only" type="radio" name="priority" value="{{.Priority}}" {{if eq (newIssueSelectedPriority $) .Priority}}checked{{end}}>
+              <span class="block rounded-full opacity-40 transition peer-checked:opacity-100 peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-slate-900">
+                {{template "priority-badge" .Priority}}
+              </span>
+            </label>
+            {{end}}
+          </div>
+        </div>
+        <div class="min-w-0" data-checkbox-reveal>
+          <label class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800" for="issue-due-date-toggle">
+            <input id="issue-due-date-toggle" type="checkbox" data-checkbox-reveal-toggle aria-controls="issue-due-date-field" aria-expanded="{{if .DueDate}}true{{else}}false{{end}}" {{if .DueDate}}checked{{end}} class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
+            <span>Due date</span>
+          </label>
+          <div id="issue-due-date-field" data-checkbox-reveal-panel {{if not .DueDate}}hidden{{end}} class="mt-2">
+            <label class="sr-only" for="issue-due-date">Due date</label>
+            <input id="issue-due-date" type="date" name="due_date" value="{{.DueDate}}" {{if not .DueDate}}disabled{{end}} class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+          </div>
+        </div>
+        <div class="min-w-0">
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-assignee">Assignee</label>
+          <input id="issue-assignee" name="assignee" value="{{.AssigneeInput}}" list="new-issue-members" autocomplete="off" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="@username">
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div class="min-w-0">
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-reporter">Reporter</label>
+          <input id="issue-reporter" name="reporter" value="{{.ReporterInput}}" list="new-issue-members" autocomplete="off" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="@username">
+        </div>
+      </div>
+
+      <datalist id="new-issue-members">
+        {{range .MemberOptions}}
+        <option value="@{{.Username}}">{{if .Name}}{{.Name}}{{else}}@{{.Username}}{{end}}{{if .Email}} - {{.Email}}{{end}}</option>
+        {{end}}
+      </datalist>
+
+      <div class="mt-5 flex flex-wrap items-center gap-2">
+        <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+          <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+          Create issue
+        </button>
+        <a href="{{.BackHref}}" hx-get="{{.BackHXGet}}" hx-target="#main" hx-push-url="{{.BackHref}}" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          Cancel
+        </a>
+      </div>
+    </form>
+    </div>
+  </section>
+</section>
+{{end}}

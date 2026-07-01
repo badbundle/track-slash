@@ -24,11 +24,15 @@
     #sidebar-toggle:checked ~ .app-shell .sidebar-head { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
     html[data-sidebar-collapsed] .app-shell [data-nav-link],
     #sidebar-toggle:checked ~ .app-shell [data-nav-link] { justify-content: center; gap: 0; }
+    html[data-sidebar-collapsed] .app-shell [data-sidebar-action],
+    #sidebar-toggle:checked ~ .app-shell [data-sidebar-action] { justify-content: center; gap: 0; }
     html[data-sidebar-collapsed] .app-shell [data-nav-link] .wide-only,
     html[data-sidebar-collapsed] .app-shell .sidebar-head .wide-only,
+    html[data-sidebar-collapsed] .app-shell [data-sidebar-action] .wide-only,
     html[data-sidebar-collapsed] .app-shell [data-member-label],
     #sidebar-toggle:checked ~ .app-shell [data-nav-link] .wide-only,
     #sidebar-toggle:checked ~ .app-shell .sidebar-head .wide-only,
+    #sidebar-toggle:checked ~ .app-shell [data-sidebar-action] .wide-only,
     #sidebar-toggle:checked ~ .app-shell [data-member-label] { width: 0; overflow: hidden; }
     html[data-sidebar-collapsed] .app-shell [data-member-summary],
     #sidebar-toggle:checked ~ .app-shell [data-member-summary] { justify-content: center; gap: 0; padding-left: 0.25rem; padding-right: 0.25rem; }
@@ -51,6 +55,14 @@
       </div>
 
       <nav class="scrollbar-none min-h-0 flex-1 overflow-y-auto p-2">
+        <a data-sidebar-action href="/issues/new" hx-get="/issues/new/panel" hx-target="#main" hx-push-url="/issues/new" aria-label="Create issue" class="mb-2 flex items-center gap-3 rounded-lg bg-indigo-600 px-2 py-2 text-sm text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+          <span class="grid h-6 w-6 shrink-0 place-items-center">
+            <i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i>
+          </span>
+          <span class="wide-only min-w-0">
+            <span class="block truncate font-medium">Create issue</span>
+          </span>
+        </a>
         <a data-nav-link href="/me" hx-get="/me/panel" hx-target="#main" hx-push-url="/me" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="user" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -97,6 +109,8 @@
       {{template "projects-panel" .ProjectsPanel}}
       {{else if .NewProjectPanel}}
       {{template "new-project-panel" .NewProjectPanel}}
+      {{else if .NewIssuePanel}}
+      {{template "new-issue-panel" .NewIssuePanel}}
       {{else if .ProjectPanel}}
       {{template "project-panel" .ProjectPanel}}
       {{else if .DeletedPanel}}
@@ -129,6 +143,24 @@
       };
       const resizeTextareas = (root = document) => {
         root.querySelectorAll("[data-autogrow-textarea]").forEach(resizeTextarea);
+      };
+      const syncCheckboxReveal = (reveal) => {
+        const toggle = reveal.querySelector("[data-checkbox-reveal-toggle]");
+        const panel = reveal.querySelector("[data-checkbox-reveal-panel]");
+        if (!toggle || !panel) return;
+        const open = toggle.checked;
+        panel.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        panel.querySelectorAll("input, select, textarea").forEach((control) => {
+          control.disabled = !open;
+          if (!open) control.value = "";
+        });
+      };
+      const syncCheckboxReveals = (root = document) => {
+        if (root instanceof Element && root.matches("[data-checkbox-reveal]")) {
+          syncCheckboxReveal(root);
+        }
+        root.querySelectorAll("[data-checkbox-reveal]").forEach(syncCheckboxReveal);
       };
       const active = ["bg-indigo-50", "text-indigo-700", "ring-1", "ring-indigo-100", "dark:bg-indigo-950/50", "dark:text-indigo-200", "dark:ring-indigo-900"];
       const inactive = ["text-slate-600", "dark:text-slate-300"];
@@ -193,6 +225,20 @@
           option.hidden = false;
         });
       };
+      const setSearchOptionsOpen = (search, open) => {
+        if (!search || !search.hasAttribute("data-search-collapsible")) return;
+        const options = search.querySelector("[data-search-options]");
+        if (options) options.hidden = !open;
+      };
+      const autocompleteScope = (search) => search.closest("[data-autocomplete-scope]") || search;
+      const setAutocompleteTargets = (search, name, value) => {
+        if (!search || !name) return;
+        autocompleteScope(search).querySelectorAll("input, select, textarea").forEach((candidate) => {
+          if (candidate.name === name) {
+            candidate.value = value;
+          }
+        });
+      };
       const filterSearchOptions = (input) => {
         const search = input.closest("[data-search]");
         if (!search) return;
@@ -206,6 +252,9 @@
         document.querySelectorAll("details[data-close-on-outside][open]").forEach((details) => {
           if (!details.contains(target)) details.removeAttribute("open");
         });
+        document.querySelectorAll("[data-search-collapsible]").forEach((search) => {
+          if (!search.contains(target)) setSearchOptionsOpen(search, false);
+        });
         document.querySelectorAll("[data-option-dropdown-root]").forEach((dropdown) => {
           if (dropdown.contains(target)) return;
           const toggle = dropdown.querySelector("[data-option-dropdown-toggle]");
@@ -218,7 +267,27 @@
         if (textarea) resizeTextarea(textarea);
         const input = event.target.closest("[data-search-input]");
         if (!input) return;
+        const search = input.closest("[data-search]");
+        if (search && search.dataset.searchClearTarget) {
+          setAutocompleteTargets(search, search.dataset.searchClearTarget, "");
+        }
         filterSearchOptions(input);
+        if (search) setSearchOptionsOpen(search, !search.hasAttribute("data-project-search"));
+      });
+      document.body.addEventListener("change", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const toggle = event.target.closest("[data-checkbox-reveal-toggle]");
+        if (!toggle) return;
+        const reveal = toggle.closest("[data-checkbox-reveal]");
+        if (reveal) syncCheckboxReveal(reveal);
+      });
+      document.body.addEventListener("focusin", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const input = event.target.closest("[data-search-input]");
+        if (!input) return;
+        const search = input.closest("[data-search]");
+        filterSearchOptions(input);
+        setSearchOptionsOpen(search, !!search && !search.hasAttribute("data-project-search"));
       });
       document.body.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
@@ -229,7 +298,11 @@
         const input = search && search.querySelector("[data-search-input]");
         if (!input) return;
         input.value = option.dataset.value || "";
+        if (option.dataset.targetName && search) {
+          setAutocompleteTargets(search, option.dataset.targetName, option.dataset.targetValue || option.dataset.value || "");
+        }
         resetSearchOptions(search);
+        setSearchOptionsOpen(search, false);
         const form = input.form || input.closest("form");
         if (!form) return;
         if (form.requestSubmit) {
@@ -240,6 +313,9 @@
       });
       document.body.addEventListener("keydown", (event) => {
         if (!(event.target instanceof Element)) return;
+        if (event.key === "Escape") {
+          setSearchOptionsOpen(event.target.closest("[data-search]"), false);
+        }
         const field = event.target.closest("[data-submit-shortcut='meta-enter']");
         if (!field || event.key !== "Enter" || (!event.metaKey && !event.ctrlKey) || event.shiftKey || event.altKey) return;
         const form = field.form || field.closest("form");
@@ -254,15 +330,18 @@
       document.body.addEventListener("htmx:afterSwap", (event) => {
         createIcons();
         resizeTextareas(event.target);
+        syncCheckboxReveals(event.target);
       });
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", () => {
           createIcons();
           resizeTextareas();
+          syncCheckboxReveals();
         });
       } else {
         createIcons();
         resizeTextareas();
+        syncCheckboxReveals();
       }
     })();
   </script>

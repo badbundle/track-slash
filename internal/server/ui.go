@@ -29,84 +29,97 @@ var errUIForbidden = errors.New("forbidden")
 var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
-	"initials":                  uiInitials,
-	"issueAssignee":             uiIssueAssigneePath,
-	"issueAssigneeEdit":         uiIssueAssigneeEditPath,
-	"issueComment":              uiIssueCommentPath,
-	"issueCommentEdit":          uiIssueCommentEditPath,
-	"issueComments":             uiIssueCommentsPath,
-	"issueContext":              uiIssueContextPath,
-	"issueContextDelete":        uiIssueContextDeletePath,
-	"issueContextEdit":          uiIssueContextEditPath,
-	"issueContextItem":          uiIssueContextItemPath,
-	"issueContextLinkNew":       uiIssueContextLinkNewPath,
-	"issueContextNew":           uiIssueContextNewPath,
-	"issueCloseReason":          uiIssueCloseReasonPath,
-	"issueCloseReasonEdit":      uiIssueCloseReasonEditPath,
-	"issueDelete":               uiIssueDeletePath,
-	"issueDescription":          uiIssueDescriptionPath,
-	"issueDescriptionEdit":      uiIssueDescriptionEditPath,
-	"issueHref":                 uiIssuePath,
-	"issueLink":                 uiIssueLinkPath,
-	"issueLinkDelete":           uiIssueLinkDeletePath,
-	"issueLinkEdit":             uiIssueLinkEditPath,
-	"issueLinkNew":              uiIssueLinkNewPath,
-	"issueLinks":                uiIssueLinksPath,
-	"issuePanel":                uiIssuePanelPath,
-	"issuePriority":             uiIssuePriorityPath,
-	"issuePriorityEdit":         uiIssuePriorityEditPath,
-	"issueDueDate":              uiIssueDueDatePath,
-	"issueDueDateEdit":          uiIssueDueDateEditPath,
-	"issueReporter":             uiIssueReporterPath,
-	"issueReporterEdit":         uiIssueReporterEditPath,
-	"issueRestore":              uiIssueRestorePath,
-	"issueSprint":               uiIssueSprintPath,
-	"issueSprintEdit":           uiIssueSprintEditPath,
-	"issueStatus":               uiIssueStatusPath,
-	"issueStatusEdit":           uiIssueStatusEditPath,
-	"issueSubIssues":            uiIssueSubIssuesPath,
-	"issueSubIssuesNew":         uiIssueSubIssuesNewPath,
-	"issueAssigneeAutocomplete": uiIssueAssigneeAutocomplete,
-	"issueReporterAutocomplete": uiIssueReporterAutocomplete,
-	"issueSprintAutocomplete":   uiIssueSprintAutocomplete,
-	"linkLabel":                 uiIssueLinkLabel,
-	"linkOptions":               uiIssueLinkOptions,
-	"linkedIssueProgress":       uiLinkedIssueProgress,
-	"closeReasonLabel":          uiCloseReasonLabel,
-	"closeReasonModal":          uiCloseReasonModal,
-	"issueCloseReasonDropdown":  uiIssueCloseReasonDropdown,
-	"issueStatusDropdown":       uiIssueStatusDropdown,
-	"closeReasonOptions":        uiCloseReasonOptions,
-	"issueColumnCount":          uiIssueColumnCount,
-	"priorityClass":             uiPriorityClass,
-	"priorityLabel":             uiPriorityLabel,
-	"priorityOptions":           uiPriorityOptions,
-	"projectPanel":              uiProjectPanelPath,
-	"projectContext":            uiProjectContextPath,
-	"projectContextDelete":      uiProjectContextDeletePath,
-	"projectContextEdit":        uiProjectContextEditPath,
-	"projectContextIssueDelete": uiProjectContextIssueDeletePath,
-	"projectContextIssueNew":    uiProjectContextIssueNewPath,
-	"projectContextIssues":      uiProjectContextIssuesPath,
-	"projectContextNew":         uiProjectContextNewPath,
-	"projectContexts":           uiProjectContextsPath,
-	"projectView":               uiProjectViewPath,
-	"projectIcon":               uiProjectIcon,
-	"dueBadgeClass":             uiDueBadgeClass,
-	"dueBadgeIcon":              uiDueBadgeIcon,
-	"dueBadgeLabel":             uiDueBadgeLabel,
-	"dueDateFull":               uiDueDateFull,
-	"dueDateShort":              uiDueDateShort,
-	"dueDateValue":              uiDueDateValue,
-	"sprintDate":                uiSprintDate,
-	"statusClass":               uiStatusClass,
-	"statusLabel":               uiStatusLabel,
-	"statusOptions":             uiStatusOptions,
-	"statusRow":                 uiStatusRowClass,
-	"statusSurface":             uiStatusSurfaceClass,
-	"statusValue":               uiStatusValue,
-	"subIssueProgress":          uiSubIssueProgress,
-	"tokenTime":                 uiTokenTime,
+	"initials":                     uiInitials,
+	"issueAssignee":                uiIssueAssigneePath,
+	"issueAssigneeEdit":            uiIssueAssigneeEditPath,
+	"issueComment":                 uiIssueCommentPath,
+	"issueCommentEdit":             uiIssueCommentEditPath,
+	"issueComments":                uiIssueCommentsPath,
+	"issueContext":                 uiIssueContextPath,
+	"issueContextDelete":           uiIssueContextDeletePath,
+	"issueContextEdit":             uiIssueContextEditPath,
+	"issueContextItem":             uiIssueContextItemPath,
+	"issueContextLinkNew":          uiIssueContextLinkNewPath,
+	"issueContextNew":              uiIssueContextNewPath,
+	"issueCloseReason":             uiIssueCloseReasonPath,
+	"issueCloseReasonEdit":         uiIssueCloseReasonEditPath,
+	"issueDelete":                  uiIssueDeletePath,
+	"issueDescription":             uiIssueDescriptionPath,
+	"issueDescriptionEdit":         uiIssueDescriptionEditPath,
+	"issueHref":                    uiIssuePath,
+	"issueLink":                    uiIssueLinkPath,
+	"issueLinkDelete":              uiIssueLinkDeletePath,
+	"issueLinkEdit":                uiIssueLinkEditPath,
+	"issueLinkNew":                 uiIssueLinkNewPath,
+	"issueLinks":                   uiIssueLinksPath,
+	"issuePanel":                   uiIssuePanelPath,
+	"issuePriority":                uiIssuePriorityPath,
+	"issuePriorityEdit":            uiIssuePriorityEditPath,
+	"issueDueDate":                 uiIssueDueDatePath,
+	"issueDueDateEdit":             uiIssueDueDateEditPath,
+	"issueReporter":                uiIssueReporterPath,
+	"issueReporterEdit":            uiIssueReporterEditPath,
+	"issueRestore":                 uiIssueRestorePath,
+	"issueSprint":                  uiIssueSprintPath,
+	"issueSprintEdit":              uiIssueSprintEditPath,
+	"issueStatus":                  uiIssueStatusPath,
+	"issueStatusEdit":              uiIssueStatusEditPath,
+	"issueSubIssues":               uiIssueSubIssuesPath,
+	"issueSubIssuesNew":            uiIssueSubIssuesNewPath,
+	"issueAssigneeAutocomplete":    uiIssueAssigneeAutocomplete,
+	"issueReporterAutocomplete":    uiIssueReporterAutocomplete,
+	"issueSprintAutocomplete":      uiIssueSprintAutocomplete,
+	"newIssueProjectAutocomplete":  uiNewIssueProjectAutocomplete,
+	"autocompleteOptionSearchText": uiAutocompleteOptionSearchText,
+	"linkLabel":                    uiIssueLinkLabel,
+	"linkOptions":                  uiIssueLinkOptions,
+	"linkedIssueProgress":          uiLinkedIssueProgress,
+	"closeReasonLabel":             uiCloseReasonLabel,
+	"closeReasonModal":             uiCloseReasonModal,
+	"issueCloseReasonDropdown":     uiIssueCloseReasonDropdown,
+	"issueStatusDropdown":          uiIssueStatusDropdown,
+	"closeReasonOptions":           uiCloseReasonOptions,
+	"issueColumnCount":             uiIssueColumnCount,
+	"priorityClass":                uiPriorityClass,
+	"priorityLabel":                uiPriorityLabel,
+	"priorityOptions":              uiPriorityOptions,
+	"newIssueSelectedPriority":     uiNewIssueSelectedPriority,
+	"issues":                       uiIssuesPath,
+	"issueNew":                     uiIssueNewPath,
+	"issueNewPanel":                uiIssueNewPanelPath,
+	"issueNewProjectOptions":       uiIssueNewProjectOptionsPath,
+	"newIssueProjectSelected":      uiNewIssueProjectSelected,
+	"newIssueProjectInput":         uiNewIssueProjectInput,
+	"newIssueProjectLabel":         uiNewIssueProjectLabel,
+	"projectIssues":                uiProjectIssuesPath,
+	"projectIssueNew":              uiProjectIssueNewPath,
+	"projectIssueNewPanel":         uiProjectIssueNewPanelPath,
+	"projectPanel":                 uiProjectPanelPath,
+	"projectContext":               uiProjectContextPath,
+	"projectContextDelete":         uiProjectContextDeletePath,
+	"projectContextEdit":           uiProjectContextEditPath,
+	"projectContextIssueDelete":    uiProjectContextIssueDeletePath,
+	"projectContextIssueNew":       uiProjectContextIssueNewPath,
+	"projectContextIssues":         uiProjectContextIssuesPath,
+	"projectContextNew":            uiProjectContextNewPath,
+	"projectContexts":              uiProjectContextsPath,
+	"projectView":                  uiProjectViewPath,
+	"projectIcon":                  uiProjectIcon,
+	"dueBadgeClass":                uiDueBadgeClass,
+	"dueBadgeIcon":                 uiDueBadgeIcon,
+	"dueBadgeLabel":                uiDueBadgeLabel,
+	"dueDateFull":                  uiDueDateFull,
+	"dueDateShort":                 uiDueDateShort,
+	"dueDateValue":                 uiDueDateValue,
+	"sprintDate":                   uiSprintDate,
+	"statusClass":                  uiStatusClass,
+	"statusLabel":                  uiStatusLabel,
+	"statusOptions":                uiStatusOptions,
+	"statusRow":                    uiStatusRowClass,
+	"statusSurface":                uiStatusSurfaceClass,
+	"statusValue":                  uiStatusValue,
+	"subIssueProgress":             uiSubIssueProgress,
+	"tokenTime":                    uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
 type uiLoginData struct {
@@ -127,6 +140,7 @@ type uiShellData struct {
 	WorkPanel         *uiWorkPanelData
 	ProjectsPanel     *uiProjectsPanelData
 	NewProjectPanel   *uiNewProjectPanelData
+	NewIssuePanel     *uiNewIssuePanelData
 	ProjectPanel      *uiProjectPanelData
 	DeletedPanel      *uiDeletedIssuesPanelData
 	DeletedIssuePanel *uiDeletedIssuePanelData
@@ -283,8 +297,11 @@ type uiIssueSprintOption struct {
 }
 
 type uiAutocompleteOption struct {
-	Value string
-	Label string
+	Value       string
+	Label       string
+	Badge       string
+	SearchText  string
+	TargetValue string
 }
 
 type uiOptionDropdownData struct {
@@ -309,17 +326,33 @@ type uiOptionDropdownOption struct {
 }
 
 type uiAutocompleteEditData struct {
-	Label       string
-	Action      string
-	PanelPath   string
-	IssueHref   string
-	Name        string
-	Value       string
-	Placeholder string
-	SaveLabel   string
-	CancelLabel string
-	Error       string
-	Options     []uiAutocompleteOption
+	ID                string
+	Label             string
+	Action            string
+	PanelPath         string
+	IssueHref         string
+	Name              string
+	Value             string
+	HiddenName        string
+	HiddenValue       string
+	TargetName        string
+	Placeholder       string
+	SaveLabel         string
+	CancelLabel       string
+	Error             string
+	Autofocus         bool
+	Collapsible       bool
+	OptionsOpen       bool
+	InputHXGet        string
+	InputHXTrigger    string
+	InputHXTarget     string
+	InputHXSwap       string
+	InputHXInclude    string
+	InputHXPushURL    string
+	SearchClearTarget string
+	OptionsID         string
+	EmptyLabel        string
+	Options           []uiAutocompleteOption
 }
 
 type uiModalData struct {
@@ -489,6 +522,25 @@ type uiNewProjectPanelData struct {
 	Description string
 }
 
+type uiNewIssuePanelData struct {
+	Project           model.Project
+	HasProject        bool
+	ProjectID         string
+	ProjectInput      string
+	ProjectSearchOpen bool
+	ProjectOptions    []model.Project
+	Error             string
+	Title             string
+	Description       string
+	Priority          string
+	DueDate           string
+	AssigneeInput     string
+	ReporterInput     string
+	MemberOptions     []model.User
+	BackHref          string
+	BackHXGet         string
+}
+
 type uiTokenPanelData struct {
 	Tokens  []model.AuthToken
 	Error   string
@@ -522,6 +574,10 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/projects/new", s.uiNewProjectPage)
 		r.Get("/projects/new/panel", s.uiNewProjectPanel)
 		r.Post("/projects", s.uiCreateProject)
+		r.Get("/issues/new", s.uiNewIssuePage)
+		r.Get("/issues/new/panel", s.uiNewIssuePanel)
+		r.Get("/issues/new/projects", s.uiNewIssueProjectOptions)
+		r.Post("/issues", s.uiCreateIssue)
 		r.Get("/settings", s.uiSettingsPage)
 		r.Post("/settings/profile", s.uiUpdateProfile)
 		r.Post("/settings/password", s.uiUpdatePassword)
@@ -578,6 +634,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/projects/{key}/context/{contextRef}/issues/new", s.uiNewProjectContextIssueLink)
 		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues", s.uiCreateProjectContextIssueLink)
 		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues/{issueRef}/delete", s.uiDeleteProjectContextIssueLink)
+		r.Get("/{owner}/projects/{key}/issues/new", s.uiNewProjectIssuePage)
+		r.Get("/{owner}/projects/{key}/issues/new/panel", s.uiNewProjectIssuePanel)
+		r.Post("/{owner}/projects/{key}/issues", s.uiCreateProjectIssue)
 		r.Get("/{owner}/projects/{key}/sprint", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "sprint") })
 		r.Get("/{owner}/projects/{key}/sprint/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "sprint") })
 		r.Get("/{owner}/projects/{key}/planned", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "planned") })
@@ -938,6 +997,253 @@ func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, uiProjectViewPath(project, "sprint"), http.StatusSeeOther)
+}
+
+func (s *Server) uiNewIssuePage(w http.ResponseWriter, r *http.Request) {
+	input := uiNewIssueInputFromValues(r.URL.Query())
+	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:             currentUser(r),
+		Projects:         projects,
+		CurrentProjectID: panel.Project.ID,
+		CurrentView:      "issues/new",
+		NewIssuePanel:    panel,
+	})
+}
+
+func (s *Server) uiNewIssuePanel(w http.ResponseWriter, r *http.Request) {
+	input := uiNewIssueInputFromValues(r.URL.Query())
+	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "new-issue-panel", panel)
+}
+
+func (s *Server) uiNewIssueProjectOptions(w http.ResponseWriter, r *http.Request) {
+	input := uiNewIssueInputFromValues(r.URL.Query())
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data := uiNewIssueProjectAutocomplete(&uiNewIssuePanelData{
+		ProjectInput:      input.ProjectInput,
+		ProjectOptions:    uiFilterNewIssueProjects(projects, input.ProjectInput),
+		ProjectSearchOpen: strings.TrimSpace(input.ProjectInput) != "",
+	})
+	renderUITemplate(w, http.StatusOK, "autocomplete-options", data)
+}
+
+func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	input := uiNewIssueInputFromValues(r.URL.Query())
+	input.ProjectID = project.ID.String()
+	input.ProjectInput = ""
+	input.BackHref = uiProjectViewPath(project, "all")
+	input.BackHXGet = uiProjectPanelPath(project, "all")
+	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:             currentUser(r),
+		Projects:         projects,
+		CurrentProjectID: project.ID,
+		CurrentView:      "projects",
+		NewIssuePanel:    panel,
+	})
+}
+
+func (s *Server) uiNewProjectIssuePanel(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	input := uiNewIssueInputFromValues(r.URL.Query())
+	input.ProjectID = project.ID.String()
+	input.ProjectInput = ""
+	input.BackHref = uiProjectViewPath(project, "all")
+	input.BackHXGet = uiProjectPanelPath(project, "all")
+	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "new-issue-panel", panel)
+}
+
+func (s *Server) uiCreateProjectIssue(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	s.uiCreateIssueForProject(w, r, &project)
+}
+
+func (s *Server) uiCreateIssue(w http.ResponseWriter, r *http.Request) {
+	s.uiCreateIssueForProject(w, r, nil)
+}
+
+func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request, routeProject *model.Project) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	input := uiNewIssueInputFromValues(r.Form)
+	if routeProject != nil && input.ProjectID == "" {
+		input.ProjectID = routeProject.ID.String()
+		input.BackHref = uiProjectViewPath(*routeProject, "all")
+		input.BackHXGet = uiProjectPanelPath(*routeProject, "all")
+	}
+	project, ok, message, err := s.uiProjectFromNewIssueSelection(r.Context(), currentUser(r), input.ProjectID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if !ok {
+		s.renderUINewIssueWithError(w, r, input, message)
+		return
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" || len(title) > 200 {
+		s.renderUINewIssueWithError(w, r, input, "Title required, max 200 chars.")
+		return
+	}
+
+	var priority model.IssuePriority
+	if input.Priority != "" {
+		priority = model.IssuePriority(input.Priority)
+		if !priority.Valid() {
+			s.renderUINewIssueWithError(w, r, input, "Invalid priority.")
+			return
+		}
+	}
+
+	var dueDate *model.Date
+	if input.DueDate != "" {
+		parsed, err := model.ParseDate(input.DueDate)
+		if err != nil {
+			s.renderUINewIssueWithError(w, r, input, "Use YYYY-MM-DD.")
+			return
+		}
+		dueDate = &parsed
+	}
+
+	assigneeID, message, err := s.uiIssueCreateUserID(r.Context(), input.AssigneeInput)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if message != "" {
+		s.renderUINewIssueWithError(w, r, input, message)
+		return
+	}
+
+	current := currentUser(r)
+	currentID := current.ID
+	reporterID := &currentID
+	if strings.TrimSpace(input.ReporterInput) != "" {
+		reporter, message, err := s.uiIssueCreateUserID(r.Context(), input.ReporterInput)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		if message != "" {
+			s.renderUINewIssueWithError(w, r, input, message)
+			return
+		}
+		if reporter != nil {
+			if !current.IsAdmin && *reporter != current.ID {
+				s.renderUINewIssueWithError(w, r, input, "Reporter must be you.")
+				return
+			}
+			reporterID = reporter
+		}
+	}
+
+	created, err := s.store.CreateIssue(r.Context(), store.CreateIssueParams{
+		ProjectID:   project.ID,
+		Title:       title,
+		Description: input.Description,
+		Priority:    priority,
+		AssigneeID:  assigneeID,
+		ReporterID:  reporterID,
+		DueDate:     dueDate,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if !isHTMXRequest(r) {
+		http.Redirect(w, r, uiIssuePath(created), http.StatusSeeOther)
+		return
+	}
+	w.Header().Set("HX-Push-Url", uiIssuePath(created))
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, created.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func uiNewIssueInputFromValues(values url.Values) uiNewIssuePanelData {
+	return uiNewIssuePanelData{
+		ProjectID:     strings.TrimSpace(values.Get("project_id")),
+		ProjectInput:  strings.TrimSpace(values.Get("project")),
+		Title:         values.Get("title"),
+		Description:   values.Get("description"),
+		Priority:      strings.TrimSpace(values.Get("priority")),
+		DueDate:       strings.TrimSpace(values.Get("due_date")),
+		AssigneeInput: values.Get("assignee"),
+		ReporterInput: values.Get("reporter"),
+	}
+}
+
+func (s *Server) renderUINewIssueWithError(w http.ResponseWriter, r *http.Request, input uiNewIssuePanelData, message string) {
+	input.Error = message
+	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if !isHTMXRequest(r) {
+		projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+			User:             currentUser(r),
+			Projects:         projects,
+			CurrentProjectID: panel.Project.ID,
+			CurrentView:      "issues/new",
+			NewIssuePanel:    panel,
+		})
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "new-issue-panel", panel)
 }
 
 func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int) {
@@ -2929,6 +3235,25 @@ func (s *Server) uiIssuePersonID(ctx context.Context, projectID uuid.UUID, raw s
 	return nil, false, "Choose a project member.", nil
 }
 
+func (s *Server) uiIssueCreateUserID(ctx context.Context, raw string) (*uuid.UUID, string, error) {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return nil, "", nil
+	}
+	username, err := store.NormalizeUsername(strings.TrimPrefix(input, "@"))
+	if err != nil {
+		return nil, "Choose a user.", nil
+	}
+	user, err := s.store.GetUserByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, "Choose a user.", nil
+		}
+		return nil, "", err
+	}
+	return &user.ID, "", nil
+}
+
 func (s *Server) uiIssueSprintID(ctx context.Context, projectID uuid.UUID, raw string) (*uuid.UUID, bool, string, error) {
 	input := strings.TrimSpace(raw)
 	if input == "" {
@@ -2990,6 +3315,7 @@ func uiIssueMemberAutocomplete(panel *uiIssuePanelData, label, action, name, val
 		SaveLabel:   saveLabel,
 		CancelLabel: cancelLabel,
 		Error:       message,
+		Autofocus:   true,
 		Options:     uiMemberAutocompleteOptions(panel.MemberOptions),
 	}
 }
@@ -3006,7 +3332,34 @@ func uiIssueSprintAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
 		SaveLabel:   "Save sprint",
 		CancelLabel: "Cancel editing sprint",
 		Error:       panel.SprintError,
+		Autofocus:   true,
 		Options:     uiSprintAutocompleteOptions(panel.SprintOptions),
+	}
+}
+
+func uiNewIssueProjectAutocomplete(panel *uiNewIssuePanelData) uiAutocompleteEditData {
+	return uiAutocompleteEditData{
+		ID:                "issue-project",
+		Label:             "Project",
+		Name:              "project",
+		Value:             uiNewIssueProjectInput(panel),
+		HiddenName:        "project_id",
+		HiddenValue:       panel.ProjectID,
+		TargetName:        "project_id",
+		Placeholder:       "Search projects",
+		Autofocus:         !panel.HasProject,
+		Collapsible:       true,
+		OptionsOpen:       panel.ProjectSearchOpen,
+		InputHXGet:        uiIssueNewProjectOptionsPath(),
+		InputHXTrigger:    "input changed delay:300ms",
+		InputHXTarget:     "#new-issue-project-options",
+		InputHXSwap:       "outerHTML",
+		InputHXPushURL:    "false",
+		InputHXInclude:    "#new-issue-project-form",
+		SearchClearTarget: "project_id",
+		OptionsID:         "new-issue-project-options",
+		EmptyLabel:        "No projects found.",
+		Options:           uiProjectAutocompleteOptions(panel.ProjectOptions),
 	}
 }
 
@@ -3025,8 +3378,9 @@ func uiMemberAutocompleteOptions(users []model.User) []uiAutocompleteOption {
 			label = "@" + user.Username
 		}
 		options = append(options, uiAutocompleteOption{
-			Value: "@" + user.Username,
-			Label: label,
+			Value:      "@" + user.Username,
+			Label:      label,
+			SearchText: "@" + user.Username + " " + label,
 		})
 	}
 	return options
@@ -3036,11 +3390,33 @@ func uiSprintAutocompleteOptions(sprints []uiIssueSprintOption) []uiAutocomplete
 	options := make([]uiAutocompleteOption, 0, len(sprints))
 	for _, sprint := range sprints {
 		options = append(options, uiAutocompleteOption{
-			Value: sprint.Value,
-			Label: sprint.Label,
+			Value:      sprint.Value,
+			Label:      sprint.Label,
+			SearchText: sprint.Value + " " + sprint.Label,
 		})
 	}
 	return options
+}
+
+func uiProjectAutocompleteOptions(projects []model.Project) []uiAutocompleteOption {
+	options := make([]uiAutocompleteOption, 0, len(projects))
+	for _, project := range projects {
+		options = append(options, uiAutocompleteOption{
+			Value:       uiNewIssueProjectLabel(project),
+			Label:       project.Name,
+			Badge:       project.Key,
+			SearchText:  project.Key + " " + project.Name + " " + project.OwnerUsername,
+			TargetValue: project.ID.String(),
+		})
+	}
+	return options
+}
+
+func uiAutocompleteOptionSearchText(option uiAutocompleteOption) string {
+	if option.SearchText != "" {
+		return option.SearchText
+	}
+	return strings.TrimSpace(option.Value + " " + option.Label)
 }
 
 func uiIssueSprintRef(sprint model.Sprint) string {
@@ -3242,6 +3618,59 @@ func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []mo
 	}
 	uiSortIssueItems(out, query.Sort, query.Direction)
 	return out, hasMore, nil
+}
+
+func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, input uiNewIssuePanelData) (*uiNewIssuePanelData, error) {
+	user := currentUser(r)
+	projects, err := s.uiVisibleProjects(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	input.ProjectOptions = uiFilterNewIssueProjects(projects, input.ProjectInput)
+	if strings.TrimSpace(input.ProjectID) != "" {
+		project, ok, message, err := s.uiProjectFromNewIssueSelection(ctx, user, input.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		if ok && input.ProjectInput != "" && !strings.EqualFold(strings.TrimSpace(input.ProjectInput), uiNewIssueProjectLabel(project)) {
+			ok = false
+			input.ProjectID = ""
+		}
+		if ok {
+			members, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
+				ProjectID: project.ID,
+				Limit:     MaxLimit,
+			})
+			if err != nil {
+				return nil, err
+			}
+			input.Project = project
+			input.HasProject = true
+			input.ProjectID = project.ID.String()
+			if input.ProjectInput == "" {
+				input.ProjectInput = uiNewIssueProjectLabel(project)
+			}
+			input.MemberOptions = members
+		} else if input.Error == "" {
+			input.Error = message
+		}
+	}
+	input.ProjectSearchOpen = input.ProjectInput != "" && !input.HasProject
+	if input.BackHref == "" {
+		if input.HasProject {
+			input.BackHref = uiProjectViewPath(input.Project, "all")
+		} else {
+			input.BackHref = "/me"
+		}
+	}
+	if input.BackHXGet == "" {
+		if input.HasProject {
+			input.BackHXGet = uiProjectPanelPath(input.Project, "all")
+		} else {
+			input.BackHXGet = "/me/panel"
+		}
+	}
+	return &input, nil
 }
 
 func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, projectID uuid.UUID, view string) (*uiProjectPanelData, error) {
@@ -4601,6 +5030,28 @@ func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, pr
 	return nil
 }
 
+func (s *Server) uiProjectFromNewIssueSelection(ctx context.Context, user model.User, raw string) (model.Project, bool, string, error) {
+	input := strings.TrimSpace(raw)
+	if input == "" {
+		return model.Project{}, false, "Choose a project.", nil
+	}
+	projectID, err := uuid.Parse(input)
+	if err != nil {
+		return model.Project{}, false, "Choose a project.", nil
+	}
+	project, err := s.store.GetProject(ctx, projectID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return model.Project{}, false, "Choose a project.", nil
+		}
+		return model.Project{}, false, "", err
+	}
+	if err := s.uiRequireProjectAccess(ctx, user, project.ID); err != nil {
+		return model.Project{}, false, "", err
+	}
+	return project, true, "", nil
+}
+
 func (s *Server) uiProjectFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, bool) {
 	owner, err := store.NormalizeUsername(chi.URLParam(r, "owner"))
 	if err != nil {
@@ -4815,6 +5266,34 @@ func uiProjectPanelPath(project model.Project, view string, assigneeIDs ...[]uui
 		ids = assigneeIDs[0]
 	}
 	return uiAppendAssigneeQuery(uiProjectPath(project)+"/"+view+"/panel", ids)
+}
+
+func uiIssuesPath() string {
+	return "/issues"
+}
+
+func uiIssueNewPath() string {
+	return uiIssuesPath() + "/new"
+}
+
+func uiIssueNewPanelPath() string {
+	return uiIssueNewPath() + "/panel"
+}
+
+func uiIssueNewProjectOptionsPath() string {
+	return uiIssueNewPath() + "/projects"
+}
+
+func uiProjectIssuesPath(project model.Project) string {
+	return uiProjectPath(project) + "/issues"
+}
+
+func uiProjectIssueNewPath(project model.Project) string {
+	return uiProjectIssuesPath(project) + "/new"
+}
+
+func uiProjectIssueNewPanelPath(project model.Project) string {
+	return uiProjectIssueNewPath(project) + "/panel"
 }
 
 func uiProjectContextsPath(project model.Project) string {
@@ -5109,7 +5588,7 @@ func safeUINext(raw string) string {
 	}
 	path, _, _ := strings.Cut(raw, "?")
 	switch {
-	case path == "/", path == "/me", path == "/me/panel", path == "/me/all", path == "/me/all/panel", path == "/projects", path == "/projects/panel", path == "/projects/new", path == "/projects/new/panel", path == "/settings", path == "/tokens":
+	case path == "/", path == "/me", path == "/me/panel", path == "/me/all", path == "/me/all/panel", path == "/projects", path == "/projects/panel", path == "/projects/new", path == "/projects/new/panel", path == "/issues/new", path == "/issues/new/panel", path == "/issues/new/projects", path == "/settings", path == "/tokens":
 		return raw
 	case safeUIIssuePath(path):
 		return raw
@@ -5169,6 +5648,12 @@ func safeUIProjectPath(path string) bool {
 			return err == nil
 		}
 		return false
+	}
+	if parts[3] == "issues" {
+		if len(parts) == 5 {
+			return parts[4] == "new"
+		}
+		return len(parts) == 6 && parts[4] == "new" && parts[5] == "panel"
 	}
 	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "planned" && parts[3] != "all" && parts[3] != "backlog" && parts[3] != "deleted" {
 		return false
@@ -5640,6 +6125,67 @@ func uiPriorityOptions() []uiPriorityOption {
 		{Priority: model.PriorityP3},
 		{Priority: model.PriorityP4},
 	}
+}
+
+func uiNewIssueSelectedPriority(data *uiNewIssuePanelData) model.IssuePriority {
+	if data == nil {
+		return model.PriorityP2
+	}
+	priority := model.IssuePriority(data.Priority)
+	if priority.Valid() {
+		return priority
+	}
+	return model.PriorityP2
+}
+
+func uiNewIssueProjectSelected(data *uiNewIssuePanelData, project model.Project) bool {
+	if data == nil {
+		return false
+	}
+	return data.ProjectID == project.ID.String()
+}
+
+func uiNewIssueProjectInput(data *uiNewIssuePanelData) string {
+	if data == nil {
+		return ""
+	}
+	if data.ProjectInput != "" {
+		return data.ProjectInput
+	}
+	if data.HasProject {
+		return uiNewIssueProjectLabel(data.Project)
+	}
+	return ""
+}
+
+func uiNewIssueProjectLabel(project model.Project) string {
+	if project.Name == "" {
+		return project.Key
+	}
+	return project.Key + " - " + project.Name
+}
+
+func uiFilterNewIssueProjects(projects []model.Project, raw string) []model.Project {
+	query := strings.ToLower(strings.TrimSpace(raw))
+	if query == "" {
+		return projects
+	}
+	terms := strings.Fields(query)
+	out := make([]model.Project, 0, len(projects))
+	for _, project := range projects {
+		haystack := strings.ToLower(project.Key + " " + project.Name + " " + project.OwnerUsername)
+		matches := true
+		for _, term := range terms {
+			if !strings.Contains(haystack, term) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			out = append(out, project)
+		}
+	}
+	return out
 }
 
 func uiStatusRowClass(s model.Status) string {
