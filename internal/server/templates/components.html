@@ -55,6 +55,20 @@
         </div>
       </div>
 
+      {{if .TagFilters}}
+      <div class="grid gap-2 px-3 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center">
+        <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Tags</span>
+        <div class="flex flex-wrap items-center gap-1.5">
+          {{range .TagFilters}}
+          <a href="{{.Href}}" hx-get="{{.HXGet}}" hx-target="#main" hx-push-url="{{.HXPush}}" aria-pressed="{{if .Selected}}true{{else}}false{{end}}" class="inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium {{if .Selected}}border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800{{end}}">
+            {{if .Tag.Name}}<span class="h-2 w-2 rounded-full {{tagDotClass .Tag.Color}}" aria-hidden="true"></span>{{end}}
+            <span>{{.Label}}</span>
+          </a>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+
       {{if .AssigneeFilters}}
       <div class="grid gap-2 px-3 py-3 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:items-center">
         <span class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Assignee</span>
@@ -234,6 +248,12 @@
 <span aria-label="Priority {{priorityLabel .}}" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded-full text-[9px] font-bold leading-none text-white {{priorityClass .}}">{{priorityLabel .}}</span>
 {{end}}
 
+{{define "tag-badge"}}
+<span class="inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 {{tagClass .Color}}">
+  <span class="min-w-0 truncate">{{.DisplayName}}</span>
+</span>
+{{end}}
+
 {{define "issue-due-badge"}}
 {{if .DueDate}}
 <span aria-label="Due {{dueDateFull .DueDate}}" class="inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 {{dueBadgeClass .}}">
@@ -246,7 +266,15 @@
 {{define "issue-summary-row-cells"}}
 {{template "issue-key" .Identifier}}
 {{template "priority-badge" .Priority}}
-<span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
+<span class="min-w-0">
+  <span class="block truncate text-slate-900 dark:text-slate-100">{{.Title}}</span>
+  {{if .Tags}}
+  <span class="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+    {{range issueVisibleTags .Tags}}{{template "tag-badge" .}}{{end}}
+    {{if issueHiddenTagCount .Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Tags))}}{{end}}
+  </span>
+  {{end}}
+</span>
 <span class="flex shrink-0 items-center gap-2">
   {{template "issue-due-badge" .}}
   {{template "status-badge" .Status}}

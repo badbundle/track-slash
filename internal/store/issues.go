@@ -136,6 +136,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 	if err != nil {
 		return model.Issue{}, err
 	}
+	out.Tags = []model.IssueTag{}
 	return out, nil
 }
 
@@ -205,6 +206,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 	if err != nil {
 		return model.Issue{}, err
 	}
+	out.Tags = []model.IssueTag{}
 	return out, nil
 }
 
@@ -224,7 +226,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 		}
 		return model.Issue{}, err
 	}
-	return iss, nil
+	return s.hydrateIssueTagsOne(ctx, iss)
 }
 
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
@@ -244,7 +246,7 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 		}
 		return model.Issue{}, err
 	}
-	return iss, nil
+	return s.hydrateIssueTagsOne(ctx, iss)
 }
 
 func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
@@ -264,7 +266,7 @@ func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUserna
 		}
 		return model.Issue{}, err
 	}
-	return iss, nil
+	return s.hydrateIssueTagsOne(ctx, iss)
 }
 
 type ListIssuesParams struct {
@@ -276,6 +278,8 @@ type ListIssuesParams struct {
 	Priorities []model.IssuePriority
 	// AssigneeIDs filters to issues assigned to any supplied users. Empty = all.
 	AssigneeIDs []uuid.UUID
+	// TagNames filters to issues tagged with any supplied tag names. Empty = all.
+	TagNames []string
 	// SprintID filters by sprint. Backlog == true means "WHERE sprint_id IS NULL"
 	// and SprintID is ignored. Both nil/false → no sprint filter.
 	SprintID  *uuid.UUID
@@ -348,7 +352,10 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		}
 		out = append(out, iss)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return s.hydrateIssueTags(ctx, out)
 }
 
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
@@ -377,6 +384,21 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	if len(p.AssigneeIDs) > 0 {
 		args = append(args, p.AssigneeIDs)
 		q += fmt.Sprintf(" AND i.assignee_id = ANY($%d)", len(args))
+	}
+	tagNames, err := normalizeIssueTagFilters(p.TagNames)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", err.Error(), ErrConflict)
+	}
+	if len(tagNames) > 0 {
+		args = append(args, tagNames)
+		q += fmt.Sprintf(`
+			AND EXISTS (
+				SELECT 1
+				FROM issue_tag_links itl
+				JOIN issue_tags it ON it.id = itl.tag_id
+				WHERE itl.issue_id = i.id AND it.name = ANY($%d)
+			)
+		`, len(args))
 	}
 	switch {
 	case p.Backlog:
@@ -409,6 +431,10 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	hasMore := len(out) > p.Limit
 	if hasMore {
 		out = out[:p.Limit]
+	}
+	out, err = s.hydrateIssueTags(ctx, out)
+	if err != nil {
+		return nil, false, err
 	}
 	return out, hasMore, nil
 }
@@ -624,6 +650,10 @@ func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams
 	if hasMore {
 		out = out[:p.Limit]
 	}
+	out, err = s.hydrateIssueTags(ctx, out)
+	if err != nil {
+		return nil, false, err
+	}
 	return out, hasMore, nil
 }
 
@@ -690,6 +720,10 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 	hasMore := len(out) > p.Limit
 	if hasMore {
 		out = out[:p.Limit]
+	}
+	out, err = s.hydrateIssueTags(ctx, out)
+	if err != nil {
+		return nil, false, err
 	}
 	return out, hasMore, nil
 }

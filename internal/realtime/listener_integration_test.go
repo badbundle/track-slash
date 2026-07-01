@@ -381,6 +381,61 @@ func TestListenerReceivesProjectContextEvents(t *testing.T) {
 	waitForIssueContextLinkEvent(t, linkSub, linkID, issueID, contextID, projectID, OpDelete)
 }
 
+// TestListenerReceivesIssueTagEvents verifies tag and issue-tag-link triggers
+// include enough ids for project, issue, and tag fanout.
+func TestListenerReceivesIssueTagEvents(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-tags")
+	var issueID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title)
+		VALUES ($1, 1, 'tagged issue')
+		RETURNING id::text
+	`, projectID).Scan(&issueID); err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+
+	projectSub := newTestClient(32)
+	hub.Subscribe(projectSub, "project:"+projectID)
+
+	var tagID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issue_tags (project_id, number, name, color)
+		VALUES ($1, 1, 'Customer Beta', 'green')
+		RETURNING id::text
+	`, projectID).Scan(&tagID); err != nil {
+		t.Fatalf("insert issue_tags: %v", err)
+	}
+	waitForIssueTagEvent(t, projectSub, tagID, projectID, OpInsert)
+
+	issueSub := newTestClient(32)
+	tagSub := newTestClient(32)
+	projectLinkSub := newTestClient(32)
+	hub.Subscribe(issueSub, "issue:"+issueID)
+	hub.Subscribe(tagSub, "issue_tag:"+tagID)
+	hub.Subscribe(projectLinkSub, "project:"+projectID)
+
+	var linkID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issue_tag_links (project_id, issue_id, tag_id)
+		VALUES ($1, $2, $3)
+		RETURNING id::text
+	`, projectID, issueID, tagID).Scan(&linkID); err != nil {
+		t.Fatalf("insert issue_tag_links: %v", err)
+	}
+
+	waitForIssueTagLinkEvent(t, issueSub, linkID, issueID, tagID, projectID, OpInsert)
+	waitForIssueTagLinkEvent(t, tagSub, linkID, issueID, tagID, projectID, OpInsert)
+	waitForIssueTagLinkEvent(t, projectLinkSub, linkID, issueID, tagID, projectID, OpInsert)
+}
+
 // TestListenerReceivesSoftDeleteAsDelete verifies updating deleted_at emits a
 // realtime delete op so subscribers see the same event kind as hard deletes.
 func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {
@@ -517,6 +572,50 @@ func waitForIssueContextLinkEvent(t *testing.T, c *Client, linkID, issueID, cont
 			return
 		case <-deadline:
 			t.Fatalf("did not receive issue context link %s event within 3s", op)
+		}
+	}
+}
+
+func waitForIssueTagEvent(t *testing.T, c *Client, tagID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityIssueTag || ev.Op != op || ev.ID.String() != tagID {
+				continue
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive issue tag %s event within 3s", op)
+		}
+	}
+}
+
+func waitForIssueTagLinkEvent(t *testing.T, c *Client, linkID, issueID, tagID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityIssueTagLink || ev.Op != op || ev.ID.String() != linkID {
+				continue
+			}
+			if ev.IssueID == nil || ev.IssueID.String() != issueID {
+				t.Errorf("issue_id = %v, want %s", ev.IssueID, issueID)
+			}
+			if ev.TagID == nil || ev.TagID.String() != tagID {
+				t.Errorf("tag_id = %v, want %s", ev.TagID, tagID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive issue tag link %s event within 3s", op)
 		}
 	}
 }

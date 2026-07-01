@@ -422,6 +422,25 @@
             <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>
           </div>
           <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Tags</dt>
+            <dd class="mt-1 flex items-start justify-between gap-3">
+              <span class="min-w-0">
+                {{if .Issue.Tags}}
+                <span class="flex min-w-0 flex-wrap items-center gap-1">
+                  {{range issueVisibleTags .Issue.Tags}}{{template "tag-badge" .}}{{end}}
+                  {{if issueHiddenTagCount .Issue.Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Issue.Tags))}}{{end}}
+                </span>
+                {{else}}
+                {{template "count-badge" 0}}
+                {{end}}
+              </span>
+              <a href="{{issueTags .Issue}}" aria-label="Manage tags" hx-get="{{issueTags .Issue}}" hx-target="#main" hx-push-url="{{issueTags .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
+              </a>
+            </dd>
+            {{if .TagError}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.TagError}}</p>{{end}}
+          </div>
+          <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Context</dt>
             <dd class="mt-1 flex items-center justify-between gap-3">
               {{template "count-badge" (len .Contexts)}}

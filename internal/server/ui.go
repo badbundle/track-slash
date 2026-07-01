@@ -66,6 +66,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueStatusEdit":              uiIssueStatusEditPath,
 	"issueSubIssues":               uiIssueSubIssuesPath,
 	"issueSubIssuesNew":            uiIssueSubIssuesNewPath,
+	"issueTags":                    uiIssueTagsPath,
+	"issueTagDelete":               uiIssueTagDeletePath,
 	"issueAssigneeAutocomplete":    uiIssueAssigneeAutocomplete,
 	"issueReporterAutocomplete":    uiIssueReporterAutocomplete,
 	"issueSprintAutocomplete":      uiIssueSprintAutocomplete,
@@ -103,6 +105,9 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectContextIssues":         uiProjectContextIssuesPath,
 	"projectContextNew":            uiProjectContextNewPath,
 	"projectContexts":              uiProjectContextsPath,
+	"projectTags":                  uiProjectTagsPath,
+	"projectTag":                   uiProjectTagPath,
+	"projectTagDelete":             uiProjectTagDeletePath,
 	"projectView":                  uiProjectViewPath,
 	"projectIcon":                  uiProjectIcon,
 	"dueBadgeClass":                uiDueBadgeClass,
@@ -119,6 +124,11 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"statusSurface":                uiStatusSurfaceClass,
 	"statusValue":                  uiStatusValue,
 	"subIssueProgress":             uiSubIssueProgress,
+	"tagClass":                     uiTagClass,
+	"tagColors":                    uiTagColors,
+	"tagDotClass":                  uiTagDotClass,
+	"issueVisibleTags":             uiIssueVisibleTags,
+	"issueHiddenTagCount":          uiIssueHiddenTagCount,
 	"tokenTime":                    uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 
@@ -146,6 +156,7 @@ type uiShellData struct {
 	DeletedIssuePanel *uiDeletedIssuePanelData
 	IssuePanel        *uiIssuePanelData
 	ContextManager    *uiContextManagerData
+	TagManager        *uiTagManagerData
 	TokenPanel        *uiTokenPanelData
 	SettingsPanel     *uiSettingsPanelData
 }
@@ -171,6 +182,15 @@ type uiPlannedSprint struct {
 
 type uiAssigneeFilterItem struct {
 	Assignee model.ProjectAssignee
+	Selected bool
+	Href     string
+	HXGet    string
+	HXPush   string
+}
+
+type uiTagFilterItem struct {
+	Tag      model.IssueTag
+	Label    string
 	Selected bool
 	Href     string
 	HXGet    string
@@ -206,6 +226,7 @@ type uiProjectSortOptionItem struct {
 type uiIssueControlsData struct {
 	StatusFilters        []uiProjectStatusFilterItem
 	PriorityFilters      []uiProjectPriorityFilterItem
+	TagFilters           []uiTagFilterItem
 	ActiveFilterCount    int
 	SortOptions          []uiProjectSortOptionItem
 	SortLabel            string
@@ -420,6 +441,7 @@ type uiProjectPanelData struct {
 	AllIssuePage         uiProjectAllIssuePageData
 	AllControls          uiIssueControlsData
 	ProjectStats         model.ProjectStats
+	Tags                 []model.IssueTag
 	ContextItems         []uiProjectContextItem
 	ContextHasMore       bool
 	DeleteNotice         *uiIssueDeleteNotice
@@ -433,6 +455,7 @@ const uiProjectAllDefaultSort = uiIssueListDefaultSort
 type uiIssueListQuery struct {
 	Statuses    []model.Status
 	Priorities  []model.IssuePriority
+	TagNames    []string
 	Sort        store.ListIssuesSort
 	Direction   store.ListIssuesSortDirection
 	AssigneeIDs []uuid.UUID
@@ -504,10 +527,32 @@ type uiIssuePanelData struct {
 	LinkError          string
 	Contexts           []model.ProjectContext
 	ContextsHasMore    bool
+	TagError           string
 	BackHref           string
 	BackHXGet          string
 	BackLabel          string
 	DeleteNotice       *uiIssueDeleteNotice
+}
+
+type uiTagManagerData struct {
+	Mode        string
+	Project     model.Project
+	Issue       model.Issue
+	HasIssue    bool
+	Tags        []model.IssueTag
+	Available   []model.IssueTag
+	BackHref    string
+	BackHXGet   string
+	BackLabel   string
+	NameInput   string
+	ColorInput  model.IssueTagColor
+	TagError    string
+	EditTagID   uuid.UUID
+	EditName    string
+	EditColor   model.IssueTagColor
+	EditError   string
+	AttachInput string
+	AttachError string
 }
 
 type uiProjectsPanelData struct {
@@ -622,9 +667,17 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/context/{contextRef}/edit", s.uiEditIssueContext)
 		r.Post("/{owner}/issues/{issueRef}/context/{contextRef}", s.uiUpdateIssueContext)
 		r.Post("/{owner}/issues/{issueRef}/context/{contextRef}/delete", s.uiDeleteIssueContextLink)
+		r.Get("/{owner}/issues/{issueRef}/tags", s.uiIssueTagsPage)
+		r.Post("/{owner}/issues/{issueRef}/tags", s.uiAttachIssueTag)
+		r.Post("/{owner}/issues/{issueRef}/tags/{tagRef}/delete", s.uiDetachIssueTag)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
 		r.Get("/{owner}/projects/{key}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
 		r.Get("/{owner}/projects/{key}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })
+		r.Get("/{owner}/projects/{key}/tags", s.uiProjectTagsPage)
+		r.Post("/{owner}/projects/{key}/tags", s.uiCreateProjectTag)
+		r.Get("/{owner}/projects/{key}/tags/{tagRef}/edit", s.uiEditProjectTag)
+		r.Post("/{owner}/projects/{key}/tags/{tagRef}", s.uiUpdateProjectTag)
+		r.Post("/{owner}/projects/{key}/tags/{tagRef}/delete", s.uiDeleteProjectTag)
 		r.Get("/{owner}/projects/{key}/context", s.uiProjectContextPage)
 		r.Get("/{owner}/projects/{key}/context/new", s.uiNewProjectContext)
 		r.Post("/{owner}/projects/{key}/context", s.uiCreateProjectContext)
@@ -1577,6 +1630,344 @@ func (s *Server) uiDeleteProjectContextIssueLink(w http.ResponseWriter, r *http.
 	}
 	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
+}
+
+func (s *Server) uiProjectTagsPage(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	s.renderUIProjectTagManager(w, r, project.ID, nil)
+}
+
+func (s *Server) uiCreateProjectTag(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	nameInput := r.Form.Get("name")
+	color := model.IssueTagColor(r.Form.Get("color"))
+	name, err := model.NormalizeIssueTagName(nameInput)
+	if err != nil {
+		s.renderUIProjectTagManager(w, r, project.ID, func(panel *uiTagManagerData) {
+			panel.NameInput = nameInput
+			panel.ColorInput = uiIssueTagColorOrDefault(color)
+			panel.TagError = err.Error()
+		})
+		return
+	}
+	color = uiIssueTagColorOrDefault(color)
+	if !color.Valid() {
+		s.renderUIProjectTagManager(w, r, project.ID, func(panel *uiTagManagerData) {
+			panel.NameInput = nameInput
+			panel.ColorInput = color
+			panel.TagError = "Invalid color."
+		})
+		return
+	}
+	if _, err := s.store.CreateIssueTag(r.Context(), store.CreateIssueTagParams{ProjectID: project.ID, Name: name, Color: color}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIProjectTagManager(w, r, project.ID, func(panel *uiTagManagerData) {
+				panel.NameInput = nameInput
+				panel.ColorInput = color
+				panel.TagError = "Tag already exists or is invalid."
+			})
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiProjectTagsPath(project))
+	s.renderUIProjectTagManager(w, r, project.ID, nil)
+}
+
+func (s *Server) uiEditProjectTag(w http.ResponseWriter, r *http.Request) {
+	project, tag, ok := s.uiProjectTagFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIProjectTagManager(w, r, project.ID, func(panel *uiTagManagerData) {
+		panel.EditTagID = tag.ID
+		panel.EditName = tag.DisplayName
+		panel.EditColor = tag.Color
+	})
+}
+
+func (s *Server) uiUpdateProjectTag(w http.ResponseWriter, r *http.Request) {
+	project, tag, ok := s.uiProjectTagFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	nameInput := r.Form.Get("name")
+	color := model.IssueTagColor(r.Form.Get("color"))
+	name, err := model.NormalizeIssueTagName(nameInput)
+	if err != nil {
+		s.renderUIProjectTagEditError(w, r, project.ID, tag.ID, nameInput, color, err.Error())
+		return
+	}
+	color = uiIssueTagColorOrDefault(color)
+	if !color.Valid() {
+		s.renderUIProjectTagEditError(w, r, project.ID, tag.ID, nameInput, color, "Invalid color.")
+		return
+	}
+	if _, err := s.store.UpdateIssueTag(r.Context(), store.UpdateIssueTagParams{ID: tag.ID, Name: &name, Color: &color}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIProjectTagEditError(w, r, project.ID, tag.ID, nameInput, color, "Tag already exists or is invalid.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiProjectTagsPath(project))
+	s.renderUIProjectTagManager(w, r, project.ID, nil)
+}
+
+func (s *Server) uiDeleteProjectTag(w http.ResponseWriter, r *http.Request) {
+	project, tag, ok := s.uiProjectTagFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.DeleteIssueTag(r.Context(), tag.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiProjectTagsPath(project))
+	s.renderUIProjectTagManager(w, r, project.ID, nil)
+}
+
+func (s *Server) uiIssueTagsPage(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+}
+
+func (s *Server) uiAttachIssueTag(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := strings.TrimSpace(r.Form.Get("tag"))
+	name, err := model.NormalizeIssueTagName(input)
+	if err != nil {
+		s.renderUIIssueTagManager(w, r, issue.ID, func(panel *uiTagManagerData) {
+			panel.AttachInput = input
+			panel.AttachError = "Choose a tag."
+		})
+		return
+	}
+	tag, err := s.store.GetIssueTagByProjectName(r.Context(), issue.ProjectID, name)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if _, err := s.store.CreateIssueTagLink(r.Context(), store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: tag.ID}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssueTagManager(w, r, issue.ID, func(panel *uiTagManagerData) {
+				panel.AttachInput = input
+				panel.AttachError = "Tag already attached."
+			})
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiIssueTagsPath(issue))
+	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+}
+
+func (s *Server) uiDetachIssueTag(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	number, ok := parseTypedRefParam(w, r, "tagRef", "tag")
+	if !ok {
+		return
+	}
+	tag, err := s.store.GetIssueTagByProjectNumber(r.Context(), issue.ProjectID, number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.DeleteIssueTagLink(r.Context(), issue.ID, tag.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiIssueTagsPath(issue))
+	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+}
+
+func (s *Server) renderUIProjectTagManager(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, mutate func(*uiTagManagerData)) {
+	panel, err := s.uiBuildProjectTagManager(r.Context(), r, projectID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if mutate != nil {
+		mutate(panel)
+	}
+	s.renderUITagManager(w, r, panel)
+}
+
+func (s *Server) renderUIIssueTagManager(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, mutate func(*uiTagManagerData)) {
+	panel, err := s.uiBuildIssueTagManager(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if mutate != nil {
+		mutate(panel)
+	}
+	s.renderUITagManager(w, r, panel)
+}
+
+func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, panel *uiTagManagerData) {
+	if isHTMXRequest(r) {
+		renderUITemplate(w, http.StatusOK, "tag-manager-panel", panel)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:             currentUser(r),
+		Projects:         projects,
+		CurrentProjectID: panel.Project.ID,
+		CurrentView:      "projects",
+		TagManager:       panel,
+	})
+}
+
+func (s *Server) uiBuildProjectTagManager(ctx context.Context, r *http.Request, projectID uuid.UUID) (*uiTagManagerData, error) {
+	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
+		return nil, err
+	}
+	project, err := s.store.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	tags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: projectID, Limit: MaxLimit})
+	if err != nil {
+		return nil, err
+	}
+	return &uiTagManagerData{
+		Mode:       "project",
+		Project:    project,
+		Tags:       tags,
+		ColorInput: model.TagColorBlue,
+		BackHref:   uiProjectViewPath(project, "about"),
+		BackHXGet:  uiProjectPanelPath(project, "about"),
+		BackLabel:  "About",
+	}, nil
+}
+
+func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, issueID uuid.UUID) (*uiTagManagerData, error) {
+	projectID, err := s.store.ProjectIDForIssue(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
+		return nil, err
+	}
+	issue, err := s.store.GetIssue(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.store.GetProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	allTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: projectID, Limit: MaxLimit})
+	if err != nil {
+		return nil, err
+	}
+	currentTags, _, err := s.store.ListTagsForIssue(ctx, store.ListTagsForIssueParams{IssueID: issueID, Limit: MaxLimit})
+	if err != nil {
+		return nil, err
+	}
+	attached := make(map[uuid.UUID]struct{}, len(currentTags))
+	for _, tag := range currentTags {
+		attached[tag.ID] = struct{}{}
+	}
+	available := make([]model.IssueTag, 0, len(allTags))
+	for _, tag := range allTags {
+		if _, ok := attached[tag.ID]; !ok {
+			available = append(available, tag)
+		}
+	}
+	return &uiTagManagerData{
+		Mode:      "issue",
+		Project:   project,
+		Issue:     issue,
+		HasIssue:  true,
+		Tags:      currentTags,
+		Available: available,
+		BackHref:  uiIssuePath(issue),
+		BackHXGet: uiIssuePanelPath(issue),
+		BackLabel: "Issue",
+	}, nil
+}
+
+func (s *Server) renderUIProjectTagEditError(w http.ResponseWriter, r *http.Request, projectID, tagID uuid.UUID, name string, color model.IssueTagColor, message string) {
+	s.renderUIProjectTagManager(w, r, projectID, func(panel *uiTagManagerData) {
+		panel.EditTagID = tagID
+		panel.EditName = name
+		panel.EditColor = uiIssueTagColorOrDefault(color)
+		panel.EditError = message
+	})
+}
+
+func (s *Server) uiProjectTagFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.IssueTag, bool) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return model.Project{}, model.IssueTag{}, false
+	}
+	number, ok := parseTypedRefParam(w, r, "tagRef", "tag")
+	if !ok {
+		return model.Project{}, model.IssueTag{}, false
+	}
+	tag, err := s.store.GetIssueTagByProjectNumber(r.Context(), project.ID, number)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Project{}, model.IssueTag{}, false
+	}
+	return project, tag, true
+}
+
+func uiIssueTagColorOrDefault(color model.IssueTagColor) model.IssueTagColor {
+	return model.IssueTagColorOrDefault(color)
 }
 
 func (s *Server) renderUIProjectContextManager(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, mutate func(*uiContextManagerData)) {
@@ -3484,6 +3875,7 @@ func (s *Server) uiBuildWorkPanel(ctx context.Context, r *http.Request, user mod
 	if err != nil {
 		return nil, err
 	}
+	query.TagNames = nil
 	panel := &uiWorkPanelData{
 		View:          view,
 		Title:         "Me",
@@ -3669,6 +4061,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	var sprintQuery uiIssueListQuery
 	var allQuery uiProjectAllQuery
 	var assignees []model.ProjectAssignee
+	var tags []model.IssueTag
 	if view == "sprint" {
 		sprintQuery, err = uiParseProjectAllQuery(r)
 		if err != nil {
@@ -3698,6 +4091,13 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		if err != nil {
 			return nil, err
 		}
+		tags, _, err = s.store.ListIssueTags(ctx, store.ListIssueTagsParams{
+			ProjectID: projectID,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
 		if view == "all" {
 			panel.AssigneeFilters = uiProjectAllAssigneeFilters(project, assignees, allQuery)
 			clearAssigneeQuery := allQuery
@@ -3722,6 +4122,14 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.ProjectStats = stats
+		projectTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{
+			ProjectID: projectID,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		panel.Tags = projectTags
 		contexts, contextHasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
 			ProjectID: projectID,
 			Limit:     MaxLimit,
@@ -3757,7 +4165,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.SprintColumns = uiIssueColumns()
-		panel.SprintControls = uiProjectSprintIssueControls(project, sprintQuery, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
+		panel.SprintControls = uiProjectSprintIssueControls(project, sprintQuery, tags, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
 		if len(activeSprints) == 0 {
 			return panel, nil
 		}
@@ -3766,6 +4174,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			ProjectID:   projectID,
 			Statuses:    sprintQuery.Statuses,
 			Priorities:  sprintQuery.Priorities,
+			TagNames:    sprintQuery.TagNames,
 			AssigneeIDs: assigneeIDs,
 			SprintID:    &panel.ActiveSprint.ID,
 			Limit:       MaxLimit,
@@ -3820,7 +4229,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		}
 		panel.AllIssues = pageData.Issues
 		panel.AllIssuePage = pageData
-		panel.AllControls = uiProjectAllIssueControls(project, allQuery, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
+		panel.AllControls = uiProjectAllIssueControls(project, allQuery, tags, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
 	default:
 		return nil, store.ErrNotFound
 	}
@@ -3848,6 +4257,7 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 		ProjectID:        project.ID,
 		Statuses:         allQuery.Statuses,
 		Priorities:       allQuery.Priorities,
+		TagNames:         allQuery.TagNames,
 		AssigneeIDs:      allQuery.AssigneeIDs,
 		Cursor:           cursor,
 		Limit:            DefaultLimit,
@@ -4332,21 +4742,22 @@ func uiWorkIssueListPaths(view string) uiIssueListPaths {
 }
 
 func uiIssueControls(query uiIssueListQuery, paths uiIssueListPaths) uiIssueControlsData {
-	return uiIssueControlsWithAssignees(query, paths, nil, false, "", "", "")
+	return uiIssueControlsWithAssignees(query, paths, nil, nil, false, "", "", "")
 }
 
-func uiProjectSprintIssueControls(project model.Project, query uiIssueListQuery, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
-	return uiIssueControlsWithAssignees(query, uiProjectSprintIssueListPaths(project), assignees, assigneeActive, clearHref, clearHXGet, clearHXPush)
+func uiProjectSprintIssueControls(project model.Project, query uiIssueListQuery, tags []model.IssueTag, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
+	return uiIssueControlsWithAssignees(query, uiProjectSprintIssueListPaths(project), tags, assignees, assigneeActive, clearHref, clearHXGet, clearHXPush)
 }
 
-func uiProjectAllIssueControls(project model.Project, query uiProjectAllQuery, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
-	return uiIssueControlsWithAssignees(query, uiProjectAllIssueListPaths(project), assignees, assigneeActive, clearHref, clearHXGet, clearHXPush)
+func uiProjectAllIssueControls(project model.Project, query uiProjectAllQuery, tags []model.IssueTag, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
+	return uiIssueControlsWithAssignees(query, uiProjectAllIssueListPaths(project), tags, assignees, assigneeActive, clearHref, clearHXGet, clearHXPush)
 }
 
-func uiIssueControlsWithAssignees(query uiIssueListQuery, paths uiIssueListPaths, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
+func uiIssueControlsWithAssignees(query uiIssueListQuery, paths uiIssueListPaths, tags []model.IssueTag, assignees []uiAssigneeFilterItem, assigneeActive bool, clearHref, clearHXGet, clearHXPush string) uiIssueControlsData {
 	return uiIssueControlsData{
 		StatusFilters:        uiIssueStatusFilters(query, paths),
 		PriorityFilters:      uiIssuePriorityFilters(query, paths),
+		TagFilters:           uiIssueTagFilters(query, paths, tags),
 		ActiveFilterCount:    uiActiveIssueFilterCount(query),
 		SortOptions:          uiIssueSortOptions(query, paths),
 		SortLabel:            uiIssueSortLabel(uiIssueListSort(query)),
@@ -4362,7 +4773,7 @@ func uiIssueControlsWithAssignees(query uiIssueListQuery, paths uiIssueListPaths
 }
 
 func uiActiveIssueFilterCount(query uiIssueListQuery) int {
-	return len(query.Statuses) + len(query.Priorities) + len(query.AssigneeIDs)
+	return len(query.Statuses) + len(query.Priorities) + len(query.TagNames) + len(query.AssigneeIDs)
 }
 
 func uiProjectAllStatusFilters(project model.Project, query uiProjectAllQuery) []uiProjectStatusFilterItem {
@@ -4442,6 +4853,43 @@ func uiIssuePriorityFilters(query uiIssueListQuery, paths uiIssueListPaths) []ui
 			HXGet:    hxGet,
 			HXPush:   hxPush,
 			Active:   active,
+		})
+	}
+	return out
+}
+
+func uiIssueTagFilters(query uiIssueListQuery, paths uiIssueListPaths, tags []model.IssueTag) []uiTagFilterItem {
+	if len(tags) == 0 {
+		return nil
+	}
+	out := make([]uiTagFilterItem, 0, len(tags)+1)
+	anyQuery := query
+	anyQuery.TagNames = nil
+	anyQuery.Cursor = ""
+	href, hxGet, hxPush := paths(anyQuery)
+	out = append(out, uiTagFilterItem{
+		Label:    "Any",
+		Selected: len(query.TagNames) == 0,
+		Href:     href,
+		HXGet:    hxGet,
+		HXPush:   hxPush,
+	})
+	for _, tag := range tags {
+		if strings.TrimSpace(tag.Name) == "" {
+			continue
+		}
+		nextQuery := query
+		nextNames, selected := uiToggleTagNames(query.TagNames, tag.Name)
+		nextQuery.TagNames = nextNames
+		nextQuery.Cursor = ""
+		href, hxGet, hxPush := paths(nextQuery)
+		out = append(out, uiTagFilterItem{
+			Tag:      tag,
+			Label:    tag.DisplayName,
+			Selected: selected,
+			Href:     href,
+			HXGet:    hxGet,
+			HXPush:   hxPush,
 		})
 	}
 	return out
@@ -4570,6 +5018,10 @@ func uiParseIssueListQuery(r *http.Request) (uiIssueListQuery, error) {
 	if err != nil {
 		return uiIssueListQuery{}, err
 	}
+	tagNames, err := uiParseIssueTagFilters(r)
+	if err != nil {
+		return uiIssueListQuery{}, err
+	}
 	sort, err := uiParseProjectIssueSort(r)
 	if err != nil {
 		return uiIssueListQuery{}, err
@@ -4581,6 +5033,7 @@ func uiParseIssueListQuery(r *http.Request) (uiIssueListQuery, error) {
 	return uiIssueListQuery{
 		Statuses:   statuses,
 		Priorities: priorities,
+		TagNames:   tagNames,
 		Sort:       sort,
 		Direction:  direction,
 	}, nil
@@ -4639,6 +5092,28 @@ func uiParseProjectIssuePriorityFilters(r *http.Request) ([]model.IssuePriority,
 		priorities = append(priorities, priority)
 	}
 	return priorities, nil
+}
+
+func uiParseIssueTagFilters(r *http.Request) ([]string, error) {
+	raws := r.URL.Query()["tag"]
+	tags := make([]string, 0, len(raws))
+	seen := make(map[string]struct{}, len(raws))
+	for _, raw := range raws {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		name, err := model.NormalizeIssueTagName(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid tag: %w", errUIBadRequest)
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		tags = append(tags, name)
+	}
+	return tags, nil
 }
 
 func uiParseProjectIssueSort(r *http.Request) (store.ListIssuesSort, error) {
@@ -4874,6 +5349,29 @@ func uiTogglePriorities(priorities []model.IssuePriority, priority model.IssuePr
 	return out, true
 }
 
+func uiToggleTagNames(names []string, name string) ([]string, bool) {
+	selected := false
+	for _, current := range names {
+		if current == name {
+			selected = true
+			break
+		}
+	}
+	if !selected {
+		out := make([]string, 0, len(names)+1)
+		out = append(out, names...)
+		out = append(out, name)
+		return out, false
+	}
+	out := make([]string, 0, len(names)-1)
+	for _, current := range names {
+		if current != name {
+			out = append(out, current)
+		}
+	}
+	return out, true
+}
+
 func uiAppendAssigneeQuery(path string, assigneeIDs []uuid.UUID) string {
 	if len(assigneeIDs) == 0 {
 		return path
@@ -4949,6 +5447,9 @@ func uiIssueListPath(path string, query uiIssueListQuery, includeAssignees bool)
 	}
 	for _, priority := range query.Priorities {
 		values.Add("priority", string(priority))
+	}
+	for _, tag := range query.TagNames {
+		values.Add("tag", tag)
 	}
 	sortBy := uiIssueListSort(query)
 	if sortBy != uiIssueListDefaultSort {
@@ -5280,6 +5781,18 @@ func uiProjectContextsPath(project model.Project) string {
 	return uiProjectPath(project) + "/context"
 }
 
+func uiProjectTagsPath(project model.Project) string {
+	return uiProjectPath(project) + "/tags"
+}
+
+func uiProjectTagPath(project model.Project, tag any) string {
+	return uiProjectTagsPath(project) + "/" + uiIssueTagRef(tag)
+}
+
+func uiProjectTagDeletePath(project model.Project, tag any) string {
+	return uiProjectTagPath(project, tag) + "/delete"
+}
+
 func uiProjectContextPath(project model.Project, contextItem any) string {
 	return uiProjectContextsPath(project) + "/" + uiProjectContextRef(contextItem)
 }
@@ -5351,6 +5864,14 @@ func uiIssueContextLinkNewPath(issue any) string {
 
 func uiIssueContextDeletePath(issue any, contextItem any) string {
 	return uiIssueContextItemPath(issue, contextItem) + "/delete"
+}
+
+func uiIssueTagsPath(issue any) string {
+	return uiIssuePath(issue) + "/tags"
+}
+
+func uiIssueTagDeletePath(issue any, tag any) string {
+	return uiIssueTagsPath(issue) + "/" + uiIssueTagRef(tag) + "/delete"
 }
 
 func uiIssueCommentPath(issue any, comment any) string {
@@ -5482,6 +6003,23 @@ func uiIssueLinkRef(v any) string {
 		return model.IssueLinkRef(link.Number)
 	}
 	return "link-0"
+}
+
+func uiIssueTagRef(v any) string {
+	switch tag := v.(type) {
+	case model.IssueTag:
+		if tag.Ref != "" {
+			return tag.Ref
+		}
+		if tag.Number > 0 {
+			return model.IssueTagRef(tag.Number)
+		}
+	case *model.IssueTag:
+		if tag != nil {
+			return uiIssueTagRef(*tag)
+		}
+	}
+	return "tag-0"
 }
 
 func uiProjectContextRef(v any) string {
@@ -5663,6 +6201,18 @@ func safeUIProjectPath(path string) bool {
 		}
 		return false
 	}
+	if parts[3] == "tags" {
+		if len(parts) == 4 {
+			return true
+		}
+		if _, err := parseTypedRef(parts[4], "tag"); err != nil {
+			return false
+		}
+		if len(parts) == 5 {
+			return false
+		}
+		return len(parts) == 6 && (parts[5] == "edit" || parts[5] == "delete")
+	}
 	if parts[3] == "issues" {
 		if len(parts) == 5 {
 			return parts[4] == "new"
@@ -5696,7 +6246,7 @@ func safeUIIssuePath(path string) bool {
 		return true
 	}
 	if len(parts) == 4 {
-		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "context" || parts[3] == "delete" || parts[3] == "restore"
+		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "context" || parts[3] == "tags" || parts[3] == "delete" || parts[3] == "restore"
 	}
 	if len(parts) == 5 {
 		if parts[3] == "context" {
@@ -5709,6 +6259,10 @@ func safeUIIssuePath(path string) bool {
 		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new")
+	}
+	if parts[3] == "tags" && parts[5] == "delete" {
+		_, err := parseTypedRef(parts[4], "tag")
+		return err == nil
 	}
 	if parts[3] != "links" || parts[5] != "edit" {
 		if parts[3] == "context" && (parts[5] == "delete" || parts[5] == "edit") {
@@ -5798,6 +6352,90 @@ func uiDueDateFull(d *model.Date) string {
 		return ""
 	}
 	return d.Time().Format("Jan 2, 2006")
+}
+
+func uiTagColors() []model.IssueTagColor {
+	return []model.IssueTagColor{
+		model.TagColorSlate,
+		model.TagColorRed,
+		model.TagColorOrange,
+		model.TagColorAmber,
+		model.TagColorYellow,
+		model.TagColorGreen,
+		model.TagColorTeal,
+		model.TagColorCyan,
+		model.TagColorBlue,
+		model.TagColorViolet,
+		model.TagColorPink,
+	}
+}
+
+func uiTagClass(color model.IssueTagColor) string {
+	switch model.IssueTagColorOrDefault(color) {
+	case model.TagColorSlate:
+		return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+	case model.TagColorRed:
+		return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200"
+	case model.TagColorOrange:
+		return "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/70 dark:bg-orange-950/30 dark:text-orange-200"
+	case model.TagColorAmber:
+		return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+	case model.TagColorYellow:
+		return "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900/70 dark:bg-yellow-950/30 dark:text-yellow-200"
+	case model.TagColorGreen:
+		return "border-green-200 bg-green-50 text-green-700 dark:border-green-900/70 dark:bg-green-950/30 dark:text-green-200"
+	case model.TagColorTeal:
+		return "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-200"
+	case model.TagColorCyan:
+		return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/30 dark:text-cyan-200"
+	case model.TagColorViolet:
+		return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-200"
+	case model.TagColorPink:
+		return "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-900/70 dark:bg-pink-950/30 dark:text-pink-200"
+	default:
+		return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-200"
+	}
+}
+
+func uiTagDotClass(color model.IssueTagColor) string {
+	switch model.IssueTagColorOrDefault(color) {
+	case model.TagColorSlate:
+		return "bg-slate-500"
+	case model.TagColorRed:
+		return "bg-red-500"
+	case model.TagColorOrange:
+		return "bg-orange-500"
+	case model.TagColorAmber:
+		return "bg-amber-500"
+	case model.TagColorYellow:
+		return "bg-yellow-500"
+	case model.TagColorGreen:
+		return "bg-green-500"
+	case model.TagColorTeal:
+		return "bg-teal-500"
+	case model.TagColorCyan:
+		return "bg-cyan-500"
+	case model.TagColorViolet:
+		return "bg-violet-500"
+	case model.TagColorPink:
+		return "bg-pink-500"
+	default:
+		return "bg-blue-500"
+	}
+}
+
+func uiIssueVisibleTags(tags []model.IssueTag) []model.IssueTag {
+	if len(tags) <= 3 {
+		return tags
+	}
+	return tags[:3]
+}
+
+func uiIssueHiddenTagCount(tags []model.IssueTag) int {
+	if len(tags) <= 3 {
+		return 0
+	}
+	return len(tags) - 3
 }
 
 func uiDueBadgeClass(issue model.Issue) string {
