@@ -507,7 +507,7 @@ func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 		"Active Sprints",
 		"All",
 		`aria-label="Me views"`,
-		`<details data-close-on-outside class="mb-4`,
+		`<details data-issue-list-controls data-close-on-outside class="mb-4`,
 		`aria-label="Issue controls"`,
 		`data-lucide="sliders-horizontal"`,
 		`class="` + uiCountBadgeClass + `">2</span>`,
@@ -812,6 +812,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	for _, want := range []string{`data-close-on-outside`, `closeOpenDropdowns`, `details[data-close-on-outside][open]`, `details.removeAttribute("open")`, `data-option-dropdown-root`, `toggle.click()`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing dropdown outside-click behavior %q: %s", want, body)
+		}
+	}
+	for _, want := range []string{`data-issue-list-controls`, `rememberIssueListControls(event.target)`, `restoreIssueListControls(event.target)`, `controls.setAttribute("open", "")`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing issue control reopen behavior %q: %s", want, body)
 		}
 	}
 }

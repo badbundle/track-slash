@@ -194,6 +194,19 @@
         icon.classList.toggle("hidden", loading);
         loader.classList.toggle("hidden", !loading);
       };
+      let reopenIssueListControls = false;
+      const rememberIssueListControls = (target) => {
+        const controls = target.closest("[data-issue-list-controls]");
+        reopenIssueListControls = !!controls && controls.hasAttribute("open");
+      };
+      const restoreIssueListControls = (root) => {
+        if (!reopenIssueListControls) return;
+        const controls = root.matches && root.matches("[data-issue-list-controls]")
+          ? root
+          : root.querySelector("[data-issue-list-controls]");
+        if (controls) controls.setAttribute("open", "");
+        reopenIssueListControls = false;
+      };
       const setActiveNav = (next) => {
         links().forEach((link) => {
           link.classList.remove(...active);
@@ -203,6 +216,7 @@
         next.classList.add(...active);
       };
       document.body.addEventListener("htmx:beforeRequest", (event) => {
+        rememberIssueListControls(event.target);
         const link = event.target.closest("[data-nav-link]");
         const viewLink = event.target.closest("[data-main-view]");
         if (link) {
@@ -333,6 +347,7 @@
         createIcons();
         resizeTextareas(event.target);
         syncCheckboxReveals(event.target);
+        restoreIssueListControls(event.target);
       });
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", () => {
