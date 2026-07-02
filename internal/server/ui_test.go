@@ -320,6 +320,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "bad root issues", raw: "/issues", want: "/"},
 		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
+		{name: "issue title edit with query", raw: "/bradley/issues/TRACK-7/title/edit?x=1", want: "/bradley/issues/TRACK-7/title/edit?x=1"},
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "issue close reason edit", raw: "/bradley/issues/TRACK-7/close-reason/edit", want: "/bradley/issues/TRACK-7/close-reason/edit"},
@@ -647,6 +648,102 @@ func TestUITagManagerUsesTagNamesNotRefs(t *testing.T) {
 	}
 }
 
+func TestUIIssuePanelRendersTagModal(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("a5a29c23-62e6-4afa-a1f4-2329d9589787")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issue := model.Issue{
+		ID:            uuid.MustParse("8df3db99-219a-4a89-9f5e-9727f033c4ea"),
+		ProjectID:     projectID,
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Number:        12,
+		Identifier:    "TRACK-12",
+		Title:         "Tagged issue",
+		Status:        model.StatusTodo,
+	}
+	tags := []model.IssueTag{
+		uiTestIssueTag(projectID, 1, "Customer Beta", model.TagColorGreen),
+		uiTestIssueTag(projectID, 2, "Q3 Launch", model.TagColorViolet),
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue:             issue,
+		Project:           project,
+		EditTags:          true,
+		TagModalAttached:  tags[:1],
+		TagModalAvailable: tags[1:],
+		TagInput:          "Missing",
+		TagError:          "Tag not found.",
+		BackHref:          "/bradley/projects/TRACK/all",
+		BackHXGet:         "/bradley/projects/TRACK/all/panel",
+		BackLabel:         "All issues",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`role="dialog" aria-modal="true" aria-labelledby="issue-tags-title"`,
+		`id="issue-tags-title"`,
+		`font-mono text-[11px] font-semibold uppercase`,
+		`Manage tags`,
+		`Search project tags for TRACK-12.`,
+		`hx-get="/bradley/issues/TRACK-12/panel"`,
+		`Close tag manager`,
+		`Attached tags`,
+		`#Customer Beta`,
+		`method="post" action="/bradley/issues/TRACK-12/tags/tag-1/delete"`,
+		`hx-post="/bradley/issues/TRACK-12/tags/tag-1/delete"`,
+		`aria-label="Remove #Customer Beta"`,
+		`Attach tag`,
+		`data-search data-search-collapsible`,
+		`data-search-input`,
+		`value="Missing"`,
+		`Tag not found.`,
+		`role="listbox" aria-label="Tag suggestions"`,
+		`data-search-option data-value="Q3 Launch"`,
+		`data-search-text="#Q3 Launch Q3 Launch"`,
+		`#Q3 Launch`,
+		`method="post" action="/bradley/issues/TRACK-12/tags"`,
+		`hx-post="/bradley/issues/TRACK-12/tags"`,
+		`hx-push-url="false"`,
+		`href="/bradley/projects/TRACK/tags"`,
+		`hx-get="/bradley/projects/TRACK/tags"`,
+		`Manage project tags`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue tag modal missing %q: %s", want, body)
+		}
+	}
+	for _, unwanted := range []string{`>tag-1<`, `>tag-2<`, `value="tag-2"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("issue tag modal rendered ref %q: %s", unwanted, body)
+		}
+	}
+
+	buf.Reset()
+	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue:     issue,
+		Project:   project,
+		EditTags:  true,
+		BackHref:  "/bradley/projects/TRACK/all",
+		BackHXGet: "/bradley/projects/TRACK/all/panel",
+		BackLabel: "All issues",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate empty modal: %v", err)
+	}
+	body = buf.String()
+	for _, want := range []string{"No tags attached.", "No available tags."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty issue tag modal missing %q: %s", want, body)
+		}
+	}
+}
+
 func uiTestIssueTag(projectID uuid.UUID, number int, name string, color model.IssueTagColor) model.IssueTag {
 	return model.IssueTag{
 		ID:          uuid.NewSHA1(uuid.NameSpaceOID, []byte(name)),
@@ -849,7 +946,7 @@ func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
 		if strings.Contains(body, "max-w-5xl") {
 			t.Fatalf("%s panel still uses narrower page width: %s", tt.name, body)
 		}
-		if strings.Contains(body, `data-lucide="arrow-left"`) {
+		if tt.name != "issue" && strings.Contains(body, `data-lucide="arrow-left"`) {
 			t.Fatalf("%s panel should not render app-level back buttons: %s", tt.name, body)
 		}
 	}
@@ -872,6 +969,13 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	assignee := model.User{ID: userID, Name: "Ada Lovelace", Email: "ada@example.com"}
 	reporter := model.User{ID: userID, Name: "Ada Lovelace", Email: "ada@example.com"}
 	sprint := model.Sprint{ID: uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"), ProjectID: projectID, Name: "Planned One", Status: model.SprintStatusPlanned}
+	tags := []model.IssueTag{{
+		ID:          uuid.MustParse("746e026d-d7dd-4de3-a039-9070b287cf0b"),
+		ProjectID:   projectID,
+		Name:        "Customer Beta",
+		DisplayName: "#Customer Beta",
+		Color:       model.TagColorBlue,
+	}}
 	var buf bytes.Buffer
 	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
 		Issue: model.Issue{
@@ -887,6 +991,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			ReporterID:    &userID,
 			SprintID:      &sprint.ID,
 			DueDate:       &dueDate,
+			Tags:          tags,
 			CreatedAt:     when,
 			UpdatedAt:     when,
 		},
@@ -906,9 +1011,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
 			HasIssue:    true,
 		}},
-		BackHref:  "/bradley/projects/TRACK/backlog",
-		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
-		BackLabel: "Backlog",
+		BackHref:  "/bradley/projects/TRACK/planned",
+		BackHXGet: "/bradley/projects/TRACK/planned/panel",
+		BackLabel: "Planned",
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -922,6 +1027,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Readonly description",
 		"In progress",
 		"Track Slash",
+		"#Customer Beta",
 		"Context",
 		"Ada Lovelace",
 		"Planned One",
@@ -942,12 +1048,21 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`cursor-pointer list-none`,
 		`method="post" action="/bradley/issues/TRACK-7/delete"`,
 		`hx-post="/bradley/issues/TRACK-7/delete"`,
-		`hx-push-url="/bradley/projects/TRACK/backlog"`,
+		`hx-push-url="/bradley/projects/TRACK/planned"`,
 		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
 		`dark:hover:bg-rose-950/40`,
+		`aria-label="Edit title"`,
+		`hx-get="/bradley/issues/TRACK-7/title/edit"`,
+		`aria-label="Manage tags"`,
+		`href="/bradley/issues/TRACK-7/tags"`,
+		`hx-get="/bradley/issues/TRACK-7/tags"`,
+		`href="/bradley/projects/TRACK/planned"`,
+		`hx-get="/bradley/projects/TRACK/planned/panel"`,
+		`hx-push-url="/bradley/projects/TRACK/planned"`,
+		`data-lucide="corner-up-left"`,
 		`aria-label="Edit description"`,
 		`hx-get="/bradley/issues/TRACK-7/description/edit"`,
 		`aria-label="Edit link"`,
@@ -1047,6 +1162,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		}
 	}
 	detailsBlock := body[detailsStart:]
+	if strings.Contains(detailsBlock, ">Tags</dt>") {
+		t.Fatalf("issue panel should render tags in the title header, not details: %s", body)
+	}
 	statusIndex := strings.Index(detailsBlock, `aria-label="Change status"`)
 	projectIndex := strings.Index(detailsBlock, ">Project</dt>")
 	if statusIndex < 0 || projectIndex < 0 {
@@ -1109,6 +1227,19 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		t.Fatalf("issue panel missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
+	if !strings.Contains(titleHeader, "#Customer Beta") ||
+		!strings.Contains(titleHeader, `aria-label="Manage tags"`) ||
+		!strings.Contains(titleHeader, "Planned One") {
+		t.Fatalf("title header should render tags, tag manager action, and sprint title: %s", body)
+	}
+	tagActionStart := strings.Index(titleHeader, `aria-label="Manage tags"`)
+	if tagActionStart < 0 {
+		t.Fatalf("title header missing tag manager action: %s", titleHeader)
+	}
+	tagActionEnd := strings.Index(titleHeader[tagActionStart:], "</a>")
+	if tagActionEnd < 0 || !strings.Contains(titleHeader[tagActionStart:tagActionStart+tagActionEnd], `hx-push-url="false"`) {
+		t.Fatalf("title header tag manager action should open without pushing URL: %s", titleHeader)
+	}
 	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress", "cursor-not-allowed"} {
 		if strings.Contains(titleHeader, notWant) {
 			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
@@ -1116,6 +1247,74 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 	if strings.Contains(body, "title=") {
 		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
+	}
+}
+
+func TestUIIssuePanelRendersTitleEditor(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Title editor",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:    model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditTitle:  true,
+		TitleInput: " Draft title ",
+		TitleError: "Title required, max 200 chars.",
+		BackHref:   "/bradley/projects/TRACK/backlog",
+		BackHXGet:  "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:  "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/title"`,
+		`hx-post="/bradley/issues/TRACK-7/title"`,
+		`hx-push-url="false"`,
+		`name="title" value=" Draft title "`,
+		`aria-label="Issue title"`,
+		`[field-sizing:content]`,
+		`class="flex min-w-0 flex-wrap items-center gap-2"`,
+		`aria-label="Save title"`,
+		`aria-label="Cancel editing title"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		"Title required, max 200 chars.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("title editor missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `hx-get="/bradley/issues/TRACK-7/title/edit"`) {
+		t.Fatalf("title editor rendered readonly edit button: %s", body)
+	}
+	formStart := strings.Index(body, `method="post" action="/bradley/issues/TRACK-7/title"`)
+	formEnd := -1
+	if formStart >= 0 {
+		formEnd = strings.Index(body[formStart:], "</form>")
+	}
+	if formStart < 0 || formEnd < 0 {
+		t.Fatalf("title editor missing title form: %s", body)
+	}
+	titleForm := body[formStart : formStart+formEnd]
+	for _, notWant := range []string{`sm:grid-cols-[minmax(0,1fr)_auto]`, `h-9 w-9`} {
+		if strings.Contains(titleForm, notWant) {
+			t.Fatalf("title editor action should flow after title instead of fixed grid %q: %s", notWant, body)
+		}
 	}
 }
 
@@ -2087,6 +2286,115 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	}
 }
 
+func TestUIIssuePanelRendersContextModal(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	linkedID := uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe")
+	availableID := uuid.MustParse("c71792f3-4e4a-4ab2-9cde-e7921ff8a431")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issue := model.Issue{ID: issueID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-7", Title: "Parent issue", Status: model.StatusTodo, CreatedAt: when, UpdatedAt: when}
+	base := func() *uiIssuePanelData {
+		return &uiIssuePanelData{
+			Issue:       issue,
+			Project:     project,
+			EditContext: true,
+			ContextModalItems: []uiContextManagerItem{{
+				ID:          linkedID,
+				Ref:         "context-1",
+				Number:      1,
+				Scope:       model.ProjectContextScopeIssue,
+				Title:       "Agent notes",
+				ContentType: "text/plain; charset=utf-8",
+				UpdatedAt:   when,
+			}},
+			ContextAvailable: []uiContextManagerItem{{
+				ID:               availableID,
+				Ref:              "context-2",
+				Number:           2,
+				Scope:            model.ProjectContextScopeProject,
+				Title:            "Architecture notes",
+				ContentType:      "text/plain; charset=utf-8",
+				LinkedIssueCount: 1,
+				UpdatedAt:        when,
+			}},
+			BackHref:  "/bradley/projects/TRACK/all",
+			BackHXGet: "/bradley/projects/TRACK/all/panel",
+			BackLabel: "All issues",
+		}
+	}
+	render := func(panel *uiIssuePanelData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", panel); err != nil {
+			t.Fatalf("ExecuteTemplate: %v", err)
+		}
+		return buf.String()
+	}
+
+	body := render(base())
+	for _, want := range []string{
+		`role="dialog" aria-modal="true" aria-labelledby="issue-context-title"`,
+		`id="issue-context-title"`,
+		`Manage context`,
+		`Attach project context`,
+		`Search context by title`,
+		`data-search-option data-value="Architecture notes"`,
+		`Agent notes`,
+		`Issue-only`,
+		`aria-label="View context"`,
+		`aria-label="Edit context"`,
+		`aria-label="Remove context"`,
+		`hx-push-url="false"`,
+		`Add issue context`,
+		`Manage project context`,
+		`href="/bradley/projects/TRACK/context"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue context modal missing %q: %s", want, body)
+		}
+	}
+	contextDetail := body[strings.Index(body, ">Context</dt>"):]
+	contextDetail = contextDetail[:min(len(contextDetail), 1100)]
+	if !strings.Contains(contextDetail, `hx-get="/bradley/issues/TRACK-7/context"`) || !strings.Contains(contextDetail, `hx-push-url="false"`) {
+		t.Fatalf("issue context detail should open modal without URL push: %s", body)
+	}
+	for _, notWant := range []string{`>Context</h1>`, `hx-push-url="/bradley/issues/TRACK-7/context"`, `role="dialog" aria-modal="true" aria-labelledby="issue-tags-title"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue context modal rendered stale markup %q: %s", notWant, body)
+		}
+	}
+
+	createPanel := base()
+	createPanel.ContextAction = "create"
+	createPanel.ContextTitle = "Draft note"
+	createPanel.ContextBody = "Use this path."
+	createBody := render(createPanel)
+	for _, want := range []string{"New issue context", "Draft note", "Use this path.", "Upload text", `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`} {
+		if !strings.Contains(createBody, want) {
+			t.Fatalf("issue context create modal missing %q: %s", want, createBody)
+		}
+	}
+	if strings.Contains(createBody, `data-search-option data-value="Architecture notes"`) {
+		t.Fatalf("issue context create modal should swap out attach search: %s", createBody)
+	}
+
+	editPanel := base()
+	editPanel.ContextAction = "edit"
+	editPanel.ActiveContextID = linkedID
+	editPanel.ActiveContext = model.ProjectContext{ID: linkedID, ProjectID: projectID, Number: 1, Ref: "context-1", Scope: model.ProjectContextScopeIssue, Title: "Agent notes", Kind: model.ProjectContextKindText, ContentType: "text/plain; charset=utf-8", Body: "Use the compact path.", UpdatedAt: when}
+	editPanel.ContextEditTitle = "Agent notes"
+	editPanel.ContextEditBody = "Use the compact path."
+	editBody := render(editPanel)
+	for _, want := range []string{`action="/bradley/issues/TRACK-7/context/context-1"`, `value="Agent notes"`, "Use the compact path.", `aria-label="Save context"`, `aria-label="Cancel editing context"`} {
+		if !strings.Contains(editBody, want) {
+			t.Fatalf("issue context edit modal missing %q: %s", want, editBody)
+		}
+	}
+}
+
 func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
 	t.Parallel()
 
@@ -2329,31 +2637,31 @@ func TestUIIssueBackLink(t *testing.T) {
 			name:      "planned sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusPlanned},
-			wantHref:  "/bradley/projects/TRACK/all",
-			wantHXGet: "/bradley/projects/TRACK/all/panel",
-			wantLabel: "All",
+			wantHref:  "/bradley/projects/TRACK/planned",
+			wantHXGet: "/bradley/projects/TRACK/planned/panel",
+			wantLabel: "Planned",
 		},
 		{
 			name:      "backlog issue",
 			issue:     model.Issue{ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8"},
 			wantHref:  "/bradley/projects/TRACK/all",
 			wantHXGet: "/bradley/projects/TRACK/all/panel",
-			wantLabel: "All",
+			wantLabel: "All issues",
 		},
 		{
 			name:      "completed sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusCompleted},
-			wantHref:  "/bradley/projects/TRACK/sprint",
-			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
-			wantLabel: "Sprint",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All issues",
 		},
 		{
 			name:      "missing sprint",
 			issue:     baseIssue,
-			wantHref:  "/bradley/projects/TRACK/sprint",
-			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
-			wantLabel: "Sprint",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All issues",
 		},
 		{
 			name:      "parent issue",

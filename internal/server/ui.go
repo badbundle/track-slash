@@ -68,6 +68,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueSubIssuesNew":            uiIssueSubIssuesNewPath,
 	"issueTags":                    uiIssueTagsPath,
 	"issueTagDelete":               uiIssueTagDeletePath,
+	"issueTitle":                   uiIssueTitlePath,
+	"issueTitleEdit":               uiIssueTitleEditPath,
 	"issueAssigneeAutocomplete":    uiIssueAssigneeAutocomplete,
 	"issueReporterAutocomplete":    uiIssueReporterAutocomplete,
 	"issueSprintAutocomplete":      uiIssueSprintAutocomplete,
@@ -78,6 +80,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"linkedIssueProgress":          uiLinkedIssueProgress,
 	"closeReasonLabel":             uiCloseReasonLabel,
 	"closeReasonModal":             uiCloseReasonModal,
+	"issueContextModal":            uiIssueContextModal,
+	"issueTagsModal":               uiIssueTagsModal,
 	"issueCloseReasonDropdown":     uiIssueCloseReasonDropdown,
 	"issueStatusDropdown":          uiIssueStatusDropdown,
 	"closeReasonOptions":           uiCloseReasonOptions,
@@ -495,6 +499,7 @@ type uiIssuePanelData struct {
 	Sprint             *model.Sprint
 	Assignee           *model.User
 	Reporter           *model.User
+	EditTitle          bool
 	EditDescription    bool
 	EditStatus         bool
 	PendingCloseReason bool
@@ -505,6 +510,7 @@ type uiIssuePanelData struct {
 	EditReporter       bool
 	EditSprint         bool
 	CanEditSprint      bool
+	TitleInput         string
 	AssigneeInput      string
 	ReporterInput      string
 	SprintInput        string
@@ -513,6 +519,7 @@ type uiIssuePanelData struct {
 	AssigneeError      string
 	ReporterError      string
 	SprintError        string
+	TitleError         string
 	DueDateError       string
 	CloseReasonError   string
 	MemberOptions      []model.User
@@ -538,6 +545,25 @@ type uiIssuePanelData struct {
 	LinkError          string
 	Contexts           []model.ProjectContext
 	ContextsHasMore    bool
+	EditContext        bool
+	ContextAction      string
+	ContextModalItems  []uiContextManagerItem
+	ContextAvailable   []uiContextManagerItem
+	ActiveContextID    uuid.UUID
+	ActiveContext      model.ProjectContext
+	ContextInput       string
+	ContextTitle       string
+	ContextBody        string
+	ContextError       string
+	ContextCreateError string
+	ContextUploadError string
+	ContextEditTitle   string
+	ContextEditBody    string
+	ContextEditError   string
+	EditTags           bool
+	TagModalAttached   []model.IssueTag
+	TagModalAvailable  []model.IssueTag
+	TagInput           string
 	TagError           string
 	BackHref           string
 	BackHXGet          string
@@ -647,6 +673,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
 		r.Post("/{owner}/issues/{issueRef}/delete", s.uiDeleteIssue)
 		r.Post("/{owner}/issues/{issueRef}/restore", s.uiRestoreIssue)
+		r.Get("/{owner}/issues/{issueRef}/title/edit", s.uiEditIssueTitle)
+		r.Post("/{owner}/issues/{issueRef}/title", s.uiUpdateIssueTitle)
 		r.Get("/{owner}/issues/{issueRef}/description/edit", s.uiEditIssueDescription)
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
@@ -1782,7 +1810,7 @@ func (s *Server) uiIssueTagsPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+	s.renderUIIssuePanelWithTagModal(w, r, issue.ID, "", "")
 }
 
 func (s *Server) uiAttachIssueTag(w http.ResponseWriter, r *http.Request) {
@@ -1801,30 +1829,28 @@ func (s *Server) uiAttachIssueTag(w http.ResponseWriter, r *http.Request) {
 	input := strings.TrimSpace(r.Form.Get("tag"))
 	name, err := model.NormalizeIssueTagName(input)
 	if err != nil {
-		s.renderUIIssueTagManager(w, r, issue.ID, func(panel *uiTagManagerData) {
-			panel.AttachInput = input
-			panel.AttachError = "Choose a tag."
-		})
+		s.renderUIIssuePanelWithTagModal(w, r, issue.ID, input, "Choose a tag.")
 		return
 	}
 	tag, err := s.store.GetIssueTagByProjectName(r.Context(), issue.ProjectID, name)
 	if err != nil {
-		writeUIStoreError(w, err)
-		return
-	}
-	if _, err := s.store.CreateIssueTagLink(r.Context(), store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: tag.ID}); err != nil {
-		if errors.Is(err, store.ErrConflict) {
-			s.renderUIIssueTagManager(w, r, issue.ID, func(panel *uiTagManagerData) {
-				panel.AttachInput = input
-				panel.AttachError = "Tag already attached."
-			})
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderUIIssuePanelWithTagModal(w, r, issue.ID, input, "Tag not found.")
 			return
 		}
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssueTagsPath(issue))
-	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+	if _, err := s.store.CreateIssueTagLink(r.Context(), store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: tag.ID}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithTagModal(w, r, issue.ID, input, "Tag already attached.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithTagModal(w, r, issue.ID, "", "")
 }
 
 func (s *Server) uiDetachIssueTag(w http.ResponseWriter, r *http.Request) {
@@ -1849,8 +1875,8 @@ func (s *Server) uiDetachIssueTag(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssueTagsPath(issue))
-	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithTagModal(w, r, issue.ID, "", "")
 }
 
 func (s *Server) renderUIProjectTagManager(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, mutate func(*uiTagManagerData)) {
@@ -1875,6 +1901,54 @@ func (s *Server) renderUIIssueTagManager(w http.ResponseWriter, r *http.Request,
 		mutate(panel)
 	}
 	s.renderUITagManager(w, r, panel)
+}
+
+func (s *Server) renderUIIssuePanelWithTagModal(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiPopulateIssueTagModal(r.Context(), panel, input, message); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIIssuePanelResponse(w, r, panel)
+}
+
+func (s *Server) renderUIIssuePanelWithContextModal(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, mutate func(*uiIssuePanelData)) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiPopulateIssueContextModal(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if mutate != nil {
+		mutate(panel)
+	}
+	s.renderUIIssuePanelResponse(w, r, panel)
+}
+
+func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Request, panel *uiIssuePanelData) {
+	if isHTMXRequest(r) {
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:             currentUser(r),
+		Projects:         projects,
+		CurrentProjectID: panel.Project.ID,
+		CurrentView:      "projects",
+		IssuePanel:       panel,
+	})
 }
 
 func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, panel *uiTagManagerData) {
@@ -1935,23 +2009,9 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 	if err != nil {
 		return nil, err
 	}
-	allTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: projectID, Limit: MaxLimit})
+	currentTags, available, err := s.uiIssueTagAttachmentOptions(ctx, issue)
 	if err != nil {
 		return nil, err
-	}
-	currentTags, _, err := s.store.ListTagsForIssue(ctx, store.ListTagsForIssueParams{IssueID: issueID, Limit: MaxLimit})
-	if err != nil {
-		return nil, err
-	}
-	attached := make(map[uuid.UUID]struct{}, len(currentTags))
-	for _, tag := range currentTags {
-		attached[tag.ID] = struct{}{}
-	}
-	available := make([]model.IssueTag, 0, len(allTags))
-	for _, tag := range allTags {
-		if _, ok := attached[tag.ID]; !ok {
-			available = append(available, tag)
-		}
 	}
 	return &uiTagManagerData{
 		Mode:      "issue",
@@ -1964,6 +2024,77 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 		BackHXGet: uiIssuePanelPath(issue),
 		BackLabel: "Issue",
 	}, nil
+}
+
+func (s *Server) uiPopulateIssueTagModal(ctx context.Context, panel *uiIssuePanelData, input, message string) error {
+	attached, available, err := s.uiIssueTagAttachmentOptions(ctx, panel.Issue)
+	if err != nil {
+		return err
+	}
+	panel.EditTags = true
+	panel.TagModalAttached = attached
+	panel.TagModalAvailable = available
+	panel.TagInput = input
+	panel.TagError = message
+	panel.Issue.Tags = attached
+	return nil
+}
+
+func (s *Server) uiPopulateIssueContextModal(ctx context.Context, panel *uiIssuePanelData) error {
+	attached, available, err := s.uiIssueContextAttachmentOptions(ctx, panel.Issue, panel.Contexts)
+	if err != nil {
+		return err
+	}
+	panel.EditContext = true
+	panel.ContextModalItems = attached
+	panel.ContextAvailable = available
+	return nil
+}
+
+func (s *Server) uiIssueContextAttachmentOptions(ctx context.Context, issue model.Issue, current []model.ProjectContext) ([]uiContextManagerItem, []uiContextManagerItem, error) {
+	attached := make([]uiContextManagerItem, 0, len(current))
+	attachedIDs := make(map[uuid.UUID]struct{}, len(current))
+	for _, contextItem := range current {
+		attached = append(attached, uiContextManagerItemFromContext(contextItem))
+		attachedIDs[contextItem.ID] = struct{}{}
+	}
+	contexts, _, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
+		ProjectID: issue.ProjectID,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	available := make([]uiContextManagerItem, 0, len(contexts))
+	for _, contextItem := range contexts {
+		if _, ok := attachedIDs[contextItem.ID]; ok {
+			continue
+		}
+		available = append(available, uiContextManagerItemFromSummary(contextItem))
+	}
+	return attached, available, nil
+}
+
+func (s *Server) uiIssueTagAttachmentOptions(ctx context.Context, issue model.Issue) ([]model.IssueTag, []model.IssueTag, error) {
+	allTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: issue.ProjectID, Limit: MaxLimit})
+	if err != nil {
+		return nil, nil, err
+	}
+	currentTags, _, err := s.store.ListTagsForIssue(ctx, store.ListTagsForIssueParams{IssueID: issue.ID, Limit: MaxLimit})
+	if err != nil {
+		return nil, nil, err
+	}
+	attached := make(map[uuid.UUID]struct{}, len(currentTags))
+	for _, tag := range currentTags {
+		attached[tag.ID] = struct{}{}
+	}
+	available := make([]model.IssueTag, 0, len(allTags))
+	for _, tag := range allTags {
+		if _, ok := attached[tag.ID]; !ok {
+			available = append(available, tag)
+		}
+	}
+	return currentTags, available, nil
 }
 
 func (s *Server) renderUIProjectTagEditError(w http.ResponseWriter, r *http.Request, projectID, tagID uuid.UUID, name string, color model.IssueTagColor, message string) {
@@ -2396,6 +2527,63 @@ func (s *Server) uiRestoreIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	uiSetHXPushURL(w, r, uiIssuePath(restored))
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, restored.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueTitle(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditTitle = true
+	panel.TitleInput = issue.Title
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueTitle(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	titleInput := r.Form.Get("title")
+	title := strings.TrimSpace(titleInput)
+	if title == "" || len(title) > 200 {
+		panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel.EditTitle = true
+		panel.TitleInput = titleInput
+		panel.TitleError = "Title required, max 200 chars."
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		Title: &title,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -2866,8 +3054,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		r.Body = http.MaxBytesReader(w, r.Body, maxProjectContextUploadBytes+1024*1024)
 		upload, err := readProjectContextUpload(r)
 		if err != nil {
-			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-				panel.Action = "create"
+			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+				panel.ContextAction = "create"
 				panel.ContextUploadError = err.Error()
 			})
 			return
@@ -2884,8 +3072,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 			writeUIStoreError(w, err)
 			return
 		}
-		uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
-		s.renderUIIssueContextManager(w, r, issue.ID, nil)
+		uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
 		return
 	}
 
@@ -2898,8 +3086,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		bodyInput := r.Form.Get("body")
 		title, err := validateProjectContextTitle(titleInput)
 		if err != nil {
-			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-				panel.Action = "create"
+			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+				panel.ContextAction = "create"
 				panel.ContextTitle = titleInput
 				panel.ContextBody = bodyInput
 				panel.ContextCreateError = err.Error()
@@ -2908,8 +3096,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		}
 		body, err := validateProjectContextBody(bodyInput)
 		if err != nil {
-			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-				panel.Action = "create"
+			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+				panel.ContextAction = "create"
 				panel.ContextTitle = titleInput
 				panel.ContextBody = bodyInput
 				panel.ContextCreateError = err.Error()
@@ -2927,8 +3115,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 			writeUIStoreError(w, err)
 			return
 		}
-		uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
-		s.renderUIIssueContextManager(w, r, issue.ID, nil)
+		uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
 		return
 	}
 
@@ -2939,8 +3127,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if message != "" {
-		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-			panel.Action = "attach"
+		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+			panel.ContextAction = "attach"
 			panel.ContextInput = input
 			panel.ContextError = message
 		})
@@ -2948,8 +3136,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 	}
 	if _, err := s.store.CreateIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-				panel.Action = "attach"
+			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+				panel.ContextAction = "attach"
 				panel.ContextInput = input
 				panel.ContextError = "Context already linked."
 			})
@@ -2958,8 +3146,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
-	s.renderUIIssueContextManager(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
 }
 
 func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
@@ -2967,8 +3155,8 @@ func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-		panel.Action = "attach"
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+		panel.ContextAction = "attach"
 	})
 }
 
@@ -2977,8 +3165,8 @@ func (s *Server) uiNewIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-		panel.Action = "create"
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+		panel.ContextAction = "create"
 	})
 }
 
@@ -2987,7 +3175,7 @@ func (s *Server) uiViewIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssueContextManager(w, r, issue.ID, nil)
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
 }
 
 func (s *Server) uiViewIssueContextItem(w http.ResponseWriter, r *http.Request) {
@@ -2999,8 +3187,8 @@ func (s *Server) uiViewIssueContextItem(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-		panel.Action = "view"
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+		panel.ContextAction = "view"
 		panel.ActiveContextID = contextItem.ID
 		panel.ActiveContext = contextItem
 	})
@@ -3015,8 +3203,8 @@ func (s *Server) uiEditIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-		panel.Action = "edit"
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+		panel.ContextAction = "edit"
 		panel.ActiveContextID = contextItem.ID
 		panel.ActiveContext = contextItem
 		panel.ContextEditTitle = contextItem.Title
@@ -3045,8 +3233,8 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 	bodyInput := r.Form.Get("body")
 	title, err := validateProjectContextTitle(titleInput)
 	if err != nil {
-		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-			panel.Action = "edit"
+		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+			panel.ContextAction = "edit"
 			panel.ActiveContextID = contextItem.ID
 			panel.ActiveContext = contextItem
 			panel.ContextEditTitle = titleInput
@@ -3057,8 +3245,8 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := validateProjectContextBody(bodyInput)
 	if err != nil {
-		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
-			panel.Action = "edit"
+		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
+			panel.ContextAction = "edit"
 			panel.ActiveContextID = contextItem.ID
 			panel.ActiveContext = contextItem
 			panel.ContextEditTitle = titleInput
@@ -3076,8 +3264,8 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
-	s.renderUIIssueContextManager(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
 }
 
 func (s *Server) uiIssueContextFromRoute(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.ProjectContext, bool) {
@@ -3132,8 +3320,8 @@ func (s *Server) uiDeleteIssueContextLink(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
-	s.renderUIIssueContextManager(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
 }
 
 func (s *Server) uiNewIssueLink(w http.ResponseWriter, r *http.Request) {
@@ -4585,29 +4773,57 @@ func (s *Server) uiLinkedIssues(ctx context.Context, issueID uuid.UUID, links []
 	return out, nil
 }
 
-func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+type uiIssueBackDestination struct {
+	Href      string
+	HXGet     string
+	Label     string
+	View      string
+	HasParent bool
+	ParentID  uuid.UUID
+}
+
+func uiIssueBackDestinationFor(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) uiIssueBackDestination {
 	if parent != nil {
 		base := uiIssuePath(*parent)
-		return base, base + "/panel", "Parent issue"
+		return uiIssueBackDestination{
+			Href:      base,
+			HXGet:     base + "/panel",
+			Label:     "Parent issue",
+			HasParent: true,
+			ParentID:  parent.ID,
+		}
 	}
-	view := "sprint"
-	if issue.SprintID == nil {
-		view = "all"
-	} else if sprint != nil && sprint.Status == model.SprintStatusPlanned {
-		view = "all"
+
+	view := "all"
+	label := "All issues"
+	if issue.SprintID != nil && sprint != nil {
+		switch sprint.Status {
+		case model.SprintStatusActive:
+			view = "sprint"
+			label = "Sprint"
+		case model.SprintStatusPlanned:
+			view = "planned"
+			label = "Planned"
+		}
 	}
 	base := uiProjectViewPath(project, view)
-	label = "Sprint"
-	switch view {
-	case "all":
-		label = "All"
+	return uiIssueBackDestination{
+		Href:  base,
+		HXGet: base + "/panel",
+		Label: label,
+		View:  view,
 	}
-	return base, base + "/panel", label
+}
+
+func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+	target := uiIssueBackDestinationFor(project, issue, parent, sprint)
+	return target.Href, target.HXGet, target.Label
 }
 
 func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request, panel *uiIssuePanelData, notice *uiIssueDeleteNotice) {
-	if panel.ParentIssue != nil {
-		parentPanel, err := s.uiBuildIssuePanel(r.Context(), r, panel.ParentIssue.ID)
+	target := uiIssueBackDestinationFor(panel.Project, panel.Issue, panel.ParentIssue, panel.Sprint)
+	if target.HasParent {
+		parentPanel, err := s.uiBuildIssuePanel(r.Context(), r, target.ParentID)
 		if err != nil {
 			writeUIStoreError(w, err)
 			return
@@ -4616,10 +4832,8 @@ func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request,
 		renderUITemplate(w, http.StatusOK, "issue-panel", parentPanel)
 		return
 	}
-	view := "sprint"
-	if panel.Issue.SprintID == nil {
-		view = "all"
-	} else if panel.Sprint != nil && panel.Sprint.Status == model.SprintStatusPlanned {
+	view := target.View
+	if view == "" {
 		view = "all"
 	}
 	projectPanel, err := s.uiBuildProjectPanel(r.Context(), r, panel.Project.ID, view)
@@ -5969,6 +6183,14 @@ func uiIssueCommentEditPath(issue any, comment any) string {
 	return uiIssueCommentPath(issue, comment) + "/edit"
 }
 
+func uiIssueTitlePath(issue any) string {
+	return uiIssuePath(issue) + "/title"
+}
+
+func uiIssueTitleEditPath(issue any) string {
+	return uiIssueTitlePath(issue) + "/edit"
+}
+
 func uiIssueDescriptionPath(issue any) string {
 	return uiIssuePath(issue) + "/description"
 }
@@ -6343,7 +6565,7 @@ func safeUIIssuePath(path string) bool {
 			_, err := parseTypedRef(parts[4], "context")
 			return err == nil
 		}
-		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
+		return ((parts[3] == "title" || parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new")
 	}
@@ -6782,6 +7004,42 @@ func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
 			{
 				Label: uiStatusLabel(model.StatusClosed),
 				Class: uiStatusClass(model.StatusClosed),
+			},
+		},
+	}
+}
+
+func uiIssueContextModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "issue-context",
+		Title:           "Manage context",
+		Description:     fmt.Sprintf("Attach project context or add issue-only notes for %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-2xl",
+		CancelLabel:     "Close context editor",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: panel.Issue.Identifier,
+				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
+			},
+		},
+	}
+}
+
+func uiIssueTagsModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "issue-tags",
+		Title:           "Manage tags",
+		Description:     fmt.Sprintf("Search project tags for %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-lg",
+		CancelLabel:     "Close tag manager",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: panel.Issue.Identifier,
+				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
 			},
 		},
 	}
