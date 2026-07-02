@@ -1,0 +1,34 @@
+{{define "shell-main"}}
+    <main id="main" class="min-w-0 flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950">
+      {{if .WorkPanel}}
+      {{template "work-panel" .WorkPanel}}
+      {{else if .ProjectsPanel}}
+      {{template "projects-panel" .ProjectsPanel}}
+      {{else if .NewProjectPanel}}
+      {{template "new-project-panel" .NewProjectPanel}}
+      {{else if .NewIssuePanel}}
+      {{template "new-issue-panel" .NewIssuePanel}}
+      {{else if .ProjectPanel}}
+      {{template "project-panel" .ProjectPanel}}
+      {{else if .DeletedPanel}}
+      {{template "deleted-issues-panel" .DeletedPanel}}
+      {{else if .DeletedIssuePanel}}
+      {{template "deleted-issue-panel" .DeletedIssuePanel}}
+      {{else if .IssuePanel}}
+      {{template "issue-panel" .IssuePanel}}
+      {{else if .ContextManager}}
+      {{template "context-manager-panel" .ContextManager}}
+      {{else if .TagManager}}
+      {{template "tag-manager-panel" .TagManager}}
+      {{else if .TokenPanel}}
+      {{template "token-panel" .TokenPanel}}
+      {{else if .SettingsPanel}}
+      {{template "settings-panel" .SettingsPanel}}
+      {{else}}
+      <section class="mx-auto max-w-6xl px-6 py-8">
+        <h1 class="text-xl font-semibold">No work</h1>
+        <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No accessible work found.</p>
+      </section>
+      {{end}}
+    </main>
+{{end}}

@@ -1,0 +1,202 @@
+{{define "issue-panel-details"}}
+    <aside class="order-1 min-w-0 lg:order-2">
+      <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Details</h2>
+        <dl class="mt-4 space-y-4 text-sm">
+          <div>
+            <style>
+              @keyframes option-dropdown-enter {
+                from { opacity: 0; transform: translateY(-0.25rem); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @keyframes option-dropdown-settle {
+                from { opacity: 0.85; transform: translateY(-0.125rem); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @media (prefers-reduced-motion: no-preference) {
+                [data-option-dropdown-toggle] {
+                  animation: option-dropdown-settle 120ms ease-out both;
+                }
+                [data-option-dropdown-list] {
+                  animation: option-dropdown-enter 140ms ease-out both;
+                  transform-origin: top;
+                }
+              }
+            </style>
+            {{if .EditStatus}}
+            {{template "option-dropdown" (issueStatusDropdown .)}}
+            {{else}}
+            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="false" data-option-dropdown-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
+              <span>{{statusLabel .Issue.Status}}</span>
+              <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            {{end}}
+          </div>
+          {{if or .EditCloseReason (eq .Issue.Status "closed")}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Close reason</dt>
+            {{if .EditCloseReason}}
+            <div class="mt-1">
+              {{template "option-dropdown" (issueCloseReasonDropdown .)}}
+            </div>
+            {{else}}
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.CloseReason}}{{template "close-reason-badge" .Issue.CloseReason}}{{else}}{{template "missing-close-reason-badge" .}}{{end}}</span>
+              <button type="button" aria-label="Edit close reason" hx-get="{{issueCloseReasonEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
+            {{end}}
+          </div>
+          {{end}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Priority</dt>
+            <dd class="mt-1">
+              {{if .EditPriority}}
+              <style>
+                @keyframes priority-picker-item-enter {
+                  from { opacity: 0; transform: translateY(-0.25rem) scale(0.88); }
+                  to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                @media (prefers-reduced-motion: no-preference) {
+                  [data-priority-picker] > button {
+                    animation: priority-picker-item-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+                    transform-origin: center;
+                  }
+                  [data-priority-picker] > button:nth-child(2) { animation-delay: 20ms; }
+                  [data-priority-picker] > button:nth-child(3) { animation-delay: 40ms; }
+                  [data-priority-picker] > button:nth-child(4) { animation-delay: 60ms; }
+                  [data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }
+                }
+              </style>
+              <form method="post" action="{{issuePriority .Issue}}" hx-post="{{issuePriority .Issue}}" hx-target="#main" hx-push-url="false" role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1">
+                {{range priorityOptions}}
+                {{if eq $.Issue.Priority .Priority}}
+                <button type="button" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="false" name="priority" value="{{.Priority}}" role="option" aria-selected="true" class="rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 opacity-100">
+                  {{template "priority-badge" .Priority}}
+                </button>
+                {{else}}
+                <button type="submit" name="priority" value="{{.Priority}}" role="option" aria-selected="{{if eq $.Issue.Priority .Priority}}true{{else}}false{{end}}" class="rounded-full p-0.5 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{if eq $.Issue.Priority .Priority}}opacity-100{{else}}opacity-40 hover:opacity-80{{end}}">
+                  {{template "priority-badge" .Priority}}
+                </button>
+                {{end}}
+                {{end}}
+              </form>
+              {{else}}
+              <button type="button" aria-label="Change priority" hx-get="{{issuePriorityEdit .Issue}}" hx-target="#main" hx-push-url="false" class="inline-flex items-center rounded-full p-1 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                {{template "priority-badge" .Issue.Priority}}
+              </button>
+              {{end}}
+            </dd>
+          </div>
+          {{if .EditDueDate}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
+            <form method="post" action="{{issueDueDate .Issue}}" hx-post="{{issueDueDate .Issue}}" hx-target="#main" hx-push-url="false" class="mt-1 space-y-2">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                <input type="date" name="due_date" value="{{.DueDateInput}}" autofocus aria-label="Due date" class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                <button type="submit" aria-label="Save due date" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing due date" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </div>
+              {{if .DueDateError}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.DueDateError}}</p>{{end}}
+            </form>
+          </div>
+          {{else}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.DueDate}}{{template "issue-due-badge" .Issue}}{{else}}None{{end}}</span>
+              <button type="button" aria-label="Edit due date" hx-get="{{issueDueDateEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
+          </div>
+          {{end}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>
+            <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Context</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              {{template "count-badge" (len .Contexts)}}
+              <a href="{{issueContext .Issue}}" aria-label="Manage context" hx-get="{{issueContext .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="book-open" class="h-4 w-4" aria-hidden="true"></i>
+              </a>
+            </dd>
+          </div>
+          {{if .ParentIssue}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Parent</dt>
+            <dd class="mt-1">
+              <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="inline-flex max-w-full items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
+                {{template "issue-key" .ParentIssue.Identifier}}
+                {{template "priority-badge" .ParentIssue.Priority}}
+                <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.ParentIssue.Title}}</span>
+              </a>
+            </dd>
+          </div>
+          {{end}}
+          {{if .EditAssignee}}
+          {{template "autocomplete-edit" (issueAssigneeAutocomplete .)}}
+          {{else}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Assignee</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Assignee}}{{.Assignee.Name}}{{else}}Unassigned{{end}}</span>
+              <button type="button" aria-label="Edit assignee" hx-get="{{issueAssigneeEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
+          </div>
+          {{end}}
+          {{if .EditReporter}}
+          {{template "autocomplete-edit" (issueReporterAutocomplete .)}}
+          {{else}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Reporter</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Reporter}}{{.Reporter.Name}}{{else}}No reporter{{end}}</span>
+              <button type="button" aria-label="Edit reporter" hx-get="{{issueReporterEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+            </dd>
+          </div>
+          {{end}}
+          {{if not .ParentIssue}}
+          {{if .EditSprint}}
+          {{template "autocomplete-edit" (issueSprintAutocomplete .)}}
+          {{else}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprint</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{if .Sprint}}{{.Sprint.Name}}{{else}}None{{end}}</span>
+              {{if .CanEditSprint}}
+              <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{else}}
+              <button type="button" disabled aria-label="Edit sprint" class="grid h-7 w-7 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{end}}
+            </dd>
+          </div>
+          {{end}}
+          {{end}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Created</dt>
+            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{tokenTime .Issue.CreatedAt}}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Updated</dt>
+            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{tokenTime .Issue.UpdatedAt}}</dd>
+          </div>
+        </dl>
+      </section>
+    </aside>
+{{end}}

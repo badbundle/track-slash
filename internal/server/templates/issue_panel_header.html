@@ -1,0 +1,81 @@
+{{define "issue-panel-header"}}
+  <header class="rounded-lg border border-slate-200 p-5 dark:border-slate-800 {{statusSurface .Issue.Status}}">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          {{template "issue-key" .Issue.Identifier}}
+          {{template "priority-badge" .Issue.Priority}}
+        </div>
+        {{if .EditTitle}}
+        <form method="post" action="{{issueTitle .Issue}}" hx-post="{{issueTitle .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2">
+          <div class="min-w-0">
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <input name="title" value="{{.TitleInput}}" autofocus aria-label="Issue title" class="min-h-11 min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-2xl font-semibold tracking-normal text-slate-950 outline-none ring-indigo-500 [field-sizing:content] focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              <button type="submit" aria-label="Save title" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+              <button type="button" aria-label="Cancel editing title" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+            </div>
+            {{if .TitleError}}<p class="mt-2 text-sm text-rose-600 dark:text-rose-300">{{.TitleError}}</p>{{end}}
+          </div>
+        </form>
+        {{else}}
+        <h1 class="mt-2 min-w-0 break-words text-3xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">
+          {{.Issue.Title}}
+          <button type="button" aria-label="Edit title" hx-get="{{issueTitleEdit .Issue}}" hx-target="#main" hx-push-url="false" class="ml-2 inline-grid h-7 w-7 shrink-0 align-middle place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+          </button>
+        </h1>
+        {{end}}
+        <div class="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+          {{if .Issue.Tags}}
+          {{range issueVisibleTags .Issue.Tags}}{{template "tag-badge" .}}{{end}}
+          {{if issueHiddenTagCount .Issue.Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Issue.Tags))}}{{end}}
+          {{else}}
+          {{template "count-badge" 0}}
+          {{end}}
+          <a href="{{issueTags .Issue}}" aria-label="Manage tags" hx-get="{{issueTags .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
+          </a>
+        </div>
+        {{if and .TagError (not .EditTags)}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.TagError}}</p>{{end}}
+        {{if .ParentIssue}}
+        <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="mt-1 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
+          <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+          <span class="shrink-0">Sub-issue of</span>
+          {{template "issue-key" .ParentIssue.Identifier}}
+          {{template "priority-badge" .ParentIssue.Priority}}
+          <span class="min-w-0 truncate">{{.ParentIssue.Title}}</span>
+        </a>
+        {{else}}
+        <a data-main-view="projects" href="{{.BackHref}}" hx-get="{{.BackHXGet}}" hx-target="#main" hx-push-url="{{.BackHref}}" class="mt-2 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
+          <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+          {{if and .Sprint (ne .BackLabel "All issues")}}
+          <span class="shrink-0">{{.BackLabel}}</span>
+          {{if .Sprint.Name}}<span class="min-w-0 truncate">{{.Sprint.Name}}</span>{{end}}
+          {{else}}
+          <span>{{.BackLabel}}</span>
+          {{end}}
+        </a>
+        {{end}}
+      </div>
+      <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <details data-close-on-outside class="relative">
+          <summary aria-label="Issue actions" class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+          </summary>
+          <div class="absolute right-0 top-11 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <form method="post" action="{{issueDelete .Issue}}" hx-post="{{issueDelete .Issue}}" hx-target="#main" hx-push-url="{{.BackHref}}" hx-confirm="Delete this issue? You can undo it from the next screen.">
+              <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">
+                <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                <span>Delete issue</span>
+              </button>
+            </form>
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+{{end}}

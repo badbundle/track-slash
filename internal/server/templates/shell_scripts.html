@@ -1,0 +1,291 @@
+{{define "shell-scripts"}}
+  <script>
+    (() => {
+      const createIcons = () => window.lucide && window.lucide.createIcons();
+      const resizeTextarea = (textarea) => {
+        textarea.style.height = "auto";
+        const borderHeight = textarea.offsetHeight - textarea.clientHeight;
+        textarea.style.height = `${textarea.scrollHeight + borderHeight}px`;
+      };
+      const resizeTextareas = (root = document) => {
+        root.querySelectorAll("[data-autogrow-textarea]").forEach(resizeTextarea);
+      };
+      const syncCheckboxReveal = (reveal) => {
+        const toggle = reveal.querySelector("[data-checkbox-reveal-toggle]");
+        const panel = reveal.querySelector("[data-checkbox-reveal-panel]");
+        if (!toggle || !panel) return;
+        const open = toggle.checked;
+        panel.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        panel.querySelectorAll("input, select, textarea").forEach((control) => {
+          control.disabled = !open;
+          if (!open) control.value = "";
+        });
+      };
+      const syncCheckboxReveals = (root = document) => {
+        if (root instanceof Element && root.matches("[data-checkbox-reveal]")) {
+          syncCheckboxReveal(root);
+        }
+        root.querySelectorAll("[data-checkbox-reveal]").forEach(syncCheckboxReveal);
+      };
+      const active = ["bg-indigo-50", "text-indigo-700", "ring-1", "ring-indigo-100", "dark:bg-indigo-950/50", "dark:text-indigo-200", "dark:ring-indigo-900"];
+      const inactive = ["text-slate-600", "dark:text-slate-300"];
+      const links = () => document.querySelectorAll("[data-nav-link]");
+      const navForView = (view) => document.querySelector(`[data-nav-link][href="/${view}"]`);
+      const sidebarToggle = document.getElementById("sidebar-toggle");
+      const sidebarStorageKey = "track-slash.sidebar.collapsed";
+      const applySidebarCollapsed = (collapsed) => {
+        document.documentElement.toggleAttribute("data-sidebar-collapsed", collapsed);
+        if (sidebarToggle) sidebarToggle.checked = collapsed;
+      };
+      if (sidebarToggle) {
+        let collapsed = false;
+        try {
+          collapsed = window.localStorage.getItem(sidebarStorageKey) === "true";
+        } catch (_) {}
+        applySidebarCollapsed(collapsed);
+        sidebarToggle.addEventListener("change", () => {
+          applySidebarCollapsed(sidebarToggle.checked);
+          try {
+            window.localStorage.setItem(sidebarStorageKey, sidebarToggle.checked ? "true" : "false");
+          } catch (_) {}
+        });
+      }
+      const setNavLoading = (link, loading) => {
+        const icon = link.querySelector("[data-nav-icon]");
+        const loader = link.querySelector("[data-nav-loader]");
+        if (!icon || !loader) return;
+        icon.classList.toggle("hidden", loading);
+        loader.classList.toggle("hidden", !loading);
+      };
+      let reopenIssueListControls = false;
+      const rememberIssueListControls = (target) => {
+        const controls = target.closest("[data-issue-list-controls]");
+        reopenIssueListControls = !!controls && controls.hasAttribute("open");
+      };
+      const restoreIssueListControls = (root) => {
+        if (!reopenIssueListControls) return;
+        const controls = root.matches && root.matches("[data-issue-list-controls]")
+          ? root
+          : root.querySelector("[data-issue-list-controls]");
+        if (controls) controls.setAttribute("open", "");
+        reopenIssueListControls = false;
+      };
+      let changelogSocket = null;
+      let changelogTopic = "";
+      let changelogReconnect = null;
+      let changelogRefreshTimer = null;
+      const closeChangelogSocket = () => {
+        if (changelogReconnect) {
+          window.clearTimeout(changelogReconnect);
+          changelogReconnect = null;
+        }
+        if (changelogSocket) {
+          changelogSocket.onclose = null;
+          changelogSocket.close();
+        }
+        changelogSocket = null;
+        changelogTopic = "";
+      };
+      const scheduleChangelogRefresh = (panel) => {
+        if (changelogRefreshTimer) window.clearTimeout(changelogRefreshTimer);
+        changelogRefreshTimer = window.setTimeout(() => {
+          const current = document.querySelector("[data-project-changelog]");
+          if (!current || current.dataset.projectId !== panel.dataset.projectId) return;
+          if (window.htmx && current.dataset.refreshUrl) {
+            window.htmx.ajax("GET", current.dataset.refreshUrl, { target: "#main", swap: "innerHTML" });
+          }
+        }, 150);
+      };
+      const syncChangelogRealtime = () => {
+        const panel = document.querySelector("[data-project-changelog]");
+        if (!panel || !panel.dataset.projectId) {
+          closeChangelogSocket();
+          return;
+        }
+        const topic = `project:${panel.dataset.projectId}`;
+        if (changelogSocket && changelogTopic === topic && changelogSocket.readyState <= WebSocket.OPEN) return;
+        closeChangelogSocket();
+        changelogTopic = topic;
+        const activeTopic = topic;
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const socket = new WebSocket(`${protocol}//${window.location.host}/realtime`);
+        changelogSocket = socket;
+        socket.addEventListener("open", () => {
+          socket.send(JSON.stringify({ action: "subscribe", topic: activeTopic }));
+        });
+        socket.addEventListener("message", (event) => {
+          let msg;
+          try {
+            msg = JSON.parse(event.data);
+          } catch (_) {
+            return;
+          }
+          if (msg && msg.entity === "project_changelog" && msg.project_id === panel.dataset.projectId) {
+            scheduleChangelogRefresh(panel);
+          }
+        });
+        socket.addEventListener("close", () => {
+          if (changelogTopic !== activeTopic || !document.querySelector("[data-project-changelog]")) return;
+          changelogReconnect = window.setTimeout(syncChangelogRealtime, 1000);
+        });
+      };
+      const setActiveNav = (next) => {
+        links().forEach((link) => {
+          link.classList.remove(...active);
+          link.classList.add(...inactive);
+        });
+        next.classList.remove(...inactive);
+        next.classList.add(...active);
+      };
+      document.body.addEventListener("htmx:beforeRequest", (event) => {
+        rememberIssueListControls(event.target);
+        const link = event.target.closest("[data-nav-link]");
+        const viewLink = event.target.closest("[data-main-view]");
+        if (link) {
+          links().forEach((item) => setNavLoading(item, false));
+          setActiveNav(link);
+          setNavLoading(link, true);
+          return;
+        }
+        if (viewLink) {
+          const nav = navForView(viewLink.dataset.mainView);
+          if (nav) setActiveNav(nav);
+        }
+      });
+      document.body.addEventListener("htmx:afterRequest", (event) => {
+        const link = event.target.closest("[data-nav-link]");
+        if (link) {
+          setNavLoading(link, false);
+        }
+      });
+      const resetSearchOptions = (search) => {
+        search.querySelectorAll("[data-search-option]").forEach((option) => {
+          option.hidden = false;
+        });
+      };
+      const setSearchOptionsOpen = (search, open) => {
+        if (!search || !search.hasAttribute("data-search-collapsible")) return;
+        const options = search.querySelector("[data-search-options]");
+        if (options) options.hidden = !open;
+      };
+      const autocompleteScope = (search) => search.closest("[data-autocomplete-scope]") || search;
+      const setAutocompleteTargets = (search, name, value) => {
+        if (!search || !name) return;
+        autocompleteScope(search).querySelectorAll("input, select, textarea").forEach((candidate) => {
+          if (candidate.name === name) {
+            candidate.value = value;
+          }
+        });
+      };
+      const filterSearchOptions = (input) => {
+        const search = input.closest("[data-search]");
+        if (!search) return;
+        const query = input.value.trim().toLowerCase();
+        search.querySelectorAll("[data-search-option]").forEach((option) => {
+          const text = (option.dataset.searchText || "").toLowerCase();
+          option.hidden = query !== "" && !text.includes(query);
+        });
+      };
+      const closeOpenDropdowns = (target) => {
+        document.querySelectorAll("details[data-close-on-outside][open]").forEach((details) => {
+          if (!details.contains(target)) details.removeAttribute("open");
+        });
+        document.querySelectorAll("[data-search-collapsible]").forEach((search) => {
+          if (!search.contains(target)) setSearchOptionsOpen(search, false);
+        });
+        document.querySelectorAll("[data-option-dropdown-root]").forEach((dropdown) => {
+          if (dropdown.contains(target)) return;
+          const toggle = dropdown.querySelector("[data-option-dropdown-toggle]");
+          if (toggle instanceof HTMLElement) toggle.click();
+        });
+      };
+      document.body.addEventListener("input", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const textarea = event.target.closest("[data-autogrow-textarea]");
+        if (textarea) resizeTextarea(textarea);
+        const input = event.target.closest("[data-search-input]");
+        if (!input) return;
+        const search = input.closest("[data-search]");
+        if (search && search.dataset.searchClearTarget) {
+          setAutocompleteTargets(search, search.dataset.searchClearTarget, "");
+        }
+        filterSearchOptions(input);
+        if (search) setSearchOptionsOpen(search, !search.hasAttribute("data-project-search"));
+      });
+      document.body.addEventListener("change", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const toggle = event.target.closest("[data-checkbox-reveal-toggle]");
+        if (!toggle) return;
+        const reveal = toggle.closest("[data-checkbox-reveal]");
+        if (reveal) syncCheckboxReveal(reveal);
+      });
+      document.body.addEventListener("focusin", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const input = event.target.closest("[data-search-input]");
+        if (!input) return;
+        const search = input.closest("[data-search]");
+        filterSearchOptions(input);
+        setSearchOptionsOpen(search, !!search && !search.hasAttribute("data-project-search"));
+      });
+      document.body.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        closeOpenDropdowns(event.target);
+        const option = event.target.closest("[data-search-option]");
+        if (!option) return;
+        const search = option.closest("[data-search]");
+        const input = search && search.querySelector("[data-search-input]");
+        if (!input) return;
+        input.value = option.dataset.value || "";
+        if (option.dataset.targetName && search) {
+          setAutocompleteTargets(search, option.dataset.targetName, option.dataset.targetValue || option.dataset.value || "");
+        }
+        resetSearchOptions(search);
+        setSearchOptionsOpen(search, false);
+        const form = input.form || input.closest("form");
+        if (!form) return;
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      });
+      document.body.addEventListener("keydown", (event) => {
+        if (!(event.target instanceof Element)) return;
+        if (event.key === "Escape") {
+          setSearchOptionsOpen(event.target.closest("[data-search]"), false);
+        }
+        const field = event.target.closest("[data-submit-shortcut='meta-enter']");
+        if (!field || event.key !== "Enter" || (!event.metaKey && !event.ctrlKey) || event.shiftKey || event.altKey) return;
+        const form = field.form || field.closest("form");
+        if (!form) return;
+        event.preventDefault();
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      });
+      document.body.addEventListener("htmx:afterSwap", (event) => {
+        createIcons();
+        resizeTextareas(event.target);
+        syncCheckboxReveals(event.target);
+        restoreIssueListControls(event.target);
+        syncChangelogRealtime();
+      });
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+          createIcons();
+          resizeTextareas();
+          syncCheckboxReveals();
+          syncChangelogRealtime();
+        });
+      } else {
+        createIcons();
+        resizeTextareas();
+        syncCheckboxReveals();
+        syncChangelogRealtime();
+      }
+    })();
+  </script>
+{{end}}
