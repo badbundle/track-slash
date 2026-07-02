@@ -2286,6 +2286,115 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	}
 }
 
+func TestUIIssuePanelRendersContextModal(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	linkedID := uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe")
+	availableID := uuid.MustParse("c71792f3-4e4a-4ab2-9cde-e7921ff8a431")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issue := model.Issue{ID: issueID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-7", Title: "Parent issue", Status: model.StatusTodo, CreatedAt: when, UpdatedAt: when}
+	base := func() *uiIssuePanelData {
+		return &uiIssuePanelData{
+			Issue:       issue,
+			Project:     project,
+			EditContext: true,
+			ContextModalItems: []uiContextManagerItem{{
+				ID:          linkedID,
+				Ref:         "context-1",
+				Number:      1,
+				Scope:       model.ProjectContextScopeIssue,
+				Title:       "Agent notes",
+				ContentType: "text/plain; charset=utf-8",
+				UpdatedAt:   when,
+			}},
+			ContextAvailable: []uiContextManagerItem{{
+				ID:               availableID,
+				Ref:              "context-2",
+				Number:           2,
+				Scope:            model.ProjectContextScopeProject,
+				Title:            "Architecture notes",
+				ContentType:      "text/plain; charset=utf-8",
+				LinkedIssueCount: 1,
+				UpdatedAt:        when,
+			}},
+			BackHref:  "/bradley/projects/TRACK/all",
+			BackHXGet: "/bradley/projects/TRACK/all/panel",
+			BackLabel: "All issues",
+		}
+	}
+	render := func(panel *uiIssuePanelData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", panel); err != nil {
+			t.Fatalf("ExecuteTemplate: %v", err)
+		}
+		return buf.String()
+	}
+
+	body := render(base())
+	for _, want := range []string{
+		`role="dialog" aria-modal="true" aria-labelledby="issue-context-title"`,
+		`id="issue-context-title"`,
+		`Manage context`,
+		`Attach project context`,
+		`Search context by title`,
+		`data-search-option data-value="Architecture notes"`,
+		`Agent notes`,
+		`Issue-only`,
+		`aria-label="View context"`,
+		`aria-label="Edit context"`,
+		`aria-label="Remove context"`,
+		`hx-push-url="false"`,
+		`Add issue context`,
+		`Manage project context`,
+		`href="/bradley/projects/TRACK/context"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue context modal missing %q: %s", want, body)
+		}
+	}
+	contextDetail := body[strings.Index(body, ">Context</dt>"):]
+	contextDetail = contextDetail[:min(len(contextDetail), 1100)]
+	if !strings.Contains(contextDetail, `hx-get="/bradley/issues/TRACK-7/context"`) || !strings.Contains(contextDetail, `hx-push-url="false"`) {
+		t.Fatalf("issue context detail should open modal without URL push: %s", body)
+	}
+	for _, notWant := range []string{`>Context</h1>`, `hx-push-url="/bradley/issues/TRACK-7/context"`, `role="dialog" aria-modal="true" aria-labelledby="issue-tags-title"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("issue context modal rendered stale markup %q: %s", notWant, body)
+		}
+	}
+
+	createPanel := base()
+	createPanel.ContextAction = "create"
+	createPanel.ContextTitle = "Draft note"
+	createPanel.ContextBody = "Use this path."
+	createBody := render(createPanel)
+	for _, want := range []string{"New issue context", "Draft note", "Use this path.", "Upload text", `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`} {
+		if !strings.Contains(createBody, want) {
+			t.Fatalf("issue context create modal missing %q: %s", want, createBody)
+		}
+	}
+	if strings.Contains(createBody, `data-search-option data-value="Architecture notes"`) {
+		t.Fatalf("issue context create modal should swap out attach search: %s", createBody)
+	}
+
+	editPanel := base()
+	editPanel.ContextAction = "edit"
+	editPanel.ActiveContextID = linkedID
+	editPanel.ActiveContext = model.ProjectContext{ID: linkedID, ProjectID: projectID, Number: 1, Ref: "context-1", Scope: model.ProjectContextScopeIssue, Title: "Agent notes", Kind: model.ProjectContextKindText, ContentType: "text/plain; charset=utf-8", Body: "Use the compact path.", UpdatedAt: when}
+	editPanel.ContextEditTitle = "Agent notes"
+	editPanel.ContextEditBody = "Use the compact path."
+	editBody := render(editPanel)
+	for _, want := range []string{`action="/bradley/issues/TRACK-7/context/context-1"`, `value="Agent notes"`, "Use the compact path.", `aria-label="Save context"`, `aria-label="Cancel editing context"`} {
+		if !strings.Contains(editBody, want) {
+			t.Fatalf("issue context edit modal missing %q: %s", want, editBody)
+		}
+	}
+}
+
 func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
 	t.Parallel()
 

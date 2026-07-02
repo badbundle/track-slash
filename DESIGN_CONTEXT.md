@@ -20,10 +20,11 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 - Treat context as supporting project/issue metadata on parent pages. Project About and issue detail should show context in the Details sidebar as a compact `Context` row with a count badge and a book-open manage action.
 - Do not render large context cards, nested boxes, inline create/upload forms, or body previews on Project About or issue detail. Those parent pages should stay scannable and only answer "how much context is attached?" plus "where do I manage it?"
-- Use context manager pages for the full workflow: project `/{owner}/projects/{key}/context` and issue `/{owner}/issues/{issueRef}/context`. These pages own create, upload, attach, view, edit, delete, link, and unlink states.
+- Use the project context manager page `/{owner}/projects/{key}/context` for project-scoped taxonomy work: create, upload, edit, delete, link, and unlink.
+- Use an issue modal for issue-scoped context work from issue detail. It should preserve the issue page, avoid URL pushes, show attached context first, support search/attach for existing project context, and allow issue-only create/upload/view/edit/remove without turning issue detail into a fullscreen manager.
 - Keep context manager rows compact by default. Show title, metadata, scope/link counts, and actions only. Body content appears only in explicit view/edit states.
 - Use user-facing titles for finding and attaching context. Do not expose refs such as `context-1` as visible row labels or search/link inputs; refs may remain in URLs/API mechanics.
-- Keep issue context manager actions explicit: one action to create issue-scoped context and one action to attach existing project context. Project context manager actions stay project-scoped.
+- Keep issue context modal actions explicit: one action to create issue-scoped context and one action to attach existing project context. Project context manager actions stay project-scoped.
 - Render text context as escaped pre-wrapped text when viewing; do not turn context body into Markdown HTML unless a future product decision changes that behavior.
 
 ## Tag IA

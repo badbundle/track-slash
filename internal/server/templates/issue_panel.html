@@ -154,6 +154,151 @@
   {{template "modal-close" .}}
   {{end}}
 
+  {{if .EditContext}}
+  {{template "modal-open" (issueContextModal .)}}
+    <div class="mt-4 grid max-h-[calc(100vh-10rem)] gap-4 overflow-y-auto pr-1">
+      <section class="min-w-0">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Attached context</h3>
+          {{template "count-badge" (len .ContextModalItems)}}
+        </div>
+        {{if .ContextsHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
+        {{if .ContextModalItems}}
+        <div class="mt-2 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+          {{range .ContextModalItems}}
+          <article class="border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-slate-800">
+            {{if and (eq $.ContextAction "edit") (eq $.ActiveContextID .ID)}}
+            <form method="post" action="{{issueContextItem $.Issue .}}" hx-post="{{issueContextItem $.Issue .}}" hx-target="#main" hx-push-url="false">
+              <div class="flex flex-wrap items-center gap-2">
+                <input name="title" value="{{$.ContextEditTitle}}" autofocus aria-label="Context title" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+                <button type="submit" aria-label="Save context" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing context" hx-get="{{issueContext $.Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </button>
+              </div>
+              <textarea name="body" rows="7" data-submit-shortcut="meta-enter" data-autogrow-textarea aria-label="Context body" class="mt-2 min-h-36 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{$.ContextEditBody}}</textarea>
+              {{if $.ContextEditError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{$.ContextEditError}}</div>{{end}}
+            </form>
+            {{else}}
+            <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div class="min-w-0">
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <h4 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{.Title}}</h4>
+                  {{if eq .Scope "issue"}}<span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Issue-only</span>{{end}}
+                </div>
+                <p class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{{.ContentType}}{{with .SourceFilename}} · {{.}}{{end}} · Updated {{tokenTime .UpdatedAt}}</p>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <a href="{{issueContextItem $.Issue .}}" aria-label="View context" hx-get="{{issueContextItem $.Issue .}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="book-open" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </a>
+                <a href="{{issueContextEdit $.Issue .}}" aria-label="Edit context" hx-get="{{issueContextEdit $.Issue .}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </a>
+                <form method="post" action="{{issueContextDelete $.Issue .}}" hx-post="{{issueContextDelete $.Issue .}}" hx-target="#main" hx-push-url="false">
+                  <button type="submit" aria-label="Remove context" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                    <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+            {{if and (eq $.ContextAction "view") (eq $.ActiveContextID .ID)}}
+            <div class="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+              <pre class="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm leading-6 text-slate-800 dark:bg-slate-900 dark:text-slate-200">{{$.ActiveContext.Body}}</pre>
+            </div>
+            {{end}}
+            {{end}}
+          </article>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="mt-2 rounded-lg border border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No context attached.</p>
+        {{end}}
+      </section>
+
+      {{if eq .ContextAction "create"}}
+      <section class="grid gap-4 border-t border-slate-100 pt-4 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,0.65fr)]">
+        <form method="post" action="{{issueContext .Issue}}" hx-post="{{issueContext .Issue}}" hx-target="#main" hx-push-url="false" class="min-w-0">
+          <input type="hidden" name="mode" value="create">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">New issue context</h3>
+            <button type="submit" aria-label="Create context" class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          <input name="title" value="{{.ContextTitle}}" placeholder="Title" autofocus class="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <textarea name="body" rows="7" data-submit-shortcut="meta-enter" data-autogrow-textarea placeholder="Context" class="mt-2 min-h-36 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.ContextBody}}</textarea>
+          {{if or .ContextError .ContextCreateError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{if .ContextError}}{{.ContextError}}{{else}}{{.ContextCreateError}}{{end}}</div>{{end}}
+        </form>
+
+        <form method="post" enctype="multipart/form-data" hx-encoding="multipart/form-data" action="{{issueContext .Issue}}" hx-post="{{issueContext .Issue}}" hx-target="#main" hx-push-url="false" class="min-w-0 border-t border-slate-100 pt-4 dark:border-slate-800 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Upload text</h3>
+            <button type="submit" aria-label="Upload context" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+              <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          <input name="title" placeholder="Title" class="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <input name="file" type="file" accept=".txt,.md,.markdown,text/plain,text/markdown" class="mt-3 w-full min-w-0 text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200 dark:text-slate-300 dark:file:bg-slate-800 dark:file:text-slate-200 dark:hover:file:bg-slate-700">
+          {{if .ContextUploadError}}<div class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{.ContextUploadError}}</div>{{end}}
+        </form>
+      </section>
+      {{else}}
+      <section class="min-w-0 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Attach project context</h3>
+        <form method="post" action="{{issueContext .Issue}}" hx-post="{{issueContext .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2 space-y-2" data-search data-search-collapsible>
+          <div class="flex min-w-0 items-center gap-2">
+            <div class="relative min-w-0 flex-1">
+              <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" aria-hidden="true"></i>
+              <input name="context" value="{{.ContextInput}}" autocomplete="off" {{if or (eq .ContextAction "") (eq .ContextAction "attach")}}autofocus{{end}} aria-label="Search context by title" placeholder="Search context by title" data-search-input class="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            </div>
+            <button type="submit" aria-label="Attach context" class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          {{if .ContextError}}<p class="text-sm text-rose-700 dark:text-rose-300">{{.ContextError}}</p>{{end}}
+          <div data-search-options role="listbox" aria-label="Context suggestions" class="max-h-52 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            {{if .ContextAvailable}}
+            {{range .ContextAvailable}}
+            <button type="button" role="option" data-search-option data-value="{{.Title}}" data-search-text="{{.Title}} {{.ContentType}}{{with .SourceFilename}} {{.}}{{end}}" class="flex w-full min-w-0 items-center justify-between gap-3 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+              <span class="min-w-0">
+                <span class="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{.Title}}</span>
+                <span class="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">{{.ContentType}}{{with .SourceFilename}} · {{.}}{{end}} · {{.LinkedIssueCount}} linked issues</span>
+              </span>
+              <i data-lucide="plus" class="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true"></i>
+            </button>
+            {{end}}
+            {{else}}
+            <div data-search-empty class="px-2.5 py-3 text-sm text-slate-500 dark:text-slate-400">No available context.</div>
+            {{end}}
+          </div>
+        </form>
+      </section>
+      {{end}}
+
+      <div class="flex flex-wrap items-center gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+        {{if ne .ContextAction "create"}}
+        <a href="{{issueContextNew .Issue}}" hx-get="{{issueContextNew .Issue}}" hx-target="#main" hx-push-url="false" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200">
+          <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+          Add issue context
+        </a>
+        {{else}}
+        <a href="{{issueContext .Issue}}" hx-get="{{issueContext .Issue}}" hx-target="#main" hx-push-url="false" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200">
+          <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
+          Attach project context
+        </a>
+        {{end}}
+        <a href="{{projectContexts .Project}}" hx-get="{{projectContexts .Project}}" hx-target="#main" hx-push-url="{{projectContexts .Project}}" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200">
+          <i data-lucide="book-open" class="h-4 w-4" aria-hidden="true"></i>
+          Manage project context
+        </a>
+      </div>
+    </div>
+  {{template "modal-close" .}}
+  {{end}}
+
   <section class="grid gap-6 py-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
     <div class="order-2 min-w-0 space-y-6 lg:order-1">
       <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -531,7 +676,7 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Context</dt>
             <dd class="mt-1 flex items-center justify-between gap-3">
               {{template "count-badge" (len .Contexts)}}
-              <a href="{{issueContext .Issue}}" aria-label="Manage context" hx-get="{{issueContext .Issue}}" hx-target="#main" hx-push-url="{{issueContext .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <a href="{{issueContext .Issue}}" aria-label="Manage context" hx-get="{{issueContext .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="book-open" class="h-4 w-4" aria-hidden="true"></i>
               </a>
             </dd>
