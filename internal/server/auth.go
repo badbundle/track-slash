@@ -43,6 +43,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), authContextKey{}, auth)
+		ctx = store.WithActor(ctx, auth.User.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

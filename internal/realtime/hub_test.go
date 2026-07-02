@@ -320,6 +320,52 @@ func TestIssueTagLinkEventFansOutToLinkIssueTagIssueAndProjectTopics(t *testing.
 	}
 }
 
+func TestChangelogEventFansOutToChangelogIssueParentAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	parentID := uuid.New()
+	issueID := uuid.New()
+	entryID := uuid.New()
+
+	changelogSub := newTestClient(4)
+	issueSub := newTestClient(4)
+	parentSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(changelogSub, ProjectChangelogTopic(entryID))
+	hub.Subscribe(issueSub, IssueTopic(issueID))
+	hub.Subscribe(parentSub, IssueTopic(parentID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, ProjectChangelogTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:            OpInsert,
+		Entity:        EntityChangelog,
+		ID:            entryID,
+		IssueID:       &issueID,
+		ParentIssueID: &parentID,
+		ProjectID:     &projectID,
+		Version:       1,
+	})
+
+	if _, ok := recv(t, changelogSub, time.Second); !ok {
+		t.Fatal("changelog subscriber did not receive event")
+	}
+	if _, ok := recv(t, issueSub, time.Second); !ok {
+		t.Fatal("issue subscriber did not receive changelog event")
+	}
+	if _, ok := recv(t, parentSub, time.Second); !ok {
+		t.Fatal("parent issue subscriber did not receive changelog event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive changelog event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated changelog subscriber received event")
+	}
+}
+
 func TestHubDeduplicatesAcrossTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
