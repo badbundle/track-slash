@@ -36,6 +36,8 @@ func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) 
 		projectID, err = s.store.ProjectIDForIssueTag(ctx, id)
 	case "issue_tag_link":
 		projectID, err = s.store.ProjectIDForIssueTagLink(ctx, id)
+	case "project_changelog":
+		projectID, err = s.store.ProjectIDForProjectChangelog(ctx, id)
 	default:
 		return store.ErrUnauthorized
 	}

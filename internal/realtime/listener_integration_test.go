@@ -436,6 +436,53 @@ func TestListenerReceivesIssueTagEvents(t *testing.T) {
 	waitForIssueTagLinkEvent(t, projectLinkSub, linkID, issueID, tagID, projectID, OpInsert)
 }
 
+// TestListenerReceivesProjectChangelogEvent verifies changelog inserts refresh
+// listeners on the project topic.
+func TestListenerReceivesProjectChangelogEvent(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-changelog")
+	projectSub := newTestClient(16)
+	hub.Subscribe(projectSub, "project:"+projectID)
+
+	var entryID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO project_changelog_entries (project_id, entity, op, entity_id, target_ref, target_title, summary)
+		VALUES ($1, 'project', 'insert', $1, 'TRACK', 'Track Slash', 'Created project TRACK')
+		RETURNING id::text
+	`, projectID).Scan(&entryID); err != nil {
+		t.Fatalf("insert project_changelog_entries: %v", err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-projectSub.send:
+			if ev.Entity != EntityChangelog {
+				continue
+			}
+			if ev.Op != OpInsert {
+				t.Errorf("op = %s, want insert", ev.Op)
+			}
+			if ev.ID.String() != entryID {
+				t.Errorf("id = %s, want %s", ev.ID, entryID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatal("did not receive project changelog event within 3s")
+		}
+	}
+}
+
 // TestListenerReceivesSoftDeleteAsDelete verifies updating deleted_at emits a
 // realtime delete op so subscribers see the same event kind as hard deletes.
 func TestListenerReceivesSoftDeleteAsDelete(t *testing.T) {

@@ -75,6 +75,18 @@ func (s *Store) CreateProjectForUser(ctx context.Context, userID uuid.UUID, key,
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
+		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   p.ID,
+			Entity:      "project",
+			Op:          "insert",
+			EntityID:    p.ID,
+			TargetRef:   p.Key,
+			TargetTitle: p.Name,
+			Summary:     fmt.Sprintf("Created project %s", p.Key),
+			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(p.Description)},
+		}); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -200,6 +212,19 @@ func (s *Store) firstProjectOwner(ctx context.Context) (uuid.UUID, error) {
 
 func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		project, err := scanProject(tx.QueryRow(ctx, `
+			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			FROM projects p
+			JOIN users u ON u.id = p.owner_id
+			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+			FOR UPDATE OF p
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
 		tag, err := tx.Exec(ctx, `
 			UPDATE projects SET deleted_at = now(), updated_at = now()
 			WHERE id = $1 AND deleted_at IS NULL
@@ -225,6 +250,17 @@ func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			// Defensive: cascading soft-delete has no expected FK/check mapping.
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   project.ID,
+			Entity:      "project",
+			Op:          "delete",
+			EntityID:    project.ID,
+			TargetRef:   project.Key,
+			TargetTitle: project.Name,
+			Summary:     fmt.Sprintf("Deleted project %s", project.Key),
+		})
 	})
 }

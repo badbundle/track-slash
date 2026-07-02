@@ -612,6 +612,120 @@ func TestWebSocketAuthAndTopicPermission(t *testing.T) {
 	}
 }
 
+func TestUIWebSocketUsesSessionCookieAndAPIWebSocketRequiresBearer(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	hub := realtime.NewHub()
+	srv := server.New(e.store, hub, nil)
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+
+	session, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: e.adminID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "ui websocket",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken session: %v", err)
+	}
+	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "websocket changelog source",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	entries, _, err := e.store.ListProjectChangelog(e.ctx, store.ListProjectChangelogParams{
+		ProjectID: e.projectID,
+		Limit:     5,
+	})
+	if err != nil {
+		t.Fatalf("ListProjectChangelog: %v", err)
+	}
+	if len(entries) == 0 || entries[0].IssueID == nil || *entries[0].IssueID != iss.ID {
+		t.Fatalf("latest changelog entry = %+v, want issue %s", entries, iss.ID)
+	}
+	entry := entries[0]
+
+	apiReq, err := http.NewRequest(http.MethodGet, ts.URL+apiPath("/ws"), nil)
+	if err != nil {
+		t.Fatalf("NewRequest /api/v1/ws: %v", err)
+	}
+	apiReq.AddCookie(&http.Cookie{Name: uiCookieNameForTest, Value: session.RawToken, Path: "/"})
+	apiRes, err := ts.Client().Do(apiReq)
+	if err != nil {
+		t.Fatalf("cookie-only /api/v1/ws: %v", err)
+	}
+	_ = apiRes.Body.Close()
+	if apiRes.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("cookie-only /api/v1/ws code = %d, want 401", apiRes.StatusCode)
+	}
+
+	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/realtime", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Cookie": []string{uiCookieNameForTest + "=" + session.RawToken}},
+	})
+	if err != nil {
+		t.Fatalf("ui websocket dial: %v", err)
+	}
+	defer func() { _ = conn.CloseNow() }()
+
+	msg, err := json.Marshal(map[string]string{
+		"action": "subscribe",
+		"topic":  realtime.ProjectChangelogTopic(entry.ID),
+	})
+	if err != nil {
+		t.Fatalf("marshal subscribe: %v", err)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
+		t.Fatalf("write subscribe: %v", err)
+	}
+
+	publishCtx, stopPublish := context.WithCancel(ctx)
+	defer stopPublish()
+	go func() {
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		ev := realtime.Event{
+			Op:        realtime.OpInsert,
+			Entity:    realtime.EntityChangelog,
+			ID:        entry.ID,
+			ProjectID: &e.projectID,
+			Version:   entry.Version,
+		}
+		for {
+			select {
+			case <-publishCtx.Done():
+				return
+			case <-ticker.C:
+				hub.Publish(ev)
+			}
+		}
+	}()
+
+	for {
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatalf("read ui websocket: %v", err)
+		}
+		var got struct {
+			Error  string          `json:"error"`
+			Entity realtime.Entity `json:"entity"`
+			ID     uuid.UUID       `json:"id"`
+		}
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("unmarshal ui websocket event: %v data=%s", err, data)
+		}
+		if got.Error != "" {
+			t.Fatalf("ui websocket subscribe error = %q", got.Error)
+		}
+		if got.Entity == realtime.EntityChangelog && got.ID == entry.ID {
+			return
+		}
+	}
+}
+
 func (e *httpEnv) mustUserToken(t *testing.T, label string) (model.User, string) {
 	t.Helper()
 	u, err := e.store.CreateUser(e.ctx, label+"-"+uuid.NewString()+"@example.com", label)

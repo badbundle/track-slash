@@ -127,7 +127,18 @@ func (s *Store) CreateIssueTag(ctx context.Context, p CreateIssueTagParams) (mod
 		`, p.ProjectID); err != nil {
 			return err // defensive: project row was locked above
 		}
-		return nil
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "issue_tag",
+			Op:          "insert",
+			EntityID:    out.ID,
+			TargetRef:   changelogTagRef(out),
+			TargetTitle: out.DisplayName,
+			Summary:     fmt.Sprintf("Created tag %s", out.DisplayName),
+			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+				changelogChange("color", "Color", "", string(out.Color)),
+			}},
+		})
 	})
 	if err != nil {
 		return model.IssueTag{}, err
@@ -167,7 +178,42 @@ func (s *Store) UpdateIssueTag(ctx context.Context, p UpdateIssueTagParams) (mod
 		RETURNING id, project_id, number, name, color, created_at, updated_at
 	`, strings.Join(sets, ", "), i)
 
-	out, err := scanIssueTag(s.db.QueryRow(ctx, q, args...))
+	var out model.IssueTag
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanIssueTag(tx.QueryRow(ctx, `
+			SELECT t.id, t.project_id, t.number, t.name, t.color, t.created_at, t.updated_at
+			FROM issue_tags t
+			JOIN projects p ON p.id = t.project_id
+			WHERE t.id = $1 AND p.deleted_at IS NULL
+			FOR UPDATE OF t
+		`, p.ID))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		out, err = scanIssueTag(tx.QueryRow(ctx, q, args...))
+		if err != nil {
+			return err
+		}
+		changes := []model.ProjectChangelogChange{}
+		changes = changelogAppendChange(changes, "name", "Name", before.DisplayName, out.DisplayName)
+		changes = changelogAppendChange(changes, "color", "Color", string(before.Color), string(out.Color))
+		if len(changes) == 0 {
+			return nil
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "issue_tag",
+			Op:          "update",
+			EntityID:    out.ID,
+			TargetRef:   changelogTagRef(out),
+			TargetTitle: out.DisplayName,
+			Summary:     fmt.Sprintf("Updated tag %s", out.DisplayName),
+			Details:     model.ProjectChangelogDetails{Changes: changes},
+		})
+	})
 	if err != nil {
 		if isNoRows(err) {
 			return model.IssueTag{}, ErrNotFound
@@ -181,14 +227,37 @@ func (s *Store) UpdateIssueTag(ctx context.Context, p UpdateIssueTagParams) (mod
 }
 
 func (s *Store) DeleteIssueTag(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM issue_tags WHERE id = $1`, id)
-	if err != nil {
-		return err // defensive: delete cascades have no expected domain mapping
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanIssueTag(tx.QueryRow(ctx, `
+			SELECT t.id, t.project_id, t.number, t.name, t.color, t.created_at, t.updated_at
+			FROM issue_tags t
+			JOIN projects p ON p.id = t.project_id
+			WHERE t.id = $1 AND p.deleted_at IS NULL
+			FOR UPDATE OF t
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM issue_tags WHERE id = $1`, id)
+		if err != nil {
+			return err // defensive: delete cascades have no expected domain mapping
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   before.ProjectID,
+			Entity:      "issue_tag",
+			Op:          "delete",
+			EntityID:    before.ID,
+			TargetRef:   changelogTagRef(before),
+			TargetTitle: before.DisplayName,
+			Summary:     fmt.Sprintf("Deleted tag %s", before.DisplayName),
+		})
+	})
 }
 
 func (s *Store) GetIssueTag(ctx context.Context, id uuid.UUID) (model.IssueTag, error) {
@@ -354,7 +423,29 @@ func (s *Store) CreateIssueTagLink(ctx context.Context, p CreateIssueTagLinkPara
 			}
 			return err // defensive: non-pg or unmapped pg error
 		}
-		return nil
+		issue, err := getIssueForChangelog(ctx, tx, p.IssueID, false)
+		if err != nil {
+			return err
+		}
+		tag, err := scanIssueTag(tx.QueryRow(ctx, `
+			SELECT id, project_id, number, name, color, created_at, updated_at
+			FROM issue_tags
+			WHERE id = $1
+		`, p.TagID))
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "issue_tag_link",
+			Op:          "insert",
+			EntityID:    out.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Tagged %s with %s", issue.Identifier, tag.DisplayName),
+		})
 	})
 	if err != nil {
 		return model.IssueTagLink{}, err
@@ -363,14 +454,50 @@ func (s *Store) CreateIssueTagLink(ctx context.Context, p CreateIssueTagLinkPara
 }
 
 func (s *Store) DeleteIssueTagLink(ctx context.Context, issueID, tagID uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM issue_tag_links WHERE issue_id = $1 AND tag_id = $2`, issueID, tagID)
-	if err != nil {
-		return err // defensive: delete has no expected domain mapping
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		link, err := scanIssueTagLink(tx.QueryRow(ctx, `
+			SELECT id, project_id, issue_id, tag_id, created_at, updated_at
+			FROM issue_tag_links
+			WHERE issue_id = $1 AND tag_id = $2
+			FOR UPDATE
+		`, issueID, tagID))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		issue, err := getIssueForChangelog(ctx, tx, issueID, false)
+		if err != nil {
+			return err
+		}
+		issueTag, err := scanIssueTag(tx.QueryRow(ctx, `
+			SELECT id, project_id, number, name, color, created_at, updated_at
+			FROM issue_tags
+			WHERE id = $1
+		`, tagID))
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM issue_tag_links WHERE issue_id = $1 AND tag_id = $2`, issueID, tagID)
+		if err != nil {
+			return err // defensive: delete has no expected domain mapping
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   link.ProjectID,
+			Entity:      "issue_tag_link",
+			Op:          "delete",
+			EntityID:    link.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Removed %s from %s", issueTag.DisplayName, issue.Identifier),
+		})
+	})
 }
 
 func (s *Store) issueTagsForIssues(ctx context.Context, issueIDs []uuid.UUID) (map[uuid.UUID][]model.IssueTag, error) {

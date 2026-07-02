@@ -110,6 +110,9 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectTagDelete":             uiProjectTagDeletePath,
 	"projectView":                  uiProjectViewPath,
 	"projectIcon":                  uiProjectIcon,
+	"changelogActor":               uiChangelogActor,
+	"changelogIcon":                uiChangelogIcon,
+	"changelogTargetHref":          uiChangelogTargetHref,
 	"dueBadgeClass":                uiDueBadgeClass,
 	"dueBadgeIcon":                 uiDueBadgeIcon,
 	"dueBadgeLabel":                uiDueBadgeLabel,
@@ -440,6 +443,7 @@ type uiProjectPanelData struct {
 	AllIssues            []model.Issue
 	AllIssuePage         uiProjectAllIssuePageData
 	AllControls          uiIssueControlsData
+	ChangelogPage        uiProjectChangelogPageData
 	ProjectStats         model.ProjectStats
 	Tags                 []model.IssueTag
 	ContextItems         []uiProjectContextItem
@@ -463,6 +467,13 @@ type uiIssueListQuery struct {
 }
 
 type uiProjectAllQuery = uiIssueListQuery
+
+type uiProjectChangelogPageData struct {
+	Project    model.Project
+	Entries    []model.ProjectChangelogEntry
+	HasMore    bool
+	NextCursor string
+}
 
 type uiDeletedIssuesPanelData struct {
 	Project model.Project
@@ -629,6 +640,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
+		if s.hub != nil {
+			r.Get("/realtime", s.uiRealtime)
+		}
 		r.Get("/{owner}/issues/{issueRef}", s.uiIssuePage)
 		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
 		r.Post("/{owner}/issues/{issueRef}/delete", s.uiDeleteIssue)
@@ -697,6 +711,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/projects/{key}/all", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "all") })
 		r.Get("/{owner}/projects/{key}/all/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "all") })
 		r.Get("/{owner}/projects/{key}/all/page", s.uiProjectAllIssuePage)
+		r.Get("/{owner}/projects/{key}/changelog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "changelog") })
+		r.Get("/{owner}/projects/{key}/changelog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "changelog") })
+		r.Get("/{owner}/projects/{key}/changelog/page", s.uiProjectChangelogPage)
 		r.Get("/{owner}/projects/{key}/backlog", func(w http.ResponseWriter, r *http.Request) { s.uiProjectLegacyBacklog(w, r, false) })
 		r.Get("/{owner}/projects/{key}/backlog/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectLegacyBacklog(w, r, true) })
 		r.Get("/{owner}/projects/{key}/deleted", s.uiProjectDeletedPage)
@@ -842,12 +859,21 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), authContextKey{}, authContext{User: auth.User, Token: auth.Token})
+		ctx = store.WithActor(ctx, auth.User.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func (s *Server) uiTokensPage(w http.ResponseWriter, r *http.Request) {
 	s.renderUITokens(w, r, "", "")
+}
+
+func (s *Server) uiRealtime(w http.ResponseWriter, r *http.Request) {
+	if s.hub == nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic).ServeHTTP(w, r)
 }
 
 func (s *Server) uiSettingsPage(w http.ResponseWriter, r *http.Request) {
@@ -4230,11 +4256,63 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		panel.AllIssues = pageData.Issues
 		panel.AllIssuePage = pageData
 		panel.AllControls = uiProjectAllIssueControls(project, allQuery, tags, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
+	case "changelog":
+		pageData, err := s.uiBuildProjectChangelogPage(ctx, r, project)
+		if err != nil {
+			return nil, err
+		}
+		panel.ChangelogPage = pageData
 	default:
 		return nil, store.ErrNotFound
 	}
 
 	return panel, nil
+}
+
+func (s *Server) uiProjectChangelogPage(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	pageData, err := s.uiBuildProjectChangelogPage(r.Context(), r, project)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-changelog-page", pageData)
+}
+
+func (s *Server) uiBuildProjectChangelogPage(ctx context.Context, r *http.Request, project model.Project) (uiProjectChangelogPageData, error) {
+	var cursor *store.ProjectChangelogCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.ProjectChangelogCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			return uiProjectChangelogPageData{}, fmt.Errorf("invalid changelog cursor: %w", errUIBadRequest)
+		}
+		cursor = &c
+	}
+	entries, hasMore, err := s.store.ListProjectChangelog(ctx, store.ListProjectChangelogParams{
+		ProjectID: project.ID,
+		Cursor:    cursor,
+		Limit:     DefaultLimit,
+	})
+	if err != nil {
+		return uiProjectChangelogPageData{}, err
+	}
+	pageData := uiProjectChangelogPageData{
+		Project: project,
+		Entries: entries,
+		HasMore: hasMore,
+	}
+	if hasMore {
+		last := entries[len(entries)-1]
+		pageData.NextCursor = encodeCursor(store.ProjectChangelogCursor{CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+	return pageData, nil
 }
 
 func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request, project model.Project) (uiProjectAllIssuePageData, error) {
@@ -4587,6 +4665,15 @@ func uiProjectTabs(project model.Project, view string, assigneeIDs []uuid.UUID) 
 				HXTarget:  "#main",
 				HXPushURL: uiProjectViewPath(project, "all"),
 				Active:    view == "all",
+			},
+			{
+				Label:     "Changelog",
+				Icon:      "history",
+				Href:      uiProjectViewPath(project, "changelog"),
+				HXGet:     uiProjectPanelPath(project, "changelog"),
+				HXTarget:  "#main",
+				HXPushURL: uiProjectViewPath(project, "changelog"),
+				Active:    view == "changelog",
 			},
 			{
 				Label:     "About",
@@ -6219,13 +6306,13 @@ func safeUIProjectPath(path string) bool {
 		}
 		return len(parts) == 6 && parts[4] == "new" && parts[5] == "panel"
 	}
-	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "planned" && parts[3] != "all" && parts[3] != "backlog" && parts[3] != "deleted" {
+	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "planned" && parts[3] != "all" && parts[3] != "changelog" && parts[3] != "backlog" && parts[3] != "deleted" {
 		return false
 	}
 	if len(parts) == 4 {
 		return true
 	}
-	return parts[4] == "panel" || (parts[3] == "all" && parts[4] == "page")
+	return parts[4] == "panel" || (parts[3] == "all" && parts[4] == "page") || (parts[3] == "changelog" && parts[4] == "page")
 }
 
 func safeUIIssuePath(path string) bool {
@@ -6327,6 +6414,47 @@ func uiProjectIcon(name, key string) string {
 		return "?"
 	}
 	return strings.ToUpper(string([]rune(source)[0]))
+}
+
+func uiChangelogActor(entry model.ProjectChangelogEntry) string {
+	if entry.Actor == nil {
+		return "System"
+	}
+	if strings.TrimSpace(entry.Actor.Name) != "" {
+		return entry.Actor.Name
+	}
+	if strings.TrimSpace(entry.Actor.Username) != "" {
+		return "@" + entry.Actor.Username
+	}
+	return "Unknown"
+}
+
+func uiChangelogIcon(entry model.ProjectChangelogEntry) string {
+	switch entry.Entity {
+	case "comment":
+		return "message-square"
+	case "issue_link":
+		return "link"
+	case "issue_tag", "issue_tag_link":
+		return "tag"
+	case "project_context", "issue_context_link":
+		return "book-open"
+	case "sprint":
+		return "calendar-range"
+	case "project_member":
+		return "users"
+	case "project":
+		return "folder"
+	default:
+		return "history"
+	}
+}
+
+func uiChangelogTargetHref(project model.Project, entry model.ProjectChangelogEntry) string {
+	if entry.IssueID == nil || strings.TrimSpace(entry.TargetRef) == "" {
+		return ""
+	}
+	return "/" + project.OwnerUsername + "/issues/" + entry.TargetRef
 }
 
 func uiSprintDate(t time.Time) string {

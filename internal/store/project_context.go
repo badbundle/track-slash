@@ -159,7 +159,16 @@ func (s *Store) CreateProjectContext(ctx context.Context, p CreateProjectContext
 		`, p.ProjectID); err != nil {
 			return err // defensive: project row was locked above
 		}
-		return nil
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "project_context",
+			Op:          "insert",
+			EntityID:    out.ID,
+			TargetRef:   changelogContextRef(out),
+			TargetTitle: out.Title,
+			Summary:     fmt.Sprintf("Created context %s", out.Title),
+			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(out.Body)},
+		})
 	})
 	if err != nil {
 		return model.ProjectContext{}, err
@@ -236,7 +245,22 @@ func (s *Store) CreateIssueContext(ctx context.Context, p CreateIssueContextPara
 		`, projectID); err != nil {
 			return err // defensive: project row was locked above
 		}
-		return nil
+		issue, err := getIssueForChangelog(ctx, tx, p.IssueID, false)
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "project_context",
+			Op:          "insert",
+			EntityID:    out.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Created context for %s", issue.Identifier),
+			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(out.Body)},
+		})
 	})
 	if err != nil {
 		return model.ProjectContext{}, err
@@ -332,18 +356,53 @@ func (s *Store) ListProjectContexts(ctx context.Context, p ListProjectContextsPa
 }
 
 func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContextParams) (model.ProjectContext, error) {
-	const q = `
-		UPDATE project_context pc
-		SET title = COALESCE($2, title),
-		    body = COALESCE($3, body),
-		    updated_by_id = $4,
-		    updated_at = GREATEST(clock_timestamp(), pc.updated_at + interval '1 microsecond')
-		FROM projects pr
-		WHERE pc.id = $1 AND pr.id = pc.project_id AND pr.deleted_at IS NULL
-		RETURNING pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
-		          pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
-	`
-	out, err := scanProjectContext(s.db.QueryRow(ctx, q, p.ID, p.Title, p.Body, p.UpdatedByID))
+	var out model.ProjectContext
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanProjectContext(tx.QueryRow(ctx, `
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
+			FROM project_context pc
+			JOIN projects pr ON pr.id = pc.project_id
+			WHERE pc.id = $1 AND pr.deleted_at IS NULL
+			FOR UPDATE OF pc
+		`, p.ID))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		out, err = scanProjectContext(tx.QueryRow(ctx, `
+			UPDATE project_context pc
+			SET title = COALESCE($2, title),
+			    body = COALESCE($3, body),
+			    updated_by_id = $4,
+			    updated_at = GREATEST(clock_timestamp(), pc.updated_at + interval '1 microsecond')
+			FROM projects pr
+			WHERE pc.id = $1 AND pr.id = pc.project_id AND pr.deleted_at IS NULL
+			RETURNING pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			          pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
+		`, p.ID, p.Title, p.Body, p.UpdatedByID))
+		if err != nil {
+			return err
+		}
+		changes := []model.ProjectChangelogChange{}
+		changes = changelogAppendChange(changes, "title", "Title", before.Title, out.Title)
+		changes = changelogAppendChange(changes, "body", "Body", changelogPreview(before.Body), changelogPreview(out.Body))
+		if len(changes) == 0 {
+			return nil
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "project_context",
+			Op:          "update",
+			EntityID:    out.ID,
+			TargetRef:   changelogContextRef(out),
+			TargetTitle: out.Title,
+			Summary:     fmt.Sprintf("Updated context %s", out.Title),
+			Details:     model.ProjectChangelogDetails{Changes: changes},
+		})
+	})
 	if err != nil {
 		if isNoRows(err) {
 			return model.ProjectContext{}, ErrNotFound
@@ -357,14 +416,38 @@ func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContext
 }
 
 func (s *Store) DeleteProjectContext(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM project_context WHERE id = $1`, id)
-	if err != nil {
-		return err // defensive: delete has no expected FK/check mapping
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanProjectContext(tx.QueryRow(ctx, `
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
+			FROM project_context pc
+			JOIN projects pr ON pr.id = pc.project_id
+			WHERE pc.id = $1 AND pr.deleted_at IS NULL
+			FOR UPDATE OF pc
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM project_context WHERE id = $1`, id)
+		if err != nil {
+			return err // defensive: delete has no expected FK/check mapping
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   before.ProjectID,
+			Entity:      "project_context",
+			Op:          "delete",
+			EntityID:    before.ID,
+			TargetRef:   changelogContextRef(before),
+			TargetTitle: before.Title,
+			Summary:     fmt.Sprintf("Deleted context %s", before.Title),
+		})
+	})
 }
 
 func (s *Store) CreateIssueContextLink(ctx context.Context, issueID, contextID uuid.UUID) (model.IssueContextLink, error) {
@@ -421,7 +504,30 @@ func (s *Store) CreateIssueContextLink(ctx context.Context, issueID, contextID u
 			}
 			return err // defensive: non-pg or unmapped pg error
 		}
-		return nil
+		issue, err := getIssueForChangelog(ctx, tx, issueID, false)
+		if err != nil {
+			return err
+		}
+		contextItem, err := scanProjectContext(tx.QueryRow(ctx, `
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
+			FROM project_context pc
+			WHERE pc.id = $1
+		`, contextID))
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "issue_context_link",
+			Op:          "insert",
+			EntityID:    out.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Attached context %s to %s", contextItem.Title, issue.Identifier),
+		})
 	})
 	if err != nil {
 		return model.IssueContextLink{}, err
@@ -430,17 +536,54 @@ func (s *Store) CreateIssueContextLink(ctx context.Context, issueID, contextID u
 }
 
 func (s *Store) DeleteIssueContextLink(ctx context.Context, issueID, contextID uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		DELETE FROM issue_context_links
-		WHERE issue_id = $1 AND context_id = $2
-	`, issueID, contextID)
-	if err != nil {
-		return err // defensive: delete has no expected FK/check mapping
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		link, err := scanIssueContextLink(tx.QueryRow(ctx, `
+			SELECT id, project_id, issue_id, context_id, created_at, updated_at
+			FROM issue_context_links
+			WHERE issue_id = $1 AND context_id = $2
+			FOR UPDATE
+		`, issueID, contextID))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		issue, err := getIssueForChangelog(ctx, tx, issueID, false)
+		if err != nil {
+			return err
+		}
+		contextItem, err := scanProjectContext(tx.QueryRow(ctx, `
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
+			FROM project_context pc
+			WHERE pc.id = $1
+		`, contextID))
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `
+			DELETE FROM issue_context_links
+			WHERE issue_id = $1 AND context_id = $2
+		`, issueID, contextID)
+		if err != nil {
+			return err // defensive: delete has no expected FK/check mapping
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   link.ProjectID,
+			Entity:      "issue_context_link",
+			Op:          "delete",
+			EntityID:    link.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Removed context %s from %s", contextItem.Title, issue.Identifier),
+		})
+	})
 }
 
 func (s *Store) ListContextsForIssue(ctx context.Context, p ListContextsForIssueParams) ([]model.ProjectContext, bool, error) {

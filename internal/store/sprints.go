@@ -84,7 +84,19 @@ func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.S
 			UPDATE projects SET next_sprint_number = next_sprint_number + 1, updated_at = now()
 			WHERE id = $1
 		`, projectID)
-		return err
+		if err != nil {
+			return err
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "sprint",
+			Op:          "insert",
+			EntityID:    out.ID,
+			TargetRef:   changelogSprintRef(out),
+			TargetTitle: out.Name,
+			Summary:     fmt.Sprintf("Created sprint %s", out.Name),
+			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(out.Goal)},
+		})
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -215,14 +227,20 @@ type UpdateSprintParams struct {
 func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintParams) (model.Sprint, error) {
 	var out model.Sprint
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		var current model.SprintStatus
-		err := tx.QueryRow(ctx, `SELECT status FROM sprints WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&current)
+		before, err := scanSprint(tx.QueryRow(ctx, `
+			SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
+			       completed_at, created_at, updated_at
+			FROM sprints
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR UPDATE
+		`, id))
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
 			}
 			return err
 		}
+		current := before.Status
 		if current == model.SprintStatusCompleted &&
 			(p.Goal != nil || p.StartDate != nil || p.EndDate != nil || p.Status != nil) {
 			return fmt.Errorf("completed sprint can only be renamed: %w", ErrConflict)
@@ -266,13 +284,8 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 		}
 
 		if len(sets) == 0 {
-			var err error
-			out, err = scanSprint(tx.QueryRow(ctx, `
-				SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
-				       completed_at, created_at, updated_at
-				FROM sprints WHERE id = $1 AND deleted_at IS NULL
-			`, id))
-			return err
+			out = before
+			return nil
 		}
 
 		sets = append(sets, "updated_at = now()")
@@ -296,7 +309,25 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 			}
 			return err
 		}
-		return nil
+		changes := []model.ProjectChangelogChange{}
+		changes = changelogAppendChange(changes, "name", "Name", before.Name, out.Name)
+		changes = changelogAppendChange(changes, "goal", "Goal", changelogPreview(before.Goal), changelogPreview(out.Goal))
+		changes = changelogAppendChange(changes, "status", "Status", changelogSprintStatusLabel(before.Status), changelogSprintStatusLabel(out.Status))
+		changes = changelogAppendChange(changes, "start_date", "Start date", before.StartDate.Format(model.DateLayout), out.StartDate.Format(model.DateLayout))
+		changes = changelogAppendChange(changes, "end_date", "End date", before.EndDate.Format(model.DateLayout), out.EndDate.Format(model.DateLayout))
+		if len(changes) == 0 {
+			return nil
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "sprint",
+			Op:          "update",
+			EntityID:    out.ID,
+			TargetRef:   changelogSprintRef(out),
+			TargetTitle: out.Name,
+			Summary:     fmt.Sprintf("Updated sprint %s", out.Name),
+			Details:     model.ProjectChangelogDetails{Changes: changes},
+		})
 	})
 	if err != nil {
 		return model.Sprint{}, err
@@ -373,7 +404,18 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 			RETURNING id, project_id, number, name, goal, status, planned_order, start_date, end_date,
 			          completed_at, created_at, updated_at
 		`, id))
-		return err
+		if err != nil {
+			return err
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "sprint",
+			Op:          "complete",
+			EntityID:    out.ID,
+			TargetRef:   changelogSprintRef(out),
+			TargetTitle: out.Name,
+			Summary:     fmt.Sprintf("Completed sprint %s", out.Name),
+		})
 	})
 	if err != nil {
 		return model.Sprint{}, err
@@ -382,32 +424,44 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 }
 
 func (s *Store) DeleteSprint(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		UPDATE sprints SET deleted_at = now(), updated_at = now()
-		WHERE id = $1 AND deleted_at IS NULL AND status = 'planned'
-	`, id)
-	if err != nil {
-		// Defensive: soft-delete has no expected FK/check mapping.
-		return err
-	}
-	if tag.RowsAffected() > 0 {
-		return nil
-	}
-	var status model.SprintStatus
-	err = s.db.QueryRow(ctx, `
-		SELECT status FROM sprints WHERE id = $1 AND deleted_at IS NULL
-	`, id).Scan(&status)
-	if err != nil {
-		if isNoRows(err) {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanSprint(tx.QueryRow(ctx, `
+			SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
+			       completed_at, created_at, updated_at
+			FROM sprints
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR UPDATE
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if before.Status == model.SprintStatusActive || before.Status == model.SprintStatusCompleted {
+			return fmt.Errorf("cannot delete %s sprint: %w", before.Status, ErrConflict)
+		}
+		tag, err := tx.Exec(ctx, `
+			UPDATE sprints SET deleted_at = now(), updated_at = now()
+			WHERE id = $1 AND deleted_at IS NULL AND status = 'planned'
+		`, id)
+		if err != nil {
+			// Defensive: soft-delete has no expected FK/check mapping.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		// Defensive: only no-rows has a domain mapping here.
-		return err
-	}
-	if status == model.SprintStatusActive || status == model.SprintStatusCompleted {
-		return fmt.Errorf("cannot delete %s sprint: %w", status, ErrConflict)
-	}
-	return ErrNotFound
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   before.ProjectID,
+			Entity:      "sprint",
+			Op:          "delete",
+			EntityID:    before.ID,
+			TargetRef:   changelogSprintRef(before),
+			TargetTitle: before.Name,
+			Summary:     fmt.Sprintf("Deleted sprint %s", before.Name),
+		})
+	})
 }
 
 type ReorderPlannedSprintsParams struct {
@@ -441,12 +495,14 @@ func (s *Store) ReorderPlannedSprints(ctx context.Context, p ReorderPlannedSprin
 		defer rows.Close()
 
 		current := map[uuid.UUID]struct{}{}
+		currentOrder := []uuid.UUID{}
 		for rows.Next() {
 			var id uuid.UUID
 			if err := rows.Scan(&id); err != nil {
 				return err
 			}
 			current[id] = struct{}{}
+			currentOrder = append(currentOrder, id)
 		}
 		if err := rows.Err(); err != nil {
 			return err
@@ -469,6 +525,7 @@ func (s *Store) ReorderPlannedSprints(ctx context.Context, p ReorderPlannedSprin
 			out = []model.Sprint{}
 			return nil
 		}
+		changedOrder := !sameUUIDOrder(currentOrder, p.SprintIDs)
 
 		offset := int64(len(p.SprintIDs) + 1)
 		if _, err := tx.Exec(ctx, `
@@ -509,10 +566,35 @@ func (s *Store) ReorderPlannedSprints(ctx context.Context, p ReorderPlannedSprin
 			}
 			out = append(out, sp)
 		}
-		return rows.Err()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if !changedOrder {
+			return nil
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   projectID,
+			Entity:      "sprint",
+			Op:          "reorder",
+			EntityID:    projectID,
+			TargetTitle: "Planned sprints",
+			Summary:     "Reordered planned sprints",
+		})
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+func sameUUIDOrder(a, b []uuid.UUID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

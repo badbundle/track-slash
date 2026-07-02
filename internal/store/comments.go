@@ -67,6 +67,24 @@ func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model
 		if err != nil {
 			return err
 		}
+		issue, err := getIssueForChangelog(ctx, tx, p.IssueID, false)
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   issue.ProjectID,
+			Entity:      "comment",
+			Op:          "insert",
+			EntityID:    out.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Commented on %s", issue.Identifier),
+			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(out.Body)},
+		}); err != nil {
+			return err
+		}
 		_, err = tx.Exec(ctx, `
 			UPDATE issues SET next_comment_number = next_comment_number + 1, updated_at = now()
 			WHERE id = $1
@@ -192,30 +210,54 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 }
 
 func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model.Comment, error) {
-	const q = `
-		WITH existing AS (
+	var out model.Comment
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanComment(tx.QueryRow(ctx, `
 			SELECT id, issue_id, number, author_id, body, created_at, updated_at
 			FROM comments
 			WHERE id = $1 AND author_id = $2
-		), updated AS (
-			UPDATE comments c
-			SET body = $3,
-				updated_at = GREATEST(clock_timestamp(), c.created_at + interval '1 microsecond')
-			FROM existing e
-			WHERE c.id = e.id AND c.body IS DISTINCT FROM $3
-			RETURNING c.id, c.issue_id, c.number, c.author_id, c.body, c.created_at, c.updated_at
-		)
-		SELECT id, issue_id, number, author_id, body, created_at, updated_at FROM updated
-		UNION ALL
-		SELECT id, issue_id, number, author_id, body, created_at, updated_at
-		FROM existing
-		WHERE NOT EXISTS (SELECT 1 FROM updated)
-	`
-	out, err := scanComment(s.db.QueryRow(ctx, q, p.ID, p.AuthorID, p.Body))
-	if err != nil {
-		if isNoRows(err) {
-			return model.Comment{}, ErrNotFound
+			FOR UPDATE
+		`, p.ID, p.AuthorID))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
 		}
+		if before.Body == p.Body {
+			out = before
+			return nil
+		}
+		out, err = scanComment(tx.QueryRow(ctx, `
+			UPDATE comments
+			SET body = $3,
+				updated_at = GREATEST(clock_timestamp(), created_at + interval '1 microsecond')
+			WHERE id = $1 AND author_id = $2
+			RETURNING id, issue_id, number, author_id, body, created_at, updated_at
+		`, p.ID, p.AuthorID, p.Body))
+		if err != nil {
+			return err
+		}
+		issue, err := getIssueForChangelog(ctx, tx, out.IssueID, false)
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   issue.ProjectID,
+			Entity:      "comment",
+			Op:          "update",
+			EntityID:    out.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Edited comment on %s", issue.Identifier),
+			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+				changelogChange("body", "Comment", changelogPreview(before.Body), changelogPreview(out.Body)),
+			}},
+		})
+	})
+	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23514" {
 			return model.Comment{}, fmt.Errorf("body must be 1..10000 chars: %w", ErrConflict)
@@ -227,13 +269,42 @@ func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model
 }
 
 func (s *Store) DeleteComment(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM comments WHERE id = $1`, id)
-	if err != nil {
-		// Defensive: delete has no expected FK/check mapping.
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanComment(tx.QueryRow(ctx, `
+			SELECT id, issue_id, number, author_id, body, created_at, updated_at
+			FROM comments
+			WHERE id = $1
+			FOR UPDATE
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		issue, err := getIssueForChangelog(ctx, tx, before.IssueID, false)
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM comments WHERE id = $1`, id)
+		if err != nil {
+			// Defensive: delete has no expected FK/check mapping.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		targetRef, targetTitle := changelogTarget(issue)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   issue.ProjectID,
+			Entity:      "comment",
+			Op:          "delete",
+			EntityID:    before.ID,
+			IssueID:     &issue.ID,
+			TargetRef:   targetRef,
+			TargetTitle: targetTitle,
+			Summary:     fmt.Sprintf("Deleted comment on %s", issue.Identifier),
+			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(before.Body)},
+		})
+	})
 }

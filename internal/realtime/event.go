@@ -28,6 +28,7 @@ const (
 	EntityContextLink  Entity = "issue_context_link"
 	EntityIssueTag     Entity = "issue_tag"
 	EntityIssueTagLink Entity = "issue_tag_link"
+	EntityChangelog    Entity = "project_changelog"
 )
 
 // Event is the wire envelope sent over both pg_notify and the WebSocket.
@@ -118,6 +119,18 @@ func (e Event) Topics() []string {
 			topics = append(topics, ProjectTopic(*e.ProjectID))
 		}
 		return topics
+	case EntityChangelog:
+		topics := []string{ProjectChangelogTopic(e.ID)}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		if e.IssueID != nil {
+			topics = append(topics, IssueTopic(*e.IssueID))
+		}
+		if e.ParentIssueID != nil {
+			topics = append(topics, IssueTopic(*e.ParentIssueID))
+		}
+		return topics
 	}
 	return nil
 }
@@ -131,11 +144,12 @@ func ProjectContextTopic(id uuid.UUID) string   { return "project_context:" + id
 func IssueContextLinkTopic(id uuid.UUID) string { return "issue_context_link:" + id.String() }
 func IssueTagTopic(id uuid.UUID) string         { return "issue_tag:" + id.String() }
 func IssueTagLinkTopic(id uuid.UUID) string     { return "issue_tag_link:" + id.String() }
+func ProjectChangelogTopic(id uuid.UUID) string { return "project_changelog:" + id.String() }
 
 // ParseTopic validates a client-supplied topic string and returns its
 // prefix and uuid component.
 func ParseTopic(t string) (kind string, id uuid.UUID, err error) {
-	for _, prefix := range []string{"issue_context_link:", "project_context:", "issue_tag_link:", "issue_link:", "issue_tag:", "comment:", "issue:", "project:", "sprint:"} {
+	for _, prefix := range []string{"issue_context_link:", "project_context:", "project_changelog:", "issue_tag_link:", "issue_link:", "issue_tag:", "comment:", "issue:", "project:", "sprint:"} {
 		if len(t) > len(prefix) && t[:len(prefix)] == prefix {
 			id, err = uuid.Parse(t[len(prefix):])
 			if err != nil {
@@ -144,5 +158,5 @@ func ParseTopic(t string) (kind string, id uuid.UUID, err error) {
 			return prefix[:len(prefix)-1], id, nil
 		}
 	}
-	return "", uuid.Nil, fmt.Errorf("unknown topic format %q (want issue:<uuid>, project:<uuid>, sprint:<uuid>, issue_link:<uuid>, comment:<uuid>, project_context:<uuid>, issue_context_link:<uuid>, issue_tag:<uuid>, or issue_tag_link:<uuid>)", t)
+	return "", uuid.Nil, fmt.Errorf("unknown topic format %q (want issue:<uuid>, project:<uuid>, sprint:<uuid>, issue_link:<uuid>, comment:<uuid>, project_context:<uuid>, issue_context_link:<uuid>, issue_tag:<uuid>, issue_tag_link:<uuid>, or project_changelog:<uuid>)", t)
 }
