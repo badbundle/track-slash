@@ -1814,6 +1814,111 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	}
 }
 
+func TestUIIssueTagModalAttachesAndDetachesTags(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-issue-tags")
+
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "tag modal issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	attached, err := e.store.CreateIssueTag(e.ctx, store.CreateIssueTagParams{ProjectID: e.projectID, Name: "UI", Color: model.TagColorBlue})
+	if err != nil {
+		t.Fatalf("CreateIssueTag attached: %v", err)
+	}
+	available, err := e.store.CreateIssueTag(e.ctx, store.CreateIssueTagParams{ProjectID: e.projectID, Name: "Customer Beta", Color: model.TagColorGreen})
+	if err != nil {
+		t.Fatalf("CreateIssueTag available: %v", err)
+	}
+	if _, err := e.store.CreateIssueTagLink(e.ctx, store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: attached.ID}); err != nil {
+		t.Fatalf("CreateIssueTagLink: %v", err)
+	}
+
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodGet, e.issuePath(issue)+"/tags", token, nil, map[string]string{"HX-Request": "true"})
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("tag modal GET code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{
+		`role="dialog" aria-modal="true" aria-labelledby="issue-tags-title"`,
+		`id="issue-tags-title"`,
+		`Manage tags`,
+		`Search project tags for ` + issue.Identifier + `.`,
+		`#UI`,
+		`#Customer Beta`,
+		`data-search-input`,
+		`data-search-option data-value="Customer Beta"`,
+		`hx-post="` + e.issuePath(issue) + `/tags"`,
+		`hx-post="` + e.issuePath(issue) + `/tags/` + attached.Ref + `/delete"`,
+		`href="` + e.projectPath() + `/tags"`,
+		`Manage project tags`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("tag modal GET missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`>Issue tags</h1>`, `hx-push-url="` + e.issuePath(issue) + `/tags"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("tag modal GET rendered stale fullscreen/push markup %q: %s", notWant, body)
+		}
+	}
+
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/tags", token, strings.NewReader(url.Values{"tag": {available.Name}}.Encode()), map[string]string{"HX-Request": "true"})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("attach tag code = %d body = %s", res.StatusCode, body)
+	}
+	if got := res.Header.Get("HX-Replace-Url"); got != e.issuePath(issue) {
+		t.Fatalf("attach tag HX-Replace-Url = %q, want %q", got, e.issuePath(issue))
+	}
+	for _, want := range []string{`id="issue-tags-title"`, `#UI`, `#Customer Beta`, `No available tags.`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("attach tag response missing %q: %s", want, body)
+		}
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after attach: %v", err)
+	}
+	if len(updated.Tags) != 2 {
+		t.Fatalf("issue tags after attach = %+v, want 2", updated.Tags)
+	}
+
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/tags", token, strings.NewReader(url.Values{"tag": {available.Name}}.Encode()), map[string]string{"HX-Request": "true"})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Tag already attached.") || !strings.Contains(body, `id="issue-tags-title"`) {
+		t.Fatalf("duplicate attach should keep modal with error, code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/tags", token, strings.NewReader(url.Values{"tag": {""}}.Encode()), map[string]string{"HX-Request": "true"})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Choose a tag.") || !strings.Contains(body, `id="issue-tags-title"`) {
+		t.Fatalf("empty attach should keep modal with error, code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/tags/"+attached.Ref+"/delete", token, nil, map[string]string{"HX-Request": "true"})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("detach tag code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, `id="issue-tags-title"`) || !strings.Contains(body, `data-search-option data-value="UI"`) {
+		t.Fatalf("detach response should keep modal and make removed tag available: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after detach: %v", err)
+	}
+	if len(updated.Tags) != 1 || updated.Tags[0].ID != available.ID {
+		t.Fatalf("issue tags after detach = %+v, want only %s", updated.Tags, available.DisplayName)
+	}
+}
+
 func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

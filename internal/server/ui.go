@@ -80,6 +80,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"linkedIssueProgress":          uiLinkedIssueProgress,
 	"closeReasonLabel":             uiCloseReasonLabel,
 	"closeReasonModal":             uiCloseReasonModal,
+	"issueTagsModal":               uiIssueTagsModal,
 	"issueCloseReasonDropdown":     uiIssueCloseReasonDropdown,
 	"issueStatusDropdown":          uiIssueStatusDropdown,
 	"closeReasonOptions":           uiCloseReasonOptions,
@@ -543,6 +544,10 @@ type uiIssuePanelData struct {
 	LinkError          string
 	Contexts           []model.ProjectContext
 	ContextsHasMore    bool
+	EditTags           bool
+	TagModalAttached   []model.IssueTag
+	TagModalAvailable  []model.IssueTag
+	TagInput           string
 	TagError           string
 	BackHref           string
 	BackHXGet          string
@@ -1789,7 +1794,7 @@ func (s *Server) uiIssueTagsPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+	s.renderUIIssuePanelWithTagModal(w, r, issue.ID, "", "")
 }
 
 func (s *Server) uiAttachIssueTag(w http.ResponseWriter, r *http.Request) {
@@ -1808,30 +1813,28 @@ func (s *Server) uiAttachIssueTag(w http.ResponseWriter, r *http.Request) {
 	input := strings.TrimSpace(r.Form.Get("tag"))
 	name, err := model.NormalizeIssueTagName(input)
 	if err != nil {
-		s.renderUIIssueTagManager(w, r, issue.ID, func(panel *uiTagManagerData) {
-			panel.AttachInput = input
-			panel.AttachError = "Choose a tag."
-		})
+		s.renderUIIssuePanelWithTagModal(w, r, issue.ID, input, "Choose a tag.")
 		return
 	}
 	tag, err := s.store.GetIssueTagByProjectName(r.Context(), issue.ProjectID, name)
 	if err != nil {
-		writeUIStoreError(w, err)
-		return
-	}
-	if _, err := s.store.CreateIssueTagLink(r.Context(), store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: tag.ID}); err != nil {
-		if errors.Is(err, store.ErrConflict) {
-			s.renderUIIssueTagManager(w, r, issue.ID, func(panel *uiTagManagerData) {
-				panel.AttachInput = input
-				panel.AttachError = "Tag already attached."
-			})
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderUIIssuePanelWithTagModal(w, r, issue.ID, input, "Tag not found.")
 			return
 		}
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssueTagsPath(issue))
-	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+	if _, err := s.store.CreateIssueTagLink(r.Context(), store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: tag.ID}); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			s.renderUIIssuePanelWithTagModal(w, r, issue.ID, input, "Tag already attached.")
+			return
+		}
+		writeUIStoreError(w, err)
+		return
+	}
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithTagModal(w, r, issue.ID, "", "")
 }
 
 func (s *Server) uiDetachIssueTag(w http.ResponseWriter, r *http.Request) {
@@ -1856,8 +1859,8 @@ func (s *Server) uiDetachIssueTag(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssueTagsPath(issue))
-	s.renderUIIssueTagManager(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
+	s.renderUIIssuePanelWithTagModal(w, r, issue.ID, "", "")
 }
 
 func (s *Server) renderUIProjectTagManager(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, mutate func(*uiTagManagerData)) {
@@ -1882,6 +1885,38 @@ func (s *Server) renderUIIssueTagManager(w http.ResponseWriter, r *http.Request,
 		mutate(panel)
 	}
 	s.renderUITagManager(w, r, panel)
+}
+
+func (s *Server) renderUIIssuePanelWithTagModal(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, input, message string) {
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiPopulateIssueTagModal(r.Context(), panel, input, message); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.renderUIIssuePanelResponse(w, r, panel)
+}
+
+func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Request, panel *uiIssuePanelData) {
+	if isHTMXRequest(r) {
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		User:             currentUser(r),
+		Projects:         projects,
+		CurrentProjectID: panel.Project.ID,
+		CurrentView:      "projects",
+		IssuePanel:       panel,
+	})
 }
 
 func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, panel *uiTagManagerData) {
@@ -1942,23 +1977,9 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 	if err != nil {
 		return nil, err
 	}
-	allTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: projectID, Limit: MaxLimit})
+	currentTags, available, err := s.uiIssueTagAttachmentOptions(ctx, issue)
 	if err != nil {
 		return nil, err
-	}
-	currentTags, _, err := s.store.ListTagsForIssue(ctx, store.ListTagsForIssueParams{IssueID: issueID, Limit: MaxLimit})
-	if err != nil {
-		return nil, err
-	}
-	attached := make(map[uuid.UUID]struct{}, len(currentTags))
-	for _, tag := range currentTags {
-		attached[tag.ID] = struct{}{}
-	}
-	available := make([]model.IssueTag, 0, len(allTags))
-	for _, tag := range allTags {
-		if _, ok := attached[tag.ID]; !ok {
-			available = append(available, tag)
-		}
 	}
 	return &uiTagManagerData{
 		Mode:      "issue",
@@ -1971,6 +1992,42 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 		BackHXGet: uiIssuePanelPath(issue),
 		BackLabel: "Issue",
 	}, nil
+}
+
+func (s *Server) uiPopulateIssueTagModal(ctx context.Context, panel *uiIssuePanelData, input, message string) error {
+	attached, available, err := s.uiIssueTagAttachmentOptions(ctx, panel.Issue)
+	if err != nil {
+		return err
+	}
+	panel.EditTags = true
+	panel.TagModalAttached = attached
+	panel.TagModalAvailable = available
+	panel.TagInput = input
+	panel.TagError = message
+	panel.Issue.Tags = attached
+	return nil
+}
+
+func (s *Server) uiIssueTagAttachmentOptions(ctx context.Context, issue model.Issue) ([]model.IssueTag, []model.IssueTag, error) {
+	allTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: issue.ProjectID, Limit: MaxLimit})
+	if err != nil {
+		return nil, nil, err
+	}
+	currentTags, _, err := s.store.ListTagsForIssue(ctx, store.ListTagsForIssueParams{IssueID: issue.ID, Limit: MaxLimit})
+	if err != nil {
+		return nil, nil, err
+	}
+	attached := make(map[uuid.UUID]struct{}, len(currentTags))
+	for _, tag := range currentTags {
+		attached[tag.ID] = struct{}{}
+	}
+	available := make([]model.IssueTag, 0, len(allTags))
+	for _, tag := range allTags {
+		if _, ok := attached[tag.ID]; !ok {
+			available = append(available, tag)
+		}
+	}
+	return currentTags, available, nil
 }
 
 func (s *Server) renderUIProjectTagEditError(w http.ResponseWriter, r *http.Request, projectID, tagID uuid.UUID, name string, color model.IssueTagColor, message string) {
@@ -6880,6 +6937,24 @@ func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
 			{
 				Label: uiStatusLabel(model.StatusClosed),
 				Class: uiStatusClass(model.StatusClosed),
+			},
+		},
+	}
+}
+
+func uiIssueTagsModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "issue-tags",
+		Title:           "Manage tags",
+		Description:     fmt.Sprintf("Search project tags for %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-lg",
+		CancelLabel:     "Close tag manager",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: panel.Issue.Identifier,
+				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
 			},
 		},
 	}

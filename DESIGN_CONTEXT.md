@@ -25,3 +25,10 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Use user-facing titles for finding and attaching context. Do not expose refs such as `context-1` as visible row labels or search/link inputs; refs may remain in URLs/API mechanics.
 - Keep issue context manager actions explicit: one action to create issue-scoped context and one action to attach existing project context. Project context manager actions stay project-scoped.
 - Render text context as escaped pre-wrapped text when viewing; do not turn context body into Markdown HTML unless a future product decision changes that behavior.
+
+## Tag IA
+
+- Treat issue tags as lightweight issue-detail metadata. Show them near the issue title, not buried in the Details sidebar.
+- Use a modal for issue-scoped tag attach/detach from issue detail. The modal should preserve the user's place on the issue, avoid URL pushes, support quick repeated changes, and expose search over existing project tags.
+- Keep broader tag taxonomy work in the project tag manager. Issue tag modals should link out to that manager for create/edit/delete rather than becoming a second fullscreen management surface.
+- Ticket numbers are identifiers, not prose. Render issue identifiers with the shared compact monospace `issue-key` treatment, including modal/header contexts.

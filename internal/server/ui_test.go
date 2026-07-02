@@ -648,6 +648,102 @@ func TestUITagManagerUsesTagNamesNotRefs(t *testing.T) {
 	}
 }
 
+func TestUIIssuePanelRendersTagModal(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("a5a29c23-62e6-4afa-a1f4-2329d9589787")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issue := model.Issue{
+		ID:            uuid.MustParse("8df3db99-219a-4a89-9f5e-9727f033c4ea"),
+		ProjectID:     projectID,
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Number:        12,
+		Identifier:    "TRACK-12",
+		Title:         "Tagged issue",
+		Status:        model.StatusTodo,
+	}
+	tags := []model.IssueTag{
+		uiTestIssueTag(projectID, 1, "Customer Beta", model.TagColorGreen),
+		uiTestIssueTag(projectID, 2, "Q3 Launch", model.TagColorViolet),
+	}
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue:             issue,
+		Project:           project,
+		EditTags:          true,
+		TagModalAttached:  tags[:1],
+		TagModalAvailable: tags[1:],
+		TagInput:          "Missing",
+		TagError:          "Tag not found.",
+		BackHref:          "/bradley/projects/TRACK/all",
+		BackHXGet:         "/bradley/projects/TRACK/all/panel",
+		BackLabel:         "All issues",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`role="dialog" aria-modal="true" aria-labelledby="issue-tags-title"`,
+		`id="issue-tags-title"`,
+		`font-mono text-[11px] font-semibold uppercase`,
+		`Manage tags`,
+		`Search project tags for TRACK-12.`,
+		`hx-get="/bradley/issues/TRACK-12/panel"`,
+		`Close tag manager`,
+		`Attached tags`,
+		`#Customer Beta`,
+		`method="post" action="/bradley/issues/TRACK-12/tags/tag-1/delete"`,
+		`hx-post="/bradley/issues/TRACK-12/tags/tag-1/delete"`,
+		`aria-label="Remove #Customer Beta"`,
+		`Attach tag`,
+		`data-search data-search-collapsible`,
+		`data-search-input`,
+		`value="Missing"`,
+		`Tag not found.`,
+		`role="listbox" aria-label="Tag suggestions"`,
+		`data-search-option data-value="Q3 Launch"`,
+		`data-search-text="#Q3 Launch Q3 Launch"`,
+		`#Q3 Launch`,
+		`method="post" action="/bradley/issues/TRACK-12/tags"`,
+		`hx-post="/bradley/issues/TRACK-12/tags"`,
+		`hx-push-url="false"`,
+		`href="/bradley/projects/TRACK/tags"`,
+		`hx-get="/bradley/projects/TRACK/tags"`,
+		`Manage project tags`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("issue tag modal missing %q: %s", want, body)
+		}
+	}
+	for _, unwanted := range []string{`>tag-1<`, `>tag-2<`, `value="tag-2"`} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("issue tag modal rendered ref %q: %s", unwanted, body)
+		}
+	}
+
+	buf.Reset()
+	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue:     issue,
+		Project:   project,
+		EditTags:  true,
+		BackHref:  "/bradley/projects/TRACK/all",
+		BackHXGet: "/bradley/projects/TRACK/all/panel",
+		BackLabel: "All issues",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate empty modal: %v", err)
+	}
+	body = buf.String()
+	for _, want := range []string{"No tags attached.", "No available tags."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty issue tag modal missing %q: %s", want, body)
+		}
+	}
+}
+
 func uiTestIssueTag(projectID uuid.UUID, number int, name string, color model.IssueTagColor) model.IssueTag {
 	return model.IssueTag{
 		ID:          uuid.NewSHA1(uuid.NameSpaceOID, []byte(name)),
@@ -961,6 +1057,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Edit title"`,
 		`hx-get="/bradley/issues/TRACK-7/title/edit"`,
 		`aria-label="Manage tags"`,
+		`href="/bradley/issues/TRACK-7/tags"`,
 		`hx-get="/bradley/issues/TRACK-7/tags"`,
 		`href="/bradley/projects/TRACK/planned"`,
 		`hx-get="/bradley/projects/TRACK/planned/panel"`,
@@ -1134,6 +1231,14 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		!strings.Contains(titleHeader, `aria-label="Manage tags"`) ||
 		!strings.Contains(titleHeader, "Planned One") {
 		t.Fatalf("title header should render tags, tag manager action, and sprint title: %s", body)
+	}
+	tagActionStart := strings.Index(titleHeader, `aria-label="Manage tags"`)
+	if tagActionStart < 0 {
+		t.Fatalf("title header missing tag manager action: %s", titleHeader)
+	}
+	tagActionEnd := strings.Index(titleHeader[tagActionStart:], "</a>")
+	if tagActionEnd < 0 || !strings.Contains(titleHeader[tagActionStart:tagActionStart+tagActionEnd], `hx-push-url="false"`) {
+		t.Fatalf("title header tag manager action should open without pushing URL: %s", titleHeader)
 	}
 	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress", "cursor-not-allowed"} {
 		if strings.Contains(titleHeader, notWant) {

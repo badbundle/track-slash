@@ -37,11 +37,11 @@
           {{else}}
           {{template "count-badge" 0}}
           {{end}}
-          <a href="{{issueTags .Issue}}" aria-label="Manage tags" hx-get="{{issueTags .Issue}}" hx-target="#main" hx-push-url="{{issueTags .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          <a href="{{issueTags .Issue}}" aria-label="Manage tags" hx-get="{{issueTags .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
           </a>
         </div>
-        {{if .TagError}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.TagError}}</p>{{end}}
+        {{if and .TagError (not .EditTags)}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.TagError}}</p>{{end}}
         {{if .ParentIssue}}
         <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="mt-1 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
           <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
@@ -86,6 +86,70 @@
   {{template "modal-open" (closeReasonModal .)}}
     <div class="mt-4">
       {{template "option-dropdown" (issueCloseReasonDropdown .)}}
+    </div>
+  {{template "modal-close" .}}
+  {{end}}
+
+  {{if .EditTags}}
+  {{template "modal-open" (issueTagsModal .)}}
+    <div class="mt-4 grid gap-4">
+      <section class="min-w-0">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Attached tags</h3>
+          {{template "count-badge" (len .TagModalAttached)}}
+        </div>
+        {{if .TagModalAttached}}
+        <div class="mt-2 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+          {{range .TagModalAttached}}
+          <div class="flex min-w-0 items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 last:border-b-0 dark:border-slate-800">
+            <div class="min-w-0">{{template "tag-badge" .}}</div>
+            <form method="post" action="{{issueTagDelete $.Issue .}}" hx-post="{{issueTagDelete $.Issue .}}" hx-target="#main" hx-push-url="false">
+              <button type="submit" aria-label="Remove {{.DisplayName}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+                <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+            </form>
+          </div>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="mt-2 rounded-lg border border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No tags attached.</p>
+        {{end}}
+      </section>
+
+      <section class="min-w-0">
+        <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Attach tag</h3>
+        <form method="post" action="{{issueTags .Issue}}" hx-post="{{issueTags .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2 space-y-2" data-search data-search-collapsible>
+          <div class="flex min-w-0 items-center gap-2">
+            <div class="relative min-w-0 flex-1">
+              <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" aria-hidden="true"></i>
+              <input name="tag" value="{{.TagInput}}" autocomplete="off" autofocus aria-label="Search tags" placeholder="Search tags" data-search-input class="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            </div>
+            <button type="submit" aria-label="Attach tag" class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+          {{if .TagError}}<p class="text-sm text-rose-700 dark:text-rose-300">{{.TagError}}</p>{{end}}
+          <div data-search-options role="listbox" aria-label="Tag suggestions" class="max-h-52 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            {{if .TagModalAvailable}}
+            {{range .TagModalAvailable}}
+            <button type="button" role="option" data-search-option data-value="{{.Name}}" data-search-text="{{.DisplayName}} {{.Name}}" class="flex w-full min-w-0 items-center justify-between gap-3 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
+              <span class="min-w-0">{{template "tag-badge" .}}</span>
+              <i data-lucide="plus" class="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true"></i>
+            </button>
+            {{end}}
+            {{else}}
+            <div data-search-empty class="px-2.5 py-3 text-sm text-slate-500 dark:text-slate-400">No available tags.</div>
+            {{end}}
+          </div>
+        </form>
+      </section>
+
+      <div class="border-t border-slate-100 pt-3 dark:border-slate-800">
+        <a href="{{projectTags .Project}}" hx-get="{{projectTags .Project}}" hx-target="#main" hx-push-url="{{projectTags .Project}}" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200">
+          <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
+          Manage project tags
+        </a>
+      </div>
     </div>
   {{template "modal-close" .}}
   {{end}}

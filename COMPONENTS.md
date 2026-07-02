@@ -9,7 +9,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Badges
 
-- `issue-key`: compact issue identifier badge.
+- `issue-key`: compact monospace issue identifier badge. Use it for ticket numbers wherever possible; if a generic data-driven badge must show an issue identifier, mirror this component's monospace, uppercase, compact bordered treatment.
 - `project-key`: compact project key badge.
 - `count-badge`: small numeric count badge.
 - `status-badge`: issue status badge using `statusClass`.
@@ -28,6 +28,8 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Modals
 
 - `modal-open` and `modal-close`: reusable modal shell with title, optional description, badges, and cancel action. Wrap workflow-specific body content between the two templates.
+- Issue-scoped relationship edits should prefer modals over fullscreen manager pages when the user is making a small local change from issue detail. Keep the surrounding issue context visible, avoid URL pushes for open/submit/close, support repeated HTMX updates inside the modal, and link out to the fuller manager when the task expands.
+- Issue tag modal convention: show attached tags first, then a searchable list of available project tags. Attach/detach existing tags only; create/edit/delete project tags stays in the project tag manager.
 
 ## Rows And Notices
 
