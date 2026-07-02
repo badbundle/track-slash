@@ -320,6 +320,24 @@ type Project struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+type StorageObject struct {
+	ID          uuid.UUID  `json:"id"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	Number      int        `json:"number"`
+	Ref         string     `json:"ref"`
+	Backend     string     `json:"backend"`
+	Bucket      string     `json:"bucket"`
+	ObjectKey   string     `json:"object_key"`
+	Filename    string     `json:"filename"`
+	ContentType string     `json:"content_type"`
+	ByteSize    int64      `json:"byte_size"`
+	SHA256      string     `json:"sha256"`
+	CreatedByID uuid.UUID  `json:"created_by_id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
+}
+
 type Issue struct {
 	ID            uuid.UUID         `json:"id"`
 	ProjectID     uuid.UUID         `json:"project_id"`
@@ -478,6 +496,10 @@ func IssueLinkRef(number int) string {
 
 func ProjectContextRef(number int) string {
 	return fmt.Sprintf("context-%d", number)
+}
+
+func StorageObjectRef(number int) string {
+	return fmt.Sprintf("object-%d", number)
 }
 
 func CommentRef(number int) string {

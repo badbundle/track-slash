@@ -1,0 +1,487 @@
+package server_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/server"
+	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
+	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/bradleymackey/track-slash/internal/testutil"
+)
+
+func newStorageHTTPEnv(t *testing.T, maxUploadBytes int64) (*httpEnv, string) {
+	t.Helper()
+	storageSvc, root := newLocalStorageService(t, maxUploadBytes)
+	return newStorageHTTPEnvWithService(t, storageSvc), root
+}
+
+func newLocalStorageService(t *testing.T, maxUploadBytes int64) (*objectstorage.Service, string) {
+	t.Helper()
+	root := t.TempDir()
+	storageSvc, err := objectstorage.NewLocalService(root, "local", maxUploadBytes)
+	if err != nil {
+		t.Fatalf("NewLocalService: %v", err)
+	}
+	return storageSvc, root
+}
+
+func newStorageHTTPEnvWithService(t *testing.T, storageSvc *objectstorage.Service) *httpEnv {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	db := testutil.NewMigratedDatabase(t)
+	st := store.New(db.Pool)
+	srv := server.NewWithOptions(st, nil, server.Options{ObjectStorage: storageSvc})
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+
+	key := uniqueProjectKey(t)
+	admin, err := st.CreateOrUpdateAdminUser(ctx, "admin-"+key+"@example.com", "Admin")
+	if err != nil {
+		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	proj, err := st.CreateProjectForUser(ctx, admin.ID, key, "storage-test", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
+	}
+	token, err := st.CreateAuthToken(ctx, store.CreateAuthTokenParams{
+		UserID: admin.ID,
+		Kind:   model.AuthTokenKindAPI,
+		Name:   "test",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+
+	return &httpEnv{
+		ctx: ctx, ts: ts, store: st, projectID: proj.ID, projKey: key, ownerUsername: admin.Username,
+		adminID: admin.ID, authToken: token.RawToken,
+	}
+}
+
+func (e *httpEnv) projectObjectsPath() string {
+	return e.projectPath() + "/objects"
+}
+
+func (e *httpEnv) storageObjectPath(object model.StorageObject) string {
+	return e.projectObjectsPath() + "/" + object.Ref
+}
+
+func (e *httpEnv) doMultipartObject(t *testing.T, token, filename string, content []byte) (int, []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("write part: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close: %v", err)
+	}
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+apiPath(e.projectObjectsPath()), &buf)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := e.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("do multipart: %v", err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return res.StatusCode, body
+}
+
+func (e *httpEnv) doMultipartObjectWithoutFile(t *testing.T, token string) (int, []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	if err := writer.WriteField("title", "no file"); err != nil {
+		t.Fatalf("WriteField: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close: %v", err)
+	}
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+apiPath(e.projectObjectsPath()), &buf)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res, err := e.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("do multipart: %v", err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return res.StatusCode, body
+}
+
+func (e *httpEnv) doRaw(t *testing.T, token, method, path string, body io.Reader, contentType string) (*http.Response, []byte) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(e.ctx, method, e.ts.URL+apiPath(path), body)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	res, err := e.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("do raw: %v", err)
+	}
+	defer res.Body.Close()
+	out, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return res, out
+}
+
+func TestHTTPStorageObjectCRUD(t *testing.T) {
+	t.Parallel()
+	e, root := newStorageHTTPEnv(t, 1024)
+	content := append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte("image-bytes")...)
+	sum := sha256.Sum256(content)
+	wantSHA := hex.EncodeToString(sum[:])
+
+	code, body := e.doMultipartObject(t, e.authToken, "photo.png", content)
+	if code != http.StatusCreated {
+		t.Fatalf("upload code = %d body = %s", code, body)
+	}
+	object := decode[model.StorageObject](t, body)
+	if object.Ref != "object-1" || object.ProjectID != e.projectID || object.Backend != "local" || object.Bucket != "local" || object.Filename != "photo.png" || object.ContentType != "image/png" || object.ByteSize != int64(len(content)) || object.SHA256 != wantSHA || object.CreatedByID != e.adminID {
+		t.Fatalf("object = %+v", object)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(object.ObjectKey))); err != nil {
+		t.Fatalf("stored file stat: %v", err)
+	}
+
+	code, body = e.doMultipartObject(t, e.authToken, "notes.txt", []byte("second"))
+	if code != http.StatusCreated {
+		t.Fatalf("second upload code = %d body = %s", code, body)
+	}
+	second := decode[model.StorageObject](t, body)
+	if second.Ref != "object-2" {
+		t.Fatalf("second.Ref = %q, want object-2", second.Ref)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.projectObjectsPath()+"?limit=1", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list code = %d body = %s", code, body)
+	}
+	page := decodePage[model.StorageObject](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != object.ID || page.NextCursor == nil {
+		t.Fatalf("page = %+v", page)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectObjectsPath()+"?cursor="+*page.NextCursor+"&limit=1", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list page2 code = %d body = %s", code, body)
+	}
+	page = decodePage[model.StorageObject](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != second.ID || page.NextCursor != nil {
+		t.Fatalf("page2 = %+v", page)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.storageObjectPath(object), nil)
+	if code != http.StatusOK {
+		t.Fatalf("get code = %d body = %s", code, body)
+	}
+	got := decode[model.StorageObject](t, body)
+	if got.ID != object.ID || got.ObjectKey != object.ObjectKey {
+		t.Fatalf("got = %+v, want %+v", got, object)
+	}
+
+	res, body := e.doRaw(t, e.authToken, http.MethodGet, e.storageObjectPath(object)+"/content", nil, "")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("content code = %d body = %s", res.StatusCode, body)
+	}
+	if !bytes.Equal(body, content) {
+		t.Fatalf("content body = %q, want upload bytes", body)
+	}
+	if got := res.Header.Get("Content-Type"); got != "image/png" {
+		t.Fatalf("Content-Type = %q, want image/png", got)
+	}
+	if got := res.Header.Get("Content-Length"); got != strconv.Itoa(len(content)) {
+		t.Fatalf("Content-Length = %q, want %d", got, len(content))
+	}
+	if got := res.Header.Get("ETag"); got != `"`+wantSHA+`"` {
+		t.Fatalf("ETag = %q, want sha", got)
+	}
+	if got := res.Header.Get("Content-Disposition"); !strings.Contains(got, "photo.png") {
+		t.Fatalf("Content-Disposition = %q, want filename", got)
+	}
+
+	code, body = e.do(t, http.MethodDelete, e.storageObjectPath(object), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete code = %d body = %s", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(object.ObjectKey))); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleted file stat err = %v, want not exist", err)
+	}
+	code, body = e.do(t, http.MethodGet, e.storageObjectPath(object), nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("get deleted code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, e.storageObjectPath(object)+"/content", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("content deleted code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPStorageObjectAccessAndValidation(t *testing.T) {
+	t.Parallel()
+	e, _ := newStorageHTTPEnv(t, 8)
+	content := []byte("12345678")
+	code, body := e.doMultipartObject(t, e.authToken, "photo.png", content)
+	if code != http.StatusCreated {
+		t.Fatalf("admin upload code = %d body = %s", code, body)
+	}
+	object := decode[model.StorageObject](t, body)
+
+	code, body = e.doUnauth(t, http.MethodGet, e.projectObjectsPath(), nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("unauth list code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartObject(t, "", "photo.png", content)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("unauth upload code = %d body = %s", code, body)
+	}
+	_, outsiderToken := e.mustUserToken(t, "storage-outsider")
+	code, body = e.doWithToken(t, outsiderToken, http.MethodGet, e.projectObjectsPath(), nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider list code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, outsiderToken, http.MethodGet, e.storageObjectPath(object), nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider get code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, outsiderToken, http.MethodGet, e.storageObjectPath(object)+"/content", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider content code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, outsiderToken, http.MethodDelete, e.storageObjectPath(object), nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider delete code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartObject(t, outsiderToken, "photo.png", content)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider upload code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodPost, e.projectObjectsPath(), map[string]any{"file": "nope"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("json upload code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartObjectWithoutFile(t, e.authToken)
+	if code != http.StatusBadRequest {
+		t.Fatalf("missing file code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartObject(t, e.authToken, "big.bin", []byte("123456789"))
+	if code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversize upload code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartObject(t, e.authToken, "../", content)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad filename code = %d body = %s", code, body)
+	}
+	code, body = e.doMultipartObject(t, e.authToken, strings.Repeat("x", 256), content)
+	if code != http.StatusBadRequest {
+		t.Fatalf("long filename code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectObjectsPath()+"/not-an-object", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad ref code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectObjectsPath()+"?cursor=not-base64", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad cursor code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectObjectsPath()+"?limit=0", nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("bad limit code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, e.projectObjectsPath()+"/object-9999", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("missing ref code = %d body = %s", code, body)
+	}
+
+	missingBackend, err := e.store.CreateStorageObject(e.ctx, store.CreateStorageObjectParams{
+		ID:          uuid.New(),
+		ProjectID:   e.projectID,
+		Backend:     "local",
+		Bucket:      "local",
+		ObjectKey:   "projects/missing/objects/missing",
+		Filename:    "missing.bin",
+		ContentType: "application/octet-stream",
+		ByteSize:    1,
+		SHA256:      strings.Repeat("b", 64),
+		CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageObject missing backend: %v", err)
+	}
+	code, body = e.do(t, http.MethodGet, e.storageObjectPath(missingBackend)+"/content", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("missing backend content code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodDelete, e.storageObjectPath(missingBackend), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete missing backend code = %d body = %s", code, body)
+	}
+
+	disabled := newHTTPEnv(t)
+	disabledObject, err := disabled.store.CreateStorageObject(disabled.ctx, store.CreateStorageObjectParams{
+		ID:          uuid.New(),
+		ProjectID:   disabled.projectID,
+		Backend:     "local",
+		Bucket:      "local",
+		ObjectKey:   "projects/disabled/objects/1",
+		Filename:    "disabled.bin",
+		ContentType: "application/octet-stream",
+		ByteSize:    1,
+		SHA256:      strings.Repeat("c", 64),
+		CreatedByID: disabled.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageObject disabled: %v", err)
+	}
+	code, body = disabled.doMultipartObject(t, disabled.authToken, "photo.png", content)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("disabled storage upload code = %d body = %s", code, body)
+	}
+	code, body = disabled.do(t, http.MethodGet, disabled.storageObjectPath(disabledObject)+"/content", nil)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("disabled storage content code = %d body = %s", code, body)
+	}
+	code, body = disabled.do(t, http.MethodDelete, disabled.storageObjectPath(disabledObject), nil)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("disabled storage delete code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPStorageObjectDeleteBackendFailure(t *testing.T) {
+	t.Parallel()
+	backend := &deleteErrorBackend{}
+	storageSvc, err := objectstorage.NewService("local", "local", 1024, backend)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	e := newStorageHTTPEnvWithService(t, storageSvc)
+	object, err := e.store.CreateStorageObject(e.ctx, store.CreateStorageObjectParams{
+		ID:          uuid.New(),
+		ProjectID:   e.projectID,
+		Backend:     "local",
+		Bucket:      "local",
+		ObjectKey:   "projects/delete-error/objects/1",
+		Filename:    "delete-error.bin",
+		ContentType: "application/octet-stream",
+		ByteSize:    1,
+		SHA256:      strings.Repeat("d", 64),
+		CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageObject: %v", err)
+	}
+	code, body := e.do(t, http.MethodDelete, e.storageObjectPath(object), nil)
+	if code != http.StatusInternalServerError {
+		t.Fatalf("delete backend failure code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPStorageObjectDeletesBackendOnMetadataFailure(t *testing.T) {
+	t.Parallel()
+	backend := &invalidHashBackend{}
+	storageSvc, err := objectstorage.NewService("local", "local", 1024, backend)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	e := newStorageHTTPEnvWithService(t, storageSvc)
+
+	code, body := e.doMultipartObject(t, e.authToken, "photo.png", []byte("image"))
+	if code != http.StatusConflict {
+		t.Fatalf("metadata failure upload code = %d body = %s", code, body)
+	}
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if backend.putKey == "" || backend.deletedKey != backend.putKey {
+		t.Fatalf("backend cleanup put=%q deleted=%q", backend.putKey, backend.deletedKey)
+	}
+}
+
+type invalidHashBackend struct {
+	mu         sync.Mutex
+	putKey     string
+	deletedKey string
+}
+
+func (b *invalidHashBackend) Put(ctx context.Context, key string, r io.Reader, maxBytes int64) (objectstorage.WrittenObject, error) {
+	if _, err := io.Copy(io.Discard, r); err != nil {
+		return objectstorage.WrittenObject{}, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.putKey = key
+	return objectstorage.WrittenObject{Size: 1, SHA256: "not-a-sha"}, nil
+}
+
+func (b *invalidHashBackend) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	return nil, objectstorage.ErrNotFound
+}
+
+func (b *invalidHashBackend) Delete(ctx context.Context, key string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.deletedKey = key
+	return nil
+}
+
+type deleteErrorBackend struct{}
+
+func (deleteErrorBackend) Put(ctx context.Context, key string, r io.Reader, maxBytes int64) (objectstorage.WrittenObject, error) {
+	return objectstorage.WrittenObject{Size: 1, SHA256: strings.Repeat("e", 64)}, nil
+}
+
+func (deleteErrorBackend) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	return nil, objectstorage.ErrNotFound
+}
+
+func (deleteErrorBackend) Delete(ctx context.Context, key string) error {
+	return errors.New("delete failed")
+}

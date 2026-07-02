@@ -1,0 +1,275 @@
+package server
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"mime"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
+	"github.com/bradleymackey/track-slash/internal/store"
+)
+
+const (
+	maxStorageObjectFilenameLength    = 255
+	maxStorageObjectContentTypeLength = 255
+	storageMultipartOverheadBytes     = 1024 * 1024
+)
+
+func (s *Server) createStorageObject(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	if !s.requireObjectStorage(w) {
+		return
+	}
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if !strings.HasPrefix(contentType, "multipart/form-data") {
+		writeError(w, http.StatusBadRequest, "multipart file required")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, s.objectStorage.MaxUploadBytes()+storageMultipartOverheadBytes)
+	if err := r.ParseMultipartForm(s.objectStorage.MaxUploadBytes() + storageMultipartOverheadBytes); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "file too large")
+			return
+		}
+		writeError(w, http.StatusBadRequest, "unable to read upload")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file required")
+		return
+	}
+	defer file.Close()
+
+	filename, err := normalizeStorageObjectFilename(header.Filename)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	contentType, body, err := storageUploadContentTypeAndBody(file, header.Header.Get("Content-Type"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	objectID := uuid.New()
+	stored, err := s.objectStorage.Put(r.Context(), project.ID, objectID, body)
+	if err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	created, err := s.store.CreateStorageObject(r.Context(), store.CreateStorageObjectParams{
+		ID:          objectID,
+		ProjectID:   project.ID,
+		Backend:     stored.Backend,
+		Bucket:      stored.Bucket,
+		ObjectKey:   stored.ObjectKey,
+		Filename:    filename,
+		ContentType: contentType,
+		ByteSize:    stored.ByteSize,
+		SHA256:      stored.SHA256,
+		CreatedByID: currentUser(r).ID,
+	})
+	if err != nil {
+		_ = s.objectStorage.Delete(r.Context(), stored.ObjectKey)
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, created)
+}
+
+func (s *Server) listStorageObjects(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.StorageObjectsCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.StorageObjectsCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+	out, hasMore, err := s.store.ListStorageObjects(r.Context(), store.ListStorageObjectsParams{
+		ProjectID: project.ID,
+		Cursor:    cursor,
+		Limit:     limit,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var next *string
+	if hasMore {
+		last := out[len(out)-1]
+		enc := encodeCursor(store.StorageObjectsCursor{Number: last.Number})
+		next = &enc
+	}
+	writePage(w, out, next)
+}
+
+func (s *Server) getStorageObject(w http.ResponseWriter, r *http.Request) {
+	_, object, ok := s.storageObjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, object)
+}
+
+func (s *Server) getStorageObjectContent(w http.ResponseWriter, r *http.Request) {
+	_, object, ok := s.storageObjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireObjectStorage(w) {
+		return
+	}
+	body, err := s.objectStorage.Open(r.Context(), object.ObjectKey)
+	if err != nil {
+		writeStorageError(w, err)
+		return
+	}
+	defer body.Close()
+
+	w.Header().Set("Content-Type", object.ContentType)
+	w.Header().Set("Content-Length", strconv.FormatInt(object.ByteSize, 10))
+	w.Header().Set("ETag", `"`+object.SHA256+`"`)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": object.Filename}))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, body)
+}
+
+func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
+	_, object, ok := s.storageObjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireObjectStorage(w) {
+		return
+	}
+	deleted, err := s.store.DeleteStorageObject(r.Context(), object.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := s.objectStorage.Delete(r.Context(), deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+		writeStorageError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) storageObjectFromRoute(w http.ResponseWriter, r *http.Request) (model.Project, model.StorageObject, bool) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return model.Project{}, model.StorageObject{}, false
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return model.Project{}, model.StorageObject{}, false
+	}
+	number, ok := parseTypedRefParam(w, r, "objectRef", "object")
+	if !ok {
+		return model.Project{}, model.StorageObject{}, false
+	}
+	object, err := s.store.GetStorageObjectByProjectNumber(r.Context(), project.ID, number)
+	if err != nil {
+		writeStoreError(w, err)
+		return model.Project{}, model.StorageObject{}, false
+	}
+	return project, object, true
+}
+
+func (s *Server) requireObjectStorage(w http.ResponseWriter) bool {
+	if s.objectStorage == nil {
+		writeError(w, http.StatusServiceUnavailable, "object storage unavailable")
+		return false
+	}
+	return true
+}
+
+func writeStorageError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, objectstorage.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, objectstorage.ErrTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, "file too large")
+	case errors.Is(err, objectstorage.ErrExists), errors.Is(err, objectstorage.ErrInvalidKey):
+		writeError(w, http.StatusConflict, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
+func normalizeStorageObjectFilename(raw string) (string, error) {
+	filename := strings.ReplaceAll(raw, "\\", "/")
+	filename = path.Base(filename)
+	filename = strings.TrimSpace(filename)
+	filename = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == '/' || r == '\\' {
+			return -1
+		}
+		return r
+	}, filename)
+	filename = strings.TrimSpace(filename)
+	if filename == "" || filename == "." || filename == ".." {
+		return "", errors.New("filename required")
+	}
+	if utf8.RuneCountInString(filename) > maxStorageObjectFilenameLength {
+		return "", errors.New("filename max 255 chars")
+	}
+	return filename, nil
+}
+
+func normalizeStorageObjectContentType(raw string, sample []byte) string {
+	mediaType := strings.TrimSpace(raw)
+	if mediaType == "" || strings.EqualFold(mediaType, "application/octet-stream") {
+		mediaType = http.DetectContentType(sample)
+	}
+	parsed, _, err := mime.ParseMediaType(mediaType)
+	if err != nil || parsed == "" {
+		return "application/octet-stream"
+	}
+	mediaType = strings.ToLower(parsed)
+	if len(mediaType) > maxStorageObjectContentTypeLength {
+		return "application/octet-stream"
+	}
+	return mediaType
+}
+
+func storageUploadContentTypeAndBody(file io.Reader, rawContentType string) (string, io.Reader, error) {
+	head := make([]byte, 512)
+	n, err := io.ReadFull(file, head)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", nil, errors.New("unable to read upload")
+	}
+	head = head[:n]
+	return normalizeStorageObjectContentType(rawContentType, head), io.MultiReader(bytes.NewReader(head), file), nil
+}
