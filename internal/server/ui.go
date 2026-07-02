@@ -68,6 +68,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueSubIssuesNew":            uiIssueSubIssuesNewPath,
 	"issueTags":                    uiIssueTagsPath,
 	"issueTagDelete":               uiIssueTagDeletePath,
+	"issueTitle":                   uiIssueTitlePath,
+	"issueTitleEdit":               uiIssueTitleEditPath,
 	"issueAssigneeAutocomplete":    uiIssueAssigneeAutocomplete,
 	"issueReporterAutocomplete":    uiIssueReporterAutocomplete,
 	"issueSprintAutocomplete":      uiIssueSprintAutocomplete,
@@ -495,6 +497,7 @@ type uiIssuePanelData struct {
 	Sprint             *model.Sprint
 	Assignee           *model.User
 	Reporter           *model.User
+	EditTitle          bool
 	EditDescription    bool
 	EditStatus         bool
 	PendingCloseReason bool
@@ -505,6 +508,7 @@ type uiIssuePanelData struct {
 	EditReporter       bool
 	EditSprint         bool
 	CanEditSprint      bool
+	TitleInput         string
 	AssigneeInput      string
 	ReporterInput      string
 	SprintInput        string
@@ -513,6 +517,7 @@ type uiIssuePanelData struct {
 	AssigneeError      string
 	ReporterError      string
 	SprintError        string
+	TitleError         string
 	DueDateError       string
 	CloseReasonError   string
 	MemberOptions      []model.User
@@ -647,6 +652,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/panel", s.uiIssuePanel)
 		r.Post("/{owner}/issues/{issueRef}/delete", s.uiDeleteIssue)
 		r.Post("/{owner}/issues/{issueRef}/restore", s.uiRestoreIssue)
+		r.Get("/{owner}/issues/{issueRef}/title/edit", s.uiEditIssueTitle)
+		r.Post("/{owner}/issues/{issueRef}/title", s.uiUpdateIssueTitle)
 		r.Get("/{owner}/issues/{issueRef}/description/edit", s.uiEditIssueDescription)
 		r.Post("/{owner}/issues/{issueRef}/description", s.uiUpdateIssueDescription)
 		r.Get("/{owner}/issues/{issueRef}/status/edit", s.uiEditIssueStatus)
@@ -2396,6 +2403,63 @@ func (s *Server) uiRestoreIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	uiSetHXPushURL(w, r, uiIssuePath(restored))
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, restored.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiEditIssueTitle(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditTitle = true
+	panel.TitleInput = issue.Title
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueTitle(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	titleInput := r.Form.Get("title")
+	title := strings.TrimSpace(titleInput)
+	if title == "" || len(title) > 200 {
+		panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel.EditTitle = true
+		panel.TitleInput = titleInput
+		panel.TitleError = "Title required, max 200 chars."
+		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{
+		Title: &title,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -5969,6 +6033,14 @@ func uiIssueCommentEditPath(issue any, comment any) string {
 	return uiIssueCommentPath(issue, comment) + "/edit"
 }
 
+func uiIssueTitlePath(issue any) string {
+	return uiIssuePath(issue) + "/title"
+}
+
+func uiIssueTitleEditPath(issue any) string {
+	return uiIssueTitlePath(issue) + "/edit"
+}
+
 func uiIssueDescriptionPath(issue any) string {
 	return uiIssuePath(issue) + "/description"
 }
@@ -6343,7 +6415,7 @@ func safeUIIssuePath(path string) bool {
 			_, err := parseTypedRef(parts[4], "context")
 			return err == nil
 		}
-		return ((parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
+		return ((parts[3] == "title" || parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new")
 	}

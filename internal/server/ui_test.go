@@ -320,6 +320,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "bad root issues", raw: "/issues", want: "/"},
 		{name: "issue", raw: "/bradley/issues/TRACK-7", want: "/bradley/issues/TRACK-7"},
 		{name: "issue panel with query", raw: "/bradley/issues/TRACK-7/panel?x=1", want: "/bradley/issues/TRACK-7/panel?x=1"},
+		{name: "issue title edit with query", raw: "/bradley/issues/TRACK-7/title/edit?x=1", want: "/bradley/issues/TRACK-7/title/edit?x=1"},
 		{name: "issue description edit with query", raw: "/bradley/issues/TRACK-7/description/edit?x=1", want: "/bradley/issues/TRACK-7/description/edit?x=1"},
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "issue close reason edit", raw: "/bradley/issues/TRACK-7/close-reason/edit", want: "/bradley/issues/TRACK-7/close-reason/edit"},
@@ -948,6 +949,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`data-lucide="trash-2"`,
 		`text-rose-600`,
 		`dark:hover:bg-rose-950/40`,
+		`aria-label="Edit title"`,
+		`hx-get="/bradley/issues/TRACK-7/title/edit"`,
 		`aria-label="Edit description"`,
 		`hx-get="/bradley/issues/TRACK-7/description/edit"`,
 		`aria-label="Edit link"`,
@@ -1116,6 +1119,58 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 	if strings.Contains(body, "title=") {
 		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
+	}
+}
+
+func TestUIIssuePanelRendersTitleEditor(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		Issue: model.Issue{
+			ID:            issueID,
+			ProjectID:     projectID,
+			OwnerUsername: "bradley",
+			ProjectKey:    "TRACK",
+			Identifier:    "TRACK-7",
+			Title:         "Title editor",
+			Status:        model.StatusTodo,
+			CreatedAt:     when,
+			UpdatedAt:     when,
+		},
+		Project:    model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+		EditTitle:  true,
+		TitleInput: " Draft title ",
+		TitleError: "Title required, max 200 chars.",
+		BackHref:   "/bradley/projects/TRACK/backlog",
+		BackHXGet:  "/bradley/projects/TRACK/backlog/panel",
+		BackLabel:  "Backlog",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`method="post" action="/bradley/issues/TRACK-7/title"`,
+		`hx-post="/bradley/issues/TRACK-7/title"`,
+		`hx-push-url="false"`,
+		`name="title" value=" Draft title "`,
+		`aria-label="Issue title"`,
+		`aria-label="Save title"`,
+		`aria-label="Cancel editing title"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		"Title required, max 200 chars.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("title editor missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `hx-get="/bradley/issues/TRACK-7/title/edit"`) {
+		t.Fatalf("title editor rendered readonly edit button: %s", body)
 	}
 }
 

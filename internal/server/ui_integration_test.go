@@ -1700,6 +1700,8 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
+		`aria-label="Edit title"`,
+		`hx-get="` + e.issuePath(issue) + `/title/edit"`,
 		`text-rose-600`,
 		`href="` + e.issuePath(linked) + `"`,
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
@@ -2492,6 +2494,116 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 	}
 	if updated.Priority != model.PriorityP0 {
 		t.Fatalf("bad form changed Priority = %q, want %q", updated.Priority, model.PriorityP0)
+	}
+}
+
+func TestUIEditTitleUpdatesIssuePanel(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-title")
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "title target issue",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+
+	edit := e.uiGet(t, e.issuePath(issue)+"/title/edit", token)
+	for _, want := range []string{
+		"title target issue",
+		`method="post" action="` + e.issuePath(issue) + `/title"`,
+		`hx-post="` + e.issuePath(issue) + `/title"`,
+		`hx-push-url="false"`,
+		`name="title" value="title target issue"`,
+		`aria-label="Issue title"`,
+		`aria-label="Save title"`,
+		`aria-label="Cancel editing title"`,
+		`hx-get="` + e.issuePath(issue) + `/panel"`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Fatalf("title edit response missing %q: %s", want, edit)
+		}
+	}
+	if strings.Contains(edit, `<input disabled`) || strings.Contains(edit, `title="Save title"`) {
+		t.Fatalf("title edit response has disabled/editor tooltip state: %s", edit)
+	}
+
+	form := url.Values{"title": {"  renamed title issue  "}}
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.issuePath(issue)+"/title", token, strings.NewReader(form.Encode()), map[string]string{
+		"HX-Current-URL": e.ts.URL + e.issuePath(issue),
+		"HX-Request":     "true",
+	})
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("update title code = %d body = %s", res.StatusCode, body)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("title update HX-Push-Url = %q, want empty", push)
+	}
+	if replace := res.Header.Get("HX-Replace-Url"); replace != "" {
+		t.Fatalf("title update HX-Replace-Url = %q, want empty", replace)
+	}
+	if !strings.Contains(body, "renamed title issue") || strings.Contains(body, "title target issue") || strings.Contains(body, `name="title"`) {
+		t.Fatalf("update title response did not return read mode with new title: %s", body)
+	}
+	updated, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after update: %v", err)
+	}
+	if updated.Title != "renamed title issue" {
+		t.Fatalf("Title = %q, want renamed title issue", updated.Title)
+	}
+
+	blank := url.Values{"title": {" \n\t "}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/title", token, strings.NewReader(blank.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("blank title code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Title required, max 200 chars.") || !strings.Contains(body, `name="title"`) {
+		t.Fatalf("blank title response missing error/editor: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after blank title: %v", err)
+	}
+	if updated.Title != "renamed title issue" {
+		t.Fatalf("blank title changed Title = %q, want renamed title issue", updated.Title)
+	}
+
+	tooLong := url.Values{"title": {strings.Repeat("x", 201)}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/title", token, strings.NewReader(tooLong.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Title required, max 200 chars.") {
+		t.Fatalf("long title code = %d body = %s", res.StatusCode, body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after long title: %v", err)
+	}
+	if updated.Title != "renamed title issue" {
+		t.Fatalf("long title changed Title = %q, want renamed title issue", updated.Title)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/title", token, strings.NewReader("%zz"))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad form title code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "unable to read form") {
+		t.Fatalf("bad form title response missing parse error: %s", body)
+	}
+	updated, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after bad form: %v", err)
+	}
+	if updated.Title != "renamed title issue" {
+		t.Fatalf("bad form changed Title = %q, want renamed title issue", updated.Title)
 	}
 }
 
@@ -3511,6 +3623,16 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("issue description edit code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.issuePath(issue)+"/title/edit", token, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue title edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/title", token, strings.NewReader(url.Values{"title": {"denied"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("issue title update code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/description", token, strings.NewReader(url.Values{"description": {"denied"}}.Encode()))
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
@@ -3666,6 +3788,8 @@ func TestUIIssueRoutesRequireAccessAndPreserveLoginNext(t *testing.T) {
 	}{
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref"},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/panel"},
+		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/title/edit"},
+		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/title", body: strings.NewReader(url.Values{"title": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/description/edit"},
 		{method: http.MethodPost, path: "/" + e.ownerUsername + "/issues/not-a-ref/description", body: strings.NewReader(url.Values{"description": {"hello"}}.Encode())},
 		{method: http.MethodGet, path: "/" + e.ownerUsername + "/issues/not-a-ref/status/edit"},
