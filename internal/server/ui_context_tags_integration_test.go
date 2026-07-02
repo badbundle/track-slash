@@ -398,7 +398,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("delete context code = %d body = %s", res.StatusCode, body)
 	}
-	if strings.Contains(body, "context-1") || strings.Contains(body, "Architecture v3") {
+	if strings.Contains(body, contextPath) || strings.Contains(body, "Architecture v3") {
 		t.Fatalf("delete context body still shows deleted context: %s", body)
 	}
 }

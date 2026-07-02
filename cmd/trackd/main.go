@@ -22,6 +22,7 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/realtime"
 	"github.com/bradleymackey/track-slash/internal/server"
+	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
@@ -71,9 +72,15 @@ func main() {
 	listener := realtime.NewListener(cfg.DatabaseURL, hub)
 	go listener.Run(ctx)
 
+	storageSvc, err := objectstorage.NewLocalService(cfg.Storage.LocalRoot, cfg.Storage.Bucket, cfg.Storage.MaxUploadBytes)
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+
 	srv := server.NewWithOptions(st, hub, server.Options{
 		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
 		DevReload:          cfg.DevReload,
+		ObjectStorage:      storageSvc,
 	})
 
 	httpSrv := &http.Server{

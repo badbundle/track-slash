@@ -160,6 +160,12 @@ func TestProjectContextRef(t *testing.T) {
 	}
 }
 
+func TestStorageObjectRef(t *testing.T) {
+	if got := StorageObjectRef(12); got != "object-12" {
+		t.Fatalf("StorageObjectRef(12) = %q, want object-12", got)
+	}
+}
+
 func TestSprintStatusValid(t *testing.T) {
 	cases := []struct {
 		in   SprintStatus

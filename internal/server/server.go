@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/bradleymackey/track-slash/internal/realtime"
+	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
@@ -17,11 +18,13 @@ type Server struct {
 	hub                *realtime.Hub
 	corsAllowedOrigins []string
 	devReload          bool
+	objectStorage      *objectstorage.Service
 }
 
 type Options struct {
 	CORSAllowedOrigins []string
 	DevReload          bool
+	ObjectStorage      *objectstorage.Service
 }
 
 // New constructs a Server. corsAllowedOrigins is a list of exact origins
@@ -37,6 +40,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		hub:                hub,
 		corsAllowedOrigins: opts.CORSAllowedOrigins,
 		devReload:          opts.DevReload,
+		objectStorage:      opts.ObjectStorage,
 	}
 }
 
@@ -113,6 +117,11 @@ func (s *Server) Router() http.Handler {
 					r.Get("/assignees", s.listProjectAssignees)
 					r.Put("/members/{username}", s.grantProjectMember)
 					r.Delete("/members/{username}", s.revokeProjectMember)
+					r.Post("/objects", s.createStorageObject)
+					r.Get("/objects", s.listStorageObjects)
+					r.Get("/objects/{objectRef}", s.getStorageObject)
+					r.Get("/objects/{objectRef}/content", s.getStorageObjectContent)
+					r.Delete("/objects/{objectRef}", s.deleteStorageObject)
 					r.Post("/context", s.createProjectContext)
 					r.Get("/context", s.listProjectContexts)
 					r.Get("/context/{contextRef}", s.getProjectContext)
