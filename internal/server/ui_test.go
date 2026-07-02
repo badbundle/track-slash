@@ -2561,7 +2561,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if strings.Contains(header, "Fast issue tracking.") {
 		t.Fatalf("project description should not render inside title card: %s", body)
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="info"`, `aria-current="page"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", "Changelog", `data-lucide="person-standing"`, `data-lucide="history"`, `data-lucide="info"`, `aria-current="page"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
@@ -2594,8 +2594,9 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
 	plannedIdx := strings.Index(body, `href="/bradley/projects/TRACK/planned"`)
 	allIdx := strings.Index(body, `href="/bradley/projects/TRACK/all"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > aboutIdx {
-		t.Fatalf("project tabs not ordered sprints, planned, all, about: sprints=%d planned=%d all=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, aboutIdx, body)
+	changelogIdx := strings.Index(body, `href="/bradley/projects/TRACK/changelog"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || changelogIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > changelogIdx || changelogIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprints, planned, all, changelog, about: sprints=%d planned=%d all=%d changelog=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, changelogIdx, aboutIdx, body)
 	}
 	if strings.Contains(body, "Back to projects") || strings.Contains(body, ">Projects</a>") {
 		t.Fatalf("project back link uses verbose label: %s", body)
@@ -2612,6 +2613,89 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
+	}
+}
+
+func TestUIProjectPanelRendersChangelog(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	issueID := uuid.New()
+	actorID := uuid.New()
+	project := model.Project{
+		ID:            projectID,
+		OwnerUsername: "bradley",
+		Key:           "TRACK",
+		Name:          "Track Slash",
+		CreatedAt:     time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 6, 2, 10, 45, 0, 0, time.UTC),
+	}
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", uiProjectPanelData{
+		Project:     project,
+		View:        "changelog",
+		ProjectTabs: uiProjectTabs(project, "changelog", nil),
+		ChangelogPage: uiProjectChangelogPageData{
+			Project: project,
+			Entries: []model.ProjectChangelogEntry{{
+				ID:          uuid.New(),
+				ProjectID:   projectID,
+				ActorID:     &actorID,
+				Actor:       &model.ProjectChangelogActor{ID: actorID, Username: "ada", Name: "Ada Lovelace"},
+				Entity:      "issue",
+				Op:          "update",
+				EntityID:    issueID,
+				IssueID:     &issueID,
+				TargetRef:   "TRACK-7",
+				TargetTitle: "Better changelog",
+				Summary:     "Updated issue TRACK-7",
+				Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{{
+					Field: "status",
+					Label: "Status",
+					From:  "To do",
+					To:    "Done",
+				}}},
+				CreatedAt: time.Date(2026, 6, 3, 11, 0, 0, 0, time.UTC),
+			}},
+			HasMore:    true,
+			NextCursor: "cursor123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`data-project-changelog`,
+		`data-project-id="` + projectID.String() + `"`,
+		`data-refresh-url="/bradley/projects/TRACK/changelog/panel"`,
+		`href="/bradley/projects/TRACK/changelog"`,
+		`aria-current="page"`,
+		`Updated issue TRACK-7`,
+		`href="/bradley/issues/TRACK-7"`,
+		`hx-get="/bradley/issues/TRACK-7/panel"`,
+		`Better changelog`,
+		`Ada Lovelace`,
+		`Status`,
+		`To do`,
+		`Done`,
+		`hx-get="/bradley/projects/TRACK/changelog/page?cursor=cursor123"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("changelog view missing %q: %s", want, body)
+		}
+	}
+	tabStart := strings.Index(body, `aria-label="Project views"`)
+	if tabStart < 0 {
+		t.Fatalf("project tabs missing: %s", body)
+	}
+	tabEnd := strings.Index(body[tabStart:], "</nav>")
+	if tabEnd < 0 {
+		t.Fatalf("project tabs missing: %s", body)
+	}
+	tabMarkup := body[tabStart : tabStart+tabEnd]
+	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
+		t.Fatalf("deleted rendered as project tab: %s", body)
 	}
 }
 

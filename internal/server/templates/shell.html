@@ -207,6 +207,65 @@
         if (controls) controls.setAttribute("open", "");
         reopenIssueListControls = false;
       };
+      let changelogSocket = null;
+      let changelogTopic = "";
+      let changelogReconnect = null;
+      let changelogRefreshTimer = null;
+      const closeChangelogSocket = () => {
+        if (changelogReconnect) {
+          window.clearTimeout(changelogReconnect);
+          changelogReconnect = null;
+        }
+        if (changelogSocket) {
+          changelogSocket.onclose = null;
+          changelogSocket.close();
+        }
+        changelogSocket = null;
+        changelogTopic = "";
+      };
+      const scheduleChangelogRefresh = (panel) => {
+        if (changelogRefreshTimer) window.clearTimeout(changelogRefreshTimer);
+        changelogRefreshTimer = window.setTimeout(() => {
+          const current = document.querySelector("[data-project-changelog]");
+          if (!current || current.dataset.projectId !== panel.dataset.projectId) return;
+          if (window.htmx && current.dataset.refreshUrl) {
+            window.htmx.ajax("GET", current.dataset.refreshUrl, { target: "#main", swap: "innerHTML" });
+          }
+        }, 150);
+      };
+      const syncChangelogRealtime = () => {
+        const panel = document.querySelector("[data-project-changelog]");
+        if (!panel || !panel.dataset.projectId) {
+          closeChangelogSocket();
+          return;
+        }
+        const topic = `project:${panel.dataset.projectId}`;
+        if (changelogSocket && changelogTopic === topic && changelogSocket.readyState <= WebSocket.OPEN) return;
+        closeChangelogSocket();
+        changelogTopic = topic;
+        const activeTopic = topic;
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const socket = new WebSocket(`${protocol}//${window.location.host}/realtime`);
+        changelogSocket = socket;
+        socket.addEventListener("open", () => {
+          socket.send(JSON.stringify({ action: "subscribe", topic: activeTopic }));
+        });
+        socket.addEventListener("message", (event) => {
+          let msg;
+          try {
+            msg = JSON.parse(event.data);
+          } catch (_) {
+            return;
+          }
+          if (msg && msg.entity === "project_changelog" && msg.project_id === panel.dataset.projectId) {
+            scheduleChangelogRefresh(panel);
+          }
+        });
+        socket.addEventListener("close", () => {
+          if (changelogTopic !== activeTopic || !document.querySelector("[data-project-changelog]")) return;
+          changelogReconnect = window.setTimeout(syncChangelogRealtime, 1000);
+        });
+      };
       const setActiveNav = (next) => {
         links().forEach((link) => {
           link.classList.remove(...active);
@@ -348,17 +407,20 @@
         resizeTextareas(event.target);
         syncCheckboxReveals(event.target);
         restoreIssueListControls(event.target);
+        syncChangelogRealtime();
       });
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", () => {
           createIcons();
           resizeTextareas();
           syncCheckboxReveals();
+          syncChangelogRealtime();
         });
       } else {
         createIcons();
         resizeTextareas();
         syncCheckboxReveals();
+        syncChangelogRealtime();
       }
     })();
   </script>

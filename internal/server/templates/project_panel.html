@@ -264,6 +264,22 @@
     </div>
     {{template "all-issue-list" .AllIssuePage}}
   </section>
+  {{else if eq .View "changelog"}}
+  <section data-project-changelog data-project-id="{{.Project.ID}}" data-refresh-url="{{projectPanel .Project "changelog"}}" class="py-6">
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Changelog</h2>
+        {{template "count-badge" (len .ChangelogPage.Entries)}}
+      </div>
+    </div>
+    {{if .ChangelogPage.Entries}}
+    <div id="project-changelog-list" class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      {{template "project-changelog-page" .ChangelogPage}}
+    </div>
+    {{else}}
+    <div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No changes yet.</div>
+    {{end}}
+  </section>
   {{end}}
 </section>
 {{end}}
@@ -286,6 +302,55 @@
 {{end}}
 {{if .NextHXGet}}
 <div hx-get="{{.NextHXGet}}" hx-trigger="intersect once" hx-swap="outerHTML" class="border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">Loading more issues...</div>
+{{end}}
+{{end}}
+
+{{define "project-changelog-page"}}
+{{range .Entries}}
+{{$entry := .}}
+<article class="grid gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 sm:grid-cols-[2rem_minmax(0,1fr)_auto]">
+  <span class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+    <i data-lucide="{{changelogIcon .}}" class="h-4 w-4" aria-hidden="true"></i>
+  </span>
+  <div class="min-w-0">
+    <div class="flex min-w-0 flex-wrap items-center gap-2">
+      <span class="font-medium text-slate-900 dark:text-slate-100">{{.Summary}}</span>
+      {{if .TargetRef}}
+        {{with changelogTargetHref $.Project .}}
+        <a href="{{.}}" hx-get="{{.}}/panel" hx-target="#main" hx-push-url="{{.}}" class="inline-flex w-fit items-center rounded-md border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 hover:border-indigo-300 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-200">{{$entry.TargetRef}}</a>
+        {{else}}
+        {{template "issue-key" $entry.TargetRef}}
+        {{end}}
+      {{end}}
+    </div>
+    {{if .TargetTitle}}<div class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{{.TargetTitle}}</div>{{end}}
+    {{if .Details.Changes}}
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      {{range .Details.Changes}}
+      <span class="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+        <span class="font-semibold text-slate-700 dark:text-slate-200">{{.Label}}</span>
+        {{if .From}}<span class="truncate">{{.From}}</span><span aria-hidden="true">&rarr;</span>{{end}}
+        {{if .To}}<span class="truncate">{{.To}}</span>{{end}}
+      </span>
+      {{end}}
+    </div>
+    {{else if .Details.Preview}}
+    <p class="mt-2 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{{.Details.Preview}}</p>
+    {{end}}
+  </div>
+  <div class="flex shrink-0 flex-row gap-2 text-xs text-slate-500 dark:text-slate-400 sm:flex-col sm:items-end sm:text-right">
+    <span>{{changelogActor .}}</span>
+    <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{tokenTime .CreatedAt}}</time>
+  </div>
+</article>
+{{end}}
+{{if .HasMore}}
+<div id="project-changelog-more" class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+  <button type="button" hx-get="{{projectView .Project "changelog"}}/page?cursor={{.NextCursor}}" hx-target="#project-changelog-more" hx-swap="outerHTML" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+    <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
+    Load more
+  </button>
+</div>
 {{end}}
 {{end}}
 
