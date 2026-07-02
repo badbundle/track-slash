@@ -1,0 +1,38 @@
+{{define "project-panel-sprint"}}
+  <section class="py-6">
+    <div class="mb-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sprint</h2>
+            {{template "count-badge" (issueColumnCount .SprintColumns)}}
+          </div>
+          {{if .ActiveSprint}}
+          <h3 class="mt-2 truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{.ActiveSprint.Name}}</h3>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{sprintDate .ActiveSprint.StartDate}}-{{sprintDate .ActiveSprint.EndDate}}</p>
+          {{if .ActiveSprint.Goal}}<div class="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{{.ActiveSprint.Goal}}</div>{{end}}
+          {{else}}
+          <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No active sprint.</p>
+          {{end}}
+        </div>
+        {{if .SprintIssuesHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+      </div>
+    </div>
+    {{template "issue-list-controls" .SprintControls}}
+    {{if .ActiveSprint}}
+    <section class="grid gap-4 lg:grid-cols-3">
+      {{range .SprintColumns}}
+      <div class="min-w-0">
+        <div class="mb-3 flex min-w-0 flex-wrap items-center gap-2">
+          <h3 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{.Label}}</h3>
+          {{template "count-badge" (len .Issues)}}
+        </div>
+        {{template "issue-card-list" .Issues}}
+      </div>
+      {{end}}
+    </section>
+    {{else}}
+    <div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No active sprint issues.</div>
+    {{end}}
+  </section>
+{{end}}

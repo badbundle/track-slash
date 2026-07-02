@@ -1,0 +1,48 @@
+{{define "deleted-issues-panel"}}
+<section class="mx-auto max-w-6xl px-6 py-6">
+  <header class="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+    <div class="min-w-0">
+      {{template "project-key" .Project.Key}}
+      <h1 class="mt-1 truncate text-2xl font-semibold tracking-normal">Deleted issues</h1>
+      <p class="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</p>
+    </div>
+  </header>
+
+  <section class="py-6">
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Deleted issues</h2>
+      {{if .HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+    </div>
+    {{template "deleted-issue-list" .Issues}}
+  </section>
+</section>
+{{end}}
+
+{{define "deleted-issue-list"}}
+{{if .}}
+<div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+  {{range .}}
+  <div class="grid grid-cols-[7rem_auto_1fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 sm:grid-cols-[7rem_auto_1fr_auto_auto]">
+    {{template "issue-key" .Identifier}}
+    {{template "priority-badge" .Priority}}
+    <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="group block min-w-0 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+      <div class="truncate text-slate-900 group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">{{.Title}}</div>
+      {{if .ParentIssueID}}<div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Sub-issue</div>{{end}}
+    </a>
+    <div class="col-start-1 flex flex-wrap items-center gap-2 justify-self-start sm:col-start-auto">
+      {{template "status-badge" .Status}}
+      {{if eq .Status "closed"}}{{template "close-reason-badge" .CloseReason}}{{end}}
+    </div>
+    <form method="post" action="{{issueRestore .}}" hx-post="{{issueRestore .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="col-span-2 justify-self-start sm:col-span-1 sm:justify-self-end">
+      <button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
+        Restore
+      </button>
+    </form>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No deleted issues.</div>
+{{end}}
+{{end}}

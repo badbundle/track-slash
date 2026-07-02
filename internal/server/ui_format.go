@@ -1,0 +1,768 @@
+package server
+
+import (
+	"fmt"
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/google/uuid"
+	"strings"
+	"time"
+)
+
+func uiInitials(name, email string) string {
+	source := strings.TrimSpace(name)
+	if source == "" {
+		source = strings.TrimSpace(email)
+	}
+	if source == "" {
+		return "?"
+	}
+	parts := strings.Fields(source)
+	if len(parts) == 1 {
+		return strings.ToUpper(string([]rune(parts[0])[0]))
+	}
+	first := []rune(parts[0])
+	last := []rune(parts[len(parts)-1])
+	return strings.ToUpper(string(first[0]) + string(last[0]))
+}
+
+func uiProjectIcon(name, key string) string {
+	source := strings.TrimSpace(name)
+	if source == "" {
+		source = strings.TrimSpace(key)
+	}
+	if source == "" {
+		return "?"
+	}
+	return strings.ToUpper(string([]rune(source)[0]))
+}
+
+func uiChangelogActor(entry model.ProjectChangelogEntry) string {
+	if entry.Actor == nil {
+		return "System"
+	}
+	if strings.TrimSpace(entry.Actor.Name) != "" {
+		return entry.Actor.Name
+	}
+	if strings.TrimSpace(entry.Actor.Username) != "" {
+		return "@" + entry.Actor.Username
+	}
+	return "Unknown"
+}
+
+func uiChangelogIcon(entry model.ProjectChangelogEntry) string {
+	switch entry.Entity {
+	case "comment":
+		return "message-square"
+	case "issue_link":
+		return "link"
+	case "issue_tag", "issue_tag_link":
+		return "tag"
+	case "project_context", "issue_context_link":
+		return "book-open"
+	case "sprint":
+		return "calendar-range"
+	case "project_member":
+		return "users"
+	case "project":
+		return "folder"
+	default:
+		return "history"
+	}
+}
+
+func uiChangelogTargetHref(project model.Project, entry model.ProjectChangelogEntry) string {
+	if entry.IssueID == nil || strings.TrimSpace(entry.TargetRef) == "" {
+		return ""
+	}
+	return "/" + project.OwnerUsername + "/issues/" + entry.TargetRef
+}
+
+func uiSprintDate(t time.Time) string {
+	return t.Format("Jan 2")
+}
+
+func uiDueDateValue(d *model.Date) string {
+	if d == nil {
+		return ""
+	}
+	return d.String()
+}
+
+func uiDueDateShort(d *model.Date) string {
+	if d == nil {
+		return ""
+	}
+	return d.Time().Format("Jan 2")
+}
+
+func uiDueDateFull(d *model.Date) string {
+	if d == nil {
+		return ""
+	}
+	return d.Time().Format("Jan 2, 2006")
+}
+
+func uiTagColors() []model.IssueTagColor {
+	return []model.IssueTagColor{
+		model.TagColorSlate,
+		model.TagColorRed,
+		model.TagColorOrange,
+		model.TagColorAmber,
+		model.TagColorYellow,
+		model.TagColorGreen,
+		model.TagColorTeal,
+		model.TagColorCyan,
+		model.TagColorBlue,
+		model.TagColorViolet,
+		model.TagColorPink,
+	}
+}
+
+func uiTagClass(color model.IssueTagColor) string {
+	switch model.IssueTagColorOrDefault(color) {
+	case model.TagColorSlate:
+		return "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+	case model.TagColorRed:
+		return "border-red-200 bg-red-50 text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200"
+	case model.TagColorOrange:
+		return "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/70 dark:bg-orange-950/30 dark:text-orange-200"
+	case model.TagColorAmber:
+		return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+	case model.TagColorYellow:
+		return "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900/70 dark:bg-yellow-950/30 dark:text-yellow-200"
+	case model.TagColorGreen:
+		return "border-green-200 bg-green-50 text-green-700 dark:border-green-900/70 dark:bg-green-950/30 dark:text-green-200"
+	case model.TagColorTeal:
+		return "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-200"
+	case model.TagColorCyan:
+		return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/70 dark:bg-cyan-950/30 dark:text-cyan-200"
+	case model.TagColorViolet:
+		return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/70 dark:bg-violet-950/30 dark:text-violet-200"
+	case model.TagColorPink:
+		return "border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-900/70 dark:bg-pink-950/30 dark:text-pink-200"
+	default:
+		return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-200"
+	}
+}
+
+func uiTagDotClass(color model.IssueTagColor) string {
+	switch model.IssueTagColorOrDefault(color) {
+	case model.TagColorSlate:
+		return "bg-slate-500"
+	case model.TagColorRed:
+		return "bg-red-500"
+	case model.TagColorOrange:
+		return "bg-orange-500"
+	case model.TagColorAmber:
+		return "bg-amber-500"
+	case model.TagColorYellow:
+		return "bg-yellow-500"
+	case model.TagColorGreen:
+		return "bg-green-500"
+	case model.TagColorTeal:
+		return "bg-teal-500"
+	case model.TagColorCyan:
+		return "bg-cyan-500"
+	case model.TagColorViolet:
+		return "bg-violet-500"
+	case model.TagColorPink:
+		return "bg-pink-500"
+	default:
+		return "bg-blue-500"
+	}
+}
+
+func uiIssueVisibleTags(tags []model.IssueTag) []model.IssueTag {
+	if len(tags) <= 3 {
+		return tags
+	}
+	return tags[:3]
+}
+
+func uiIssueHiddenTagCount(tags []model.IssueTag) int {
+	if len(tags) <= 3 {
+		return 0
+	}
+	return len(tags) - 3
+}
+
+func uiDueBadgeClass(issue model.Issue) string {
+	if uiIssueOverdue(issue, time.Now()) {
+		return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200"
+	}
+	if uiIssueDueSoon(issue, time.Now()) {
+		return "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-200"
+	}
+	return "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+}
+
+func uiDueBadgeIcon(issue model.Issue) string {
+	if uiIssueDueSoon(issue, time.Now()) {
+		return "clock"
+	}
+	return "calendar"
+}
+
+func uiDueBadgeLabel(issue model.Issue) string {
+	if issue.DueDate == nil {
+		return ""
+	}
+	if days, ok := uiIssueDueDays(issue, time.Now()); ok && days >= 0 && days < 7 {
+		if days == 0 {
+			return "Today"
+		}
+		if days == 1 {
+			return "1 day"
+		}
+		return fmt.Sprintf("%d days", days)
+	}
+	return uiDueDateShort(issue.DueDate)
+}
+
+func uiIssueOverdue(issue model.Issue, now time.Time) bool {
+	days, ok := uiIssueDueDays(issue, now)
+	return ok && days < 0
+}
+
+func uiIssueDueSoon(issue model.Issue, now time.Time) bool {
+	days, ok := uiIssueDueDays(issue, now)
+	return ok && days >= 0 && days < 7
+}
+
+func uiIssueDueDays(issue model.Issue, now time.Time) (int, bool) {
+	if issue.DueDate == nil || issue.Status.CountsAsDone() {
+		return 0, false
+	}
+	current := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	due := issue.DueDate.Time()
+	due = time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, current.Location())
+	return int(due.Sub(current).Hours() / 24), true
+}
+
+func uiStatusLabel(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "To do"
+	case model.StatusInProgress:
+		return "In progress"
+	case model.StatusDone:
+		return "Done"
+	case model.StatusClosed:
+		return "Closed"
+	default:
+		return string(s)
+	}
+}
+
+func uiStatusValue(raw string) model.Status {
+	return model.Status(raw)
+}
+
+func uiStatusClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+	case model.StatusInProgress:
+		return "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-500/40 dark:bg-blue-950/40 dark:text-blue-200"
+	case model.StatusDone:
+		return "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-950/40 dark:text-emerald-200"
+	case model.StatusClosed:
+		return "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+	default:
+		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+	}
+}
+
+type uiStatusOption struct {
+	Status model.Status
+	Label  string
+}
+
+func uiStatusOptions() []uiStatusOption {
+	return []uiStatusOption{
+		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
+		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
+		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+		{Status: model.StatusClosed, Label: uiStatusLabel(model.StatusClosed)},
+	}
+}
+
+func uiIssueStatusDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
+	options := make([]uiOptionDropdownOption, 0, len(uiStatusOptions()))
+	for _, option := range uiStatusOptions() {
+		options = append(options, uiOptionDropdownOption{
+			Value: string(option.Status),
+			Label: option.Label,
+			Class: uiStatusClass(option.Status),
+		})
+	}
+	return uiOptionDropdownData{
+		Action:       uiIssueStatusPath(panel.Issue),
+		HXTarget:     "#main",
+		HXPushURL:    "false",
+		CancelHXGet:  uiIssuePanelPath(panel.Issue),
+		ToggleLabel:  "Change status",
+		ListLabel:    "Issue status",
+		Name:         "status",
+		CurrentValue: string(panel.Issue.Status),
+		CurrentLabel: uiStatusLabel(panel.Issue.Status),
+		CurrentClass: uiStatusClass(panel.Issue.Status),
+		Options:      options,
+	}
+}
+
+func uiCloseReasonLabel(v any) string {
+	var reason model.IssueCloseReason
+	switch r := v.(type) {
+	case model.IssueCloseReason:
+		reason = r
+	case *model.IssueCloseReason:
+		if r == nil {
+			return ""
+		}
+		reason = *r
+	default:
+		return fmt.Sprint(v)
+	}
+	switch reason {
+	case model.CloseReasonDuplicate:
+		return "Duplicate"
+	case model.CloseReasonWontDo:
+		return "Won't Do"
+	case model.CloseReasonInvalid:
+		return "Invalid"
+	default:
+		return string(reason)
+	}
+}
+
+type uiCloseReasonOption struct {
+	Reason model.IssueCloseReason
+	Label  string
+}
+
+func uiCloseReasonOptions() []uiCloseReasonOption {
+	return []uiCloseReasonOption{
+		{Reason: model.CloseReasonDuplicate, Label: uiCloseReasonLabel(model.CloseReasonDuplicate)},
+		{Reason: model.CloseReasonWontDo, Label: uiCloseReasonLabel(model.CloseReasonWontDo)},
+		{Reason: model.CloseReasonInvalid, Label: uiCloseReasonLabel(model.CloseReasonInvalid)},
+	}
+}
+
+func uiIssueCloseReasonDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
+	currentValue := strings.TrimSpace(panel.CloseReasonInput)
+	if currentValue == "" && panel.Issue.CloseReason != nil {
+		currentValue = string(*panel.Issue.CloseReason)
+	}
+	currentReason := model.IssueCloseReason(currentValue)
+	currentLabel := "Close reason"
+	currentClass := "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+	if currentReason.Valid() {
+		currentLabel = uiCloseReasonLabel(currentReason)
+		currentClass = uiCloseReasonClass(currentReason)
+	}
+	options := make([]uiOptionDropdownOption, 0, len(uiCloseReasonOptions()))
+	for _, option := range uiCloseReasonOptions() {
+		options = append(options, uiOptionDropdownOption{
+			Value: string(option.Reason),
+			Label: option.Label,
+			Class: uiCloseReasonClass(option.Reason),
+		})
+	}
+	return uiOptionDropdownData{
+		Action:       uiIssueCloseReasonPath(panel.Issue),
+		HXTarget:     "#main",
+		HXPushURL:    "false",
+		CancelHXGet:  uiIssuePanelPath(panel.Issue),
+		ToggleLabel:  "Choose close reason",
+		ListLabel:    "Close reason",
+		Name:         "close_reason",
+		CurrentValue: currentValue,
+		CurrentLabel: currentLabel,
+		CurrentClass: currentClass,
+		Error:        panel.CloseReasonError,
+		Options:      options,
+	}
+}
+
+func uiCloseReasonClass(model.IssueCloseReason) string {
+	return "border-zinc-300 bg-white text-zinc-700 dark:border-zinc-700 dark:bg-slate-950 dark:text-zinc-200"
+}
+
+func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "close-reason",
+		Title:           "Close issue",
+		Description:     fmt.Sprintf("Choose a reason to close %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-sm",
+		CancelLabel:     "Cancel editing close reason",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: uiStatusLabel(model.StatusClosed),
+				Class: uiStatusClass(model.StatusClosed),
+			},
+		},
+	}
+}
+
+func uiIssueContextModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "issue-context",
+		Title:           "Manage context",
+		Description:     fmt.Sprintf("Attach project context or add issue-only notes for %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-2xl",
+		CancelLabel:     "Close context editor",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: panel.Issue.Identifier,
+				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
+			},
+		},
+	}
+}
+
+func uiIssueTagsModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:              "issue-tags",
+		Title:           "Manage tags",
+		Description:     fmt.Sprintf("Search project tags for %s.", panel.Issue.Identifier),
+		WidthClass:      "max-w-lg",
+		CancelLabel:     "Close tag manager",
+		CancelHXGet:     uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: panel.Issue.Identifier,
+				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
+			},
+		},
+	}
+}
+
+type uiSubIssueProgressData struct {
+	Total             int
+	Todo              int
+	InProgress        int
+	Done              int
+	DonePercent       string
+	InProgressPercent string
+	TodoPercent       string
+	Label             string
+}
+
+func uiSubIssueProgress(issues []model.Issue) uiSubIssueProgressData {
+	out := uiSubIssueProgressData{Total: len(issues)}
+	for _, issue := range issues {
+		switch {
+		case issue.Status.CountsAsDone():
+			out.Done++
+		case issue.Status == model.StatusInProgress:
+			out.InProgress++
+		default:
+			out.Todo++
+		}
+	}
+	out.DonePercent = uiPercent(out.Done, out.Total)
+	out.InProgressPercent = uiPercent(out.InProgress, out.Total)
+	out.TodoPercent = uiPercent(out.Todo, out.Total)
+	if out.Total == 0 {
+		out.Label = "Sub-issue progress: no sub-issues"
+	} else {
+		out.Label = fmt.Sprintf("Sub-issue progress: %d done, %d in progress, %d to do", out.Done, out.InProgress, out.Todo)
+	}
+	return out
+}
+
+func uiLinkedIssueProgress(links []uiIssueLinkItem) uiSubIssueProgressData {
+	out := uiSubIssueProgressData{}
+	for _, link := range links {
+		if !link.HasIssue {
+			continue
+		}
+		out.Total++
+		switch {
+		case link.LinkedIssue.Status.CountsAsDone():
+			out.Done++
+		case link.LinkedIssue.Status == model.StatusInProgress:
+			out.InProgress++
+		default:
+			out.Todo++
+		}
+	}
+	out.DonePercent = uiPercent(out.Done, out.Total)
+	out.InProgressPercent = uiPercent(out.InProgress, out.Total)
+	out.TodoPercent = uiPercent(out.Todo, out.Total)
+	if out.Total == 0 {
+		if len(links) == 0 {
+			out.Label = "Linked issue progress: no linked issues"
+		} else {
+			out.Label = "Linked issue progress: no available linked issues"
+		}
+	} else {
+		out.Label = fmt.Sprintf("Linked issue progress: %d done, %d in progress, %d to do", out.Done, out.InProgress, out.Todo)
+	}
+	return out
+}
+
+func uiIssueColumnCount(columns []uiIssueColumn) int {
+	total := 0
+	for _, column := range columns {
+		total += len(column.Issues)
+	}
+	return total
+}
+
+func uiPercent(part, total int) string {
+	if total <= 0 || part <= 0 {
+		return "0%"
+	}
+	return fmt.Sprintf("%.2f%%", (float64(part)/float64(total))*100)
+}
+
+func uiPriorityClass(priority model.IssuePriority) string {
+	switch priority {
+	case model.PriorityP0:
+		return "bg-red-600"
+	case model.PriorityP1:
+		return "bg-orange-500"
+	case model.PriorityP2:
+		return "bg-amber-500"
+	case model.PriorityP3:
+		return "bg-yellow-500"
+	case model.PriorityP4:
+		return "bg-gray-500"
+	case "":
+		return "bg-amber-500"
+	default:
+		return "bg-gray-500"
+	}
+}
+
+func uiPriorityLabel(priority model.IssuePriority) string {
+	if priority == "" {
+		return string(model.PriorityP2)
+	}
+	return string(priority)
+}
+
+type uiPriorityOption struct {
+	Priority model.IssuePriority
+}
+
+func uiPriorityOptions() []uiPriorityOption {
+	return []uiPriorityOption{
+		{Priority: model.PriorityP0},
+		{Priority: model.PriorityP1},
+		{Priority: model.PriorityP2},
+		{Priority: model.PriorityP3},
+		{Priority: model.PriorityP4},
+	}
+}
+
+func uiNewIssueSelectedPriority(data *uiNewIssuePanelData) model.IssuePriority {
+	if data == nil {
+		return model.PriorityP2
+	}
+	priority := model.IssuePriority(data.Priority)
+	if priority.Valid() {
+		return priority
+	}
+	return model.PriorityP2
+}
+
+func uiNewIssueProjectSelected(data *uiNewIssuePanelData, project model.Project) bool {
+	if data == nil {
+		return false
+	}
+	return data.ProjectID == project.ID.String()
+}
+
+func uiNewIssueProjectInput(data *uiNewIssuePanelData) string {
+	if data == nil {
+		return ""
+	}
+	if data.ProjectInput != "" {
+		return data.ProjectInput
+	}
+	if data.HasProject {
+		return uiNewIssueProjectLabel(data.Project)
+	}
+	return ""
+}
+
+func uiNewIssueProjectLabel(project model.Project) string {
+	if project.Name == "" {
+		return project.Key
+	}
+	return project.Key + " - " + project.Name
+}
+
+func uiFilterNewIssueProjects(projects []model.Project, raw string) []model.Project {
+	query := strings.ToLower(strings.TrimSpace(raw))
+	if query == "" {
+		return projects
+	}
+	terms := strings.Fields(query)
+	out := make([]model.Project, 0, len(projects))
+	for _, project := range projects {
+		haystack := strings.ToLower(project.Key + " " + project.Name + " " + project.OwnerUsername)
+		matches := true
+		for _, term := range terms {
+			if !strings.Contains(haystack, term) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			out = append(out, project)
+		}
+	}
+	return out
+}
+
+func uiStatusRowClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "bg-slate-50/70 hover:bg-slate-100/80 dark:bg-slate-900/30 dark:hover:bg-slate-800/70"
+	case model.StatusInProgress:
+		return "bg-blue-50/45 hover:bg-blue-50 dark:bg-blue-950/15 dark:hover:bg-blue-950/30"
+	case model.StatusDone:
+		return "bg-emerald-50/45 hover:bg-emerald-50 dark:bg-emerald-950/15 dark:hover:bg-emerald-950/30"
+	case model.StatusClosed:
+		return "bg-zinc-50/70 hover:bg-zinc-100/80 dark:bg-zinc-900/35 dark:hover:bg-zinc-800/70"
+	default:
+		return "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"
+	}
+}
+
+func uiStatusSurfaceClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return "bg-slate-50/70 dark:bg-slate-900/30"
+	case model.StatusInProgress:
+		return "bg-blue-50/45 dark:bg-blue-950/15"
+	case model.StatusDone:
+		return "bg-emerald-50/45 dark:bg-emerald-950/15"
+	case model.StatusClosed:
+		return "bg-zinc-50/70 dark:bg-zinc-900/35"
+	default:
+		return "bg-white dark:bg-slate-900"
+	}
+}
+
+func uiIssueColumnStatus(s model.Status) model.Status {
+	if s.CountsAsDone() {
+		return model.StatusDone
+	}
+	return s
+}
+
+func uiIssueColumns() []uiIssueColumn {
+	return []uiIssueColumn{
+		{Status: model.StatusTodo, Label: uiStatusLabel(model.StatusTodo)},
+		{Status: model.StatusInProgress, Label: uiStatusLabel(model.StatusInProgress)},
+		{Status: model.StatusDone, Label: uiStatusLabel(model.StatusDone)},
+	}
+}
+
+type uiIssueLinkOption struct {
+	Value string
+	Label string
+}
+
+func uiIssueLinkOptions() []uiIssueLinkOption {
+	return []uiIssueLinkOption{
+		{Value: string(model.LinkTypeRelatesTo), Label: "Relates to"},
+		{Value: string(model.LinkTypeBlocks), Label: "Blocks"},
+		{Value: "blocked_by", Label: "Blocked by"},
+		{Value: string(model.LinkTypeDuplicates), Label: "Duplicates"},
+		{Value: "duplicated_by", Label: "Duplicated by"},
+		{Value: string(model.LinkTypeClones), Label: "Clones"},
+		{Value: "cloned_by", Label: "Cloned by"},
+	}
+}
+
+func uiIssueLinkRelation(link model.IssueLink, issueID uuid.UUID) string {
+	if link.SourceID == issueID {
+		return string(link.LinkType)
+	}
+	switch link.LinkType {
+	case model.LinkTypeBlocks:
+		return "blocked_by"
+	case model.LinkTypeDuplicates:
+		return "duplicated_by"
+	case model.LinkTypeClones:
+		return "cloned_by"
+	default:
+		return string(link.LinkType)
+	}
+}
+
+func uiIssueLinkRelationParams(issueID, otherID uuid.UUID, relation string) (uuid.UUID, uuid.UUID, model.LinkType, bool) {
+	switch model.LinkType(relation) {
+	case model.LinkTypeRelatesTo:
+		return issueID, otherID, model.LinkTypeRelatesTo, true
+	case model.LinkTypeBlocks:
+		return issueID, otherID, model.LinkTypeBlocks, true
+	case model.LinkTypeDuplicates:
+		return issueID, otherID, model.LinkTypeDuplicates, true
+	case model.LinkTypeClones:
+		return issueID, otherID, model.LinkTypeClones, true
+	}
+	switch relation {
+	case "blocked_by":
+		return otherID, issueID, model.LinkTypeBlocks, true
+	case "duplicated_by":
+		return otherID, issueID, model.LinkTypeDuplicates, true
+	case "cloned_by":
+		return otherID, issueID, model.LinkTypeClones, true
+	default:
+		return uuid.Nil, uuid.Nil, "", false
+	}
+}
+
+func uiIssueLinkLabel(link model.IssueLink, issueID uuid.UUID) string {
+	outgoing := link.SourceID == issueID
+	switch link.LinkType {
+	case model.LinkTypeBlocks:
+		if outgoing {
+			return "Blocks"
+		}
+		return "Blocked by"
+	case model.LinkTypeDuplicates:
+		if outgoing {
+			return "Duplicates"
+		}
+		return "Duplicated by"
+	case model.LinkTypeRelatesTo:
+		return "Relates to"
+	case model.LinkTypeClones:
+		if outgoing {
+			return "Clones"
+		}
+		return "Cloned by"
+	default:
+		return string(link.LinkType)
+	}
+}
+
+func uiTokenTime(v any) string {
+	if v == nil {
+		return "-"
+	}
+	switch t := v.(type) {
+	case time.Time:
+		return t.Format("Jan 2, 2006 15:04")
+	case *time.Time:
+		if t == nil {
+			return "-"
+		}
+		return t.Format("Jan 2, 2006 15:04")
+	default:
+		return "-"
+	}
+}
