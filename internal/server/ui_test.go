@@ -850,7 +850,7 @@ func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
 		if strings.Contains(body, "max-w-5xl") {
 			t.Fatalf("%s panel still uses narrower page width: %s", tt.name, body)
 		}
-		if strings.Contains(body, `data-lucide="arrow-left"`) {
+		if tt.name != "issue" && strings.Contains(body, `data-lucide="arrow-left"`) {
 			t.Fatalf("%s panel should not render app-level back buttons: %s", tt.name, body)
 		}
 	}
@@ -873,6 +873,13 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	assignee := model.User{ID: userID, Name: "Ada Lovelace", Email: "ada@example.com"}
 	reporter := model.User{ID: userID, Name: "Ada Lovelace", Email: "ada@example.com"}
 	sprint := model.Sprint{ID: uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"), ProjectID: projectID, Name: "Planned One", Status: model.SprintStatusPlanned}
+	tags := []model.IssueTag{{
+		ID:          uuid.MustParse("746e026d-d7dd-4de3-a039-9070b287cf0b"),
+		ProjectID:   projectID,
+		Name:        "Customer Beta",
+		DisplayName: "#Customer Beta",
+		Color:       model.TagColorBlue,
+	}}
 	var buf bytes.Buffer
 	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
 		Issue: model.Issue{
@@ -888,6 +895,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			ReporterID:    &userID,
 			SprintID:      &sprint.ID,
 			DueDate:       &dueDate,
+			Tags:          tags,
 			CreatedAt:     when,
 			UpdatedAt:     when,
 		},
@@ -907,9 +915,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			LinkedIssue: model.Issue{ID: linkedID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusDone},
 			HasIssue:    true,
 		}},
-		BackHref:  "/bradley/projects/TRACK/backlog",
-		BackHXGet: "/bradley/projects/TRACK/backlog/panel",
-		BackLabel: "Backlog",
+		BackHref:  "/bradley/projects/TRACK/planned",
+		BackHXGet: "/bradley/projects/TRACK/planned/panel",
+		BackLabel: "Planned",
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -923,6 +931,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		"Readonly description",
 		"In progress",
 		"Track Slash",
+		"#Customer Beta",
 		"Context",
 		"Ada Lovelace",
 		"Planned One",
@@ -943,7 +952,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`cursor-pointer list-none`,
 		`method="post" action="/bradley/issues/TRACK-7/delete"`,
 		`hx-post="/bradley/issues/TRACK-7/delete"`,
-		`hx-push-url="/bradley/projects/TRACK/backlog"`,
+		`hx-push-url="/bradley/projects/TRACK/planned"`,
 		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
@@ -951,6 +960,12 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`dark:hover:bg-rose-950/40`,
 		`aria-label="Edit title"`,
 		`hx-get="/bradley/issues/TRACK-7/title/edit"`,
+		`aria-label="Manage tags"`,
+		`hx-get="/bradley/issues/TRACK-7/tags"`,
+		`href="/bradley/projects/TRACK/planned"`,
+		`hx-get="/bradley/projects/TRACK/planned/panel"`,
+		`hx-push-url="/bradley/projects/TRACK/planned"`,
+		`data-lucide="corner-up-left"`,
 		`aria-label="Edit description"`,
 		`hx-get="/bradley/issues/TRACK-7/description/edit"`,
 		`aria-label="Edit link"`,
@@ -1050,6 +1065,9 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		}
 	}
 	detailsBlock := body[detailsStart:]
+	if strings.Contains(detailsBlock, ">Tags</dt>") {
+		t.Fatalf("issue panel should render tags in the title header, not details: %s", body)
+	}
 	statusIndex := strings.Index(detailsBlock, `aria-label="Change status"`)
 	projectIndex := strings.Index(detailsBlock, ">Project</dt>")
 	if statusIndex < 0 || projectIndex < 0 {
@@ -1112,6 +1130,11 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		t.Fatalf("issue panel missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
+	if !strings.Contains(titleHeader, "#Customer Beta") ||
+		!strings.Contains(titleHeader, `aria-label="Manage tags"`) ||
+		!strings.Contains(titleHeader, "Planned One") {
+		t.Fatalf("title header should render tags, tag manager action, and sprint title: %s", body)
+	}
 	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "In progress", "cursor-not-allowed"} {
 		if strings.Contains(titleHeader, notWant) {
 			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
@@ -2384,31 +2407,31 @@ func TestUIIssueBackLink(t *testing.T) {
 			name:      "planned sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusPlanned},
-			wantHref:  "/bradley/projects/TRACK/all",
-			wantHXGet: "/bradley/projects/TRACK/all/panel",
-			wantLabel: "All",
+			wantHref:  "/bradley/projects/TRACK/planned",
+			wantHXGet: "/bradley/projects/TRACK/planned/panel",
+			wantLabel: "Planned",
 		},
 		{
 			name:      "backlog issue",
 			issue:     model.Issue{ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8"},
 			wantHref:  "/bradley/projects/TRACK/all",
 			wantHXGet: "/bradley/projects/TRACK/all/panel",
-			wantLabel: "All",
+			wantLabel: "All issues",
 		},
 		{
 			name:      "completed sprint",
 			issue:     baseIssue,
 			sprint:    &model.Sprint{ID: sprintID, ProjectID: projectID, Status: model.SprintStatusCompleted},
-			wantHref:  "/bradley/projects/TRACK/sprint",
-			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
-			wantLabel: "Sprint",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All issues",
 		},
 		{
 			name:      "missing sprint",
 			issue:     baseIssue,
-			wantHref:  "/bradley/projects/TRACK/sprint",
-			wantHXGet: "/bradley/projects/TRACK/sprint/panel",
-			wantLabel: "Sprint",
+			wantHref:  "/bradley/projects/TRACK/all",
+			wantHXGet: "/bradley/projects/TRACK/all/panel",
+			wantLabel: "All issues",
 		},
 		{
 			name:      "parent issue",

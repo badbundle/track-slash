@@ -32,6 +32,18 @@
           </button>
         </div>
         {{end}}
+        <div class="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+          {{if .Issue.Tags}}
+          {{range issueVisibleTags .Issue.Tags}}{{template "tag-badge" .}}{{end}}
+          {{if issueHiddenTagCount .Issue.Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Issue.Tags))}}{{end}}
+          {{else}}
+          {{template "count-badge" 0}}
+          {{end}}
+          <a href="{{issueTags .Issue}}" aria-label="Manage tags" hx-get="{{issueTags .Issue}}" hx-target="#main" hx-push-url="{{issueTags .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
+          </a>
+        </div>
+        {{if .TagError}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.TagError}}</p>{{end}}
         {{if .ParentIssue}}
         <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="mt-1 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
           <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
@@ -41,7 +53,15 @@
           <span class="min-w-0 truncate">{{.ParentIssue.Title}}</span>
         </a>
         {{else}}
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</p>
+        <a data-main-view="projects" href="{{.BackHref}}" hx-get="{{.BackHXGet}}" hx-target="#main" hx-push-url="{{.BackHref}}" class="mt-2 inline-flex min-w-0 items-center gap-2 text-sm text-slate-500 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-200">
+          <i data-lucide="corner-up-left" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+          {{if and .Sprint (ne .BackLabel "All issues")}}
+          <span class="shrink-0">{{.BackLabel}}</span>
+          {{if .Sprint.Name}}<span class="min-w-0 truncate">{{.Sprint.Name}}</span>{{end}}
+          {{else}}
+          <span>{{.BackLabel}}</span>
+          {{end}}
+        </a>
         {{end}}
       </div>
       <div class="flex shrink-0 flex-wrap items-center gap-2">
@@ -444,25 +464,6 @@
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>
             <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>
-          </div>
-          <div>
-            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Tags</dt>
-            <dd class="mt-1 flex items-start justify-between gap-3">
-              <span class="min-w-0">
-                {{if .Issue.Tags}}
-                <span class="flex min-w-0 flex-wrap items-center gap-1">
-                  {{range issueVisibleTags .Issue.Tags}}{{template "tag-badge" .}}{{end}}
-                  {{if issueHiddenTagCount .Issue.Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Issue.Tags))}}{{end}}
-                </span>
-                {{else}}
-                {{template "count-badge" 0}}
-                {{end}}
-              </span>
-              <a href="{{issueTags .Issue}}" aria-label="Manage tags" hx-get="{{issueTags .Issue}}" hx-target="#main" hx-push-url="{{issueTags .Issue}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
-              </a>
-            </dd>
-            {{if .TagError}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.TagError}}</p>{{end}}
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Context</dt>

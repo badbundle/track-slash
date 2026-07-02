@@ -4649,29 +4649,57 @@ func (s *Server) uiLinkedIssues(ctx context.Context, issueID uuid.UUID, links []
 	return out, nil
 }
 
-func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+type uiIssueBackDestination struct {
+	Href      string
+	HXGet     string
+	Label     string
+	View      string
+	HasParent bool
+	ParentID  uuid.UUID
+}
+
+func uiIssueBackDestinationFor(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) uiIssueBackDestination {
 	if parent != nil {
 		base := uiIssuePath(*parent)
-		return base, base + "/panel", "Parent issue"
+		return uiIssueBackDestination{
+			Href:      base,
+			HXGet:     base + "/panel",
+			Label:     "Parent issue",
+			HasParent: true,
+			ParentID:  parent.ID,
+		}
 	}
-	view := "sprint"
-	if issue.SprintID == nil {
-		view = "all"
-	} else if sprint != nil && sprint.Status == model.SprintStatusPlanned {
-		view = "all"
+
+	view := "all"
+	label := "All issues"
+	if issue.SprintID != nil && sprint != nil {
+		switch sprint.Status {
+		case model.SprintStatusActive:
+			view = "sprint"
+			label = "Sprint"
+		case model.SprintStatusPlanned:
+			view = "planned"
+			label = "Planned"
+		}
 	}
 	base := uiProjectViewPath(project, view)
-	label = "Sprint"
-	switch view {
-	case "all":
-		label = "All"
+	return uiIssueBackDestination{
+		Href:  base,
+		HXGet: base + "/panel",
+		Label: label,
+		View:  view,
 	}
-	return base, base + "/panel", label
+}
+
+func uiIssueBackLink(project model.Project, issue model.Issue, parent *model.Issue, sprint *model.Sprint) (href, hxGet, label string) {
+	target := uiIssueBackDestinationFor(project, issue, parent, sprint)
+	return target.Href, target.HXGet, target.Label
 }
 
 func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request, panel *uiIssuePanelData, notice *uiIssueDeleteNotice) {
-	if panel.ParentIssue != nil {
-		parentPanel, err := s.uiBuildIssuePanel(r.Context(), r, panel.ParentIssue.ID)
+	target := uiIssueBackDestinationFor(panel.Project, panel.Issue, panel.ParentIssue, panel.Sprint)
+	if target.HasParent {
+		parentPanel, err := s.uiBuildIssuePanel(r.Context(), r, target.ParentID)
 		if err != nil {
 			writeUIStoreError(w, err)
 			return
@@ -4680,10 +4708,8 @@ func (s *Server) renderUIIssueBackTarget(w http.ResponseWriter, r *http.Request,
 		renderUITemplate(w, http.StatusOK, "issue-panel", parentPanel)
 		return
 	}
-	view := "sprint"
-	if panel.Issue.SprintID == nil {
-		view = "all"
-	} else if panel.Sprint != nil && panel.Sprint.Status == model.SprintStatusPlanned {
+	view := target.View
+	if view == "" {
 		view = "all"
 	}
 	projectPanel, err := s.uiBuildProjectPanel(r.Context(), r, panel.Project.ID, view)

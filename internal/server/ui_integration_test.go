@@ -1609,6 +1609,13 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
 		t.Fatalf("assign sprint: %v", err)
 	}
+	tag, err := e.store.CreateIssueTag(e.ctx, store.CreateIssueTagParams{ProjectID: e.projectID, Name: "UI", Color: model.TagColorBlue})
+	if err != nil {
+		t.Fatalf("CreateIssueTag: %v", err)
+	}
+	if _, err := e.store.CreateIssueTagLink(e.ctx, store.CreateIssueTagLinkParams{IssueID: issue.ID, TagID: tag.ID}); err != nil {
+		t.Fatalf("CreateIssueTagLink: %v", err)
+	}
 	linked, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "linked detail issue"})
 	if err != nil {
 		t.Fatalf("CreateIssue linked: %v", err)
@@ -1661,6 +1668,7 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		"detail page issue",
 		"read only body",
 		"Detail Planned Sprint",
+		"#UI",
 		user.Name,
 		"Blocks",
 		"linked detail issue",
@@ -1696,12 +1704,18 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		`data-submit-shortcut="meta-enter"`,
 		`method="post" action="` + e.issuePath(issue) + `/delete"`,
 		`hx-post="` + e.issuePath(issue) + `/delete"`,
-		`hx-push-url="` + e.projectPath() + `/all"`,
+		`hx-push-url="` + e.projectPath() + `/planned"`,
 		`hx-confirm="Delete this issue? You can undo it from the next screen."`,
 		`Delete issue`,
 		`data-lucide="trash-2"`,
 		`aria-label="Edit title"`,
 		`hx-get="` + e.issuePath(issue) + `/title/edit"`,
+		`aria-label="Manage tags"`,
+		`hx-get="` + e.issuePath(issue) + `/tags"`,
+		`href="` + e.projectPath() + `/planned"`,
+		`hx-get="` + e.projectPath() + `/planned/panel"`,
+		`hx-push-url="` + e.projectPath() + `/planned"`,
+		`data-lucide="corner-up-left"`,
 		`text-rose-600`,
 		`href="` + e.issuePath(linked) + `"`,
 		`hx-get="` + e.issuePath(linked) + `/panel"`,
@@ -1717,6 +1731,11 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 		t.Fatalf("issue body missing title header: %s", body)
 	}
 	titleHeader := body[:titleHeaderEnd]
+	if !strings.Contains(titleHeader, "#UI") ||
+		!strings.Contains(titleHeader, `aria-label="Manage tags"`) ||
+		!strings.Contains(titleHeader, "Detail Planned Sprint") {
+		t.Fatalf("title card should render issue tags, tag manager action, and sprint title: %s", body)
+	}
 	for _, notWant := range []string{"Edit issue", "Change status", "Edit description", "Edit status", "To do", "In progress", "Done"} {
 		if strings.Contains(titleHeader, notWant) {
 			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
@@ -1738,9 +1757,9 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body still renders native title tooltip %q: %s", notWant, body)
 		}
 	}
-	for _, notWant := range []string{`data-lucide="arrow-left"`, `href="` + e.projectPath() + `/all"`, `hx-get="` + e.projectPath() + `/all/panel"`} {
+	for _, notWant := range []string{`href="` + e.projectPath() + `/all"`, `hx-get="` + e.projectPath() + `/all/panel"`, `>Tags</dt>`} {
 		if strings.Contains(body, notWant) {
-			t.Fatalf("issue body should not render back button markup %q: %s", notWant, body)
+			t.Fatalf("issue body included stale tag or back target markup %q: %s", notWant, body)
 		}
 	}
 	for _, notWant := range []string{`aria-label="Edit status"`, ">Status</dt>"} {
@@ -2427,6 +2446,9 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		`flex flex-wrap items-center gap-2`,
 		`opacity-100`,
 		`opacity-40 hover:opacity-80`,
+		`data-lucide="corner-up-left"`,
+		`href="` + e.projectPath() + `/all"`,
+		`hx-get="` + e.projectPath() + `/all/panel"`,
 	} {
 		if !strings.Contains(edit, want) {
 			t.Fatalf("priority edit response missing %q: %s", want, edit)
@@ -2436,7 +2458,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 		strings.Contains(edit, `title="Cancel priority change"`) ||
 		strings.Contains(edit, `aria-label="Cancel priority change"`) ||
 		strings.Contains(edit, `data-lucide="x"`) ||
-		strings.Contains(edit, `data-lucide="arrow-left"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
 		strings.Contains(edit, `data-lucide="chevron-up"`) ||
 		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {
