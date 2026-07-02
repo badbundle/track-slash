@@ -1,0 +1,26 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/trackd ./cmd/trackd"
+entrypoint = ["./tmp/trackd"]
+include_dir = ["cmd", "internal"]
+include_ext = ["go", "html", "sql"]
+exclude_dir = ["tmp", "vendor", ".git", ".codex", ".agents"]
+exclude_file = []
+exclude_regex = []
+exclude_unchanged = false
+follow_symlink = false
+delay = 1000
+stop_on_error = true
+send_interrupt = true
+kill_delay = "1s"
+rerun = false
+rerun_delay = 500
+log = "build-errors.log"
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true

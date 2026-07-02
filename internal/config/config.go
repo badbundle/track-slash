@@ -10,6 +10,7 @@ type Config struct {
 	Port               string
 	DatabaseURL        string
 	CORSAllowedOrigins []string
+	DevReload          bool
 }
 
 func Load() (Config, error) {
@@ -17,6 +18,7 @@ func Load() (Config, error) {
 		Port:               envOr("PORT", "8080"),
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
 	}
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("DATABASE_URL is required")
@@ -29,6 +31,15 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envBool(key string) bool {
+	switch strings.TrimSpace(strings.ToLower(os.Getenv(key))) {
+	case "1", "true", "t", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseList splits a comma-separated env var, trims each element, and drops

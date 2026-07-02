@@ -11,9 +11,12 @@ SEED_PASSWORD ?= correct-horse-battery
 SEED_NAME ?= Demo User
 SEED_PROJECT_PREFIX ?= DEMO
 
-.PHONY: run migrate seed up down db-logs test tidy build vet
+.PHONY: run run-once migrate seed up down db-logs test tidy build vet
 
 run:
+	DATABASE_URL='$(DATABASE_URL)' PORT='$(PORT)' TRACK_SLASH_DEV_RELOAD=1 go tool air -c .air.toml
+
+run-once:
 	DATABASE_URL='$(DATABASE_URL)' PORT='$(PORT)' go run ./cmd/trackd
 
 build:
