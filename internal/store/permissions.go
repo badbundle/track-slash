@@ -2,44 +2,106 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/bradleymackey/track-slash/internal/model"
 )
 
 func (s *Store) GrantProjectAccess(ctx context.Context, projectID, userID uuid.UUID) (model.ProjectMember, error) {
-	if _, err := s.GetProject(ctx, projectID); err != nil {
-		return model.ProjectMember{}, err
-	}
-	if _, err := s.GetUser(ctx, userID); err != nil {
-		return model.ProjectMember{}, err
-	}
-	const q = `
-		INSERT INTO project_members (project_id, user_id)
-		VALUES ($1, $2)
-		ON CONFLICT (project_id, user_id) DO UPDATE SET user_id = EXCLUDED.user_id
-		RETURNING project_id, user_id, created_at
-	`
 	var out model.ProjectMember
-	if err := s.db.QueryRow(ctx, q, projectID, userID).Scan(&out.ProjectID, &out.UserID, &out.CreatedAt); err != nil {
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var project model.Project
+		if err := tx.QueryRow(ctx, `
+			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			FROM projects p
+			JOIN users u ON u.id = p.owner_id
+			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+		`, projectID).Scan(&project.ID, &project.OwnerID, &project.OwnerUsername, &project.Key, &project.Name, &project.Description, &project.CreatedAt, &project.UpdatedAt); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		var username string
+		if err := tx.QueryRow(ctx, `SELECT username FROM users WHERE id = $1 AND deleted_at IS NULL`, userID).Scan(&username); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		err := tx.QueryRow(ctx, `
+			INSERT INTO project_members (project_id, user_id)
+			VALUES ($1, $2)
+			ON CONFLICT (project_id, user_id) DO NOTHING
+			RETURNING project_id, user_id, created_at
+		`, projectID, userID).Scan(&out.ProjectID, &out.UserID, &out.CreatedAt)
+		if err != nil {
+			if !isNoRows(err) {
+				return err
+			}
+			return tx.QueryRow(ctx, `
+				SELECT project_id, user_id, created_at
+				FROM project_members
+				WHERE project_id = $1 AND user_id = $2
+			`, projectID, userID).Scan(&out.ProjectID, &out.UserID, &out.CreatedAt)
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   project.ID,
+			Entity:      "project_member",
+			Op:          "grant",
+			EntityID:    userID,
+			TargetRef:   project.Key,
+			TargetTitle: project.Name,
+			Summary:     fmt.Sprintf("Added @%s to project %s", username, project.Key),
+		})
+	})
+	if err != nil {
 		return model.ProjectMember{}, err
 	}
 	return out, nil
 }
 
 func (s *Store) RevokeProjectAccess(ctx context.Context, projectID, userID uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		DELETE FROM project_members WHERE project_id = $1 AND user_id = $2
-	`, projectID, userID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var project model.Project
+		var username string
+		if err := tx.QueryRow(ctx, `
+			SELECT p.id, p.owner_id, owner.username, p.key, p.name, p.description, p.created_at, p.updated_at, member.username
+			FROM project_members pm
+			JOIN projects p ON p.id = pm.project_id
+			JOIN users owner ON owner.id = p.owner_id
+			JOIN users member ON member.id = pm.user_id
+			WHERE pm.project_id = $1 AND pm.user_id = $2 AND p.deleted_at IS NULL
+			FOR UPDATE OF pm
+		`, projectID, userID).Scan(&project.ID, &project.OwnerID, &project.OwnerUsername, &project.Key, &project.Name, &project.Description, &project.CreatedAt, &project.UpdatedAt, &username); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		tag, err := tx.Exec(ctx, `
+			DELETE FROM project_members WHERE project_id = $1 AND user_id = $2
+		`, projectID, userID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   project.ID,
+			Entity:      "project_member",
+			Op:          "revoke",
+			EntityID:    userID,
+			TargetRef:   project.Key,
+			TargetTitle: project.Name,
+			Summary:     fmt.Sprintf("Removed @%s from project %s", username, project.Key),
+		})
+	})
 }
 
 func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]model.ProjectMember, error) {
@@ -241,6 +303,15 @@ func (s *Store) ProjectIDForIssueTagLink(ctx context.Context, id uuid.UUID) (uui
 		FROM issue_tag_links l
 		JOIN projects p ON p.id = l.project_id
 		WHERE l.id = $1 AND p.deleted_at IS NULL
+	`, id)
+}
+
+func (s *Store) ProjectIDForProjectChangelog(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return s.lookupProjectID(ctx, `
+		SELECT e.project_id
+		FROM project_changelog_entries e
+		JOIN projects p ON p.id = e.project_id
+		WHERE e.id = $1 AND p.deleted_at IS NULL
 	`, id)
 }
 

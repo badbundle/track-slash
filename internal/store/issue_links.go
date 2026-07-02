@@ -75,6 +75,14 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 		if sourceProject != targetProject {
 			return fmt.Errorf("issues belong to different projects: %w", ErrConflict)
 		}
+		sourceIssue, err := getIssueForChangelog(ctx, tx, p.SourceID, false)
+		if err != nil {
+			return err
+		}
+		targetIssue, err := getIssueForChangelog(ctx, tx, p.TargetID, false)
+		if err != nil {
+			return err
+		}
 
 		out, err = scanIssueLink(tx.QueryRow(ctx, `
 			INSERT INTO issue_links (project_id, number, source_id, target_id, link_type)
@@ -106,12 +114,45 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 			return err
 		}
 
+		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "issue_link",
+			Op:          "insert",
+			EntityID:    out.ID,
+			IssueID:     &sourceIssue.ID,
+			TargetRef:   changelogLinkRef(out),
+			TargetTitle: changelogLinkTitle(sourceIssue, out, targetIssue),
+			Summary:     fmt.Sprintf("Linked %s to %s", sourceIssue.Identifier, targetIssue.Identifier),
+			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+				changelogChange("link_type", "Relationship", "", changelogLinkTypeLabel(out.LinkType)),
+			}},
+		}); err != nil {
+			return err
+		}
+
 		if p.LinkType == model.LinkTypeDuplicates && !sourceStatus.CountsAsDone() {
+			duplicateReason := model.CloseReasonDuplicate
 			if _, err := tx.Exec(ctx, `
 				UPDATE issues
 				SET status = 'closed', close_reason = 'duplicate', updated_at = now()
 				WHERE id = $1
 			`, p.SourceID); err != nil {
+				return err
+			}
+			if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+				ProjectID:   sourceIssue.ProjectID,
+				Entity:      "issue",
+				Op:          "update",
+				EntityID:    sourceIssue.ID,
+				IssueID:     &sourceIssue.ID,
+				TargetRef:   sourceIssue.Identifier,
+				TargetTitle: sourceIssue.Title,
+				Summary:     changelogIssueSummary(sourceIssue, "Updated issue"),
+				Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+					changelogChange("status", "Status", changelogStatusLabel(sourceStatus), changelogStatusLabel(model.StatusClosed)),
+					changelogChange("close_reason", "Close reason", "", changelogCloseReasonLabel(&duplicateReason)),
+				}},
+			}); err != nil {
 				return err
 			}
 		}
@@ -175,8 +216,31 @@ func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssue
 		if sourceProject != linkProject || targetProject != linkProject {
 			return fmt.Errorf("issues belong to different projects: %w", ErrConflict)
 		}
+		before, err := scanIssueLink(tx.QueryRow(ctx, `
+			SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
+			FROM issue_links
+			WHERE id = $1
+		`, id))
+		if err != nil {
+			return err
+		}
+		beforeSourceIssue, err := getIssueForChangelog(ctx, tx, before.SourceID, false)
+		if err != nil {
+			return err
+		}
+		beforeTargetIssue, err := getIssueForChangelog(ctx, tx, before.TargetID, false)
+		if err != nil {
+			return err
+		}
+		sourceIssue, err := getIssueForChangelog(ctx, tx, p.SourceID, false)
+		if err != nil {
+			return err
+		}
+		targetIssue, err := getIssueForChangelog(ctx, tx, p.TargetID, false)
+		if err != nil {
+			return err
+		}
 
-		var err error
 		out, err = scanIssueLink(tx.QueryRow(ctx, `
 			UPDATE issue_links
 			SET source_id = $2, target_id = $3, link_type = $4, updated_at = now()
@@ -200,13 +264,49 @@ func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssue
 			}
 			return err // defensive: non-pg or unmapped pg error
 		}
+		changes := []model.ProjectChangelogChange{}
+		changes = changelogAppendChange(changes, "source", "Source", beforeSourceIssue.Identifier, sourceIssue.Identifier)
+		changes = changelogAppendChange(changes, "target", "Target", beforeTargetIssue.Identifier, targetIssue.Identifier)
+		changes = changelogAppendChange(changes, "link_type", "Relationship", changelogLinkTypeLabel(before.LinkType), changelogLinkTypeLabel(out.LinkType))
+		if len(changes) > 0 {
+			if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+				ProjectID:   out.ProjectID,
+				Entity:      "issue_link",
+				Op:          "update",
+				EntityID:    out.ID,
+				IssueID:     &sourceIssue.ID,
+				TargetRef:   changelogLinkRef(out),
+				TargetTitle: changelogLinkTitle(sourceIssue, out, targetIssue),
+				Summary:     fmt.Sprintf("Updated link %s", changelogLinkRef(out)),
+				Details:     model.ProjectChangelogDetails{Changes: changes},
+			}); err != nil {
+				return err
+			}
+		}
 
 		if p.LinkType == model.LinkTypeDuplicates && !sourceStatus.CountsAsDone() {
+			duplicateReason := model.CloseReasonDuplicate
 			if _, err := tx.Exec(ctx, `
 				UPDATE issues
 				SET status = 'closed', close_reason = 'duplicate', updated_at = now()
 				WHERE id = $1
 			`, p.SourceID); err != nil {
+				return err
+			}
+			if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+				ProjectID:   sourceIssue.ProjectID,
+				Entity:      "issue",
+				Op:          "update",
+				EntityID:    sourceIssue.ID,
+				IssueID:     &sourceIssue.ID,
+				TargetRef:   sourceIssue.Identifier,
+				TargetTitle: sourceIssue.Title,
+				Summary:     changelogIssueSummary(sourceIssue, "Updated issue"),
+				Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+					changelogChange("status", "Status", changelogStatusLabel(sourceStatus), changelogStatusLabel(model.StatusClosed)),
+					changelogChange("close_reason", "Close reason", "", changelogCloseReasonLabel(&duplicateReason)),
+				}},
+			}); err != nil {
 				return err
 			}
 		}
@@ -313,12 +413,39 @@ func (s *Store) ListIssueLinksForIssue(ctx context.Context, p ListIssueLinksForI
 }
 
 func (s *Store) DeleteIssueLink(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM issue_links WHERE id = $1`, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanIssueLink(tx.QueryRow(ctx, `
+			SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
+			FROM issue_links
+			WHERE id = $1
+			FOR UPDATE
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		sourceIssue, err := getIssueForChangelog(ctx, tx, before.SourceID, false)
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `DELETE FROM issue_links WHERE id = $1`, id)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   before.ProjectID,
+			Entity:      "issue_link",
+			Op:          "delete",
+			EntityID:    before.ID,
+			IssueID:     &sourceIssue.ID,
+			TargetRef:   changelogLinkRef(before),
+			TargetTitle: sourceIssue.Identifier,
+			Summary:     fmt.Sprintf("Deleted link %s", changelogLinkRef(before)),
+		})
+	})
 }

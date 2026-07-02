@@ -273,6 +273,42 @@ type ProjectStats struct {
 	TopAssignees []ProjectAssigneeIssueStats `json:"top_assignees"`
 }
 
+type ProjectChangelogChange struct {
+	Field string `json:"field"`
+	Label string `json:"label"`
+	From  string `json:"from,omitempty"`
+	To    string `json:"to,omitempty"`
+}
+
+type ProjectChangelogDetails struct {
+	Changes []ProjectChangelogChange `json:"changes,omitempty"`
+	Preview string                   `json:"preview,omitempty"`
+}
+
+type ProjectChangelogActor struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	Name     string    `json:"name"`
+}
+
+type ProjectChangelogEntry struct {
+	ID            uuid.UUID               `json:"id"`
+	ProjectID     uuid.UUID               `json:"project_id"`
+	ActorID       *uuid.UUID              `json:"actor_id,omitempty"`
+	Actor         *ProjectChangelogActor  `json:"actor,omitempty"`
+	Entity        string                  `json:"entity"`
+	Op            string                  `json:"op"`
+	EntityID      uuid.UUID               `json:"entity_id"`
+	IssueID       *uuid.UUID              `json:"issue_id,omitempty"`
+	ParentIssueID *uuid.UUID              `json:"parent_issue_id,omitempty"`
+	TargetRef     string                  `json:"target_ref,omitempty"`
+	TargetTitle   string                  `json:"target_title,omitempty"`
+	Summary       string                  `json:"summary"`
+	Details       ProjectChangelogDetails `json:"details,omitempty"`
+	Version       int64                   `json:"version"`
+	CreatedAt     time.Time               `json:"created_at"`
+}
+
 type Project struct {
 	ID            uuid.UUID `json:"id"`
 	OwnerID       uuid.UUID `json:"owner_id"`

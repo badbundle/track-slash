@@ -131,13 +131,29 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		out.ProjectKey = projectKey
 		out.OwnerUsername = ownerUsername
 		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
+		details := model.ProjectChangelogDetails{}
+		if preview := changelogPreview(out.Description); preview != "" {
+			details.Preview = preview
+		}
+		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ProjectID,
+			Entity:      "issue",
+			Op:          "insert",
+			EntityID:    out.ID,
+			IssueID:     &out.ID,
+			TargetRef:   out.Identifier,
+			TargetTitle: out.Title,
+			Summary:     changelogIssueSummary(out, "Created issue"),
+			Details:     details,
+		}); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
 		return model.Issue{}, err
 	}
-	out.Tags = []model.IssueTag{}
-	return out, nil
+	return s.hydrateIssueTagsOne(ctx, out)
 }
 
 func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (model.Issue, error) {
@@ -201,6 +217,24 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		out.ProjectKey = projectKey
 		out.OwnerUsername = ownerUsername
 		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
+		details := model.ProjectChangelogDetails{}
+		if preview := changelogPreview(out.Description); preview != "" {
+			details.Preview = preview
+		}
+		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:     out.ProjectID,
+			Entity:        "issue",
+			Op:            "insert",
+			EntityID:      out.ID,
+			IssueID:       &out.ID,
+			ParentIssueID: out.ParentIssueID,
+			TargetRef:     out.Identifier,
+			TargetTitle:   out.Title,
+			Summary:       changelogIssueSummary(out, "Created sub-issue"),
+			Details:       details,
+		}); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -227,6 +261,37 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 		return model.Issue{}, err
 	}
 	return s.hydrateIssueTagsOne(ctx, iss)
+}
+
+func getIssueForChangelog(ctx context.Context, q changelogQueryer, id uuid.UUID, includeDeleted bool) (model.Issue, error) {
+	deletedClause := "i.deleted_at IS NULL"
+	if includeDeleted {
+		deletedClause = "TRUE"
+	}
+	query := fmt.Sprintf(`
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
+		FROM issues i
+		JOIN projects p ON p.id = i.project_id
+		JOIN users u ON u.id = p.owner_id
+		WHERE i.id = $1 AND %s AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+		FOR UPDATE OF i
+	`, deletedClause)
+	return scanIssue(q.QueryRow(ctx, query, id))
+}
+
+func issueChangelogChanges(ctx context.Context, q changelogQueryer, before, after model.Issue) []model.ProjectChangelogChange {
+	changes := []model.ProjectChangelogChange{}
+	changes = changelogAppendChange(changes, "title", "Title", before.Title, after.Title)
+	changes = changelogAppendChange(changes, "description", "Description", changelogPreview(before.Description), changelogPreview(after.Description))
+	changes = changelogAppendChange(changes, "status", "Status", changelogStatusLabel(before.Status), changelogStatusLabel(after.Status))
+	changes = changelogAppendChange(changes, "close_reason", "Close reason", changelogCloseReasonLabel(before.CloseReason), changelogCloseReasonLabel(after.CloseReason))
+	changes = changelogAppendChange(changes, "priority", "Priority", string(before.Priority), string(after.Priority))
+	changes = changelogAppendChange(changes, "assignee", "Assignee", changelogUserLabel(ctx, q, before.AssigneeID), changelogUserLabel(ctx, q, after.AssigneeID))
+	changes = changelogAppendChange(changes, "reporter", "Reporter", changelogUserLabel(ctx, q, before.ReporterID), changelogUserLabel(ctx, q, after.ReporterID))
+	changes = changelogAppendChange(changes, "sprint", "Sprint", changelogSprintLabel(ctx, q, before.SprintID), changelogSprintLabel(ctx, q, after.SprintID))
+	changes = changelogAppendChange(changes, "due_date", "Due date", changelogDateLabel(before.DueDate), changelogDateLabel(after.DueDate))
+	return changes
 }
 
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
@@ -815,116 +880,125 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		UPDATE issues SET %s WHERE id = $%d AND deleted_at IS NULL
 	`, strings.Join(sets, ", "), i)
 
-	validatePeople := (p.AssigneeID != nil && !p.ClearAssignee) || (p.ReporterID != nil && !p.ClearReporter)
 	editSprint := p.ClearSprint || (p.SprintID != nil && !p.ClearSprint)
 	validateCloseReason := p.Status != nil || p.CloseReason != nil
-	// Cross-row validation runs in a transaction so the update uses the same
-	// issue project observed by the member/sprint checks.
-	if validatePeople || editSprint || validateCloseReason {
-		err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-			var issueProject, sprintProject uuid.UUID
-			var parentIssueID *uuid.UUID
-			var issueStatus model.Status
+
+	var out model.Issue
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := getIssueForChangelog(ctx, tx, id, false)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		issueProject := before.ProjectID
+		parentIssueID := before.ParentIssueID
+		issueStatus := before.Status
+		if p.AssigneeID != nil && !p.ClearAssignee {
+			ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.AssigneeID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return ErrNotFound
+			}
+		}
+		if p.ReporterID != nil && !p.ClearReporter {
+			ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.ReporterID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return ErrNotFound
+			}
+		}
+		if validateCloseReason {
+			if p.Status != nil && !p.Status.Valid() {
+				return fmt.Errorf("invalid issue status: %w", ErrConflict)
+			}
+			if p.CloseReason != nil && !p.CloseReason.Valid() {
+				return fmt.Errorf("invalid close reason: %w", ErrConflict)
+			}
+			effectiveStatus := issueStatus
+			if p.Status != nil {
+				effectiveStatus = *p.Status
+			}
+			if p.Status != nil && issueStatus != model.StatusClosed && *p.Status == model.StatusClosed && p.CloseReason == nil {
+				return fmt.Errorf("close reason required: %w", ErrConflict)
+			}
+			if p.CloseReason != nil && effectiveStatus != model.StatusClosed {
+				return fmt.Errorf("close reason only applies to closed issues: %w", ErrConflict)
+			}
+		}
+		if editSprint {
+			if issueStatus.CountsAsDone() || (p.Status != nil && p.Status.CountsAsDone()) {
+				return fmt.Errorf("cannot edit sprint for completed issue: %w", ErrConflict)
+			}
+			if parentIssueID != nil {
+				return fmt.Errorf("sub-issues cannot be assigned to sprints: %w", ErrConflict)
+			}
+		}
+		if p.SprintID != nil && !p.ClearSprint {
+			var sprintProject uuid.UUID
 			var sprintStatus model.SprintStatus
-			if err := tx.QueryRow(ctx, `SELECT project_id, parent_issue_id, status FROM issues WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&issueProject, &parentIssueID, &issueStatus); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
 				if isNoRows(err) {
-					return ErrNotFound
+					return fmt.Errorf("sprint not found: %w", ErrConflict)
 				}
 				return err
 			}
-			if p.AssigneeID != nil && !p.ClearAssignee {
-				ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.AssigneeID)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					return ErrNotFound
-				}
+			if issueProject != sprintProject {
+				return fmt.Errorf("sprint belongs to a different project: %w", ErrConflict)
 			}
-			if p.ReporterID != nil && !p.ClearReporter {
-				ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.ReporterID)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					return ErrNotFound
-				}
+			if sprintStatus == model.SprintStatusCompleted {
+				return fmt.Errorf("cannot assign issue to completed sprint: %w", ErrConflict)
 			}
-			if validateCloseReason {
-				if p.Status != nil && !p.Status.Valid() {
-					return fmt.Errorf("invalid issue status: %w", ErrConflict)
-				}
-				if p.CloseReason != nil && !p.CloseReason.Valid() {
-					return fmt.Errorf("invalid close reason: %w", ErrConflict)
-				}
-				effectiveStatus := issueStatus
-				if p.Status != nil {
-					effectiveStatus = *p.Status
-				}
-				if p.Status != nil && issueStatus != model.StatusClosed && *p.Status == model.StatusClosed && p.CloseReason == nil {
-					return fmt.Errorf("close reason required: %w", ErrConflict)
-				}
-				if p.CloseReason != nil && effectiveStatus != model.StatusClosed {
-					return fmt.Errorf("close reason only applies to closed issues: %w", ErrConflict)
-				}
-			}
-			if editSprint {
-				if issueStatus.CountsAsDone() || (p.Status != nil && p.Status.CountsAsDone()) {
-					return fmt.Errorf("cannot edit sprint for completed issue: %w", ErrConflict)
-				}
-				if parentIssueID != nil {
-					return fmt.Errorf("sub-issues cannot be assigned to sprints: %w", ErrConflict)
-				}
-			}
-			if p.SprintID != nil && !p.ClearSprint {
-				if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
-					if isNoRows(err) {
-						return fmt.Errorf("sprint not found: %w", ErrConflict)
-					}
-					return err
-				}
-				if issueProject != sprintProject {
-					return fmt.Errorf("sprint belongs to a different project: %w", ErrConflict)
-				}
-				if sprintStatus == model.SprintStatusCompleted {
-					return fmt.Errorf("cannot assign issue to completed sprint: %w", ErrConflict)
-				}
-			}
-			_, err := tx.Exec(ctx, q, args...)
-			return err
-		})
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) {
-				switch pgErr.Code {
-				case "23503":
-					return model.Issue{}, fmt.Errorf("invalid assignee, reporter, or sprint: %w", ErrConflict)
-				case "23514":
-					return model.Issue{}, fmt.Errorf("invalid issue close reason state: %w", ErrConflict)
-				}
-			}
-			return model.Issue{}, err
 		}
-		return s.GetIssue(ctx, id)
-	}
-
-	tag, err := s.db.Exec(ctx, q, args...)
+		tag, err := tx.Exec(ctx, q, args...)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		after, err := getIssueForChangelog(ctx, tx, id, false)
+		if err != nil {
+			return err
+		}
+		out = after
+		changes := issueChangelogChanges(ctx, tx, before, after)
+		if len(changes) == 0 {
+			return nil
+		}
+		targetRef, targetTitle := changelogTarget(after)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:     after.ProjectID,
+			Entity:        "issue",
+			Op:            "update",
+			EntityID:      after.ID,
+			IssueID:       &after.ID,
+			ParentIssueID: after.ParentIssueID,
+			TargetRef:     targetRef,
+			TargetTitle:   targetTitle,
+			Summary:       changelogIssueSummary(after, "Updated issue"),
+			Details:       model.ProjectChangelogDetails{Changes: changes},
+		})
+	})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "23503":
-				return model.Issue{}, fmt.Errorf("invalid assignee or sprint: %w", ErrConflict)
+				return model.Issue{}, fmt.Errorf("invalid assignee, reporter, or sprint: %w", ErrConflict)
 			case "23514":
 				return model.Issue{}, fmt.Errorf("invalid issue close reason state: %w", ErrConflict)
 			}
 		}
 		return model.Issue{}, err
 	}
-	if tag.RowsAffected() == 0 {
-		return model.Issue{}, ErrNotFound
-	}
-	return s.GetIssue(ctx, id)
+	out.Tags = []model.IssueTag{}
+	return out, nil
 }
 
 func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID uuid.UUID) (bool, error) {
@@ -941,45 +1015,94 @@ func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID 
 }
 
 func (s *Store) DeleteIssue(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		UPDATE issues SET deleted_at = now(), updated_at = now()
-		WHERE (id = $1 OR parent_issue_id = $1) AND deleted_at IS NULL
-	`, id)
-	if err != nil {
-		// Defensive: soft-delete has no expected FK/check mapping.
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := getIssueForChangelog(ctx, tx, id, false)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		tag, err := tx.Exec(ctx, `
+			UPDATE issues SET deleted_at = now(), updated_at = now()
+			WHERE (id = $1 OR parent_issue_id = $1) AND deleted_at IS NULL
+		`, id)
+		if err != nil {
+			// Defensive: soft-delete has no expected FK/check mapping.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		targetRef, targetTitle := changelogTarget(before)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:     before.ProjectID,
+			Entity:        "issue",
+			Op:            "delete",
+			EntityID:      before.ID,
+			IssueID:       &before.ID,
+			ParentIssueID: before.ParentIssueID,
+			TargetRef:     targetRef,
+			TargetTitle:   targetTitle,
+			Summary:       changelogIssueSummary(before, "Deleted issue"),
+		})
+	})
 }
 
 func (s *Store) RestoreIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
-	tag, err := s.db.Exec(ctx, `
-		WITH target AS (
-			SELECT id, parent_issue_id
-			FROM issues
-			WHERE id = $1 AND deleted_at IS NOT NULL
-		),
-		restore_ids AS (
-			SELECT id FROM target
-			UNION
-			SELECT parent_issue_id FROM target WHERE parent_issue_id IS NOT NULL
-			UNION
-			SELECT i.id
-			FROM issues i
-			JOIN target t ON i.parent_issue_id = t.id
-		)
-		UPDATE issues SET deleted_at = NULL, updated_at = now()
-		WHERE id IN (SELECT id FROM restore_ids) AND deleted_at IS NOT NULL
-	`, id)
+	var out model.Issue
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := getIssueForChangelog(ctx, tx, id, true)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		tag, err := tx.Exec(ctx, `
+			WITH target AS (
+				SELECT id, parent_issue_id
+				FROM issues
+				WHERE id = $1 AND deleted_at IS NOT NULL
+			),
+			restore_ids AS (
+				SELECT id FROM target
+				UNION
+				SELECT parent_issue_id FROM target WHERE parent_issue_id IS NOT NULL
+				UNION
+				SELECT i.id
+				FROM issues i
+				JOIN target t ON i.parent_issue_id = t.id
+			)
+			UPDATE issues SET deleted_at = NULL, updated_at = now()
+			WHERE id IN (SELECT id FROM restore_ids) AND deleted_at IS NOT NULL
+		`, id)
+		if err != nil {
+			// Defensive: restore has no expected FK/check mapping.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		out, err = getIssueForChangelog(ctx, tx, id, false)
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(out)
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:     out.ProjectID,
+			Entity:        "issue",
+			Op:            "restore",
+			EntityID:      out.ID,
+			IssueID:       &out.ID,
+			ParentIssueID: out.ParentIssueID,
+			TargetRef:     targetRef,
+			TargetTitle:   targetTitle,
+			Summary:       changelogIssueSummary(before, "Restored issue"),
+		})
+	})
 	if err != nil {
-		// Defensive: restore has no expected FK/check mapping.
 		return model.Issue{}, err
 	}
-	if tag.RowsAffected() == 0 {
-		return model.Issue{}, ErrNotFound
-	}
-	return s.GetIssue(ctx, id)
+	return s.hydrateIssueTagsOne(ctx, out)
 }
