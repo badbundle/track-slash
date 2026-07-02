@@ -71,7 +71,10 @@ func main() {
 	listener := realtime.NewListener(cfg.DatabaseURL, hub)
 	go listener.Run(ctx)
 
-	srv := server.New(st, hub, cfg.CORSAllowedOrigins)
+	srv := server.NewWithOptions(st, hub, server.Options{
+		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+		DevReload:          cfg.DevReload,
+	})
 
 	httpSrv := &http.Server{
 		Addr:              ":" + cfg.Port,

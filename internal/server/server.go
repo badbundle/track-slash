@@ -16,16 +16,27 @@ type Server struct {
 	store              *store.Store
 	hub                *realtime.Hub
 	corsAllowedOrigins []string
+	devReload          bool
+}
+
+type Options struct {
+	CORSAllowedOrigins []string
+	DevReload          bool
 }
 
 // New constructs a Server. corsAllowedOrigins is a list of exact origins
 // (scheme + host + port) allowed by CORS and by the WebSocket origin check;
 // a nil/empty slice disables CORS entirely and leaves the WS open (dev mode).
 func New(s *store.Store, hub *realtime.Hub, corsAllowedOrigins []string) *Server {
+	return NewWithOptions(s, hub, Options{CORSAllowedOrigins: corsAllowedOrigins})
+}
+
+func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 	return &Server{
 		store:              s,
 		hub:                hub,
-		corsAllowedOrigins: corsAllowedOrigins,
+		corsAllowedOrigins: opts.CORSAllowedOrigins,
+		devReload:          opts.DevReload,
 	}
 }
 
@@ -36,6 +47,9 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(exposeRequestID)
+	if s.devReload {
+		r.Use(s.devReloadMiddleware)
+	}
 	if len(s.corsAllowedOrigins) > 0 {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   s.corsAllowedOrigins,
@@ -47,6 +61,9 @@ func (s *Server) Router() http.Handler {
 		}))
 	}
 
+	if s.devReload {
+		r.Get(devReloadPath, s.devReloadEvents)
+	}
 	s.mountUIRoutes(r)
 
 	r.Route("/api/v1", func(r chi.Router) {

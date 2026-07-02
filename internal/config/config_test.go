@@ -35,3 +35,34 @@ func TestEnvOr(t *testing.T) {
 		t.Errorf("envOr undefined: got %q, want %q", got, "fallback")
 	}
 }
+
+func TestEnvBool(t *testing.T) {
+	trueValues := []string{"1", "true", "TRUE", "t", "yes", "y", "on", " on "}
+	for _, value := range trueValues {
+		t.Setenv("X_TEST_BOOL", value)
+		if !envBool("X_TEST_BOOL") {
+			t.Fatalf("envBool(%q) = false, want true", value)
+		}
+	}
+
+	falseValues := []string{"", "0", "false", "off", "no", "unexpected"}
+	for _, value := range falseValues {
+		t.Setenv("X_TEST_BOOL", value)
+		if envBool("X_TEST_BOOL") {
+			t.Fatalf("envBool(%q) = true, want false", value)
+		}
+	}
+}
+
+func TestLoadDevReload(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_DEV_RELOAD", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.DevReload {
+		t.Fatal("DevReload = false, want true")
+	}
+}
