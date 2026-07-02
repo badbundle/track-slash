@@ -1183,6 +1183,8 @@ func TestUIIssuePanelRendersTitleEditor(t *testing.T) {
 		`hx-push-url="false"`,
 		`name="title" value=" Draft title "`,
 		`aria-label="Issue title"`,
+		`[field-sizing:content]`,
+		`class="flex min-w-0 flex-wrap items-center gap-2"`,
 		`aria-label="Save title"`,
 		`aria-label="Cancel editing title"`,
 		`hx-get="/bradley/issues/TRACK-7/panel"`,
@@ -1194,6 +1196,20 @@ func TestUIIssuePanelRendersTitleEditor(t *testing.T) {
 	}
 	if strings.Contains(body, `hx-get="/bradley/issues/TRACK-7/title/edit"`) {
 		t.Fatalf("title editor rendered readonly edit button: %s", body)
+	}
+	formStart := strings.Index(body, `method="post" action="/bradley/issues/TRACK-7/title"`)
+	formEnd := -1
+	if formStart >= 0 {
+		formEnd = strings.Index(body[formStart:], "</form>")
+	}
+	if formStart < 0 || formEnd < 0 {
+		t.Fatalf("title editor missing title form: %s", body)
+	}
+	titleForm := body[formStart : formStart+formEnd]
+	for _, notWant := range []string{`sm:grid-cols-[minmax(0,1fr)_auto]`, `h-9 w-9`} {
+		if strings.Contains(titleForm, notWant) {
+			t.Fatalf("title editor action should flow after title instead of fixed grid %q: %s", notWant, body)
+		}
 	}
 }
 
