@@ -320,6 +320,40 @@ func TestIssueTagLinkEventFansOutToLinkIssueTagIssueAndProjectTopics(t *testing.
 	}
 }
 
+func TestIssueAttachmentEventFansOutToIssueAndProjectTopics(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	issueID := uuid.New()
+	attachmentID := uuid.New()
+
+	issueSub := newTestClient(4)
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+
+	hub.Subscribe(issueSub, IssueTopic(issueID))
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, IssueTopic(uuid.New()))
+
+	hub.Publish(Event{
+		Op:        OpInsert,
+		Entity:    EntityAttachment,
+		ID:        attachmentID,
+		IssueID:   &issueID,
+		ProjectID: &projectID,
+		Version:   1,
+	})
+
+	if _, ok := recv(t, issueSub, time.Second); !ok {
+		t.Fatal("issue subscriber did not receive attachment event")
+	}
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive attachment event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated issue subscriber received attachment event")
+	}
+}
+
 func TestChangelogEventFansOutToChangelogIssueParentAndProjectTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()

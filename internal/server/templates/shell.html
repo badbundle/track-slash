@@ -41,6 +41,22 @@
     .wide-only { transition: opacity 120ms ease; }
     .scrollbar-none { scrollbar-width: none; }
     .scrollbar-none::-webkit-scrollbar { display: none; }
+    .markdown-body > :first-child { margin-top: 0; }
+    .markdown-body > :last-child { margin-bottom: 0; }
+    .markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body blockquote, .markdown-body pre, .markdown-body table { margin: 0.75rem 0; }
+    .markdown-body ul { list-style: disc; padding-left: 1.25rem; }
+    .markdown-body ol { list-style: decimal; padding-left: 1.25rem; }
+    .markdown-body a { color: rgb(67 56 202); text-decoration: underline; text-underline-offset: 2px; }
+    .dark .markdown-body a { color: rgb(199 210 254); }
+    .markdown-body code { border-radius: 0.25rem; background: rgb(241 245 249); padding: 0.05rem 0.25rem; font-size: 0.85em; }
+    .dark .markdown-body code { background: rgb(15 23 42); }
+    .markdown-body pre { overflow-x: auto; border-radius: 0.375rem; border: 1px solid rgb(226 232 240); background: rgb(248 250 252); padding: 0.75rem; }
+    .dark .markdown-body pre { border-color: rgb(30 41 59); background: rgb(2 6 23); }
+    .markdown-body pre code { background: transparent; padding: 0; }
+    .markdown-body blockquote { border-left: 3px solid rgb(203 213 225); padding-left: 0.75rem; color: rgb(71 85 105); }
+    .dark .markdown-body blockquote { border-left-color: rgb(51 65 85); color: rgb(203 213 225); }
+    .markdown-body img { max-width: 100%; border-radius: 0.375rem; border: 1px solid rgb(226 232 240); }
+    .dark .markdown-body img { border-color: rgb(30 41 59); }
   </style>
 </head>
 <body class="h-screen overflow-hidden bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">

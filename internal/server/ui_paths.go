@@ -118,6 +118,18 @@ func uiIssueCommentsPath(issue any) string {
 	return uiIssuePath(issue) + "/comments"
 }
 
+func uiIssueAttachmentsPath(issue any) string {
+	return uiIssuePath(issue) + "/attachments"
+}
+
+func uiIssueAttachmentContentPath(issue any, object any) string {
+	return uiIssueAttachmentsPath(issue) + "/" + uiStorageObjectRef(object) + "/content"
+}
+
+func uiIssueAttachmentDeletePath(issue any, object any) string {
+	return uiIssueAttachmentsPath(issue) + "/" + uiStorageObjectRef(object) + "/delete"
+}
+
 func uiIssueContextPath(issue any) string {
 	return uiIssuePath(issue) + "/context"
 }
@@ -172,6 +184,29 @@ func uiIssueDescriptionPath(issue any) string {
 
 func uiIssueDescriptionEditPath(issue any) string {
 	return uiIssueDescriptionPath(issue) + "/edit"
+}
+
+func uiStorageObjectRef(v any) string {
+	switch item := v.(type) {
+	case model.StorageObject:
+		return item.Ref
+	case *model.StorageObject:
+		if item == nil {
+			return ""
+		}
+		return item.Ref
+	case model.IssueAttachment:
+		return item.Object.Ref
+	case *model.IssueAttachment:
+		if item == nil {
+			return ""
+		}
+		return item.Object.Ref
+	case string:
+		return item
+	default:
+		return ""
+	}
 }
 
 func uiIssueStatusPath(issue any) string {

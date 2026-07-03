@@ -13,8 +13,10 @@
               </button>
             </div>
           </header>
-          <textarea name="description" rows="7" autofocus data-submit-shortcut="meta-enter" placeholder="Description" class="mt-3 min-h-40 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.Issue.Description}}</textarea>
+          <textarea name="description" rows="7" autofocus data-submit-shortcut="meta-enter" data-attachment-dropzone data-attachment-upload-url="{{issueAttachments .Issue}}" data-attachment-list="#issue-attachments-list" placeholder="Description" class="mt-3 min-h-40 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.Issue.Description}}</textarea>
+          <div data-attachment-status class="mt-2 hidden rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"></div>
         </form>
+        {{template "issue-attachment-list" .}}
         {{else}}
         <header class="flex items-center justify-between gap-3">
           <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
@@ -23,10 +25,39 @@
           </button>
         </header>
         {{if .Issue.Description}}
-        <div class="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-800 dark:text-slate-200">{{.Issue.Description}}</div>
+        <div class="markdown-body mt-3 text-sm leading-6 text-slate-800 dark:text-slate-200">{{if .DescriptionHTML}}{{.DescriptionHTML}}{{else}}{{.Issue.Description}}{{end}}</div>
         {{else}}
         <div class="mt-3 rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No description.</div>
         {{end}}
+        {{template "issue-attachment-list" .}}
         {{end}}
       </section>
+{{end}}
+
+{{define "issue-attachment-list"}}
+        {{if or .Attachments .EditDescription}}
+        <div id="issue-attachments-list" data-attachment-list {{if .EditDescription}}data-attachment-editing="true"{{end}} class="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800 {{if not .Attachments}}hidden{{end}}">
+          <div class="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Attachments</h3>
+            <span data-attachment-count class="inline-flex shrink-0 items-center rounded-md border border-slate-200 px-2 py-0.5 text-xs font-medium leading-4 text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Attachments}}</span>
+            {{if .AttachmentsHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+          </div>
+          <div data-attachment-rows class="mt-2 grid gap-2">
+            {{$issue := .Issue}}
+            {{range .Attachments}}
+            <div data-attachment-ref="{{.Object.Ref}}" class="flex min-w-0 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-800 dark:bg-slate-950/60">
+              <i data-lucide="{{issueAttachmentIcon .}}" class="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>
+              <a href="{{issueAttachmentContent $issue .Object}}" class="min-w-0 flex-1 truncate font-medium text-slate-700 hover:text-indigo-700 dark:text-slate-200 dark:hover:text-indigo-200">{{.Object.Filename}}</a>
+              <span class="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{{byteSize .Object.ByteSize}}</span>
+              <a href="{{issueAttachmentContent $issue .Object}}" aria-label="Download attachment" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </a>
+              <button type="button" data-attachment-remove data-attachment-delete-url="{{issueAttachments $issue}}/{{.Object.Ref}}" aria-label="Remove attachment" hx-post="{{issueAttachmentDelete $issue .Object}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+                <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              </button>
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
 {{end}}

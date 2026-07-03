@@ -1,10 +1,12 @@
 package server
 
 import (
+	"html/template"
+	"time"
+
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/google/uuid"
-	"time"
 )
 
 type uiLoginData struct {
@@ -378,6 +380,9 @@ type uiIssuePanelData struct {
 	EditReporter       bool
 	EditSprint         bool
 	CanEditSprint      bool
+	DescriptionHTML    template.HTML
+	Attachments        []model.IssueAttachment
+	AttachmentsHasMore bool
 	TitleInput         string
 	AssigneeInput      string
 	ReporterInput      string
