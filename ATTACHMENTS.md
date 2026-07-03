@@ -35,6 +35,12 @@ Issue description Markdown may reference attached files by project-local object 
 
 Rendering resolves `object-N` only against attachments on the current issue. Missing or unattached object refs render inert text instead of links or images.
 
+External Markdown image URLs render inline when they use `http` or `https`, for example:
+
+```markdown
+![](https://news.ycombinator.com/y18.svg)
+```
+
 The issue UI shows each attachment below the description editor/view. Safe image attachments include a compact preview, and every attachment row has a copy action for the Markdown snippet so users can restore an accidentally removed reference.
 
 Safe image content types render inline through the issue attachment content route:
@@ -70,5 +76,6 @@ Content responses stream bytes from the backend with stored content type, conten
 
 - Raw HTML in Markdown remains disabled.
 - Markdown links allow safe external URL schemes only, plus same-origin absolute paths and fragments.
+- Markdown images render inline only for attached safe images, same-origin absolute paths, or external `http`/`https` URLs. Unsafe schemes such as `javascript:`, `data:`, and `mailto:` do not render as images.
 - `object-N` refs never cross issue boundaries.
 - Inline rendering is limited to safe image content types; downloads use attachment disposition.

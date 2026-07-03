@@ -30,6 +30,8 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 			"[Unsafe](javascript:alert(1))",
 			"<script>alert('x')</script>",
 			"![External](https://example.com/image.png)",
+			"![External SVG](https://news.ycombinator.com/y18.svg)",
+			"![Data URI](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)",
 		}, "\n\n"),
 	}
 	attachments := []model.IssueAttachment{
@@ -46,7 +48,9 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 		`<a href="/bradley/issues/TRACK-7/attachments/object-3/content">Vector</a>`,
 		"Missing",
 		"Unsafe",
-		`<a href="https://example.com/image.png">External</a>`,
+		`<img src="https://example.com/image.png" alt="External">`,
+		`<img src="https://news.ycombinator.com/y18.svg" alt="External SVG">`,
+		"Data URI",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("markdown output missing %q: %s", want, out)
@@ -56,14 +60,15 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 		"<script",
 		"javascript:",
 		`<img src="/bradley/issues/TRACK-7/attachments/object-3/content`,
-		`<img src="https://example.com/image.png`,
+		`<a href="https://example.com/image.png">External</a>`,
+		"data:image",
 		`object-99/content`,
 	} {
 		if strings.Contains(out, notWant) {
 			t.Fatalf("markdown output included %q: %s", notWant, out)
 		}
 	}
-	if strings.Count(out, "<img ") != 1 {
+	if strings.Count(out, "<img ") != 3 {
 		t.Fatalf("inline image count = %d output=%s", strings.Count(out, "<img "), out)
 	}
 }

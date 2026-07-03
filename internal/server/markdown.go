@@ -89,7 +89,9 @@ func (r issueMarkdownRenderer) renderImage(w util.BufWriter, source []byte, node
 	alt := markdownPlainText(n, source)
 	target, ok := r.objectTarget(string(n.Destination))
 	if !ok {
-		if href, safe := safeMarkdownURL(string(n.Destination)); safe {
+		if src, safe := safeMarkdownImageURL(string(n.Destination)); safe {
+			r.renderImageTag(w, src, alt, n.Title)
+		} else if href, safe := safeMarkdownURL(string(n.Destination)); safe {
 			r.renderFallbackImageLink(w, href, alt, n.Title)
 		} else {
 			_, _ = w.WriteString(html.EscapeString(alt))
@@ -100,18 +102,22 @@ func (r issueMarkdownRenderer) renderImage(w util.BufWriter, source []byte, node
 		r.renderFallbackImageLink(w, target.downloadHref, alt, n.Title)
 		return ast.WalkSkipChildren, nil
 	}
+	r.renderImageTag(w, target.inlineHref, alt, n.Title)
+	return ast.WalkSkipChildren, nil
+}
+
+func (r issueMarkdownRenderer) renderImageTag(w util.BufWriter, src, alt string, title []byte) {
 	_, _ = w.WriteString(`<img src="`)
-	_, _ = w.WriteString(html.EscapeString(target.inlineHref))
+	_, _ = w.WriteString(html.EscapeString(src))
 	_, _ = w.WriteString(`" alt="`)
 	_, _ = w.WriteString(html.EscapeString(alt))
 	_ = w.WriteByte('"')
-	if len(n.Title) > 0 {
+	if len(title) > 0 {
 		_, _ = w.WriteString(` title="`)
-		_, _ = w.WriteString(html.EscapeString(string(n.Title)))
+		_, _ = w.WriteString(html.EscapeString(string(title)))
 		_ = w.WriteByte('"')
 	}
 	_ = w.WriteByte('>')
-	return ast.WalkSkipChildren, nil
 }
 
 func (r issueMarkdownRenderer) renderFallbackImageLink(w util.BufWriter, href, alt string, title []byte) {
@@ -162,6 +168,26 @@ func safeMarkdownURL(raw string) (string, bool) {
 	}
 	switch strings.ToLower(u.Scheme) {
 	case "http", "https", "mailto":
+		return trimmed, true
+	default:
+		return "", false
+	}
+}
+
+func safeMarkdownImageURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", false
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return "", false
+	}
+	if u.Scheme == "" {
+		return trimmed, strings.HasPrefix(trimmed, "/")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
 		return trimmed, true
 	default:
 		return "", false
