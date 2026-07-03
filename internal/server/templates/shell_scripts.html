@@ -11,6 +11,11 @@
       })[char]);
       const markdownLabel = (value) => String(value || "attachment").replace(/\\/g, "\\\\").replace(/]/g, "\\]");
       const safeInlineImage = (contentType) => ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"].includes(String(contentType || "").toLowerCase());
+      const attachmentMarkdownSnippet = (object) => {
+        const ref = object.ref || "";
+        const label = markdownLabel(object.filename || ref || "attachment");
+        return safeInlineImage(object.content_type) ? `![${label}](${ref})` : `[${label}](${ref})`;
+      };
       const formatBytes = (bytes) => {
         const n = Number(bytes) || 0;
         if (n < 1024) return `${n} B`;
@@ -56,10 +61,7 @@
       };
       const insertAttachmentMarkdown = (textarea, attachment) => {
         const object = attachment.object || {};
-        const ref = object.ref || "";
-        const filename = object.filename || ref || "attachment";
-        const label = markdownLabel(filename);
-        const snippet = safeInlineImage(object.content_type) ? `![${label}](${ref})` : `[${label}](${ref})`;
+        const snippet = attachmentMarkdownSnippet(object);
         const start = textarea.selectionStart ?? textarea.value.length;
         const end = textarea.selectionEnd ?? textarea.value.length;
         const prefix = start > 0 && textarea.value[start - 1] !== "\n" ? "\n" : "";
@@ -74,14 +76,33 @@
         const object = attachment.object || {};
         const ref = object.ref || "";
         const contentUrl = `${uploadUrl}/${encodeURIComponent(ref)}/content`;
+        const inlineUrl = `${contentUrl}?inline=1`;
         const deleteUrl = `${uploadUrl}/${encodeURIComponent(ref)}`;
         const hxDeleteUrl = `${contentUrl.replace(/\/content$/, "")}/delete`;
-        const icon = safeInlineImage(object.content_type) ? "image" : "paperclip";
+        const isImage = safeInlineImage(object.content_type);
+        const icon = isImage ? "image" : "paperclip";
+        const markdown = attachmentMarkdownSnippet(object);
+        const preview = isImage
+          ? `<a href="${escapeHTML(contentUrl)}" class="block h-12 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+              <img src="${escapeHTML(inlineUrl)}" alt="" loading="lazy" class="h-full w-full object-cover">
+            </a>`
+          : `<span class="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              <i data-lucide="${icon}" class="h-4 w-4" aria-hidden="true"></i>
+            </span>`;
         return `
           <div data-attachment-ref="${escapeHTML(ref)}" class="flex min-w-0 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-800 dark:bg-slate-950/60">
-            <i data-lucide="${icon}" class="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>
-            <a href="${escapeHTML(contentUrl)}" class="min-w-0 flex-1 truncate font-medium text-slate-700 hover:text-indigo-700 dark:text-slate-200 dark:hover:text-indigo-200">${escapeHTML(object.filename || ref)}</a>
-            <span class="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">${escapeHTML(formatBytes(object.byte_size))}</span>
+            ${preview}
+            <div class="min-w-0 flex-1">
+              <a href="${escapeHTML(contentUrl)}" class="block truncate font-medium text-slate-700 hover:text-indigo-700 dark:text-slate-200 dark:hover:text-indigo-200">${escapeHTML(object.filename || ref)}</a>
+              <div class="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                <span class="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">${escapeHTML(formatBytes(object.byte_size))}</span>
+                <code class="truncate rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-900 dark:text-slate-400">${escapeHTML(ref)}</code>
+              </div>
+            </div>
+            <button type="button" data-attachment-copy-markdown data-markdown="${escapeHTML(markdown)}" aria-label="Copy attachment Markdown" class="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="copy" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              <span data-copy-label class="hidden text-[11px] font-medium sm:inline">Markdown</span>
+            </button>
             <a href="${escapeHTML(contentUrl)}" aria-label="Download attachment" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </a>
@@ -130,6 +151,33 @@
           insertAttachmentMarkdown(textarea, attachment);
           appendAttachmentRow(textarea, attachment);
         }
+      };
+      const writeClipboardText = async (text) => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand("copy");
+        } finally {
+          textarea.remove();
+        }
+      };
+      const showCopied = (button) => {
+        const label = button.querySelector("[data-copy-label]");
+        if (!label) return;
+        const previous = label.textContent;
+        label.textContent = "Copied";
+        window.setTimeout(() => {
+          label.textContent = previous || "Markdown";
+        }, 1200);
       };
       const active = ["bg-indigo-50", "text-indigo-700", "ring-1", "ring-indigo-100", "dark:bg-indigo-950/50", "dark:text-indigo-200", "dark:ring-indigo-900"];
       const inactive = ["text-slate-600", "dark:text-slate-300"];
@@ -333,6 +381,12 @@
       });
       document.body.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
+        const copyMarkdown = event.target.closest("[data-attachment-copy-markdown]");
+        if (copyMarkdown) {
+          event.preventDefault();
+          writeClipboardText(copyMarkdown.dataset.markdown || "").then(() => showCopied(copyMarkdown)).catch(() => {});
+          return;
+        }
         const removeAttachment = event.target.closest("[data-attachment-remove]");
         if (removeAttachment) {
           const list = removeAttachment.closest("[data-attachment-list][data-attachment-editing]");

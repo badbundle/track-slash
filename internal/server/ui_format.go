@@ -188,6 +188,22 @@ func uiIssueAttachmentIcon(attachment model.IssueAttachment) string {
 	return "paperclip"
 }
 
+func uiIssueAttachmentImage(attachment model.IssueAttachment) bool {
+	return storageObjectSafeInlineImage(attachment.Object)
+}
+
+func uiIssueAttachmentMarkdown(attachment model.IssueAttachment) string {
+	label := strings.ReplaceAll(attachment.Object.Filename, `\`, `\\`)
+	label = strings.ReplaceAll(label, "]", `\]`)
+	if strings.TrimSpace(label) == "" {
+		label = attachment.Object.Ref
+	}
+	if storageObjectSafeInlineImage(attachment.Object) {
+		return fmt.Sprintf("![%s](%s)", label, attachment.Object.Ref)
+	}
+	return fmt.Sprintf("[%s](%s)", label, attachment.Object.Ref)
+}
+
 func uiByteSize(n int64) string {
 	if n < 1024 {
 		return fmt.Sprintf("%d B", n)

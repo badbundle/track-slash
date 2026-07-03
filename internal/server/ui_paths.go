@@ -126,6 +126,10 @@ func uiIssueAttachmentContentPath(issue any, object any) string {
 	return uiIssueAttachmentsPath(issue) + "/" + uiStorageObjectRef(object) + "/content"
 }
 
+func uiIssueAttachmentInlineContentPath(issue any, object any) string {
+	return uiIssueAttachmentContentPath(issue, object) + "?inline=1"
+}
+
 func uiIssueAttachmentDeletePath(issue any, object any) string {
 	return uiIssueAttachmentsPath(issue) + "/" + uiStorageObjectRef(object) + "/delete"
 }

@@ -35,6 +35,8 @@ Issue description Markdown may reference attached files by project-local object 
 
 Rendering resolves `object-N` only against attachments on the current issue. Missing or unattached object refs render inert text instead of links or images.
 
+The issue UI shows each attachment below the description editor/view. Safe image attachments include a compact preview, and every attachment row has a copy action for the Markdown snippet so users can restore an accidentally removed reference.
+
 Safe image content types render inline through the issue attachment content route:
 
 - `image/png`
