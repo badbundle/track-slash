@@ -75,6 +75,33 @@ func TestRenderIssueDescriptionMarkdownEmptySource(t *testing.T) {
 	}
 }
 
+func TestRenderIssueDescriptionMarkdownHeadingsAndTables(t *testing.T) {
+	t.Parallel()
+	issue := model.Issue{
+		Description: strings.Join([]string{
+			"# Heading 1",
+			"## Heading 2",
+			"| Name | Value |",
+			"| --- | --- |",
+			"| Alpha | One |",
+		}, "\n"),
+	}
+	out := string(renderIssueDescriptionMarkdown(issue, nil))
+	for _, want := range []string{
+		"<h1>Heading 1</h1>",
+		"<h2>Heading 2</h2>",
+		"<table>",
+		"<th>Name</th>",
+		"<th>Value</th>",
+		"<td>Alpha</td>",
+		"<td>One</td>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("markdown output missing %q: %s", want, out)
+		}
+	}
+}
+
 func testMarkdownAttachment(projectID, issueID uuid.UUID, number int, filename, contentType string) model.IssueAttachment {
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	objectID := uuid.New()

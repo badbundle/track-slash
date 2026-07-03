@@ -294,6 +294,18 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing issue control reopen behavior %q: %s", want, body)
 		}
 	}
+	for _, want := range []string{
+		`.markdown-body h1 { font-size: 1.5rem; }`,
+		`.markdown-body h2 { font-size: 1.25rem; }`,
+		`.markdown-body h3 { font-size: 1.125rem; }`,
+		`.markdown-body table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }`,
+		`.markdown-body th, .markdown-body td { border: 1px solid rgb(203 213 225); padding: 0.375rem 0.5rem; text-align: left; vertical-align: top; }`,
+		`.dark .markdown-body th, .dark .markdown-body td { border-color: rgb(51 65 85); }`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing markdown CSS %q: %s", want, body)
+		}
+	}
 }
 
 func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
