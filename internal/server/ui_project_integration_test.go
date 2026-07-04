@@ -210,7 +210,7 @@ func TestUIProjectFavorites(t *testing.T) {
 	})
 	defer res.Body.Close()
 	body = readBody(t, res)
-	for _, want := range []string{`id="project-favorite-action"`, `aria-label="Unfavorite project"`, `aria-pressed="true"`, `fill-current`, `id="sidebar-favorites"`, `hx-swap-oob="true"`, e.projKey, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+	for _, want := range []string{`id="project-favorite-action"`, `aria-label="Unfavorite project"`, `aria-pressed="true"`, `fill-current`, `id="sidebar-favorites"`, `hx-swap-oob="true"`, `border-t border-slate-200`, e.projKey, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
 		if res.StatusCode != http.StatusOK || !strings.Contains(body, want) {
 			t.Fatalf("favorite response code = %d missing %q: %s", res.StatusCode, want, body)
 		}
