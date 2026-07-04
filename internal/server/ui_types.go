@@ -57,6 +57,19 @@ type uiPlannedSprint struct {
 	HasMore bool
 }
 
+type uiSprintFormData struct {
+	NameInput      string
+	GoalInput      string
+	StartDateInput string
+	EndDateInput   string
+	Error          string
+}
+
+type uiSprintIssueFormData struct {
+	IssueInput string
+	Error      string
+}
+
 type uiAssigneeFilterItem struct {
 	Assignee model.ProjectAssignee
 	Selected bool
@@ -302,29 +315,44 @@ type uiWorkPanelData struct {
 }
 
 type uiProjectPanelData struct {
-	Project              model.Project
-	View                 string
-	ProjectTabs          uiTabBarData
-	AssigneeFilters      []uiAssigneeFilterItem
-	AssigneeFilterActive bool
-	ClearAssigneeHref    string
-	ClearAssigneeHXGet   string
-	ClearAssigneeHXPush  string
-	ActiveSprint         *model.Sprint
-	SprintColumns        []uiIssueColumn
-	SprintControls       uiIssueControlsData
-	PlannedSprints       []uiPlannedSprint
-	AllIssues            []model.Issue
-	AllIssuePage         uiProjectAllIssuePageData
-	AllControls          uiIssueControlsData
-	ChangelogPage        uiProjectChangelogPageData
-	ProjectStats         model.ProjectStats
-	Tags                 []model.IssueTag
-	ContextItems         []uiProjectContextItem
-	ContextHasMore       bool
-	DeleteNotice         *uiIssueDeleteNotice
-	SprintIssuesHasMore  bool
-	PlannedHasMore       bool
+	Project                 model.Project
+	View                    string
+	ProjectTabs             uiTabBarData
+	EditProjectName         bool
+	ProjectNameInput        string
+	ProjectNameError        string
+	EditProjectDescription  bool
+	ProjectDescriptionInput string
+	ProjectDescriptionError string
+	AssigneeFilters         []uiAssigneeFilterItem
+	AssigneeFilterActive    bool
+	ClearAssigneeHref       string
+	ClearAssigneeHXGet      string
+	ClearAssigneeHXPush     string
+	ActiveSprint            *model.Sprint
+	ActiveSprintAction      string
+	ActiveSprintForm        uiSprintFormData
+	ActiveSprintIssueForm   uiSprintIssueFormData
+	SprintColumns           []uiIssueColumn
+	SprintControls          uiIssueControlsData
+	PlannedSprints          []uiPlannedSprint
+	NewSprint               bool
+	NewSprintForm           uiSprintFormData
+	PlannedSprintActionID   uuid.UUID
+	PlannedSprintAction     string
+	PlannedSprintForm       uiSprintFormData
+	PlannedSprintIssueForm  uiSprintIssueFormData
+	AllIssues               []model.Issue
+	AllIssuePage            uiProjectAllIssuePageData
+	AllControls             uiIssueControlsData
+	ChangelogPage           uiProjectChangelogPageData
+	ProjectStats            model.ProjectStats
+	Tags                    []model.IssueTag
+	ContextItems            []uiProjectContextItem
+	ContextHasMore          bool
+	DeleteNotice            *uiIssueDeleteNotice
+	SprintIssuesHasMore     bool
+	PlannedHasMore          bool
 }
 
 const uiIssueListDefaultSort = store.ListIssuesSortUpdated

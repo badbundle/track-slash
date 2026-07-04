@@ -93,14 +93,32 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	_, token := e.mustUserToken(t, "ui-no-project")
+	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: e.projectID,
+		Name:      "Denied Sprint",
+		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "denied sprint issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
 
 	for _, path := range []string{
 		e.projectPath() + "/about",
 		e.projectPath() + "/about/panel",
+		e.projectPath() + "/name/edit?view=about",
+		e.projectPath() + "/description/edit",
 		e.projectPath() + "/sprint",
 		e.projectPath() + "/sprint/panel",
 		e.projectPath() + "/planned",
 		e.projectPath() + "/planned/panel",
+		e.projectPath() + "/sprints/new",
+		e.projectPath() + "/sprints/" + sp.Ref + "/edit",
+		e.projectPath() + "/sprints/" + sp.Ref + "/issues/new",
 		e.projectPath() + "/all",
 		e.projectPath() + "/all/panel",
 		e.projectPath() + "/all/page",
@@ -121,6 +139,28 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("create issue denied code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	for _, item := range []struct {
+		path string
+		form url.Values
+	}{
+		{path: e.projectPath() + "/name", form: url.Values{"view": {"about"}, "name": {"Denied"}}},
+		{path: e.projectPath() + "/description", form: url.Values{"description": {"denied"}}},
+		{path: e.projectPath() + "/sprints", form: url.Values{"name": {"Denied"}, "start_date": {"2026-06-01"}, "end_date": {"2026-06-14"}}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref, form: url.Values{"name": {"Denied"}, "start_date": {"2026-06-01"}, "end_date": {"2026-06-14"}}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/activate", form: url.Values{}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/complete", form: url.Values{}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/delete", form: url.Values{}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/move-up", form: url.Values{}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/move-down", form: url.Values{}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/issues", form: url.Values{"issue": {issue.Identifier}}},
+		{path: e.projectPath() + "/sprints/" + sp.Ref + "/issues/" + issue.Identifier + "/delete", form: url.Values{}},
+	} {
+		res := e.uiDoNoRedirect(t, http.MethodPost, item.path, token, strings.NewReader(item.form.Encode()))
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s denied code = %d body = %s", item.path, res.StatusCode, readBody(t, res))
+		}
 	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, "/issues", token, strings.NewReader(url.Values{"project_id": {e.projectID.String()}, "title": {"denied"}}.Encode()))
 	defer res.Body.Close()

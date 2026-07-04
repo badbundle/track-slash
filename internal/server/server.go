@@ -110,6 +110,7 @@ func (s *Server) Router() http.Handler {
 			r.Route("/{owner}", func(r chi.Router) {
 				r.Route("/projects/{key}", func(r chi.Router) {
 					r.Get("/", s.getProject)
+					r.Patch("/", s.updateProject)
 					r.Delete("/", s.deleteProject)
 					r.Get("/changelog", s.listProjectChangelog)
 					r.Get("/stats", s.getProjectStats)

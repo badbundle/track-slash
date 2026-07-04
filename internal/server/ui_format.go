@@ -83,6 +83,18 @@ func uiSprintDate(t time.Time) string {
 	return t.Format("Jan 2")
 }
 
+func uiSprintLabel(sprint model.Sprint) string {
+	name := strings.TrimSpace(sprint.Name)
+	if name != "" {
+		return name
+	}
+	return uiIssueSprintRef(sprint)
+}
+
+func uiCanEditIssueSprint(issue model.Issue) bool {
+	return issue.ParentIssueID == nil && !issue.Status.CountsAsDone()
+}
+
 func uiDueDateValue(d *model.Date) string {
 	if d == nil {
 		return ""

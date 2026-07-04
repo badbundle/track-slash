@@ -134,6 +134,105 @@ func (s *Store) GetProjectByOwnerKey(ctx context.Context, ownerUsername, key str
 	return p, nil
 }
 
+type UpdateProjectParams struct {
+	Name        *string
+	Description *string
+}
+
+func (s *Store) UpdateProject(ctx context.Context, id uuid.UUID, p UpdateProjectParams) (model.Project, error) {
+	if p.Name != nil {
+		name := strings.TrimSpace(*p.Name)
+		if name == "" || len(name) > 200 {
+			return model.Project{}, fmt.Errorf("name must be 1..200 chars: %w", ErrConflict)
+		}
+		p.Name = &name
+	}
+	if p.Description != nil {
+		description := *p.Description
+		if strings.TrimSpace(description) == "" {
+			description = ""
+		}
+		p.Description = &description
+	}
+
+	var out model.Project
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		before, err := scanProject(tx.QueryRow(ctx, `
+			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			FROM projects p
+			JOIN users u ON u.id = p.owner_id
+			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+			FOR UPDATE OF p
+		`, id))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		sets := []string{}
+		args := []any{}
+		i := 1
+		if p.Name != nil {
+			sets = append(sets, fmt.Sprintf("name = $%d", i))
+			args = append(args, *p.Name)
+			i++
+		}
+		if p.Description != nil {
+			sets = append(sets, fmt.Sprintf("description = $%d", i))
+			args = append(args, *p.Description)
+			i++
+		}
+		if len(sets) == 0 {
+			out = before
+			return nil
+		}
+
+		sets = append(sets, "updated_at = now()")
+		args = append(args, id)
+		q := fmt.Sprintf(`
+			UPDATE projects p
+			SET %s
+			FROM users u
+			WHERE p.id = $%d
+			  AND p.owner_id = u.id
+			  AND p.deleted_at IS NULL
+			  AND u.deleted_at IS NULL
+			RETURNING p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+		`, strings.Join(sets, ", "), i)
+
+		out, err = scanProject(tx.QueryRow(ctx, q, args...))
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			// Defensive: update has no expected pgcode mapping.
+			return err
+		}
+		changes := []model.ProjectChangelogChange{}
+		changes = changelogAppendChange(changes, "name", "Name", before.Name, out.Name)
+		changes = changelogAppendChange(changes, "description", "Description", changelogPreview(before.Description), changelogPreview(out.Description))
+		if len(changes) == 0 {
+			return nil
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   out.ID,
+			Entity:      "project",
+			Op:          "update",
+			EntityID:    out.ID,
+			TargetRef:   out.Key,
+			TargetTitle: out.Name,
+			Summary:     fmt.Sprintf("Updated project %s", out.Key),
+			Details:     model.ProjectChangelogDetails{Changes: changes},
+		})
+	})
+	if err != nil {
+		return model.Project{}, err
+	}
+	return out, nil
+}
+
 type ProjectsCursor struct {
 	CreatedAt time.Time `json:"t"`
 	ID        uuid.UUID `json:"i"`

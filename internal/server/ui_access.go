@@ -410,6 +410,31 @@ func safeUIProjectPath(path string) bool {
 		}
 		return len(parts) == 6 && parts[4] == "new" && parts[5] == "panel"
 	}
+	if parts[3] == "name" || parts[3] == "description" {
+		return len(parts) == 5 && parts[4] == "edit"
+	}
+	if parts[3] == "sprints" {
+		if len(parts) == 5 {
+			return parts[4] == "new"
+		}
+		if len(parts) < 5 {
+			return false
+		}
+		if _, err := parseTypedRef(parts[4], "sprint"); err != nil {
+			return false
+		}
+		if len(parts) == 6 {
+			return parts[5] == "edit" || parts[5] == "activate" || parts[5] == "complete" || parts[5] == "delete" || parts[5] == "move-up" || parts[5] == "move-down" || parts[5] == "issues"
+		}
+		if len(parts) == 7 && parts[5] == "issues" {
+			return parts[6] == "new"
+		}
+		if len(parts) == 8 && parts[5] == "issues" && parts[7] == "delete" {
+			_, err := parseIssueRef(parts[6])
+			return err == nil
+		}
+		return false
+	}
 	if parts[3] != "about" && parts[3] != "sprint" && parts[3] != "planned" && parts[3] != "all" && parts[3] != "changelog" && parts[3] != "backlog" && parts[3] != "deleted" {
 		return false
 	}
