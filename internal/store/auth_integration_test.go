@@ -335,6 +335,31 @@ func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 	}
 }
 
+func TestListProjectMembersExcludesDeletedUsers(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	u, err := env.store.CreateUser(env.ctx, "deleted-member-"+uniqueProjectKey(t)+"@example.com", "Deleted Member")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, u.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	if err := env.store.DeleteUser(env.ctx, u.ID); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+
+	members, err := env.store.ListProjectMembers(env.ctx, env.projectID)
+	if err != nil {
+		t.Fatalf("ListProjectMembers: %v", err)
+	}
+	for _, member := range members {
+		if member.UserID == u.ID {
+			t.Fatalf("deleted user returned as project member: %+v", members)
+		}
+	}
+}
+
 func TestSearchProjectMembers(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)

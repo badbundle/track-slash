@@ -109,10 +109,11 @@ func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]
 		return nil, err
 	}
 	const q = `
-		SELECT project_id, user_id, created_at
-		FROM project_members
-		WHERE project_id = $1
-		ORDER BY created_at ASC, user_id ASC
+		SELECT pm.project_id, pm.user_id, pm.created_at
+		FROM project_members pm
+		JOIN users u ON u.id = pm.user_id
+		WHERE pm.project_id = $1 AND u.deleted_at IS NULL
+		ORDER BY pm.created_at ASC, pm.user_id ASC
 	`
 	rows, err := s.db.Query(ctx, q, projectID)
 	if err != nil {
