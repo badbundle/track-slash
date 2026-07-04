@@ -69,6 +69,29 @@ func TestHTTPAuthRequiredAndAdminOnly(t *testing.T) {
 	}
 }
 
+func TestHTTPListProjectMembersExcludesDeletedUsers(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, _ := e.mustUserToken(t, "deleted-member")
+	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	if err := e.store.DeleteUser(e.ctx, user.ID); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+
+	code, body := e.do(t, http.MethodGet, e.projectPath()+"/members", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list members code = %d body = %s", code, body)
+	}
+	members := decode[[]model.ProjectMember](t, body)
+	for _, member := range members {
+		if member.UserID == user.ID {
+			t.Fatalf("deleted user returned as project member: %+v", members)
+		}
+	}
+}
+
 func TestHTTPProjectMemberSearch(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
