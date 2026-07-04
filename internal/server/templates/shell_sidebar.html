@@ -34,6 +34,7 @@
             <span class="block truncate font-medium">Projects</span>
           </span>
         </a>
+        {{template "sidebar-favorites" .SidebarFavorites}}
       </nav>
 
       <details data-close-on-outside class="relative border-t border-slate-200 p-2 dark:border-slate-800">
@@ -54,4 +55,20 @@
         </div>
       </details>
     </aside>
+{{end}}
+
+{{define "sidebar-favorites"}}
+<div id="sidebar-favorites" {{if .OOB}}hx-swap-oob="true"{{end}} class="{{if .Projects}}mb-2 mt-2 space-y-1 border-t border-slate-200 pt-2 dark:border-slate-800{{else}}hidden{{end}}">
+  {{range .Projects}}
+  <a data-sidebar-favorite data-main-view="projects" href="{{projectView . "sprint"}}" hx-get="{{projectPanel . "sprint"}}" hx-target="#main" hx-push-url="{{projectView . "sprint"}}" title="{{.Name}}" class="flex items-center gap-3 rounded-lg px-2 py-1.5 text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq $.CurrentProjectID .ID}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+    <span class="grid h-6 w-6 shrink-0 place-items-center text-amber-500 dark:text-amber-300">
+      <i data-lucide="star" class="h-3.5 w-3.5 fill-current" aria-hidden="true"></i>
+    </span>
+    <span class="wide-only min-w-0">
+      <span class="block truncate font-medium">{{.Name}}</span>
+      <span class="block truncate text-[11px] text-slate-400 dark:text-slate-500">{{.Key}}</span>
+    </span>
+  </a>
+  {{end}}
+</div>
 {{end}}

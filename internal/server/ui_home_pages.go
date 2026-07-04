@@ -33,7 +33,7 @@ func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:        currentUser(r),
 		Projects:    projects,
 		CurrentView: "me",
@@ -111,7 +111,7 @@ func (s *Server) uiNewIssuePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: panel.Project.ID,
@@ -165,7 +165,7 @@ func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: project.ID,
@@ -334,7 +334,7 @@ func (s *Server) renderUINewIssueWithError(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+		s.renderUIShell(w, r, http.StatusOK, uiShellData{
 			User:             currentUser(r),
 			Projects:         projects,
 			CurrentProjectID: panel.Project.ID,
@@ -352,7 +352,7 @@ func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, status, "shell", uiShellData{
+	s.renderUIShell(w, r, status, uiShellData{
 		User:          currentUser(r),
 		Projects:      panel.Projects,
 		CurrentView:   "projects",
@@ -366,7 +366,7 @@ func (s *Server) renderUINewProject(w http.ResponseWriter, r *http.Request, stat
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, status, "shell", uiShellData{
+	s.renderUIShell(w, r, status, uiShellData{
 		User:        currentUser(r),
 		Projects:    projects,
 		CurrentView: "projects",

@@ -37,7 +37,7 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 		writeUIStoreError(w, err)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: project.ID,
@@ -59,6 +59,55 @@ func (s *Server) uiProjectWorkPanel(w http.ResponseWriter, r *http.Request, view
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
 }
 
+func (s *Server) uiToggleProjectFavorite(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	favorite, err := s.store.IsProjectFavorite(r.Context(), currentUser(r).ID, project.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if favorite {
+		err = s.store.UnfavoriteProject(r.Context(), currentUser(r).ID, project.ID)
+	} else {
+		err = s.store.FavoriteProject(r.Context(), currentUser(r).ID, project.ID)
+	}
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	view := uiProjectFavoriteView(r.Form.Get("view"))
+	if !isHTMXRequest(r) {
+		http.Redirect(w, r, uiProjectViewPath(project, view), http.StatusSeeOther)
+		return
+	}
+	favorites, err := s.uiFavoriteProjects(r.Context(), currentUser(r))
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-favorite-toggle-response", uiProjectFavoriteData{
+		Project:  project,
+		View:     view,
+		Favorite: !favorite,
+		Sidebar: uiSidebarFavoritesData{
+			Projects:         favorites,
+			CurrentProjectID: project.ID,
+			OOB:              true,
+		},
+	})
+}
+
 func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
 	project, ok := s.uiProjectFromRoute(w, r)
 	if !ok {
@@ -70,6 +119,15 @@ func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "project-all-issue-page", pageData)
+}
+
+func uiProjectFavoriteView(raw string) string {
+	switch raw {
+	case "about", "sprint", "planned", "all", "changelog":
+		return raw
+	default:
+		return "sprint"
+	}
 }
 
 func (s *Server) uiProjectLegacyBacklog(w http.ResponseWriter, r *http.Request, panel bool) {
@@ -103,7 +161,7 @@ func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: project.ID,
@@ -312,6 +370,10 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	if err != nil {
 		return nil, err
 	}
+	favorite, err := s.store.IsProjectFavorite(ctx, currentUser(r).ID, projectID)
+	if err != nil {
+		return nil, err
+	}
 	deleteNotice, err := s.uiDeletedIssueNotice(ctx, r, project.OwnerUsername, projectID)
 	if err != nil {
 		return nil, err
@@ -338,6 +400,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	panel := &uiProjectPanelData{
 		Project:                project,
 		View:                   view,
+		Favorite:               favorite,
 		ProjectTabs:            uiProjectTabs(project, view, assigneeIDs),
 		ProjectDescriptionHTML: renderProjectDescriptionMarkdown(project),
 		AssigneeFilterActive:   len(assigneeIDs) > 0,

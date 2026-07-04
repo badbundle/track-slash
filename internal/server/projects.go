@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"strings"
@@ -22,6 +23,11 @@ type createProjectReq struct {
 type updateProjectReq struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
+}
+
+type projectResponse struct {
+	model.Project
+	Favorite bool `json:"favorite"`
 }
 
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +52,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, p)
+	writeJSON(w, http.StatusCreated, projectResponse{Project: p})
 }
 
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +71,7 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 		cursor = &c
 	}
 
-	out, hasMore, err := s.store.ListProjects(r.Context(), store.ListProjectsParams{
+	projects, hasMore, err := s.store.ListProjects(r.Context(), store.ListProjectsParams{
 		Cursor:        cursor,
 		Limit:         limit,
 		VisibleToUser: visibleProjectUser(currentUser(r)),
@@ -74,9 +80,14 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	out, err := s.projectResponses(r.Context(), currentUser(r), projects)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	var next *string
 	if hasMore {
-		last := out[len(out)-1]
+		last := projects[len(projects)-1]
 		enc := encodeCursor(store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID})
 		next = &enc
 	}
@@ -91,7 +102,12 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	writeJSON(w, http.StatusOK, project)
+	out, err := s.projectResponse(r.Context(), currentUser(r), project)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +144,12 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, updated)
+	out, err := s.projectResponse(r.Context(), currentUser(r), updated)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
@@ -146,9 +167,66 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) favoriteProject(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	if err := s.store.FavoriteProject(r.Context(), currentUser(r).ID, project.ID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, projectResponse{Project: project, Favorite: true})
+}
+
+func (s *Server) unfavoriteProject(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	if err := s.store.UnfavoriteProject(r.Context(), currentUser(r).ID, project.ID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, projectResponse{Project: project})
+}
+
 func visibleProjectUser(u model.User) *uuid.UUID {
 	if u.IsAdmin {
 		return nil
 	}
 	return &u.ID
+}
+
+func (s *Server) projectResponse(ctx context.Context, user model.User, project model.Project) (projectResponse, error) {
+	favorite, err := s.store.IsProjectFavorite(ctx, user.ID, project.ID)
+	if err != nil {
+		return projectResponse{}, err
+	}
+	return projectResponse{Project: project, Favorite: favorite}, nil
+}
+
+func (s *Server) projectResponses(ctx context.Context, user model.User, projects []model.Project) ([]projectResponse, error) {
+	ids := make([]uuid.UUID, 0, len(projects))
+	for _, project := range projects {
+		ids = append(ids, project.ID)
+	}
+	favorites, err := s.store.FavoriteProjectIDs(ctx, user.ID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]projectResponse, 0, len(projects))
+	for _, project := range projects {
+		out = append(out, projectResponse{
+			Project:  project,
+			Favorite: favorites[project.ID],
+		})
+	}
+	return out, nil
 }

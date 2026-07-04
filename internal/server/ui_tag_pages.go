@@ -266,7 +266,7 @@ func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: panel.Project.ID,
@@ -285,7 +285,7 @@ func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, pane
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: panel.Project.ID,

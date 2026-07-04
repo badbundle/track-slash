@@ -192,6 +192,66 @@ func TestUIProjectNameAndDescriptionEditing(t *testing.T) {
 	}
 }
 
+func TestUIProjectFavorites(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-favorite")
+
+	body := e.uiGet(t, e.projectPath()+"/about", token)
+	for _, want := range []string{`id="project-favorite-action"`, `aria-label="Favorite project"`, `aria-pressed="false"`, `method="post" action="` + e.projectPath() + `/favorite"`, `hx-post="` + e.projectPath() + `/favorite"`, `name="view" value="about"`, `data-lucide="star"`, `id="sidebar-favorites"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project favorite body missing %q: %s", want, body)
+		}
+	}
+
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.projectPath()+"/favorite", token, strings.NewReader(url.Values{"view": {"about"}}.Encode()), map[string]string{
+		"HX-Request":     "true",
+		"HX-Current-URL": e.ts.URL + e.projectPath() + "/about",
+	})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	for _, want := range []string{`id="project-favorite-action"`, `aria-label="Unfavorite project"`, `aria-pressed="true"`, `fill-current`, `id="sidebar-favorites"`, `hx-swap-oob="true"`, `border-t border-slate-200`, e.projKey, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+		if res.StatusCode != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("favorite response code = %d missing %q: %s", res.StatusCode, want, body)
+		}
+	}
+
+	body = e.uiGet(t, "/me", token)
+	for _, want := range []string{`id="sidebar-favorites"`, e.projKey, `href="` + e.projectPath() + `/sprint"`, `data-sidebar-favorite`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("favorite sidebar missing %q: %s", want, body)
+		}
+	}
+	sidebarStart := strings.Index(body, `<nav class="scrollbar-none`)
+	if sidebarStart < 0 {
+		t.Fatalf("missing sidebar nav: %s", body)
+	}
+	requireMarkupOrder(t, body[sidebarStart:], ">Projects</span>", `data-sidebar-favorite`)
+
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.projectPath()+"/favorite", token, strings.NewReader(url.Values{"view": {"about"}}.Encode()), map[string]string{
+		"HX-Request":     "true",
+		"HX-Current-URL": e.ts.URL + e.projectPath() + "/about",
+	})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `aria-label="Favorite project"`) || !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, `class="hidden"`) {
+		t.Fatalf("unfavorite response code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/favorite", token, strings.NewReader(url.Values{"view": {"unknown"}}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("favorite redirect code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	if loc := res.Header.Get("Location"); loc != e.projectPath()+"/sprint" {
+		t.Fatalf("favorite redirect Location = %q", loc)
+	}
+	body = e.uiGet(t, e.projectPath()+"/sprint", token)
+	if !strings.Contains(body, `aria-label="Unfavorite project"`) || !strings.Contains(body, `aria-pressed="true"`) {
+		t.Fatalf("favorite redirect did not persist active state: %s", body)
+	}
+}
+
 func TestUIRendersProjectSprintBoard(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

@@ -296,7 +296,7 @@ func (s *Server) renderUIContextManager(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderUITemplate(w, http.StatusOK, "shell", uiShellData{
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:             currentUser(r),
 		Projects:         projects,
 		CurrentProjectID: panel.Project.ID,

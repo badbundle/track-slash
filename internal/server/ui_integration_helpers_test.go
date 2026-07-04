@@ -144,6 +144,15 @@ func mainContentBlock(t *testing.T, body string) string {
 	return body[contentStart : contentStart+contentEnd]
 }
 
+func requireMarkupOrder(t *testing.T, body, first, second string) {
+	t.Helper()
+	firstIndex := strings.Index(body, first)
+	secondIndex := strings.Index(body, second)
+	if firstIndex < 0 || secondIndex < 0 || firstIndex > secondIndex {
+		t.Fatalf("%q should render before %q: %s", first, second, body)
+	}
+}
+
 func (e *httpEnv) mustProjectMemberToken(t *testing.T, label string) (model.User, string) {
 	t.Helper()
 	user, token := e.mustUserToken(t, label)

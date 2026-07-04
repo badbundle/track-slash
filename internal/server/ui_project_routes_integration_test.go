@@ -146,6 +146,7 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	}{
 		{path: e.projectPath() + "/name", form: url.Values{"view": {"about"}, "name": {"Denied"}}},
 		{path: e.projectPath() + "/description", form: url.Values{"description": {"denied"}}},
+		{path: e.projectPath() + "/favorite", form: url.Values{"view": {"about"}}},
 		{path: e.projectPath() + "/sprints", form: url.Values{"name": {"Denied"}, "start_date": {"2026-06-01"}, "end_date": {"2026-06-14"}}},
 		{path: e.projectPath() + "/sprints/" + sp.Ref, form: url.Values{"name": {"Denied"}, "start_date": {"2026-06-01"}, "end_date": {"2026-06-14"}}},
 		{path: e.projectPath() + "/sprints/" + sp.Ref + "/activate", form: url.Values{}},
