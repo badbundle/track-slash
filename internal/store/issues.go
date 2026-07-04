@@ -98,6 +98,9 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 			}
 			return err
 		}
+		if err := validateIssuePeople(ctx, tx, p.ProjectID, p.AssigneeID, p.ReporterID); err != nil {
+			return err
+		}
 
 		priority := issuePriorityOrDefault(p.Priority)
 		var dueDate *time.Time
@@ -112,7 +115,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				return fmt.Errorf("invalid assignee/reporter: %w", ErrConflict)
+				return fmt.Errorf("invalid assignee/reporter: %w", ErrNotFound)
 			}
 			return err
 		}
@@ -184,6 +187,9 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		if parentIssueID != nil {
 			return fmt.Errorf("sub-issues cannot have sub-issues: %w", ErrConflict)
 		}
+		if err := validateIssuePeople(ctx, tx, projectID, p.AssigneeID, p.ReporterID); err != nil {
+			return err
+		}
 
 		priority := issuePriorityOrDefault(p.Priority)
 		var dueDate *time.Time
@@ -198,7 +204,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-				return fmt.Errorf("invalid assignee/reporter: %w", ErrConflict)
+				return fmt.Errorf("invalid assignee/reporter: %w", ErrNotFound)
 			}
 			return err
 		}
@@ -895,23 +901,16 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		issueProject := before.ProjectID
 		parentIssueID := before.ParentIssueID
 		issueStatus := before.Status
-		if p.AssigneeID != nil && !p.ClearAssignee {
-			ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.AssigneeID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return ErrNotFound
-			}
+		var assigneeID *uuid.UUID
+		if !p.ClearAssignee {
+			assigneeID = p.AssigneeID
 		}
-		if p.ReporterID != nil && !p.ClearReporter {
-			ok, err := issueProjectMemberExists(ctx, tx, issueProject, *p.ReporterID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return ErrNotFound
-			}
+		var reporterID *uuid.UUID
+		if !p.ClearReporter {
+			reporterID = p.ReporterID
+		}
+		if err := validateIssuePeople(ctx, tx, issueProject, assigneeID, reporterID); err != nil {
+			return err
 		}
 		if validateCloseReason {
 			if p.Status != nil && !p.Status.Valid() {
@@ -1012,6 +1011,28 @@ func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID 
 		)
 	`, projectID, userID).Scan(&ok)
 	return ok, err
+}
+
+func validateIssuePeople(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, assigneeID, reporterID *uuid.UUID) error {
+	if assigneeID != nil {
+		ok, err := issueProjectMemberExists(ctx, tx, projectID, *assigneeID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+	}
+	if reporterID != nil {
+		ok, err := issueProjectMemberExists(ctx, tx, projectID, *reporterID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrNotFound
+		}
+	}
+	return nil
 }
 
 func (s *Store) DeleteIssue(ctx context.Context, id uuid.UUID) error {

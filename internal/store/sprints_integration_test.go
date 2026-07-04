@@ -758,6 +758,9 @@ func TestUpdateIssueClearAssignee(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
 	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
 		ProjectID:  env.projectID,
 		Title:      "T",
@@ -788,6 +791,45 @@ func TestUpdateIssuePeopleRequireProjectMembers(t *testing.T) {
 	}
 	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, member.ID); err != nil {
 		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	created, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "created people",
+		AssigneeID: &member.ID,
+		ReporterID: &member.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue with member people: %v", err)
+	}
+	if created.AssigneeID == nil || *created.AssigneeID != member.ID || created.ReporterID == nil || *created.ReporterID != member.ID {
+		t.Fatalf("created people = assignee %v reporter %v, want %s", created.AssigneeID, created.ReporterID, member.ID)
+	}
+	nilPeople, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID: env.projectID,
+		Title:     "nil people",
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue nil people: %v", err)
+	}
+	if nilPeople.AssigneeID != nil || nilPeople.ReporterID != nil {
+		t.Fatalf("nil people = assignee %v reporter %v, want nil", nilPeople.AssigneeID, nilPeople.ReporterID)
+	}
+	_, err = env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "nonmember assignee",
+		AssigneeID: &nonMember.ID,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("create non-member assignee err = %v, want ErrNotFound", err)
+	}
+	missingReporter := uuid.New()
+	_, err = env.store.CreateIssue(env.ctx, store.CreateIssueParams{
+		ProjectID:  env.projectID,
+		Title:      "missing reporter",
+		ReporterID: &missingReporter,
+	})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("create missing reporter err = %v, want ErrNotFound", err)
 	}
 	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
 		ProjectID: env.projectID,
@@ -1312,6 +1354,11 @@ func TestListIssuesAssigneeFilter(t *testing.T) {
 	env := newSprintsEnv(t)
 	alice := mustCreateUser(t, env, "alice-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
 	bob := mustCreateUser(t, env, "bob-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
+	for _, user := range []model.User{alice, bob} {
+		if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, user.ID); err != nil {
+			t.Fatalf("GrantProjectAccess %s: %v", user.ID, err)
+		}
+	}
 	sp := mustCreateSprint(t, env, "S", date(2026, 6, 1), date(2026, 6, 14))
 
 	assignedAlice, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
@@ -1600,6 +1647,9 @@ func TestListProjectAssigneesIncludesMembersAndAssignedUsers(t *testing.T) {
 	assigned, err := env.store.CreateUserProfile(env.ctx, "assigned-"+strings.ToLower(uniqueProjectKey(t)), "assigned@example.com", "Assigned User")
 	if err != nil {
 		t.Fatalf("CreateUserProfile assigned: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, assigned.ID); err != nil {
+		t.Fatalf("GrantProjectAccess assigned: %v", err)
 	}
 	unrelated, err := env.store.CreateUserProfile(env.ctx, "unrelated-"+strings.ToLower(uniqueProjectKey(t)), "unrelated@example.com", "Unrelated User")
 	if err != nil {

@@ -25,6 +25,11 @@ type UpdateCommentParams struct {
 	Body     string
 }
 
+type DeleteCommentParams struct {
+	ID       uuid.UUID
+	AuthorID uuid.UUID
+}
+
 type commentScanner interface {
 	Scan(dest ...any) error
 }
@@ -268,14 +273,14 @@ func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model
 	return out, nil
 }
 
-func (s *Store) DeleteComment(ctx context.Context, id uuid.UUID) error {
+func (s *Store) DeleteComment(ctx context.Context, p DeleteCommentParams) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		before, err := scanComment(tx.QueryRow(ctx, `
 			SELECT id, issue_id, number, author_id, body, created_at, updated_at
 			FROM comments
-			WHERE id = $1
+			WHERE id = $1 AND author_id = $2
 			FOR UPDATE
-		`, id))
+		`, p.ID, p.AuthorID))
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -286,7 +291,7 @@ func (s *Store) DeleteComment(ctx context.Context, id uuid.UUID) error {
 		if err != nil {
 			return err
 		}
-		tag, err := tx.Exec(ctx, `DELETE FROM comments WHERE id = $1`, id)
+		tag, err := tx.Exec(ctx, `DELETE FROM comments WHERE id = $1 AND author_id = $2`, p.ID, p.AuthorID)
 		if err != nil {
 			// Defensive: delete has no expected FK/check mapping.
 			return err

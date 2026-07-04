@@ -81,8 +81,8 @@ type mcpCreateIssueInput struct {
 	Title       string               `json:"title"`
 	Description string               `json:"description,omitempty"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
-	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
-	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
+	AssigneeID  *string              `json:"assignee_id,omitempty"`
+	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
 }
 
@@ -90,7 +90,7 @@ type mcpListIssuesInput struct {
 	mcpProjectInput
 	mcpPageInput
 	Status      model.Status `json:"status,omitempty"`
-	AssigneeIDs []uuid.UUID  `json:"assignee_ids,omitempty"`
+	AssigneeIDs []string     `json:"assignee_ids,omitempty"`
 	Tags        []string     `json:"tags,omitempty"`
 	Sprint      string       `json:"sprint,omitempty" jsonschema:"sprint ref, or backlog"`
 }
@@ -107,9 +107,9 @@ type mcpUpdateIssueInput struct {
 	Status        *model.Status           `json:"status,omitempty"`
 	CloseReason   *model.IssueCloseReason `json:"close_reason,omitempty"`
 	Priority      *model.IssuePriority    `json:"priority,omitempty"`
-	AssigneeID    *uuid.UUID              `json:"assignee_id,omitempty"`
+	AssigneeID    *string                 `json:"assignee_id,omitempty"`
 	ClearAssignee bool                    `json:"clear_assignee,omitempty"`
-	ReporterID    *uuid.UUID              `json:"reporter_id,omitempty"`
+	ReporterID    *string                 `json:"reporter_id,omitempty"`
 	ClearReporter bool                    `json:"clear_reporter,omitempty"`
 	Sprint        *string                 `json:"sprint,omitempty"`
 	ClearSprint   bool                    `json:"clear_sprint,omitempty"`
@@ -122,8 +122,8 @@ type mcpCreateSubIssueInput struct {
 	Title       string               `json:"title"`
 	Description string               `json:"description,omitempty"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
-	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
-	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
+	AssigneeID  *string              `json:"assignee_id,omitempty"`
+	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
 }
 
@@ -702,6 +702,32 @@ func mcpReporter(auth authContext, reporterID *uuid.UUID) (*uuid.UUID, error) {
 	return reporterID, nil
 }
 
+func mcpOptionalUUID(raw *string, field string) (*uuid.UUID, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	id, err := uuid.Parse(strings.TrimSpace(*raw))
+	if err != nil {
+		return nil, validationError(field + " must be a UUID")
+	}
+	return &id, nil
+}
+
+func mcpUUIDs(raw []string, field string) ([]uuid.UUID, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make([]uuid.UUID, 0, len(raw))
+	for _, value := range raw {
+		id, err := uuid.Parse(strings.TrimSpace(value))
+		if err != nil {
+			return nil, validationError(field + " must contain only UUIDs")
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
 func validateMCPTokenInput(name string, kind *model.AuthTokenKind, expiresAt *time.Time) (string, model.AuthTokenKind, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 200 {
@@ -1041,7 +1067,15 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
-	reporterID, err := mcpReporter(auth, input.ReporterID)
+	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
+	if err != nil {
+		return nil, err
+	}
+	inputReporterID, err := mcpOptionalUUID(input.ReporterID, "reporter_id")
+	if err != nil {
+		return nil, err
+	}
+	reporterID, err := mcpReporter(auth, inputReporterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1050,7 +1084,7 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		Title:       title,
 		Description: input.Description,
 		Priority:    priority,
-		AssigneeID:  input.AssigneeID,
+		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     input.DueDate,
 	})
@@ -1077,7 +1111,15 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 	if err != nil {
 		return nil, err
 	}
-	reporterID, err := mcpReporter(auth, input.ReporterID)
+	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
+	if err != nil {
+		return nil, err
+	}
+	inputReporterID, err := mcpOptionalUUID(input.ReporterID, "reporter_id")
+	if err != nil {
+		return nil, err
+	}
+	reporterID, err := mcpReporter(auth, inputReporterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1086,7 +1128,7 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 		Title:         title,
 		Description:   input.Description,
 		Priority:      priority,
-		AssigneeID:    input.AssigneeID,
+		AssigneeID:    assigneeID,
 		ReporterID:    reporterID,
 		DueDate:       input.DueDate,
 	})
@@ -1120,10 +1162,14 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 		}
 		cursor = &c
 	}
+	assigneeIDs, err := mcpUUIDs(input.AssigneeIDs, "assignee_ids")
+	if err != nil {
+		return nil, err
+	}
 	params := store.ListIssuesParams{
 		ProjectID:   project.ID,
 		Status:      input.Status,
-		AssigneeIDs: input.AssigneeIDs,
+		AssigneeIDs: assigneeIDs,
 		Cursor:      cursor,
 		Limit:       limit,
 	}
@@ -1329,6 +1375,14 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if input.Priority != nil && !input.Priority.Valid() {
 		return nil, validationError("invalid priority")
 	}
+	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
+	if err != nil {
+		return nil, err
+	}
+	reporterID, err := mcpOptionalUUID(input.ReporterID, "reporter_id")
+	if err != nil {
+		return nil, err
+	}
 	var sprintID *uuid.UUID
 	if input.Sprint != nil && !input.ClearSprint {
 		number, err := mcpTypedRef(*input.Sprint, "sprint")
@@ -1347,9 +1401,9 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		Status:        input.Status,
 		CloseReason:   input.CloseReason,
 		Priority:      input.Priority,
-		AssigneeID:    input.AssigneeID,
+		AssigneeID:    assigneeID,
 		ClearAssignee: input.ClearAssignee,
-		ReporterID:    input.ReporterID,
+		ReporterID:    reporterID,
 		ClearReporter: input.ClearReporter,
 		SprintID:      sprintID,
 		ClearSprint:   input.ClearSprint,
@@ -1515,7 +1569,10 @@ func (s *Server) mcpDeleteComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.DeleteComment(ctx, comment.ID); err != nil {
+	if comment.AuthorID != auth.User.ID {
+		return nil, errMCPForbidden
+	}
+	if err := s.store.DeleteComment(ctx, store.DeleteCommentParams{ID: comment.ID, AuthorID: auth.User.ID}); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -2435,7 +2492,7 @@ func (s *Server) mcpCreateStorageObjectRecord(ctx context.Context, projectID, us
 		CreatedByID: userID,
 	})
 	if err != nil {
-		_ = s.objectStorage.Delete(ctx, stored.ObjectKey)
+		_ = s.deleteStorageBackendObject(ctx, stored.ObjectKey)
 		return model.StorageObject{}, err
 	}
 	return object, nil
@@ -2570,7 +2627,7 @@ func (s *Server) mcpDeleteObject(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.objectStorage.Delete(ctx, deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	if err := s.deleteStorageBackendObject(ctx, deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -2686,7 +2743,7 @@ func (s *Server) mcpDeleteAttachment(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, err
 	}
-	if err := s.objectStorage.Delete(ctx, deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	if err := s.deleteStorageBackendObject(ctx, deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 		return nil, err
 	}
 	return mcpOK(), nil

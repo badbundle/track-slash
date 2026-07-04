@@ -145,7 +145,12 @@ func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request) {
 	if !s.requireProjectAccess(w, r, issue.ProjectID) {
 		return
 	}
-	if err := s.store.DeleteComment(r.Context(), comment.ID); err != nil {
+	user := currentUser(r)
+	if comment.AuthorID != user.ID {
+		writeForbidden(w)
+		return
+	}
+	if err := s.store.DeleteComment(r.Context(), store.DeleteCommentParams{ID: comment.ID, AuthorID: user.ID}); err != nil {
 		writeStoreError(w, err)
 		return
 	}

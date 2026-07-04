@@ -10,6 +10,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -24,6 +25,7 @@ const (
 	maxStorageObjectFilenameLength    = 255
 	maxStorageObjectContentTypeLength = 255
 	storageMultipartOverheadBytes     = 1024 * 1024
+	storageCleanupTimeout             = 5 * time.Second
 )
 
 func (s *Server) createStorageObject(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +100,7 @@ func (s *Server) createStorageObjectFromRequest(w http.ResponseWriter, r *http.R
 		CreatedByID: userID,
 	})
 	if err != nil {
-		_ = s.objectStorage.Delete(r.Context(), stored.ObjectKey)
+		_ = s.deleteStorageBackendObject(r.Context(), stored.ObjectKey)
 		writeStoreError(w, err)
 		return model.StorageObject{}, false
 	}
@@ -186,12 +188,25 @@ func (s *Server) streamStorageObjectContent(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) cleanupStorageObject(ctx context.Context, object model.StorageObject) {
-	deleted, err := s.store.DeleteStorageObject(ctx, object.ID)
+	cleanupCtx, cancel := storageCleanupContext(ctx)
+	defer cancel()
+
+	deleted, err := s.store.DeleteStorageObject(cleanupCtx, object.ID)
 	if err == nil {
-		_ = s.objectStorage.Delete(ctx, deleted.ObjectKey)
+		_ = s.objectStorage.Delete(cleanupCtx, deleted.ObjectKey)
 		return
 	}
-	_ = s.objectStorage.Delete(ctx, object.ObjectKey)
+	_ = s.objectStorage.Delete(cleanupCtx, object.ObjectKey)
+}
+
+func storageCleanupContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), storageCleanupTimeout)
+}
+
+func (s *Server) deleteStorageBackendObject(parent context.Context, objectKey string) error {
+	cleanupCtx, cancel := storageCleanupContext(parent)
+	defer cancel()
+	return s.objectStorage.Delete(cleanupCtx, objectKey)
 }
 
 func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +222,7 @@ func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	if err := s.objectStorage.Delete(r.Context(), deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	if err := s.deleteStorageBackendObject(r.Context(), deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 		writeStorageError(w, err)
 		return
 	}

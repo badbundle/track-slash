@@ -164,7 +164,7 @@ func (s *Server) deleteIssueAttachmentForIssue(w http.ResponseWriter, r *http.Re
 		writeStoreError(w, err)
 		return false
 	}
-	if err := s.objectStorage.Delete(r.Context(), deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	if err := s.deleteStorageBackendObject(r.Context(), deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 		writeStorageError(w, err)
 		return false
 	}

@@ -127,6 +127,19 @@ func TestHTTPCommentsCRUDAndPagination(t *testing.T) {
 		t.Fatalf("wrong author changed body to %q", got.Body)
 	}
 
+	code, body = e.doWithToken(t, otherToken, http.MethodDelete, commentPath, nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("wrong author delete code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, commentPath, nil)
+	if code != http.StatusOK {
+		t.Fatalf("get after wrong delete code = %d body = %s", code, body)
+	}
+	got = decode[model.Comment](t, body)
+	if got.Body != "edited" {
+		t.Fatalf("wrong author delete changed body to %q", got.Body)
+	}
+
 	code, body = e.do(t, http.MethodDelete, commentPath, nil)
 	if code != http.StatusNoContent {
 		t.Fatalf("delete code = %d body = %s", code, body)

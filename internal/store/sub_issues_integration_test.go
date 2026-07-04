@@ -15,6 +15,9 @@ func TestSubIssuesCreateListFieldsAndFiltering(t *testing.T) {
 	env := newSprintsEnv(t)
 	parent := mustCreateIssue(t, env, "parent")
 	assignee := mustCreateUser(t, env, "sub-assignee-"+uniqueDigits(timeNow(t), 8)+"@example.com")
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, assignee.ID); err != nil {
+		t.Fatalf("GrantProjectAccess assignee: %v", err)
+	}
 
 	child, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
 		ParentIssueID: parent.ID,
@@ -174,8 +177,25 @@ func TestSubIssueValidationAndSprintRules(t *testing.T) {
 		Title:         "invalid assignee",
 		AssigneeID:    ptrUUID(uuid.New()),
 	})
-	if !errors.Is(err, store.ErrConflict) {
-		t.Fatalf("invalid assignee err = %v, want ErrConflict", err)
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("invalid assignee err = %v, want ErrNotFound", err)
+	}
+
+	member := mustCreateUser(t, env, "sub-member-"+uniqueDigits(timeNow(t), 8)+"@example.com")
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, member.ID); err != nil {
+		t.Fatalf("GrantProjectAccess member: %v", err)
+	}
+	withPeople, err := env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+		ParentIssueID: parent.ID,
+		Title:         "member people",
+		AssigneeID:    &member.ID,
+		ReporterID:    &member.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubIssue member people: %v", err)
+	}
+	if withPeople.AssigneeID == nil || *withPeople.AssigneeID != member.ID || withPeople.ReporterID == nil || *withPeople.ReporterID != member.ID {
+		t.Fatalf("sub-issue people = assignee %v reporter %v, want %s", withPeople.AssigneeID, withPeople.ReporterID, member.ID)
 	}
 
 	_, err = env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
