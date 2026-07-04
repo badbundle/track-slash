@@ -95,7 +95,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "project sprint new", raw: "/bradley/projects/TRACK/sprints/new", want: "/bradley/projects/TRACK/sprints/new"},
 		{name: "project sprint edit", raw: "/bradley/projects/TRACK/sprints/sprint-1/edit", want: "/bradley/projects/TRACK/sprints/sprint-1/edit"},
 		{name: "project sprint add issue", raw: "/bradley/projects/TRACK/sprints/sprint-1/issues/new", want: "/bradley/projects/TRACK/sprints/sprint-1/issues/new"},
-		{name: "project sprint remove issue", raw: "/bradley/projects/TRACK/sprints/sprint-1/issues/TRACK-7/delete", want: "/bradley/projects/TRACK/sprints/sprint-1/issues/TRACK-7/delete"},
+		{name: "stale project sprint remove issue", raw: "/bradley/projects/TRACK/sprints/sprint-1/issues/TRACK-7/delete", want: "/"},
 		{name: "project context add", raw: "/bradley/projects/TRACK/context/new?x=1", want: "/bradley/projects/TRACK/context/new?x=1"},
 		{name: "project context issue link", raw: "/bradley/projects/TRACK/context/context-1/issues/new?x=1", want: "/bradley/projects/TRACK/context/context-1/issues/new?x=1"},
 		{name: "bad project key", raw: "/bradley/projects/bad!/sprint", want: "/"},

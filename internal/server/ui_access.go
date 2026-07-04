@@ -386,10 +386,6 @@ func safeUIProjectPath(path string) bool {
 		if len(parts) == 7 && parts[5] == "issues" {
 			return parts[6] == "new"
 		}
-		if len(parts) == 8 && parts[5] == "issues" && parts[7] == "delete" {
-			_, err := parseIssueRef(parts[6])
-			return err == nil
-		}
 		return false
 	}
 	if parts[3] == "tags" {
@@ -428,10 +424,6 @@ func safeUIProjectPath(path string) bool {
 		}
 		if len(parts) == 7 && parts[5] == "issues" {
 			return parts[6] == "new"
-		}
-		if len(parts) == 8 && parts[5] == "issues" && parts[7] == "delete" {
-			_, err := parseIssueRef(parts[6])
-			return err == nil
 		}
 		return false
 	}

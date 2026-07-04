@@ -351,37 +351,6 @@ func (s *Server) uiAddProjectSprintIssue(w http.ResponseWriter, r *http.Request)
 	s.renderUIProjectPanel(w, r, project.ID, view, nil)
 }
 
-func (s *Server) uiRemoveProjectSprintIssue(w http.ResponseWriter, r *http.Request) {
-	project, sprint, ok := s.uiProjectSprintFromRoute(w, r)
-	if !ok {
-		return
-	}
-	issue, ok := s.uiIssueFromProjectSprintRoute(w, r, project)
-	if !ok {
-		return
-	}
-	view := uiProjectSprintView(sprint)
-	if !uiCanEditIssueSprint(issue) {
-		s.renderUIProjectPanel(w, r, project.ID, view, func(panel *uiProjectPanelData) {
-			uiMarkSprintIssue(panel, sprint, uiSprintIssueFormData{Error: "Only top-level open issues can be changed."})
-		})
-		return
-	}
-	if issue.SprintID == nil || *issue.SprintID != sprint.ID {
-		s.renderUIProjectPanel(w, r, project.ID, view, func(panel *uiProjectPanelData) {
-			uiMarkSprintIssue(panel, sprint, uiSprintIssueFormData{Error: "Issue is not in this sprint."})
-		})
-		return
-	}
-	if _, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{ClearSprint: true}); err != nil {
-		s.renderUIProjectPanel(w, r, project.ID, view, func(panel *uiProjectPanelData) {
-			uiMarkSprintIssue(panel, sprint, uiSprintIssueFormData{Error: uiSprintIssueStoreMessage(err)})
-		})
-		return
-	}
-	s.renderUIProjectPanel(w, r, project.ID, view, nil)
-}
-
 func (s *Server) renderUIProjectPanel(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, view string, mutate func(*uiProjectPanelData)) {
 	panel, err := s.uiBuildProjectPanel(r.Context(), r, projectID, view)
 	if err != nil {

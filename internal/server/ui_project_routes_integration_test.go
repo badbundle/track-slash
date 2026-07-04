@@ -154,7 +154,6 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 		{path: e.projectPath() + "/sprints/" + sp.Ref + "/move-up", form: url.Values{}},
 		{path: e.projectPath() + "/sprints/" + sp.Ref + "/move-down", form: url.Values{}},
 		{path: e.projectPath() + "/sprints/" + sp.Ref + "/issues", form: url.Values{"issue": {issue.Identifier}}},
-		{path: e.projectPath() + "/sprints/" + sp.Ref + "/issues/" + issue.Identifier + "/delete", form: url.Values{}},
 	} {
 		res := e.uiDoNoRedirect(t, http.MethodPost, item.path, token, strings.NewReader(item.form.Encode()))
 		defer res.Body.Close()

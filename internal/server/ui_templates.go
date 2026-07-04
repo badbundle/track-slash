@@ -108,7 +108,6 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectSprintComplete":        uiProjectSprintCompletePath,
 	"projectSprintDelete":          uiProjectSprintDeletePath,
 	"projectSprintEdit":            uiProjectSprintEditPath,
-	"projectSprintIssueDelete":     uiProjectSprintIssueDeletePath,
 	"projectSprintIssueNew":        uiProjectSprintIssueNewPath,
 	"projectSprintIssues":          uiProjectSprintIssuesPath,
 	"projectSprintMoveDown":        uiProjectSprintMoveDownPath,

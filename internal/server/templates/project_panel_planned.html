@@ -51,10 +51,15 @@
       {{if .PlannedSprints}}
       <div class="space-y-4">
         {{range $i, $item := .PlannedSprints}}
+        {{$actionOpen := and (eq $.PlannedSprintActionID $item.Sprint.ID) $.PlannedSprintAction}}
+        {{$panelID := printf "planned-sprint-%s-issues" $item.Sprint.Ref}}
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
           <header class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div class="min-w-0">
               <div class="flex min-w-0 items-center gap-2">
+                <button type="button" data-disclosure-toggle aria-label="Toggle sprint issues" aria-controls="{{$panelID}}" aria-expanded="{{if $actionOpen}}true{{else}}false{{end}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-disclosure-icon data-lucide="{{if $actionOpen}}chevron-up{{else}}chevron-down{{end}}" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
                 <h3 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{sprintLabel $item.Sprint}}</h3>
                 {{template "count-badge" (len $item.Issues)}}
               </div>
@@ -142,32 +147,21 @@
           {{if $.PlannedSprintForm.Error}}<p class="border-t border-slate-100 px-4 py-3 text-xs text-rose-600 dark:border-slate-800 dark:text-rose-300">{{$.PlannedSprintForm.Error}}</p>{{end}}
           {{end}}
 
+          <div id="{{$panelID}}" data-disclosure-panel {{if not $actionOpen}}hidden{{end}}>
           {{if $item.Issues}}
           <div class="border-t border-slate-100 dark:border-slate-800">
             {{range $item.Issues}}
-            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-stretch border-b border-slate-100 last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+            <div class="border-b border-slate-100 last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
               <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid min-w-0 grid-cols-[7rem_auto_1fr_auto] items-center gap-3 px-4 py-3 text-sm">
                 {{template "issue-summary-row-cells" .}}
               </a>
-              <div class="grid place-items-center px-3">
-                {{if canEditIssueSprint .}}
-                <form method="post" action="{{projectSprintIssueDelete $.Project $item.Sprint .}}" hx-post="{{projectSprintIssueDelete $.Project $item.Sprint .}}" hx-target="#main" hx-push-url="false">
-                  <button type="submit" aria-label="Remove issue from sprint" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                    <i data-lucide="unlink" class="h-4 w-4" aria-hidden="true"></i>
-                  </button>
-                </form>
-                {{else}}
-                <button type="button" disabled aria-label="Remove issue from sprint" class="grid h-7 w-7 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
-                  <i data-lucide="unlink" class="h-4 w-4" aria-hidden="true"></i>
-                </button>
-                {{end}}
-              </div>
             </div>
             {{end}}
           </div>
           {{else}}
           <div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">Nothing scheduled.</div>
           {{end}}
+          </div>
         </section>
         {{end}}
       </div>

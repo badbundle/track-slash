@@ -85,10 +85,6 @@ func uiProjectSprintIssueNewPath(project model.Project, sprint any) string {
 	return uiProjectSprintIssuesPath(project, sprint) + "/new"
 }
 
-func uiProjectSprintIssueDeletePath(project model.Project, sprint any, issue any) string {
-	return uiProjectSprintIssuesPath(project, sprint) + "/" + uiIssueValue(issue).Identifier + "/delete"
-}
-
 func uiIssuesPath() string {
 	return "/issues"
 }

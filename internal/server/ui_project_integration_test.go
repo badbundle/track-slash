@@ -178,10 +178,10 @@ func TestUIProjectNameAndDescriptionEditing(t *testing.T) {
 		}
 	}
 
-	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/description", token, strings.NewReader(url.Values{"description": {"updated description"}}.Encode()))
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/description", token, strings.NewReader(url.Values{"description": {"**updated description**"}}.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusOK || !strings.Contains(body, "updated description") || strings.Contains(body, `name="description"`) {
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `<strong>updated description</strong>`) || !strings.Contains(body, `class="markdown-body`) || strings.Contains(body, `**updated description**`) || strings.Contains(body, `name="description"`) {
 		t.Fatalf("project description update code = %d body = %s", res.StatusCode, body)
 	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/description", token, strings.NewReader(url.Values{"description": {" \n\t "}}.Encode()))
@@ -285,8 +285,10 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 			t.Fatalf("sprint body missing %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "other project sprint issue") || strings.Contains(body, "Active sprint issues across accessible projects.") {
-		t.Fatalf("sprint body included wrong scope/copy: %s", body)
+	for _, notWant := range []string{"other project sprint issue", "Active sprint issues across accessible projects.", `aria-label="Remove issue from sprint"`, `data-lucide="unlink"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sprint body included %q: %s", notWant, body)
+		}
 	}
 
 	filteredBody := e.uiGet(t, e.projectPath()+"/sprint?status=in_progress&priority=P0", token)
@@ -375,7 +377,7 @@ func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/issues", token, strings.NewReader(url.Values{"issue": {issue.Identifier}}.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusOK || !strings.Contains(body, "scheduled from sprint ui") || !strings.Contains(body, `aria-label="Remove issue from sprint"`) {
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "scheduled from sprint ui") || strings.Contains(body, `aria-label="Remove issue from sprint"`) {
 		t.Fatalf("add issue code = %d body = %s", res.StatusCode, body)
 	}
 	gotIssue, err := e.store.GetIssue(e.ctx, issue.ID)
@@ -425,11 +427,11 @@ func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
 		t.Fatalf("active status = %s", active.Status)
 	}
 
-	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/issues/"+issue.Identifier+"/delete", token, nil)
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issuePath(issue)+"/sprint", token, strings.NewReader(url.Values{"sprint": {" "}}.Encode()))
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusOK || strings.Contains(body, "scheduled from sprint ui") {
-		t.Fatalf("remove issue code = %d body = %s", res.StatusCode, body)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `class="min-w-0 truncate text-slate-900 dark:text-slate-100">None</span>`) {
+		t.Fatalf("clear sprint code = %d body = %s", res.StatusCode, body)
 	}
 	gotIssue, err = e.store.GetIssue(e.ctx, issue.ID)
 	if err != nil {
@@ -670,8 +672,10 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	if strings.Contains(body, backlogIssue.Title) {
 		t.Fatalf("planned body included unscheduled issue: %s", body)
 	}
-	if strings.Contains(body, "other project backlog issue") || strings.Contains(body, "other project planned issue") || strings.Contains(body, "Other Planned Sprint") || strings.Contains(body, "Backlog issues across accessible projects.") {
-		t.Fatalf("planned body included wrong scope/copy: %s", body)
+	for _, notWant := range []string{"other project backlog issue", "other project planned issue", "Other Planned Sprint", "Backlog issues across accessible projects.", `aria-label="Remove issue from sprint"`, `data-lucide="unlink"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("planned body included %q: %s", notWant, body)
+		}
 	}
 
 	body = e.uiGet(t, e.projectPath()+"/all", token)

@@ -107,6 +107,53 @@ func TestRenderIssueDescriptionMarkdownHeadingsAndTables(t *testing.T) {
 	}
 }
 
+func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
+	t.Parallel()
+	project := model.Project{
+		Description: strings.Join([]string{
+			"# Overview",
+			"**Bold**",
+			"| Name | Value |\n| --- | --- |\n| Alpha | One |",
+			"[Docs](/docs)",
+			"![External](https://example.com/image.png)",
+			"[Unsafe](javascript:alert(1))",
+			"<script>alert('x')</script>",
+			"[Object](object-1)",
+			"![Object image](object-2)",
+		}, "\n\n"),
+	}
+
+	out := string(renderProjectDescriptionMarkdown(project))
+	for _, want := range []string{
+		"<h1>Overview</h1>",
+		"<strong>Bold</strong>",
+		"<table>",
+		"<th>Name</th>",
+		"<td>One</td>",
+		`<a href="/docs">Docs</a>`,
+		`<img src="https://example.com/image.png" alt="External">`,
+		"Unsafe",
+		"Object",
+		"Object image",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("project markdown output missing %q: %s", want, out)
+		}
+	}
+	for _, notWant := range []string{
+		"<script",
+		"javascript:",
+		`<a href="object-1"`,
+		`<img src="object-2"`,
+		`object-1/content`,
+		`object-2/content`,
+	} {
+		if strings.Contains(out, notWant) {
+			t.Fatalf("project markdown output included %q: %s", notWant, out)
+		}
+	}
+}
+
 func testMarkdownAttachment(projectID, issueID uuid.UUID, number int, filename, contentType string) model.IssueAttachment {
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	objectID := uuid.New()
