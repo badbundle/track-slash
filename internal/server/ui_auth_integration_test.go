@@ -173,7 +173,7 @@ func TestUILogoutRevokesSessionCookie(t *testing.T) {
 		t.Fatalf("CreateAuthToken session: %v", err)
 	}
 
-	res := e.uiDoNoRedirect(t, http.MethodGet, "/", session.RawToken, nil)
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/projects", session.RawToken, nil)
 	_ = res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("pre-logout app code = %d", res.StatusCode)
@@ -189,7 +189,7 @@ func TestUILogoutRevokesSessionCookie(t *testing.T) {
 		t.Fatalf("session auth after logout err = %v, want ErrUnauthorized", err)
 	}
 
-	res = e.uiDoNoRedirect(t, http.MethodGet, "/", session.RawToken, nil)
+	res = e.uiDoNoRedirect(t, http.MethodGet, "/projects", session.RawToken, nil)
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("post-logout app code = %d", res.StatusCode)
