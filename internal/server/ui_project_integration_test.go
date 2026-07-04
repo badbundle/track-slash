@@ -125,6 +125,73 @@ func TestUIProjectAboutStats(t *testing.T) {
 	}
 }
 
+func TestUIProjectNameAndDescriptionEditing(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-project-edit")
+
+	body := e.uiGet(t, e.projectPath()+"/about", token)
+	for _, want := range []string{`aria-label="Edit project name"`, `hx-get="` + e.projectPath() + `/name/edit?view=about"`, `aria-label="Edit project description"`, `hx-get="` + e.projectPath() + `/description/edit"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project edit body missing %q: %s", want, body)
+		}
+	}
+
+	editName := e.uiGet(t, e.projectPath()+"/name/edit?view=about", token)
+	for _, want := range []string{`method="post" action="` + e.projectPath() + `/name"`, `hx-post="` + e.projectPath() + `/name"`, `name="view" value="about"`, `name="name"`, `aria-label="Save project name"`, `aria-label="Cancel editing project name"`} {
+		if !strings.Contains(editName, want) {
+			t.Fatalf("project name edit missing %q: %s", want, editName)
+		}
+	}
+
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, e.projectPath()+"/name", token, strings.NewReader(url.Values{"view": {"about"}, "name": {"Renamed UI Project"}}.Encode()), map[string]string{
+		"HX-Request":     "true",
+		"HX-Current-URL": e.ts.URL + e.projectPath() + "/about",
+	})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Renamed UI Project") || strings.Contains(body, `name="name"`) {
+		t.Fatalf("project name update code = %d body = %s", res.StatusCode, body)
+	}
+	if push := res.Header.Get("HX-Push-Url"); push != "" {
+		t.Fatalf("project name update HX-Push-Url = %q, want empty", push)
+	}
+	project, err := e.store.GetProject(e.ctx, e.projectID)
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	if project.Name != "Renamed UI Project" {
+		t.Fatalf("project name = %q", project.Name)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/name", token, strings.NewReader(url.Values{"view": {"about"}, "name": {" "}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Name required, max 200 chars.") || !strings.Contains(body, `name="name"`) {
+		t.Fatalf("blank project name code = %d body = %s", res.StatusCode, body)
+	}
+
+	editDescription := e.uiGet(t, e.projectPath()+"/description/edit", token)
+	for _, want := range []string{`method="post" action="` + e.projectPath() + `/description"`, `hx-post="` + e.projectPath() + `/description"`, `name="description"`, `aria-label="Save project description"`, `aria-label="Cancel editing project description"`} {
+		if !strings.Contains(editDescription, want) {
+			t.Fatalf("project description edit missing %q: %s", want, editDescription)
+		}
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/description", token, strings.NewReader(url.Values{"description": {"updated description"}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "updated description") || strings.Contains(body, `name="description"`) {
+		t.Fatalf("project description update code = %d body = %s", res.StatusCode, body)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/description", token, strings.NewReader(url.Values{"description": {" \n\t "}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "No description.") || strings.Contains(body, "updated description") {
+		t.Fatalf("project description clear code = %d body = %s", res.StatusCode, body)
+	}
+}
+
 func TestUIRendersProjectSprintBoard(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -237,6 +304,153 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	earlyIdx := strings.Index(dueDescBody, "board todo issue")
 	if laterIdx < 0 || earlyIdx < 0 || laterIdx > earlyIdx {
 		t.Fatalf("due desc sprint order wrong: later=%d early=%d body=%s", laterIdx, earlyIdx, dueDescBody)
+	}
+}
+
+func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-sprint-plan")
+
+	body := e.uiGet(t, e.projectPath()+"/planned", token)
+	if !strings.Contains(body, `aria-label="New planned sprint"`) || !strings.Contains(body, `hx-get="`+e.projectPath()+`/sprints/new"`) {
+		t.Fatalf("planned body missing new sprint action: %s", body)
+	}
+	body = e.uiGet(t, e.projectPath()+"/sprints/new", token)
+	for _, want := range []string{`action="` + e.projectPath() + `/sprints"`, `name="start_date"`, `name="end_date"`, `name="goal"`, `aria-label="Create planned sprint"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new sprint form missing %q: %s", want, body)
+		}
+	}
+
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints", token, strings.NewReader(url.Values{
+		"name":       {"Sprint A"},
+		"goal":       {"first goal"},
+		"start_date": {"2026-06-01"},
+		"end_date":   {"2026-06-14"},
+	}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Sprint A") || !strings.Contains(body, "first goal") {
+		t.Fatalf("create sprint code = %d body = %s", res.StatusCode, body)
+	}
+	sp, err := e.store.GetSprintByProjectNumber(e.ctx, e.projectID, 1)
+	if err != nil {
+		t.Fatalf("GetSprintByProjectNumber: %v", err)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints", token, strings.NewReader(url.Values{
+		"name":       {"Bad dates"},
+		"start_date": {"2026-06-14"},
+		"end_date":   {"2026-06-01"},
+	}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "End date must be on or after start date.") {
+		t.Fatalf("bad sprint dates code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints", token, strings.NewReader(url.Values{
+		"name":       {"Second planned"},
+		"start_date": {"2026-06-15"},
+		"end_date":   {"2026-06-30"},
+	}.Encode()))
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("create second code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	second, err := e.store.GetSprintByProjectNumber(e.ctx, e.projectID, 2)
+	if err != nil {
+		t.Fatalf("GetSprint second: %v", err)
+	}
+
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "scheduled from sprint ui"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	body = e.uiGet(t, e.projectPath()+"/sprints/"+sp.Ref+"/issues/new", token)
+	if !strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || !strings.Contains(body, `aria-label="Add issue to sprint"`) {
+		t.Fatalf("add issue form missing: %s", body)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/issues", token, strings.NewReader(url.Values{"issue": {issue.Identifier}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "scheduled from sprint ui") || !strings.Contains(body, `aria-label="Remove issue from sprint"`) {
+		t.Fatalf("add issue code = %d body = %s", res.StatusCode, body)
+	}
+	gotIssue, err := e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if gotIssue.SprintID == nil || *gotIssue.SprintID != sp.ID {
+		t.Fatalf("issue sprint = %v, want %s", gotIssue.SprintID, sp.ID)
+	}
+
+	body = e.uiGet(t, e.projectPath()+"/sprints/"+sp.Ref+"/edit", token)
+	if !strings.Contains(body, `value="Sprint A"`) || !strings.Contains(body, `value="2026-06-01"`) {
+		t.Fatalf("edit sprint form missing values: %s", body)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref, token, strings.NewReader(url.Values{
+		"name":       {"Sprint A edited"},
+		"goal":       {"edited goal"},
+		"start_date": {"2026-06-03"},
+		"end_date":   {"2026-06-16"},
+	}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Sprint A edited") || !strings.Contains(body, "edited goal") {
+		t.Fatalf("edit sprint code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/move-down", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	secondIdx := strings.Index(body, "Second planned")
+	firstIdx := strings.Index(body, "Sprint A edited")
+	if res.StatusCode != http.StatusOK || secondIdx < 0 || firstIdx < 0 || secondIdx > firstIdx {
+		t.Fatalf("move down order wrong: second=%d first=%d body=%s", secondIdx, firstIdx, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/activate", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Sprint A edited") || !strings.Contains(body, `aria-label="Complete sprint"`) {
+		t.Fatalf("activate sprint code = %d body = %s", res.StatusCode, body)
+	}
+	active, err := e.store.GetSprint(e.ctx, sp.ID)
+	if err != nil {
+		t.Fatalf("GetSprint active: %v", err)
+	}
+	if active.Status != model.SprintStatusActive {
+		t.Fatalf("active status = %s", active.Status)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/issues/"+issue.Identifier+"/delete", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || strings.Contains(body, "scheduled from sprint ui") {
+		t.Fatalf("remove issue code = %d body = %s", res.StatusCode, body)
+	}
+	gotIssue, err = e.store.GetIssue(e.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue after remove: %v", err)
+	}
+	if gotIssue.SprintID != nil {
+		t.Fatalf("issue sprint after remove = %v, want nil", gotIssue.SprintID)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/complete", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "No active sprint.") {
+		t.Fatalf("complete sprint code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+second.Ref+"/delete", token, nil)
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || strings.Contains(body, "Second planned") {
+		t.Fatalf("delete planned code = %d body = %s", res.StatusCode, body)
 	}
 }
 

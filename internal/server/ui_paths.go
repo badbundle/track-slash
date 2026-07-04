@@ -25,6 +25,70 @@ func uiProjectPanelPath(project model.Project, view string, assigneeIDs ...[]uui
 	return uiAppendAssigneeQuery(uiProjectPath(project)+"/"+view+"/panel", ids)
 }
 
+func uiProjectNamePath(project model.Project) string {
+	return uiProjectPath(project) + "/name"
+}
+
+func uiProjectNameEditPath(project model.Project) string {
+	return uiProjectNamePath(project) + "/edit"
+}
+
+func uiProjectDescriptionPath(project model.Project) string {
+	return uiProjectPath(project) + "/description"
+}
+
+func uiProjectDescriptionEditPath(project model.Project) string {
+	return uiProjectDescriptionPath(project) + "/edit"
+}
+
+func uiProjectSprintsPath(project model.Project) string {
+	return uiProjectPath(project) + "/sprints"
+}
+
+func uiProjectSprintNewPath(project model.Project) string {
+	return uiProjectSprintsPath(project) + "/new"
+}
+
+func uiProjectSprintPath(project model.Project, sprint any) string {
+	return uiProjectSprintsPath(project) + "/" + uiIssueSprintRef(uiSprintValue(sprint))
+}
+
+func uiProjectSprintEditPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/edit"
+}
+
+func uiProjectSprintActivatePath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/activate"
+}
+
+func uiProjectSprintCompletePath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/complete"
+}
+
+func uiProjectSprintDeletePath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/delete"
+}
+
+func uiProjectSprintMoveUpPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/move-up"
+}
+
+func uiProjectSprintMoveDownPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/move-down"
+}
+
+func uiProjectSprintIssuesPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/issues"
+}
+
+func uiProjectSprintIssueNewPath(project model.Project, sprint any) string {
+	return uiProjectSprintIssuesPath(project, sprint) + "/new"
+}
+
+func uiProjectSprintIssueDeletePath(project model.Project, sprint any, issue any) string {
+	return uiProjectSprintIssuesPath(project, sprint) + "/" + uiIssueValue(issue).Identifier + "/delete"
+}
+
 func uiIssuesPath() string {
 	return "/issues"
 }
@@ -307,6 +371,18 @@ func uiIssueValue(v any) model.Issue {
 		}
 	}
 	return model.Issue{}
+}
+
+func uiSprintValue(v any) model.Sprint {
+	switch sprint := v.(type) {
+	case model.Sprint:
+		return sprint
+	case *model.Sprint:
+		if sprint != nil {
+			return *sprint
+		}
+	}
+	return model.Sprint{}
 }
 
 func uiIssueLinkRef(v any) string {

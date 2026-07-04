@@ -19,6 +19,11 @@ type createProjectReq struct {
 	Description string `json:"description"`
 }
 
+type updateProjectReq struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 	var req createProjectReq
 	if err := decodeJSON(r, &req); err != nil {
@@ -87,6 +92,43 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, project)
+}
+
+func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	var req updateProjectReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	params := store.UpdateProjectParams{}
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" || len(name) > 200 {
+			writeError(w, http.StatusBadRequest, "name must be 1..200 chars")
+			return
+		}
+		params.Name = &name
+	}
+	if req.Description != nil {
+		description := *req.Description
+		if strings.TrimSpace(description) == "" {
+			description = ""
+		}
+		params.Description = &description
+	}
+	updated, err := s.store.UpdateProject(r.Context(), project.ID, params)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 }
 
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {

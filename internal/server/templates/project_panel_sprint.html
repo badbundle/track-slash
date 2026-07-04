@@ -8,15 +8,79 @@
             {{template "count-badge" (issueColumnCount .SprintColumns)}}
           </div>
           {{if .ActiveSprint}}
-          <h3 class="mt-2 truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{.ActiveSprint.Name}}</h3>
+          <h3 class="mt-2 truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{sprintLabel .ActiveSprint}}</h3>
           <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{sprintDate .ActiveSprint.StartDate}}-{{sprintDate .ActiveSprint.EndDate}}</p>
           {{if .ActiveSprint.Goal}}<div class="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{{.ActiveSprint.Goal}}</div>{{end}}
           {{else}}
           <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No active sprint.</p>
           {{end}}
         </div>
-        {{if .SprintIssuesHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+        <div class="flex shrink-0 items-center gap-2">
+          {{if .SprintIssuesHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+          {{if .ActiveSprint}}
+          <button type="button" aria-label="Add issue to sprint" hx-get="{{projectSprintIssueNew .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+          <button type="button" aria-label="Edit sprint" hx-get="{{projectSprintEdit .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+          <form method="post" action="{{projectSprintComplete .Project .ActiveSprint}}" hx-post="{{projectSprintComplete .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" hx-confirm="Complete this sprint? Open issues move to the next planned sprint or backlog.">
+            <button type="submit" aria-label="Complete sprint" class="grid h-8 w-8 place-items-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950 dark:focus:ring-offset-slate-900">
+              <i data-lucide="check-check" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </form>
+          {{end}}
+        </div>
       </div>
+      {{if and .ActiveSprint (eq .ActiveSprintAction "edit")}}
+      <form method="post" action="{{projectSprint .Project .ActiveSprint}}" hx-post="{{projectSprint .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div class="grid gap-3 md:grid-cols-2">
+          <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Name
+            <input name="name" value="{{.ActiveSprintForm.NameInput}}" autofocus class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          </label>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Start
+              <input type="date" name="start_date" value="{{.ActiveSprintForm.StartDateInput}}" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            </label>
+            <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">End
+              <input type="date" name="end_date" value="{{.ActiveSprintForm.EndDateInput}}" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            </label>
+          </div>
+        </div>
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
+          <textarea name="goal" rows="4" class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.ActiveSprintForm.GoalInput}}</textarea>
+        </label>
+        {{if .ActiveSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.ActiveSprintForm.Error}}</p>{{end}}
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+            <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+            Save
+          </button>
+          <button type="button" aria-label="Cancel editing sprint" hx-get="{{projectPanel .Project "sprint"}}" hx-target="#main" hx-push-url="false" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            Cancel
+          </button>
+        </div>
+      </form>
+      {{else if and .ActiveSprint (eq .ActiveSprintAction "add-issue")}}
+      <form method="post" action="{{projectSprintIssues .Project .ActiveSprint}}" hx-post="{{projectSprintIssues .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Issue</label>
+        <div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,18rem)_auto_auto]">
+          <input name="issue" value="{{.ActiveSprintIssueForm.IssueInput}}" autofocus placeholder="{{.Project.Key}}-12" class="h-9 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <button type="submit" aria-label="Add issue to sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+            Add issue
+          </button>
+          <button type="button" aria-label="Cancel adding issue" hx-get="{{projectPanel .Project "sprint"}}" hx-target="#main" hx-push-url="false" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            Cancel
+          </button>
+        </div>
+        {{if .ActiveSprintIssueForm.Error}}<p class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{.ActiveSprintIssueForm.Error}}</p>{{end}}
+      </form>
+      {{else if and .ActiveSprint (eq .ActiveSprintAction "error")}}
+      {{if .ActiveSprintForm.Error}}<p class="mt-4 border-t border-slate-100 pt-3 text-xs text-rose-600 dark:border-slate-800 dark:text-rose-300">{{.ActiveSprintForm.Error}}</p>{{end}}
+      {{end}}
     </div>
     {{template "issue-list-controls" .SprintControls}}
     {{if .ActiveSprint}}
@@ -27,7 +91,56 @@
           <h3 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{.Label}}</h3>
           {{template "count-badge" (len .Issues)}}
         </div>
-        {{template "issue-card-list" .Issues}}
+        {{if .Issues}}
+        <div class="space-y-2">
+          {{range .Issues}}
+          <article class="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800 {{statusRow .Issue.Status}}">
+            <a data-main-view="projects" href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="block">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex min-w-0 items-center gap-2">
+                  {{template "issue-key" .Issue.Identifier}}
+                  {{template "priority-badge" .Issue.Priority}}
+                </div>
+                <span class="flex shrink-0 items-center gap-2">
+                  {{template "issue-due-badge" .Issue}}
+                  {{template "status-badge" .Issue.Status}}
+                  {{if eq .Issue.Status "closed"}}{{template "close-reason-badge" .Issue.CloseReason}}{{end}}
+                </span>
+              </div>
+              <div class="mt-2 break-words text-sm font-medium leading-5 text-slate-900 dark:text-slate-100">{{.Issue.Title}}</div>
+              {{if .Issue.Tags}}
+              <div class="mt-2 flex min-w-0 flex-wrap items-center gap-1">
+                {{range issueVisibleTags .Issue.Tags}}{{template "tag-badge" .}}{{end}}
+                {{if issueHiddenTagCount .Issue.Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Issue.Tags))}}{{end}}
+              </div>
+              {{end}}
+              <div class="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                {{if .Assignee}}
+                <span aria-label="Assigned to {{.Assignee.Name}}" title="{{.Assignee.Name}}" class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">{{initials .Assignee.Name .Assignee.Username}}</span>
+                {{end}}
+                <span class="min-w-0 truncate">{{.Project.Name}}</span>
+                {{if .Sprint}}<span aria-hidden="true">·</span><span class="min-w-0 truncate">{{sprintLabel .Sprint}}</span>{{end}}
+              </div>
+            </a>
+            <div class="mt-3 flex justify-end">
+              {{if canEditIssueSprint .Issue}}
+              <form method="post" action="{{projectSprintIssueDelete $.Project $.ActiveSprint .Issue}}" hx-post="{{projectSprintIssueDelete $.Project $.ActiveSprint .Issue}}" hx-target="#main" hx-push-url="false">
+                <button type="submit" aria-label="Remove issue from sprint" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="unlink" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </form>
+              {{else}}
+              <button type="button" disabled aria-label="Remove issue from sprint" class="grid h-7 w-7 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
+                <i data-lucide="unlink" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{end}}
+            </div>
+          </article>
+          {{end}}
+        </div>
+        {{else}}
+        <div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Nothing here.</div>
+        {{end}}
       </div>
       {{end}}
     </section>
