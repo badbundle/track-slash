@@ -58,8 +58,8 @@ func (s *Server) Router() http.Handler {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   s.corsAllowedOrigins,
 			AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Authorization", "Content-Type", "If-Match"},
-			ExposedHeaders:   []string{"X-Request-ID"},
+			AllowedHeaders:   []string{"Authorization", "Content-Type", "Accept", "If-Match", "Last-Event-ID", "MCP-Protocol-Version", "Mcp-Session-Id"},
+			ExposedHeaders:   []string{"X-Request-ID", "Mcp-Session-Id"},
 			AllowCredentials: false,
 			MaxAge:           300,
 		}))
@@ -68,6 +68,7 @@ func (s *Server) Router() http.Handler {
 	if s.devReload {
 		r.Get(devReloadPath, s.devReloadEvents)
 	}
+	s.mountMCPRoutes(r)
 	s.mountUIRoutes(r)
 
 	r.Route("/api/v1", func(r chi.Router) {
