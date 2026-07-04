@@ -22,6 +22,7 @@ type uiSignupData struct {
 type uiShellData struct {
 	User              model.User
 	Projects          []model.Project
+	SidebarFavorites  uiSidebarFavoritesData
 	CurrentProjectID  uuid.UUID
 	CurrentView       string
 	WorkPanel         *uiWorkPanelData
@@ -36,6 +37,19 @@ type uiShellData struct {
 	TagManager        *uiTagManagerData
 	TokenPanel        *uiTokenPanelData
 	SettingsPanel     *uiSettingsPanelData
+}
+
+type uiSidebarFavoritesData struct {
+	Projects         []model.Project
+	CurrentProjectID uuid.UUID
+	OOB              bool
+}
+
+type uiProjectFavoriteData struct {
+	Project  model.Project
+	View     string
+	Favorite bool
+	Sidebar  uiSidebarFavoritesData
 }
 
 type uiIssueItem struct {
@@ -317,6 +331,7 @@ type uiWorkPanelData struct {
 type uiProjectPanelData struct {
 	Project                 model.Project
 	View                    string
+	Favorite                bool
 	ProjectTabs             uiTabBarData
 	EditProjectName         bool
 	ProjectNameInput        string

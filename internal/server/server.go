@@ -112,6 +112,8 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getProject)
 					r.Patch("/", s.updateProject)
 					r.Delete("/", s.deleteProject)
+					r.Put("/favorite", s.favoriteProject)
+					r.Delete("/favorite", s.unfavoriteProject)
 					r.Get("/changelog", s.listProjectChangelog)
 					r.Get("/stats", s.getProjectStats)
 					r.Get("/members/search", s.searchProjectMembers)

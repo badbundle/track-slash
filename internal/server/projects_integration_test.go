@@ -5,9 +5,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
+
+type projectResponseDecoded struct {
+	model.Project
+	Favorite bool `json:"favorite"`
+}
 
 func TestHTTPUpdateProject(t *testing.T) {
 	t.Parallel()
@@ -61,5 +68,106 @@ func TestHTTPUpdateProject(t *testing.T) {
 	code, body = e.doWithToken(t, token, http.MethodPatch, e.projectPath(), map[string]any{"description": "denied"})
 	if code != http.StatusForbidden {
 		t.Fatalf("denied code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPProjectFavorites(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+
+	code, body := e.do(t, http.MethodGet, e.projectPath(), nil)
+	if code != http.StatusOK {
+		t.Fatalf("get project code = %d body = %s", code, body)
+	}
+	got := decode[projectResponseDecoded](t, body)
+	if got.ID != e.projectID || got.Favorite {
+		t.Fatalf("initial project = %+v", got)
+	}
+
+	key := uniqueProjectKey(t)
+	code, body = e.do(t, http.MethodPost, "/projects/", map[string]any{
+		"key":  key,
+		"name": "Created Favorite API Project",
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create project code = %d body = %s", code, body)
+	}
+	created := decode[projectResponseDecoded](t, body)
+	if created.ID == uuid.Nil || created.Favorite {
+		t.Fatalf("created project = %+v", created)
+	}
+
+	code, body = e.do(t, http.MethodPut, e.projectPath()+"/favorite", nil)
+	if code != http.StatusOK {
+		t.Fatalf("favorite code = %d body = %s", code, body)
+	}
+	favorited := decode[projectResponseDecoded](t, body)
+	if !favorited.Favorite || favorited.ID != e.projectID {
+		t.Fatalf("favorited project = %+v", favorited)
+	}
+	code, body = e.do(t, http.MethodPut, e.projectPath()+"/favorite", nil)
+	if code != http.StatusOK || !decode[projectResponseDecoded](t, body).Favorite {
+		t.Fatalf("repeat favorite code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodGet, e.projectPath(), nil)
+	if code != http.StatusOK || !decode[projectResponseDecoded](t, body).Favorite {
+		t.Fatalf("get favorited code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPatch, e.projectPath(), map[string]any{"description": "still favorite"})
+	if code != http.StatusOK || !decode[projectResponseDecoded](t, body).Favorite {
+		t.Fatalf("update favorited code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodGet, "/projects", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list projects code = %d body = %s", code, body)
+	}
+	page := decodePage[projectResponseDecoded](t, body)
+	seenFavorite := false
+	seenCreated := false
+	for _, project := range page.Items {
+		if project.ID == e.projectID {
+			seenFavorite = project.Favorite
+		}
+		if project.ID == created.ID {
+			seenCreated = true
+			if project.Favorite {
+				t.Fatalf("created project unexpectedly favorite: %+v", project)
+			}
+		}
+	}
+	if !seenFavorite || !seenCreated {
+		t.Fatalf("project list did not include expected favorite states: %+v", page.Items)
+	}
+
+	_, outsiderToken := e.mustUserToken(t, "project-favorite-denied")
+	code, body = e.doWithToken(t, outsiderToken, http.MethodPut, e.projectPath()+"/favorite", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider favorite code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, outsiderToken, http.MethodDelete, e.projectPath()+"/favorite", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider unfavorite code = %d body = %s", code, body)
+	}
+	missingFavoritePath := "/" + e.ownerUsername + "/projects/" + uniqueProjectKey(t) + "/favorite"
+	code, body = e.do(t, http.MethodPut, missingFavoritePath, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("favorite missing project code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodDelete, missingFavoritePath, nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("unfavorite missing project code = %d body = %s", code, body)
+	}
+
+	code, body = e.do(t, http.MethodDelete, e.projectPath()+"/favorite", nil)
+	if code != http.StatusOK {
+		t.Fatalf("unfavorite code = %d body = %s", code, body)
+	}
+	if unfavorited := decode[projectResponseDecoded](t, body); unfavorited.Favorite {
+		t.Fatalf("unfavorited project = %+v", unfavorited)
+	}
+	code, body = e.do(t, http.MethodDelete, e.projectPath()+"/favorite", nil)
+	if code != http.StatusOK || decode[projectResponseDecoded](t, body).Favorite {
+		t.Fatalf("repeat unfavorite code = %d body = %s", code, body)
 	}
 }

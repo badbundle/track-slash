@@ -5,6 +5,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Navigation
 
 - `tab-bar`: sibling-view navigation with optional Lucide icons. Use for project/work/settings style view switches.
+- `sidebar-favorites`: shell sidebar favorite-project shortcuts backed by `uiSidebarFavoritesData`. Keep it directly below the `Projects` nav item and refresh it with OOB HTMX swaps when favorite state changes.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.
 
 ## Badges
@@ -40,6 +41,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Feature Panels
 
+- `project-favorite-action`: project header star toggle backed by `uiProjectFavoriteData`/`uiProjectPanelData`. Keep it adjacent to the project title and update only the action wrapper plus `sidebar-favorites`.
 - `context-manager-panel`: project context manager page in `internal/server/templates/context_manager.html`; expects `uiContextManagerData`. Use this as the full project context workflow surface, not an inline parent-page form. Issue detail context management now renders as a modal inside `issue-panel`.
 
 ### Context Manager Conventions

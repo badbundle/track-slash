@@ -33,6 +33,29 @@ func (s *Server) uiVisibleProjects(ctx context.Context, user model.User) ([]mode
 	}
 }
 
+func (s *Server) uiFavoriteProjects(ctx context.Context, user model.User) ([]model.Project, error) {
+	return s.store.ListFavoriteProjects(ctx, store.ListFavoriteProjectsParams{
+		User:  user,
+		Limit: MaxLimit,
+	})
+}
+
+func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status int, data uiShellData) {
+	if data.User.ID == uuid.Nil {
+		data.User = currentUser(r)
+	}
+	favorites, err := s.uiFavoriteProjects(r.Context(), data.User)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	data.SidebarFavorites = uiSidebarFavoritesData{
+		Projects:         favorites,
+		CurrentProjectID: data.CurrentProjectID,
+	}
+	renderUITemplate(w, status, "shell", data)
+}
+
 func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
 	if user.IsAdmin {
 		return nil

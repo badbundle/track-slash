@@ -41,6 +41,10 @@ func uiProjectDescriptionEditPath(project model.Project) string {
 	return uiProjectDescriptionPath(project) + "/edit"
 }
 
+func uiProjectFavoritePath(project model.Project) string {
+	return uiProjectPath(project) + "/favorite"
+}
+
 func uiProjectSprintsPath(project model.Project) string {
 	return uiProjectPath(project) + "/sprints"
 }

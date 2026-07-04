@@ -103,6 +103,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/projects/{key}/context/{contextRef}/issues/{issueRef}/delete", s.uiDeleteProjectContextIssueLink)
 		r.Get("/{owner}/projects/{key}/name/edit", s.uiEditProjectName)
 		r.Post("/{owner}/projects/{key}/name", s.uiUpdateProjectName)
+		r.Post("/{owner}/projects/{key}/favorite", s.uiToggleProjectFavorite)
 		r.Get("/{owner}/projects/{key}/description/edit", s.uiEditProjectDescription)
 		r.Post("/{owner}/projects/{key}/description", s.uiUpdateProjectDescription)
 		r.Get("/{owner}/projects/{key}/sprints/new", s.uiNewProjectSprint)

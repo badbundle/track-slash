@@ -23,6 +23,7 @@
         {{else}}
         <div class="mt-1 flex min-w-0 items-start gap-2">
           <h1 class="min-w-0 truncate text-2xl font-semibold tracking-normal">{{.Project.Name}}</h1>
+          {{template "project-favorite-action" .}}
           <button type="button" aria-label="Edit project name" hx-get="{{projectNameEdit .Project}}?view={{.View}}" hx-target="#main" hx-push-url="false" class="mt-1 inline-grid h-7 w-7 shrink-0 align-middle place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
           </button>
@@ -66,4 +67,20 @@
   {{template "project-panel-changelog" .}}
   {{end}}
 </section>
+{{end}}
+
+{{define "project-favorite-action"}}
+<div id="project-favorite-action" class="mt-1 shrink-0">
+  <form method="post" action="{{projectFavorite .Project}}" hx-post="{{projectFavorite .Project}}" hx-target="#project-favorite-action" hx-swap="outerHTML" hx-push-url="false">
+    <input type="hidden" name="view" value="{{.View}}">
+    <button type="submit" aria-label="{{if .Favorite}}Unfavorite project{{else}}Favorite project{{end}}" aria-pressed="{{if .Favorite}}true{{else}}false{{end}}" title="{{if .Favorite}}Unfavorite project{{else}}Favorite project{{end}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{if .Favorite}}border-amber-200 bg-amber-50 text-amber-600 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-500/50 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40{{else}}border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100{{end}}">
+      <i data-lucide="star" class="h-4 w-4 {{if .Favorite}}fill-current{{end}}" aria-hidden="true"></i>
+    </button>
+  </form>
+</div>
+{{end}}
+
+{{define "project-favorite-toggle-response"}}
+{{template "project-favorite-action" .}}
+{{template "sidebar-favorites" .Sidebar}}
 {{end}}
