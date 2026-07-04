@@ -101,7 +101,8 @@ func mcpCall(t *testing.T, e *httpEnv, session *mcp.ClientSession, name string, 
 		t.Fatalf("unmarshal structured content %s: %v raw=%s", name, err, raw)
 	}
 	if res.IsError {
-		t.Fatalf("tool %s error: %s", name, raw)
+		content, _ := json.Marshal(res.Content)
+		t.Fatalf("tool %s error: structured=%s content=%s", name, raw, content)
 	}
 	return out
 }
@@ -343,19 +344,47 @@ func TestMCPCreateIssuePeopleRequireProjectMembers(t *testing.T) {
 		"owner":       e.ownerUsername,
 		"key":         e.projKey,
 		"title":       "MCP member people",
-		"assignee_id": member.ID,
-		"reporter_id": member.ID,
+		"assignee_id": member.ID.String(),
+		"reporter_id": member.ID.String(),
 	})
 	issue := decodeMCPField[model.Issue](t, out, "issue")
 	if issue.AssigneeID == nil || *issue.AssigneeID != member.ID || issue.ReporterID == nil || *issue.ReporterID != member.ID {
 		t.Fatalf("issue people = assignee %v reporter %v, want %s", issue.AssigneeID, issue.ReporterID, member.ID)
 	}
 
+	listOut := mcpCall(t, e, session, "track_list_issues", map[string]any{
+		"owner":        e.ownerUsername,
+		"key":          e.projKey,
+		"assignee_ids": []string{member.ID.String()},
+	})
+	assigned := decodeMCPField[[]model.Issue](t, listOut, "items")
+	if len(assigned) != 1 || assigned[0].ID != issue.ID {
+		t.Fatalf("assigned issues = %+v, want issue %s", assigned, issue.ID)
+	}
+
+	updateOut := mcpCall(t, e, session, "track_update_issue", map[string]any{
+		"owner":       e.ownerUsername,
+		"issue":       issue.Identifier,
+		"assignee_id": member.ID.String(),
+	})
+	updated := decodeMCPField[model.Issue](t, updateOut, "issue")
+	if updated.AssigneeID == nil || *updated.AssigneeID != member.ID {
+		t.Fatalf("updated assignee = %v, want %s", updated.AssigneeID, member.ID)
+	}
+
+	out = mcpCallExpectError(t, e, session, "track_create_issue", map[string]any{
+		"owner":       e.ownerUsername,
+		"key":         e.projKey,
+		"title":       "MCP invalid assignee",
+		"assignee_id": "not-a-uuid",
+	})
+	requireMCPErrorCode(t, out, "validation_error")
+
 	out = mcpCallExpectError(t, e, session, "track_create_issue", map[string]any{
 		"owner":       e.ownerUsername,
 		"key":         e.projKey,
 		"title":       "MCP nonmember assignee",
-		"assignee_id": nonMember.ID,
+		"assignee_id": nonMember.ID.String(),
 	})
 	requireMCPErrorCode(t, out, "not_found")
 
@@ -363,7 +392,7 @@ func TestMCPCreateIssuePeopleRequireProjectMembers(t *testing.T) {
 		"owner":       e.ownerUsername,
 		"issue":       issue.Identifier,
 		"title":       "MCP child nonmember",
-		"assignee_id": nonMember.ID,
+		"assignee_id": nonMember.ID.String(),
 	})
 	requireMCPErrorCode(t, out, "not_found")
 
@@ -371,7 +400,7 @@ func TestMCPCreateIssuePeopleRequireProjectMembers(t *testing.T) {
 		"owner":       e.ownerUsername,
 		"issue":       issue.Identifier,
 		"title":       "MCP child member",
-		"assignee_id": member.ID,
+		"assignee_id": member.ID.String(),
 	})
 	child := decodeMCPField[model.Issue](t, out, "issue")
 	if child.AssigneeID == nil || *child.AssigneeID != member.ID {
