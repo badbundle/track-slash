@@ -89,8 +89,33 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
+	if err := s.revokeUISessionCookie(r.Context(), r); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	clearUISessionCookie(w, r)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (s *Server) revokeUISessionCookie(ctx context.Context, r *http.Request) error {
+	cookie, err := r.Cookie(uiAuthCookieName)
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return nil
+	}
+	auth, err := s.store.AuthenticateToken(ctx, cookie.Value)
+	if err != nil {
+		if errors.Is(err, store.ErrUnauthorized) {
+			return nil
+		}
+		return err
+	}
+	if auth.Token.Kind != model.AuthTokenKindSession {
+		return nil
+	}
+	if err := s.store.RevokeAuthTokenForUser(ctx, auth.User.ID, auth.Token.ID); err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	return nil
 }
 
 func setUISessionCookie(w http.ResponseWriter, r *http.Request, raw string, expiresAt *time.Time) {
