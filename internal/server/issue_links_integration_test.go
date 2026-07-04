@@ -162,6 +162,12 @@ func TestHTTPCreateIssueLinkCrossProject(t *testing.T) {
 	if code != http.StatusConflict {
 		t.Fatalf("code = %d", code)
 	}
+
+	code, _ = e.do(t, http.MethodPost, e.issueLinksPath(a),
+		map[string]any{"target_issue": other.Key + "-999999", "link_type": "blocks"})
+	if code != http.StatusConflict {
+		t.Fatalf("missing cross-project target code = %d", code)
+	}
 }
 
 func TestHTTPCreateIssueLinkSourceNotFound(t *testing.T) {
@@ -509,6 +515,18 @@ func TestHTTPUpdateIssueLinkValidation(t *testing.T) {
 			path: e.projectLinkPath(link),
 			body: map[string]any{"source_issue": a.Identifier, "target_issue": e.projKey + "-999999", "link_type": "blocks"},
 			want: http.StatusNotFound,
+		},
+		{
+			name: "cross project missing source",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": other.Key + "-999999", "target_issue": b.Identifier, "link_type": "blocks"},
+			want: http.StatusConflict,
+		},
+		{
+			name: "cross project missing target",
+			path: e.projectLinkPath(link),
+			body: map[string]any{"source_issue": a.Identifier, "target_issue": other.Key + "-999999", "link_type": "blocks"},
+			want: http.StatusConflict,
 		},
 		{
 			name: "cross project",

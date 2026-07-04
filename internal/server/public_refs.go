@@ -52,6 +52,13 @@ func parseIssueRef(raw string) (issueRef, error) {
 	return issueRef{ProjectKey: key, Number: n}, nil
 }
 
+func requireIssueRefProject(ref issueRef, projectKey string) error {
+	if ref.ProjectKey != strings.ToUpper(strings.TrimSpace(projectKey)) {
+		return fmt.Errorf("issues belong to different projects: %w", store.ErrConflict)
+	}
+	return nil
+}
+
 func parseIssueRefParam(w http.ResponseWriter, r *http.Request) (issueRef, bool) {
 	ref, err := parseIssueRef(chi.URLParam(r, "issueRef"))
 	if err != nil {

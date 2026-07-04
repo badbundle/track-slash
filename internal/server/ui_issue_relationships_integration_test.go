@@ -34,6 +34,10 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue replacement: %v", err)
 	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other link ui", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
 
 	edit := e.uiGet(t, e.issueLinksPath(issue)+"/new", token)
 	for _, want := range []string{
@@ -75,6 +79,17 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	}
 	if !strings.Contains(body, "Choose a valid relationship.") || !strings.Contains(body, `value="`+target.Identifier+`"`) {
 		t.Fatalf("bad relation response missing preserved form state: %s", body)
+	}
+
+	crossProject := url.Values{"relation": {"relates_to"}, "target_issue": {otherProject.Key + "-999999"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.issueLinksPath(issue), token, strings.NewReader(crossProject.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("cross-project target code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "Linked issue must be in this project.") || strings.Contains(body, "Linked issue not found.") {
+		t.Fatalf("cross-project target response missing project validation: %s", body)
 	}
 
 	form := url.Values{"relation": {"blocked_by"}, "target_issue": {target.Identifier}}
