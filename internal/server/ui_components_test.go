@@ -294,6 +294,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 			t.Fatalf("shell missing issue control reopen behavior %q: %s", want, body)
 		}
 	}
+	for _, want := range []string{`data-disclosure-toggle`, `setDisclosureOpen`, `aria-controls`, `panel.hidden = !open`, `aria-expanded`, `data-disclosure-icon`, `chevron-up`, `chevron-down`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing disclosure behavior %q: %s", want, body)
+		}
+	}
 	for _, want := range []string{`attachmentMarkdownSnippet`, `data-attachment-copy-markdown`, `writeClipboardText`, `navigator.clipboard.writeText`, `data-copy-label`, `contentUrl}?inline=1`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing attachment copy/preview behavior %q: %s", want, body)

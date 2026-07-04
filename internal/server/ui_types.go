@@ -324,6 +324,7 @@ type uiProjectPanelData struct {
 	EditProjectDescription  bool
 	ProjectDescriptionInput string
 	ProjectDescriptionError string
+	ProjectDescriptionHTML  template.HTML
 	AssigneeFilters         []uiAssigneeFilterItem
 	AssigneeFilterActive    bool
 	ClearAssigneeHref       string

@@ -16,50 +16,57 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 )
 
-type issueMarkdownTarget struct {
+type markdownTarget struct {
 	downloadHref string
 	inlineHref   string
 	inlineImage  bool
 }
 
-type issueMarkdownRenderer struct {
-	targets map[string]issueMarkdownTarget
+type markdownRenderer struct {
+	targets map[string]markdownTarget
 }
 
 func renderIssueDescriptionMarkdown(issue model.Issue, attachments []model.IssueAttachment) template.HTML {
-	source := []byte(issue.Description)
-	if strings.TrimSpace(issue.Description) == "" {
-		return ""
-	}
-	targets := make(map[string]issueMarkdownTarget, len(attachments))
+	targets := make(map[string]markdownTarget, len(attachments))
 	for _, attachment := range attachments {
 		href := uiIssueAttachmentContentPath(issue, attachment.Object)
-		target := issueMarkdownTarget{downloadHref: href}
+		target := markdownTarget{downloadHref: href}
 		if storageObjectSafeInlineImage(attachment.Object) {
 			target.inlineHref = href + "?inline=1"
 			target.inlineImage = true
 		}
 		targets[attachment.Object.Ref] = target
 	}
+	return renderMarkdown(issue.Description, targets)
+}
+
+func renderProjectDescriptionMarkdown(project model.Project) template.HTML {
+	return renderMarkdown(project.Description, nil)
+}
+
+func renderMarkdown(source string, targets map[string]markdownTarget) template.HTML {
+	if strings.TrimSpace(source) == "" {
+		return ""
+	}
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
 		goldmark.WithRendererOptions(
-			renderer.WithNodeRenderers(util.Prioritized(issueMarkdownRenderer{targets: targets}, 900)),
+			renderer.WithNodeRenderers(util.Prioritized(markdownRenderer{targets: targets}, 900)),
 		),
 	)
 	var out bytes.Buffer
-	if err := md.Convert(source, &out); err != nil {
-		return template.HTML(html.EscapeString(issue.Description))
+	if err := md.Convert([]byte(source), &out); err != nil {
+		return template.HTML(html.EscapeString(source))
 	}
 	return template.HTML(out.String())
 }
 
-func (r issueMarkdownRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+func (r markdownRenderer) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
 	reg.Register(ast.KindLink, r.renderLink)
 	reg.Register(ast.KindImage, r.renderImage)
 }
 
-func (r issueMarkdownRenderer) renderLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+func (r markdownRenderer) renderLink(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	n := node.(*ast.Link)
 	href, ok := r.linkHref(string(n.Destination))
 	if !ok {
@@ -81,7 +88,7 @@ func (r issueMarkdownRenderer) renderLink(w util.BufWriter, source []byte, node 
 	return ast.WalkContinue, nil
 }
 
-func (r issueMarkdownRenderer) renderImage(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+func (r markdownRenderer) renderImage(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
 	if !entering {
 		return ast.WalkContinue, nil
 	}
@@ -106,7 +113,7 @@ func (r issueMarkdownRenderer) renderImage(w util.BufWriter, source []byte, node
 	return ast.WalkSkipChildren, nil
 }
 
-func (r issueMarkdownRenderer) renderImageTag(w util.BufWriter, src, alt string, title []byte) {
+func (r markdownRenderer) renderImageTag(w util.BufWriter, src, alt string, title []byte) {
 	_, _ = w.WriteString(`<img src="`)
 	_, _ = w.WriteString(html.EscapeString(src))
 	_, _ = w.WriteString(`" alt="`)
@@ -120,7 +127,7 @@ func (r issueMarkdownRenderer) renderImageTag(w util.BufWriter, src, alt string,
 	_ = w.WriteByte('>')
 }
 
-func (r issueMarkdownRenderer) renderFallbackImageLink(w util.BufWriter, href, alt string, title []byte) {
+func (r markdownRenderer) renderFallbackImageLink(w util.BufWriter, href, alt string, title []byte) {
 	label := alt
 	if strings.TrimSpace(label) == "" {
 		label = href
@@ -138,17 +145,17 @@ func (r issueMarkdownRenderer) renderFallbackImageLink(w util.BufWriter, href, a
 	_, _ = w.WriteString("</a>")
 }
 
-func (r issueMarkdownRenderer) linkHref(raw string) (string, bool) {
+func (r markdownRenderer) linkHref(raw string) (string, bool) {
 	if target, ok := r.objectTarget(raw); ok {
 		return target.downloadHref, true
 	}
 	return safeMarkdownURL(raw)
 }
 
-func (r issueMarkdownRenderer) objectTarget(raw string) (issueMarkdownTarget, bool) {
+func (r markdownRenderer) objectTarget(raw string) (markdownTarget, bool) {
 	ref := strings.TrimSpace(raw)
 	if _, err := parseTypedRef(ref, "object"); err != nil {
-		return issueMarkdownTarget{}, false
+		return markdownTarget{}, false
 	}
 	target, ok := r.targets[ref]
 	return target, ok

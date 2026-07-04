@@ -53,6 +53,20 @@
         }
         root.querySelectorAll("[data-checkbox-reveal]").forEach(syncCheckboxReveal);
       };
+      const syncDisclosureIcon = (toggle, open) => {
+        const icon = toggle.querySelector("[data-disclosure-icon]");
+        if (!icon) return;
+        icon.setAttribute("data-lucide", open ? "chevron-up" : "chevron-down");
+        createIcons();
+      };
+      const setDisclosureOpen = (toggle, open) => {
+        const targetID = toggle.getAttribute("aria-controls");
+        const panel = targetID && document.getElementById(targetID);
+        if (!panel) return;
+        panel.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        syncDisclosureIcon(toggle, open);
+      };
       const showAttachmentStatus = (textarea, message) => {
         const status = textarea && textarea.closest("section") && textarea.closest("section").querySelector("[data-attachment-status]");
         if (!status) return;
@@ -381,6 +395,12 @@
       });
       document.body.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
+        const disclosureToggle = event.target.closest("[data-disclosure-toggle]");
+        if (disclosureToggle) {
+          event.preventDefault();
+          setDisclosureOpen(disclosureToggle, disclosureToggle.getAttribute("aria-expanded") !== "true");
+          return;
+        }
         const copyMarkdown = event.target.closest("[data-attachment-copy-markdown]");
         if (copyMarkdown) {
           event.preventDefault();

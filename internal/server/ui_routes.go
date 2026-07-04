@@ -116,7 +116,6 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/projects/{key}/sprints/{sprintRef}/move-down", s.uiMoveProjectSprintDown)
 		r.Get("/{owner}/projects/{key}/sprints/{sprintRef}/issues/new", s.uiNewProjectSprintIssue)
 		r.Post("/{owner}/projects/{key}/sprints/{sprintRef}/issues", s.uiAddProjectSprintIssue)
-		r.Post("/{owner}/projects/{key}/sprints/{sprintRef}/issues/{issueRef}/delete", s.uiRemoveProjectSprintIssue)
 		r.Get("/{owner}/projects/{key}/issues/new", s.uiNewProjectIssuePage)
 		r.Get("/{owner}/projects/{key}/issues/new/panel", s.uiNewProjectIssuePanel)
 		r.Post("/{owner}/projects/{key}/issues", s.uiCreateProjectIssue)

@@ -19,6 +19,8 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	sprint := model.Sprint{
 		ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
 		ProjectID: projectID,
+		Number:    1,
+		Ref:       "sprint-1",
 		Name:      "First Planned Sprint",
 		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
@@ -50,8 +52,41 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	if strings.Contains(body, "All issues") || strings.Contains(body, "Backlog") {
 		t.Fatalf("planned panel included all/backlog content: %s", body)
 	}
+	for _, want := range []string{`data-disclosure-toggle`, `aria-controls="planned-sprint-sprint-1-issues"`, `aria-expanded="false"`, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project planned panel missing collapsed markup %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`aria-label="Remove issue from sprint"`, `data-lucide="unlink"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project planned panel included sprint removal UI %q: %s", notWant, body)
+		}
+	}
 	requireInlineCount(t, body, "Planned", 1)
 	requireInlineCount(t, body, "First Planned Sprint", 2)
+
+	buf.Reset()
+	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project:                project,
+		View:                   "planned",
+		ProjectTabs:            uiProjectTabs(project, "planned", nil),
+		PlannedSprintActionID:  sprint.ID,
+		PlannedSprintAction:    "add-issue",
+		PlannedSprintIssueForm: uiSprintIssueFormData{IssueInput: "TRACK-99"},
+		PlannedSprints: []uiPlannedSprint{{
+			Sprint: sprint,
+			Issues: []model.Issue{
+				{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate action open: %v", err)
+	}
+	body = buf.String()
+	if !strings.Contains(body, `aria-controls="planned-sprint-sprint-1-issues" aria-expanded="true"`) || strings.Contains(body, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`) {
+		t.Fatalf("planned sprint action should open disclosure panel: %s", body)
+	}
 
 	buf.Reset()
 	allIssues := []model.Issue{

@@ -336,14 +336,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	panel := &uiProjectPanelData{
-		Project:              project,
-		View:                 view,
-		ProjectTabs:          uiProjectTabs(project, view, assigneeIDs),
-		AssigneeFilterActive: len(assigneeIDs) > 0,
-		ClearAssigneeHref:    uiProjectViewPath(project, view),
-		ClearAssigneeHXGet:   uiProjectPanelPath(project, view),
-		ClearAssigneeHXPush:  uiProjectViewPath(project, view),
-		DeleteNotice:         deleteNotice,
+		Project:                project,
+		View:                   view,
+		ProjectTabs:            uiProjectTabs(project, view, assigneeIDs),
+		ProjectDescriptionHTML: renderProjectDescriptionMarkdown(project),
+		AssigneeFilterActive:   len(assigneeIDs) > 0,
+		ClearAssigneeHref:      uiProjectViewPath(project, view),
+		ClearAssigneeHXGet:     uiProjectPanelPath(project, view),
+		ClearAssigneeHXPush:    uiProjectViewPath(project, view),
+		DeleteNotice:           deleteNotice,
 	}
 	if view == "sprint" || view == "all" {
 		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
