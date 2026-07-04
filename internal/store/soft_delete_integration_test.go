@@ -197,6 +197,9 @@ func TestSoftDeleteUser(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
 	u := mustCreateUser(t, env, "soft-user-"+uniqueDigits(time.Now().UnixNano(), 8)+"@example.com")
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, u.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
 	iss, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{
 		ProjectID:  env.projectID,
 		Title:      "assigned",

@@ -14,7 +14,8 @@ import (
 func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
-	assignee := mustHTTPUser(t, e)
+	assignee, _ := e.mustProjectMemberToken(t, "sub-assignee")
+	nonMember := mustHTTPUser(t, e)
 
 	code, body := e.do(t, http.MethodPost,
 		e.projectIssuesPath(),
@@ -47,6 +48,16 @@ func TestHTTPSubIssuesCRUDAndFiltering(t *testing.T) {
 	}
 	if child.Priority != model.PriorityP1 {
 		t.Fatalf("child priority = %s, want %s", child.Priority, model.PriorityP1)
+	}
+
+	code, body = e.do(t, http.MethodPost,
+		e.issueSubIssuesPath(parent),
+		map[string]any{
+			"title":       "nonmember child",
+			"assignee_id": nonMember.ID,
+		})
+	if code != http.StatusNotFound {
+		t.Fatalf("create child non-member assignee code = %d body = %s", code, body)
 	}
 
 	code, body = e.do(t, http.MethodGet, e.issueSubIssuesPath(parent), nil)

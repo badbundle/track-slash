@@ -98,13 +98,24 @@ func TestCreateGetUpdateDeleteComment(t *testing.T) {
 		t.Fatalf("wrong author changed body to %q", got.Body)
 	}
 
-	if err := env.store.DeleteComment(env.ctx, c.ID); err != nil {
+	if err := env.store.DeleteComment(env.ctx, store.DeleteCommentParams{ID: c.ID, AuthorID: other.ID}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("wrong author delete err = %v, want ErrNotFound", err)
+	}
+	got, err = env.store.GetComment(env.ctx, c.ID)
+	if err != nil {
+		t.Fatalf("GetComment after wrong delete: %v", err)
+	}
+	if got.Body != "edited" {
+		t.Fatalf("wrong author delete changed body to %q", got.Body)
+	}
+
+	if err := env.store.DeleteComment(env.ctx, store.DeleteCommentParams{ID: c.ID, AuthorID: author.ID}); err != nil {
 		t.Fatalf("DeleteComment: %v", err)
 	}
 	if _, err := env.store.GetComment(env.ctx, c.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Get deleted err = %v, want ErrNotFound", err)
 	}
-	if err := env.store.DeleteComment(env.ctx, c.ID); !errors.Is(err, store.ErrNotFound) {
+	if err := env.store.DeleteComment(env.ctx, store.DeleteCommentParams{ID: c.ID, AuthorID: author.ID}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("Delete second err = %v, want ErrNotFound", err)
 	}
 }

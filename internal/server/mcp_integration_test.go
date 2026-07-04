@@ -139,6 +139,20 @@ func decodeMCPField[T any](t *testing.T, out map[string]json.RawMessage, field s
 	return v
 }
 
+func requireMCPErrorCode(t *testing.T, out map[string]json.RawMessage, want string) {
+	t.Helper()
+	var got struct {
+		Code string `json:"code"`
+	}
+	raw := decodeMCPField[json.RawMessage](t, out, "error")
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal error: %v raw=%s", err, raw)
+	}
+	if got.Code != want {
+		t.Fatalf("error code = %q, want %q", got.Code, want)
+	}
+}
+
 func TestMCPToolErrorsAreStructured(t *testing.T) {
 	t.Parallel()
 	storageSvc, _ := newLocalStorageService(t, 1024*1024)
@@ -150,17 +164,7 @@ func TestMCPToolErrorsAreStructured(t *testing.T) {
 		"key":   e.projKey,
 		"title": "",
 	})
-	var got struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	}
-	raw := decodeMCPField[json.RawMessage](t, out, "error")
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("unmarshal error: %v raw=%s", err, raw)
-	}
-	if got.Code != "validation_error" {
-		t.Fatalf("error code = %q, want validation_error", got.Code)
-	}
+	requireMCPErrorCode(t, out, "validation_error")
 }
 
 func TestMCPRequiresAPIToken(t *testing.T) {
@@ -300,6 +304,78 @@ func TestMCPProjectIssueCommentParity(t *testing.T) {
 	comments := decodeMCPField[[]model.Comment](t, listOut, "items")
 	if len(comments) != 1 || comments[0].ID != comment.ID {
 		t.Fatalf("comments = %+v, want %+v", comments, comment)
+	}
+
+	_, memberToken := e.mustProjectMemberToken(t, "mcp-comment-other")
+	memberSession := mcpConnect(t, e, memberToken)
+	errOut := mcpCallExpectError(t, e, memberSession, "track_delete_comment", map[string]any{
+		"owner":   e.ownerUsername,
+		"issue":   issue.Identifier,
+		"comment": comment.Ref,
+	})
+	requireMCPErrorCode(t, errOut, "forbidden")
+	gotComment, err := e.store.GetComment(e.ctx, comment.ID)
+	if err != nil {
+		t.Fatalf("GetComment after forbidden delete: %v", err)
+	}
+	if gotComment.Body != "MCP comment" {
+		t.Fatalf("forbidden delete changed comment: %+v", gotComment)
+	}
+	mcpCall(t, e, session, "track_delete_comment", map[string]any{
+		"owner":   e.ownerUsername,
+		"issue":   issue.Identifier,
+		"comment": comment.Ref,
+	})
+	if _, err := e.store.GetComment(e.ctx, comment.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetComment after author delete err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestMCPCreateIssuePeopleRequireProjectMembers(t *testing.T) {
+	t.Parallel()
+	storageSvc, _ := newLocalStorageService(t, 1024*1024)
+	e := newMCPHTTPEnv(t, storageSvc)
+	session := mcpConnect(t, e, e.authToken)
+	member, _ := e.mustProjectMemberToken(t, "mcp-issue-member")
+	nonMember, _ := e.mustUserToken(t, "mcp-issue-outsider")
+
+	out := mcpCall(t, e, session, "track_create_issue", map[string]any{
+		"owner":       e.ownerUsername,
+		"key":         e.projKey,
+		"title":       "MCP member people",
+		"assignee_id": member.ID,
+		"reporter_id": member.ID,
+	})
+	issue := decodeMCPField[model.Issue](t, out, "issue")
+	if issue.AssigneeID == nil || *issue.AssigneeID != member.ID || issue.ReporterID == nil || *issue.ReporterID != member.ID {
+		t.Fatalf("issue people = assignee %v reporter %v, want %s", issue.AssigneeID, issue.ReporterID, member.ID)
+	}
+
+	out = mcpCallExpectError(t, e, session, "track_create_issue", map[string]any{
+		"owner":       e.ownerUsername,
+		"key":         e.projKey,
+		"title":       "MCP nonmember assignee",
+		"assignee_id": nonMember.ID,
+	})
+	requireMCPErrorCode(t, out, "not_found")
+
+	out = mcpCallExpectError(t, e, session, "track_create_sub_issue", map[string]any{
+		"owner":       e.ownerUsername,
+		"issue":       issue.Identifier,
+		"title":       "MCP child nonmember",
+		"assignee_id": nonMember.ID,
+	})
+	requireMCPErrorCode(t, out, "not_found")
+
+	out = mcpCall(t, e, session, "track_create_sub_issue", map[string]any{
+		"owner":       e.ownerUsername,
+		"issue":       issue.Identifier,
+		"title":       "MCP child member",
+		"assignee_id": member.ID,
+	})
+	child := decodeMCPField[model.Issue](t, out, "issue")
+	if child.AssigneeID == nil || *child.AssigneeID != member.ID {
+		t.Fatalf("child assignee = %v, want %s", child.AssigneeID, member.ID)
 	}
 }
 

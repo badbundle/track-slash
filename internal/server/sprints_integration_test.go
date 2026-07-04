@@ -874,6 +874,32 @@ func TestHTTPPatchIssueSetAndClearPeople(t *testing.T) {
 	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, member.ID); err != nil {
 		t.Fatalf("GrantProjectAccess: %v", err)
 	}
+	code, body := e.do(t, http.MethodPost, e.projectIssuesPath(), map[string]any{
+		"title":       "created with people",
+		"assignee_id": member.ID,
+		"reporter_id": member.ID,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("create people code = %d body = %s", code, body)
+	}
+	created := decode[model.Issue](t, body)
+	if created.AssigneeID == nil || *created.AssigneeID != member.ID || created.ReporterID == nil || *created.ReporterID != member.ID {
+		t.Fatalf("created people = assignee %v reporter %v, want %s", created.AssigneeID, created.ReporterID, member.ID)
+	}
+	code, body = e.do(t, http.MethodPost, e.projectIssuesPath(), map[string]any{
+		"title":       "nonmember assignee",
+		"assignee_id": nonMember.ID,
+	})
+	if code != http.StatusNotFound {
+		t.Fatalf("create non-member assignee code = %d body = %s", code, body)
+	}
+	code, body = e.do(t, http.MethodPost, e.projectIssuesPath(), map[string]any{
+		"title":       "missing reporter",
+		"reporter_id": uuid.NewString(),
+	})
+	if code != http.StatusNotFound {
+		t.Fatalf("create missing reporter code = %d body = %s", code, body)
+	}
 	iss, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
 		ProjectID: e.projectID,
 		Title:     "people",
@@ -882,7 +908,7 @@ func TestHTTPPatchIssueSetAndClearPeople(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 
-	code, body := e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{
+	code, body = e.do(t, http.MethodPatch, e.issuePath(iss), map[string]any{
 		"assignee_id": member.ID,
 		"reporter_id": member.ID,
 	})
@@ -1013,8 +1039,8 @@ func TestHTTPListIssuesBacklogAndSprintFilters(t *testing.T) {
 func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
-	alice, _ := e.mustUserToken(t, "assignee-alice")
-	bob, _ := e.mustUserToken(t, "assignee-bob")
+	alice, _ := e.mustProjectMemberToken(t, "assignee-alice")
+	bob, _ := e.mustProjectMemberToken(t, "assignee-bob")
 	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
 
 	aliceIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
@@ -1118,7 +1144,7 @@ func TestHTTPListProjectAssignees(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	member, memberToken := e.mustProjectMemberToken(t, "project-assignee-member")
-	assigned, _ := e.mustUserToken(t, "project-assignee-assigned")
+	assigned, _ := e.mustProjectMemberToken(t, "project-assignee-assigned")
 	unrelated, _ := e.mustUserToken(t, "project-assignee-unrelated")
 	if _, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
 		ProjectID:  e.projectID,

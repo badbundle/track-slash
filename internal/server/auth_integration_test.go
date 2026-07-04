@@ -527,6 +527,9 @@ func TestHTTPAuthenticatedAttribution(t *testing.T) {
 	}
 
 	override, _ := e.mustUserToken(t, "override")
+	if _, err := e.store.GrantProjectAccess(e.ctx, e.projectID, override.ID); err != nil {
+		t.Fatalf("GrantProjectAccess override: %v", err)
+	}
 	code, body = e.do(t, http.MethodPost, e.projectIssuesPath(), map[string]any{
 		"title":       "admin override",
 		"reporter_id": override.ID,

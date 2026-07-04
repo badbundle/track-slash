@@ -1515,7 +1515,10 @@ func (s *Server) mcpDeleteComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.DeleteComment(ctx, comment.ID); err != nil {
+	if comment.AuthorID != auth.User.ID {
+		return nil, errMCPForbidden
+	}
+	if err := s.store.DeleteComment(ctx, store.DeleteCommentParams{ID: comment.ID, AuthorID: auth.User.ID}); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -2435,7 +2438,7 @@ func (s *Server) mcpCreateStorageObjectRecord(ctx context.Context, projectID, us
 		CreatedByID: userID,
 	})
 	if err != nil {
-		_ = s.objectStorage.Delete(ctx, stored.ObjectKey)
+		_ = s.deleteStorageBackendObject(ctx, stored.ObjectKey)
 		return model.StorageObject{}, err
 	}
 	return object, nil
@@ -2570,7 +2573,7 @@ func (s *Server) mcpDeleteObject(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.objectStorage.Delete(ctx, deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	if err := s.deleteStorageBackendObject(ctx, deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -2686,7 +2689,7 @@ func (s *Server) mcpDeleteAttachment(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, err
 	}
-	if err := s.objectStorage.Delete(ctx, deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	if err := s.deleteStorageBackendObject(ctx, deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 		return nil, err
 	}
 	return mcpOK(), nil

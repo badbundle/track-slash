@@ -161,6 +161,9 @@ func mustCreateStatsUser(t *testing.T, env *sprintsTestEnv, usernamePrefix, name
 	if err != nil {
 		t.Fatalf("CreateUserProfile %s: %v", usernamePrefix, err)
 	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, user.ID); err != nil {
+		t.Fatalf("GrantProjectAccess %s: %v", usernamePrefix, err)
+	}
 	return user
 }
 
