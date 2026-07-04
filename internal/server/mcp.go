@@ -2064,6 +2064,9 @@ func (s *Server) mcpCreateLink(ctx context.Context, req *mcp.CallToolRequest, in
 	if !input.LinkType.Valid() {
 		return nil, validationError("invalid link_type")
 	}
+	if err := requireIssueRefProject(targetRef, source.ProjectKey); err != nil {
+		return nil, err
+	}
 	target, err := s.store.GetIssueByOwnerKeyNumber(ctx, source.OwnerUsername, targetRef.ProjectKey, targetRef.Number)
 	if err != nil {
 		return nil, err
@@ -2154,6 +2157,12 @@ func (s *Server) mcpUpdateLink(ctx context.Context, req *mcp.CallToolRequest, in
 	}
 	if !input.LinkType.Valid() {
 		return nil, validationError("invalid link_type")
+	}
+	if err := requireIssueRefProject(sourceRef, project.Key); err != nil {
+		return nil, err
+	}
+	if err := requireIssueRefProject(targetRef, project.Key); err != nil {
+		return nil, err
 	}
 	source, err := s.store.GetIssueByOwnerKeyNumber(ctx, project.OwnerUsername, sourceRef.ProjectKey, sourceRef.Number)
 	if err != nil {

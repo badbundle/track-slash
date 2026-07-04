@@ -236,6 +236,9 @@ func (s *Server) uiIssueLinkFormParams(ctx context.Context, issue model.Issue, t
 	if err != nil {
 		return store.UpdateIssueLinkParams{}, err.Error(), nil
 	}
+	if err := requireIssueRefProject(targetRef, issue.ProjectKey); err != nil {
+		return store.UpdateIssueLinkParams{}, "Linked issue must be in this project.", nil
+	}
 	target, err := s.store.GetIssueByOwnerKeyNumber(ctx, issue.OwnerUsername, targetRef.ProjectKey, targetRef.Number)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {

@@ -51,6 +51,10 @@ func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid link_type")
 		return
 	}
+	if err := requireIssueRefProject(targetRef, source.ProjectKey); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	target, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), source.OwnerUsername, targetRef.ProjectKey, targetRef.Number)
 	if err != nil {
 		writeStoreError(w, err)
@@ -161,6 +165,14 @@ func (s *Server) updateIssueLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if !req.LinkType.Valid() {
 		writeError(w, http.StatusBadRequest, "invalid link_type")
+		return
+	}
+	if err := requireIssueRefProject(sourceRef, project.Key); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if err := requireIssueRefProject(targetRef, project.Key); err != nil {
+		writeStoreError(w, err)
 		return
 	}
 	source, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), project.OwnerUsername, sourceRef.ProjectKey, sourceRef.Number)

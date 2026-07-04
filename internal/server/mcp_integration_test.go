@@ -408,6 +408,60 @@ func TestMCPCreateIssuePeopleRequireProjectMembers(t *testing.T) {
 	}
 }
 
+func TestMCPIssueLinksRejectCrossProjectRefsBeforeLookup(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	session := mcpConnect(t, e, e.authToken)
+	source, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "MCP link source"})
+	if err != nil {
+		t.Fatalf("CreateIssue source: %v", err)
+	}
+	target, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "MCP link target"})
+	if err != nil {
+		t.Fatalf("CreateIssue target: %v", err)
+	}
+	other, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other mcp links", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+
+	errOut := mcpCallExpectError(t, e, session, "track_create_link", map[string]any{
+		"owner":        e.ownerUsername,
+		"issue":        source.Identifier,
+		"target_issue": other.Key + "-999999",
+		"link_type":    "blocks",
+	})
+	requireMCPErrorCode(t, errOut, "conflict")
+
+	out := mcpCall(t, e, session, "track_create_link", map[string]any{
+		"owner":        e.ownerUsername,
+		"issue":        source.Identifier,
+		"target_issue": target.Identifier,
+		"link_type":    "blocks",
+	})
+	link := decodeMCPField[model.IssueLink](t, out, "link")
+
+	errOut = mcpCallExpectError(t, e, session, "track_update_link", map[string]any{
+		"owner":        e.ownerUsername,
+		"key":          e.projKey,
+		"link":         link.Ref,
+		"source_issue": other.Key + "-999999",
+		"target_issue": target.Identifier,
+		"link_type":    "blocks",
+	})
+	requireMCPErrorCode(t, errOut, "conflict")
+
+	errOut = mcpCallExpectError(t, e, session, "track_update_link", map[string]any{
+		"owner":        e.ownerUsername,
+		"key":          e.projKey,
+		"link":         link.Ref,
+		"source_issue": source.Identifier,
+		"target_issue": other.Key + "-999999",
+		"link_type":    "blocks",
+	})
+	requireMCPErrorCode(t, errOut, "conflict")
+}
+
 func TestMCPAttachmentAndResourceRoundTrip(t *testing.T) {
 	t.Parallel()
 	storageSvc, _ := newLocalStorageService(t, 1024*1024)

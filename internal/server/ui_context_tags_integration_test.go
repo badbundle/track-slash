@@ -20,6 +20,10 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "other context ui", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
 
 	body := e.uiGet(t, e.projectPath()+"/about", token)
 	projectContextDetail := issueContextDetailBlock(t, body)
@@ -127,6 +131,16 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 	if strings.Contains(body, `role="dialog" aria-modal="true"`) || !strings.Contains(body, "Choose an issue in this project.") || !strings.Contains(body, `value="bad"`) {
 		t.Fatalf("bad project link context body missing error/state: %s", body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, contextPath+"/issues", token, strings.NewReader(url.Values{"issue": {otherProject.Key + "-999999"}}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("cross-project link context code = %d body = %s", res.StatusCode, body)
+	}
+	if strings.Contains(body, `role="dialog" aria-modal="true"`) || !strings.Contains(body, "Issue must be in this project.") || strings.Contains(body, "Issue not found.") {
+		t.Fatalf("cross-project link context body missing project validation: %s", body)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, contextPath+"/issues", token, strings.NewReader(url.Values{"issue": {issue.Identifier}}.Encode()))

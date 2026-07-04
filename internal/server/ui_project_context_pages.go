@@ -470,6 +470,9 @@ func (s *Server) uiProjectContextIssueInput(ctx context.Context, project model.P
 	if err != nil {
 		return model.Issue{}, "Choose an issue in this project.", nil
 	}
+	if err := requireIssueRefProject(ref, project.Key); err != nil {
+		return model.Issue{}, "Issue must be in this project.", nil
+	}
 	issue, err := s.store.GetIssueByOwnerKeyNumber(ctx, project.OwnerUsername, ref.ProjectKey, ref.Number)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
