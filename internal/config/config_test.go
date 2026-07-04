@@ -67,6 +67,19 @@ func TestLoadDevReload(t *testing.T) {
 	}
 }
 
+func TestLoadMCPEnabled(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_MCP_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.MCPEnabled {
+		t.Fatal("MCPEnabled = false, want true")
+	}
+}
+
 func TestLoadStorageDefaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
 

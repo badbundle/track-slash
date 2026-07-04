@@ -18,12 +18,14 @@ type Server struct {
 	hub                *realtime.Hub
 	corsAllowedOrigins []string
 	devReload          bool
+	mcpEnabled         bool
 	objectStorage      *objectstorage.Service
 }
 
 type Options struct {
 	CORSAllowedOrigins []string
 	DevReload          bool
+	MCPEnabled         bool
 	ObjectStorage      *objectstorage.Service
 }
 
@@ -40,6 +42,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		hub:                hub,
 		corsAllowedOrigins: opts.CORSAllowedOrigins,
 		devReload:          opts.DevReload,
+		mcpEnabled:         opts.MCPEnabled,
 		objectStorage:      opts.ObjectStorage,
 	}
 }
@@ -58,8 +61,8 @@ func (s *Server) Router() http.Handler {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   s.corsAllowedOrigins,
 			AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Authorization", "Content-Type", "If-Match"},
-			ExposedHeaders:   []string{"X-Request-ID"},
+			AllowedHeaders:   []string{"Authorization", "Content-Type", "Accept", "If-Match", "Last-Event-ID", "MCP-Protocol-Version", "Mcp-Session-Id"},
+			ExposedHeaders:   []string{"X-Request-ID", "Mcp-Session-Id"},
 			AllowCredentials: false,
 			MaxAge:           300,
 		}))
@@ -67,6 +70,9 @@ func (s *Server) Router() http.Handler {
 
 	if s.devReload {
 		r.Get(devReloadPath, s.devReloadEvents)
+	}
+	if s.mcpEnabled {
+		s.mountMCPRoutes(r)
 	}
 	s.mountUIRoutes(r)
 
