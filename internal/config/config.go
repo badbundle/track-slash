@@ -12,7 +12,6 @@ type Config struct {
 	DatabaseURL        string
 	CORSAllowedOrigins []string
 	DevReload          bool
-	MCPEnabled         bool
 	Storage            StorageConfig
 }
 
@@ -33,7 +32,6 @@ func Load() (Config, error) {
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
-		MCPEnabled:         envBool("TRACK_SLASH_MCP_ENABLED"),
 		Storage:            storage,
 	}
 	if cfg.DatabaseURL == "" {

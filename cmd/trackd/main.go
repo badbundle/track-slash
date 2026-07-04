@@ -80,7 +80,6 @@ func main() {
 	srv := server.NewWithOptions(st, hub, server.Options{
 		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
 		DevReload:          cfg.DevReload,
-		MCPEnabled:         cfg.MCPEnabled,
 		ObjectStorage:      storageSvc,
 	})
 

@@ -42,7 +42,7 @@ func newMCPHTTPEnv(t *testing.T, storageSvc *objectstorage.Service) *httpEnv {
 
 	db := testutil.NewMigratedDatabase(t)
 	st := store.New(db.Pool)
-	srv := server.NewWithOptions(st, nil, server.Options{MCPEnabled: true, ObjectStorage: storageSvc})
+	srv := server.NewWithOptions(st, nil, server.Options{ObjectStorage: storageSvc})
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 
