@@ -1,10 +1,12 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -185,6 +187,56 @@ func TestMCPRequiresAPIToken(t *testing.T) {
 	}, nil); err == nil {
 		t.Fatalf("session token MCP connect succeeded")
 	}
+}
+
+func TestMCPAcceptsStaleSessionID(t *testing.T) {
+	t.Parallel()
+	storageSvc, _ := newLocalStorageService(t, 1024*1024)
+	e := newMCPHTTPEnv(t, storageSvc)
+
+	body := bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`)
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+"/mcp", body)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+e.authToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Mcp-Protocol-Version", "2025-06-18")
+	req.Header.Set("Mcp-Session-Id", "stale-session-after-restart")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST stale session: %v", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%s", resp.StatusCode, data)
+	}
+	var got struct {
+		Result struct {
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		} `json:"result"`
+		Error any `json:"error"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v body=%s", err, data)
+	}
+	if got.Error != nil {
+		t.Fatalf("unexpected error: %+v", got.Error)
+	}
+	for _, tool := range got.Result.Tools {
+		if tool.Name == "track_get_me" {
+			return
+		}
+	}
+	t.Fatalf("track_get_me not found in tools: %+v", got.Result.Tools)
 }
 
 func TestMCPProjectIssueCommentParity(t *testing.T) {

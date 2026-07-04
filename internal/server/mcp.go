@@ -328,6 +328,7 @@ func (s *Server) mountMCPRoutes(r chi.Router) {
 		return mcpServer
 	}, &mcp.StreamableHTTPOptions{
 		JSONResponse:   true,
+		Stateless:      true,
 		SessionTimeout: 30 * time.Minute,
 	})
 	authenticated := mcpauth.RequireBearerToken(s.verifyMCPBearerToken, nil)(handler)
