@@ -306,6 +306,17 @@ func (s *Store) ProjectIDForIssueTagLink(ctx context.Context, id uuid.UUID) (uui
 	`, id)
 }
 
+func (s *Store) ProjectIDForIssueAttachment(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return s.lookupProjectID(ctx, `
+		SELECT ia.project_id
+		FROM issue_attachments ia
+		JOIN issues i ON i.id = ia.issue_id
+		JOIN projects p ON p.id = ia.project_id
+		JOIN storage_objects so ON so.id = ia.storage_object_id
+		WHERE ia.id = $1 AND i.deleted_at IS NULL AND p.deleted_at IS NULL AND so.deleted_at IS NULL
+	`, id)
+}
+
 func (s *Store) ProjectIDForProjectChangelog(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	return s.lookupProjectID(ctx, `
 		SELECT e.project_id

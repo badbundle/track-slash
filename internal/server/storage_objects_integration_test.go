@@ -73,7 +73,7 @@ func newStorageHTTPEnvWithService(t *testing.T, storageSvc *objectstorage.Servic
 	}
 
 	return &httpEnv{
-		ctx: ctx, ts: ts, store: st, projectID: proj.ID, projKey: key, ownerUsername: admin.Username,
+		ctx: ctx, ts: ts, pool: db.Pool, store: st, projectID: proj.ID, projKey: key, ownerUsername: admin.Username,
 		adminID: admin.ID, authToken: token.RawToken,
 	}
 }

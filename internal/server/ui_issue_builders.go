@@ -502,28 +502,38 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	if err != nil {
 		return nil, err
 	}
+	attachments, attachmentsHasMore, err := s.store.ListIssueAttachments(ctx, store.ListIssueAttachmentsParams{
+		IssueID: issueID,
+		Limit:   MaxLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	backHref, backHXGet, backLabel := uiIssueBackLink(project, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
-		Issue:            issue,
-		Project:          project,
-		ParentIssue:      parentIssue,
-		Sprint:           sprint,
-		Assignee:         assignee,
-		Reporter:         reporter,
-		CanEditSprint:    issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
-		SubIssues:        subIssues,
-		SubIssuesHasMore: subIssuesHasMore,
-		Comments:         commentItems,
-		CommentsHasMore:  commentsHasMore,
-		Links:            linkItems,
-		LinksHasMore:     linksHasMore,
-		Contexts:         contexts,
-		ContextsHasMore:  contextsHasMore,
-		BackHref:         backHref,
-		BackHXGet:        backHXGet,
-		BackLabel:        backLabel,
-		DeleteNotice:     deleteNotice,
+		Issue:              issue,
+		Project:            project,
+		ParentIssue:        parentIssue,
+		Sprint:             sprint,
+		Assignee:           assignee,
+		Reporter:           reporter,
+		CanEditSprint:      issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
+		DescriptionHTML:    renderIssueDescriptionMarkdown(issue, attachments),
+		Attachments:        attachments,
+		AttachmentsHasMore: attachmentsHasMore,
+		SubIssues:          subIssues,
+		SubIssuesHasMore:   subIssuesHasMore,
+		Comments:           commentItems,
+		CommentsHasMore:    commentsHasMore,
+		Links:              linkItems,
+		LinksHasMore:       linksHasMore,
+		Contexts:           contexts,
+		ContextsHasMore:    contextsHasMore,
+		BackHref:           backHref,
+		BackHXGet:          backHXGet,
+		BackLabel:          backLabel,
+		DeleteNotice:       deleteNotice,
 	}, nil
 }
 

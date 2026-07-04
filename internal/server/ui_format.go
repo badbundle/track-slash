@@ -55,6 +55,8 @@ func uiChangelogIcon(entry model.ProjectChangelogEntry) string {
 		return "message-square"
 	case "issue_link":
 		return "link"
+	case "issue_attachment":
+		return "paperclip"
 	case "issue_tag", "issue_tag_link":
 		return "tag"
 	case "project_context", "issue_context_link":
@@ -177,6 +179,47 @@ func uiIssueVisibleTags(tags []model.IssueTag) []model.IssueTag {
 		return tags
 	}
 	return tags[:3]
+}
+
+func uiIssueAttachmentIcon(attachment model.IssueAttachment) string {
+	if storageObjectSafeInlineImage(attachment.Object) {
+		return "image"
+	}
+	return "paperclip"
+}
+
+func uiIssueAttachmentImage(attachment model.IssueAttachment) bool {
+	return storageObjectSafeInlineImage(attachment.Object)
+}
+
+func uiIssueAttachmentMarkdown(attachment model.IssueAttachment) string {
+	label := strings.ReplaceAll(attachment.Object.Filename, `\`, `\\`)
+	label = strings.ReplaceAll(label, "]", `\]`)
+	if strings.TrimSpace(label) == "" {
+		label = attachment.Object.Ref
+	}
+	if storageObjectSafeInlineImage(attachment.Object) {
+		return fmt.Sprintf("![%s](%s)", label, attachment.Object.Ref)
+	}
+	return fmt.Sprintf("[%s](%s)", label, attachment.Object.Ref)
+}
+
+func uiByteSize(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	units := []string{"KB", "MB", "GB", "TB"}
+	value := float64(n)
+	for _, unit := range units {
+		value /= 1024
+		if value < 1024 {
+			if value >= 10 {
+				return fmt.Sprintf("%.0f %s", value, unit)
+			}
+			return fmt.Sprintf("%.1f %s", value, unit)
+		}
+	}
+	return fmt.Sprintf("%.0f PB", value/1024)
 }
 
 func uiIssueHiddenTagCount(tags []model.IssueTag) int {

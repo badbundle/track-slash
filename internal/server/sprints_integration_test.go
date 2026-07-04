@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/server"
@@ -22,6 +23,7 @@ import (
 type httpEnv struct {
 	ctx           context.Context
 	ts            *httptest.Server
+	pool          *pgxpool.Pool
 	store         *store.Store
 	projectID     uuid.UUID
 	projKey       string
@@ -62,7 +64,7 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	}
 
 	return &httpEnv{
-		ctx: ctx, ts: ts, store: s, projectID: proj.ID, projKey: key, ownerUsername: admin.Username,
+		ctx: ctx, ts: ts, pool: db.Pool, store: s, projectID: proj.ID, projKey: key, ownerUsername: admin.Username,
 		adminID: admin.ID, authToken: token.RawToken,
 	}
 }

@@ -20,8 +20,15 @@ var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":                     uiInitials,
+	"byteSize":                     uiByteSize,
 	"issueAssignee":                uiIssueAssigneePath,
 	"issueAssigneeEdit":            uiIssueAssigneeEditPath,
+	"issueAttachments":             uiIssueAttachmentsPath,
+	"issueAttachmentContent":       uiIssueAttachmentContentPath,
+	"issueAttachmentDelete":        uiIssueAttachmentDeletePath,
+	"issueAttachmentImage":         uiIssueAttachmentImage,
+	"issueAttachmentInlineContent": uiIssueAttachmentInlineContentPath,
+	"issueAttachmentMarkdown":      uiIssueAttachmentMarkdown,
 	"issueComment":                 uiIssueCommentPath,
 	"issueCommentEdit":             uiIssueCommentEditPath,
 	"issueComments":                uiIssueCommentsPath,
@@ -126,6 +133,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"tagDotClass":                  uiTagDotClass,
 	"issueVisibleTags":             uiIssueVisibleTags,
 	"issueHiddenTagCount":          uiIssueHiddenTagCount,
+	"issueAttachmentIcon":          uiIssueAttachmentIcon,
 	"tokenTime":                    uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
 

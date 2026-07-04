@@ -5,6 +5,7 @@
 Read `MANIFESTO.md` before making product, API, data model, or frontend decisions. It defines the long-term direction for track-slash.
 Read `DESIGN_CONTEXT.md` before making frontend or product-layout decisions. It captures recent user preferences and design memory that should guide future UI passes.
 Read `STORAGE.md` before changing object storage, attachment, image, or file-upload behavior. It documents the metadata/backend split and local storage contract.
+Read `ATTACHMENTS.md` before changing issue attachments, description Markdown rendering, `object-N` references, or attachment UI behavior.
 
 ## Frontend design principles
 

@@ -2,6 +2,31 @@
   <script>
     (() => {
       const createIcons = () => window.lucide && window.lucide.createIcons();
+      const escapeHTML = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char]);
+      const markdownLabel = (value) => String(value || "attachment").replace(/\\/g, "\\\\").replace(/]/g, "\\]");
+      const safeInlineImage = (contentType) => ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"].includes(String(contentType || "").toLowerCase());
+      const attachmentMarkdownSnippet = (object) => {
+        const ref = object.ref || "";
+        const label = markdownLabel(object.filename || ref || "attachment");
+        return safeInlineImage(object.content_type) ? `![${label}](${ref})` : `[${label}](${ref})`;
+      };
+      const formatBytes = (bytes) => {
+        const n = Number(bytes) || 0;
+        if (n < 1024) return `${n} B`;
+        const units = ["KB", "MB", "GB", "TB"];
+        let value = n;
+        for (const unit of units) {
+          value = value / 1024;
+          if (value < 1024) return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
+        }
+        return `${(value / 1024).toFixed(0)} PB`;
+      };
       const resizeTextarea = (textarea) => {
         textarea.style.height = "auto";
         const borderHeight = textarea.offsetHeight - textarea.clientHeight;
@@ -27,6 +52,132 @@
           syncCheckboxReveal(root);
         }
         root.querySelectorAll("[data-checkbox-reveal]").forEach(syncCheckboxReveal);
+      };
+      const showAttachmentStatus = (textarea, message) => {
+        const status = textarea && textarea.closest("section") && textarea.closest("section").querySelector("[data-attachment-status]");
+        if (!status) return;
+        status.textContent = message;
+        status.classList.toggle("hidden", !message);
+      };
+      const insertAttachmentMarkdown = (textarea, attachment) => {
+        const object = attachment.object || {};
+        const snippet = attachmentMarkdownSnippet(object);
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const prefix = start > 0 && textarea.value[start - 1] !== "\n" ? "\n" : "";
+        const suffix = textarea.value[end] && textarea.value[end] !== "\n" ? "\n" : "";
+        textarea.value = `${textarea.value.slice(0, start)}${prefix}${snippet}${suffix}${textarea.value.slice(end)}`;
+        const next = start + prefix.length + snippet.length + suffix.length;
+        textarea.selectionStart = next;
+        textarea.selectionEnd = next;
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      const attachmentRowHTML = (uploadUrl, attachment) => {
+        const object = attachment.object || {};
+        const ref = object.ref || "";
+        const contentUrl = `${uploadUrl}/${encodeURIComponent(ref)}/content`;
+        const inlineUrl = `${contentUrl}?inline=1`;
+        const deleteUrl = `${uploadUrl}/${encodeURIComponent(ref)}`;
+        const hxDeleteUrl = `${contentUrl.replace(/\/content$/, "")}/delete`;
+        const isImage = safeInlineImage(object.content_type);
+        const icon = isImage ? "image" : "paperclip";
+        const markdown = attachmentMarkdownSnippet(object);
+        const preview = isImage
+          ? `<a href="${escapeHTML(contentUrl)}" class="block h-12 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+              <img src="${escapeHTML(inlineUrl)}" alt="" loading="lazy" class="h-full w-full object-cover">
+            </a>`
+          : `<span class="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+              <i data-lucide="${icon}" class="h-4 w-4" aria-hidden="true"></i>
+            </span>`;
+        return `
+          <div data-attachment-ref="${escapeHTML(ref)}" class="flex min-w-0 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-800 dark:bg-slate-950/60">
+            ${preview}
+            <div class="min-w-0 flex-1">
+              <a href="${escapeHTML(contentUrl)}" class="block truncate font-medium text-slate-700 hover:text-indigo-700 dark:text-slate-200 dark:hover:text-indigo-200">${escapeHTML(object.filename || ref)}</a>
+              <div class="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                <span class="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">${escapeHTML(formatBytes(object.byte_size))}</span>
+                <code class="truncate rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-900 dark:text-slate-400">${escapeHTML(ref)}</code>
+              </div>
+            </div>
+            <button type="button" data-attachment-copy-markdown data-markdown="${escapeHTML(markdown)}" aria-label="Copy attachment Markdown" class="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="copy" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              <span data-copy-label class="hidden text-[11px] font-medium sm:inline">Markdown</span>
+            </button>
+            <a href="${escapeHTML(contentUrl)}" aria-label="Download attachment" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </a>
+            <button type="button" data-attachment-remove data-attachment-delete-url="${escapeHTML(deleteUrl)}" aria-label="Remove attachment" hx-post="${escapeHTML(hxDeleteUrl)}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+              <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </button>
+          </div>
+        `;
+      };
+      const appendAttachmentRow = (textarea, attachment) => {
+        const selector = textarea.dataset.attachmentList;
+        const list = selector && document.querySelector(selector);
+        if (!list) return;
+        const rows = list.querySelector("[data-attachment-rows]");
+        if (!rows) return;
+        const uploadUrl = textarea.dataset.attachmentUploadUrl;
+        rows.insertAdjacentHTML("beforeend", attachmentRowHTML(uploadUrl, attachment));
+        list.classList.remove("hidden");
+        const count = list.querySelector("[data-attachment-count]");
+        if (count) count.textContent = String(rows.querySelectorAll("[data-attachment-ref]").length);
+        createIcons();
+      };
+      const uploadAttachments = async (textarea, files) => {
+        const uploadUrl = textarea.dataset.attachmentUploadUrl;
+        if (!uploadUrl || files.length === 0) return;
+        showAttachmentStatus(textarea, "");
+        for (const file of files) {
+          const data = new FormData();
+          data.append("file", file);
+          const res = await fetch(uploadUrl, {
+            method: "POST",
+            body: data,
+            credentials: "same-origin",
+            headers: { "Accept": "application/json" },
+          });
+          if (!res.ok) {
+            let message = "Attachment upload failed.";
+            try {
+              const body = await res.json();
+              if (body && body.error) message = body.error;
+            } catch (_) {}
+            showAttachmentStatus(textarea, message);
+            continue;
+          }
+          const attachment = await res.json();
+          insertAttachmentMarkdown(textarea, attachment);
+          appendAttachmentRow(textarea, attachment);
+        }
+      };
+      const writeClipboardText = async (text) => {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand("copy");
+        } finally {
+          textarea.remove();
+        }
+      };
+      const showCopied = (button) => {
+        const label = button.querySelector("[data-copy-label]");
+        if (!label) return;
+        const previous = label.textContent;
+        label.textContent = "Copied";
+        window.setTimeout(() => {
+          label.textContent = previous || "Markdown";
+        }, 1200);
       };
       const active = ["bg-indigo-50", "text-indigo-700", "ring-1", "ring-indigo-100", "dark:bg-indigo-950/50", "dark:text-indigo-200", "dark:ring-indigo-900"];
       const inactive = ["text-slate-600", "dark:text-slate-300"];
@@ -230,6 +381,29 @@
       });
       document.body.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
+        const copyMarkdown = event.target.closest("[data-attachment-copy-markdown]");
+        if (copyMarkdown) {
+          event.preventDefault();
+          writeClipboardText(copyMarkdown.dataset.markdown || "").then(() => showCopied(copyMarkdown)).catch(() => {});
+          return;
+        }
+        const removeAttachment = event.target.closest("[data-attachment-remove]");
+        if (removeAttachment) {
+          const list = removeAttachment.closest("[data-attachment-list][data-attachment-editing]");
+          if (list && removeAttachment.dataset.attachmentDeleteUrl) {
+            event.preventDefault();
+            fetch(removeAttachment.dataset.attachmentDeleteUrl, { method: "DELETE", credentials: "same-origin" }).then((res) => {
+              if (!res.ok) return;
+              const row = removeAttachment.closest("[data-attachment-ref]");
+              if (row) row.remove();
+              const rows = list.querySelectorAll("[data-attachment-ref]");
+              const count = list.querySelector("[data-attachment-count]");
+              if (count) count.textContent = String(rows.length);
+              list.classList.toggle("hidden", rows.length === 0);
+            });
+            return;
+          }
+        }
         closeOpenDropdowns(event.target);
         const option = event.target.closest("[data-search-option]");
         if (!option) return;
@@ -265,6 +439,27 @@
         } else {
           form.submit();
         }
+      });
+      document.body.addEventListener("dragover", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const textarea = event.target.closest("[data-attachment-dropzone]");
+        if (!textarea) return;
+        event.preventDefault();
+        textarea.classList.add("border-indigo-300", "bg-indigo-50", "dark:border-indigo-900", "dark:bg-indigo-950/30");
+      });
+      document.body.addEventListener("dragleave", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const textarea = event.target.closest("[data-attachment-dropzone]");
+        if (!textarea) return;
+        textarea.classList.remove("border-indigo-300", "bg-indigo-50", "dark:border-indigo-900", "dark:bg-indigo-950/30");
+      });
+      document.body.addEventListener("drop", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const textarea = event.target.closest("[data-attachment-dropzone]");
+        if (!textarea) return;
+        event.preventDefault();
+        textarea.classList.remove("border-indigo-300", "bg-indigo-50", "dark:border-indigo-900", "dark:bg-indigo-950/30");
+        uploadAttachments(textarea, Array.from(event.dataTransfer ? event.dataTransfer.files : []));
       });
       document.body.addEventListener("htmx:afterSwap", (event) => {
         createIcons();

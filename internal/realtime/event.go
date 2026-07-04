@@ -28,6 +28,7 @@ const (
 	EntityContextLink  Entity = "issue_context_link"
 	EntityIssueTag     Entity = "issue_tag"
 	EntityIssueTagLink Entity = "issue_tag_link"
+	EntityAttachment   Entity = "issue_attachment"
 	EntityChangelog    Entity = "project_changelog"
 )
 
@@ -114,6 +115,15 @@ func (e Event) Topics() []string {
 		}
 		if e.TagID != nil {
 			topics = append(topics, IssueTagTopic(*e.TagID))
+		}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		return topics
+	case EntityAttachment:
+		topics := []string{}
+		if e.IssueID != nil {
+			topics = append(topics, IssueTopic(*e.IssueID))
 		}
 		if e.ProjectID != nil {
 			topics = append(topics, ProjectTopic(*e.ProjectID))

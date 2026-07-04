@@ -434,7 +434,7 @@ func safeUIIssuePath(path string) bool {
 		return true
 	}
 	if len(parts) == 4 {
-		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "context" || parts[3] == "tags" || parts[3] == "delete" || parts[3] == "restore"
+		return parts[3] == "panel" || parts[3] == "links" || parts[3] == "context" || parts[3] == "tags" || parts[3] == "attachments" || parts[3] == "delete" || parts[3] == "restore"
 	}
 	if len(parts) == 5 {
 		if parts[3] == "context" {
@@ -450,6 +450,10 @@ func safeUIIssuePath(path string) bool {
 	}
 	if parts[3] == "tags" && parts[5] == "delete" {
 		_, err := parseTypedRef(parts[4], "tag")
+		return err == nil
+	}
+	if parts[3] == "attachments" && (parts[5] == "content" || parts[5] == "delete") {
+		_, err := parseTypedRef(parts[4], "object")
 		return err == nil
 	}
 	if parts[3] != "links" || parts[5] != "edit" {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"mime"
@@ -36,10 +37,18 @@ func (s *Server) createStorageObject(w http.ResponseWriter, r *http.Request) {
 	if !s.requireObjectStorage(w) {
 		return
 	}
+	created, ok := s.createStorageObjectFromRequest(w, r, project.ID, currentUser(r).ID)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusCreated, created)
+}
+
+func (s *Server) createStorageObjectFromRequest(w http.ResponseWriter, r *http.Request, projectID, userID uuid.UUID) (model.StorageObject, bool) {
 	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
 	if !strings.HasPrefix(contentType, "multipart/form-data") {
 		writeError(w, http.StatusBadRequest, "multipart file required")
-		return
+		return model.StorageObject{}, false
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, s.objectStorage.MaxUploadBytes()+storageMultipartOverheadBytes)
@@ -47,38 +56,38 @@ func (s *Server) createStorageObject(w http.ResponseWriter, r *http.Request) {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			writeError(w, http.StatusRequestEntityTooLarge, "file too large")
-			return
+			return model.StorageObject{}, false
 		}
 		writeError(w, http.StatusBadRequest, "unable to read upload")
-		return
+		return model.StorageObject{}, false
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "file required")
-		return
+		return model.StorageObject{}, false
 	}
 	defer file.Close()
 
 	filename, err := normalizeStorageObjectFilename(header.Filename)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
+		return model.StorageObject{}, false
 	}
 	contentType, body, err := storageUploadContentTypeAndBody(file, header.Header.Get("Content-Type"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
-		return
+		return model.StorageObject{}, false
 	}
 
 	objectID := uuid.New()
-	stored, err := s.objectStorage.Put(r.Context(), project.ID, objectID, body)
+	stored, err := s.objectStorage.Put(r.Context(), projectID, objectID, body)
 	if err != nil {
 		writeStorageError(w, err)
-		return
+		return model.StorageObject{}, false
 	}
 	created, err := s.store.CreateStorageObject(r.Context(), store.CreateStorageObjectParams{
 		ID:          objectID,
-		ProjectID:   project.ID,
+		ProjectID:   projectID,
 		Backend:     stored.Backend,
 		Bucket:      stored.Bucket,
 		ObjectKey:   stored.ObjectKey,
@@ -86,14 +95,14 @@ func (s *Server) createStorageObject(w http.ResponseWriter, r *http.Request) {
 		ContentType: contentType,
 		ByteSize:    stored.ByteSize,
 		SHA256:      stored.SHA256,
-		CreatedByID: currentUser(r).ID,
+		CreatedByID: userID,
 	})
 	if err != nil {
 		_ = s.objectStorage.Delete(r.Context(), stored.ObjectKey)
 		writeStoreError(w, err)
-		return
+		return model.StorageObject{}, false
 	}
-	writeJSON(w, http.StatusCreated, created)
+	return created, true
 }
 
 func (s *Server) listStorageObjects(w http.ResponseWriter, r *http.Request) {
@@ -149,6 +158,10 @@ func (s *Server) getStorageObjectContent(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	s.streamStorageObjectContent(w, r, object, false)
+}
+
+func (s *Server) streamStorageObjectContent(w http.ResponseWriter, r *http.Request, object model.StorageObject, inline bool) {
 	if !s.requireObjectStorage(w) {
 		return
 	}
@@ -162,9 +175,23 @@ func (s *Server) getStorageObjectContent(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", object.ContentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(object.ByteSize, 10))
 	w.Header().Set("ETag", `"`+object.SHA256+`"`)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": object.Filename}))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	disposition := "attachment"
+	if inline && storageObjectSafeInlineImage(object) {
+		disposition = "inline"
+	}
+	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": object.Filename}))
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, body)
+}
+
+func (s *Server) cleanupStorageObject(ctx context.Context, object model.StorageObject) {
+	deleted, err := s.store.DeleteStorageObject(ctx, object.ID)
+	if err == nil {
+		_ = s.objectStorage.Delete(ctx, deleted.ObjectKey)
+		return
+	}
+	_ = s.objectStorage.Delete(ctx, object.ObjectKey)
 }
 
 func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
@@ -272,4 +299,13 @@ func storageUploadContentTypeAndBody(file io.Reader, rawContentType string) (str
 	}
 	head = head[:n]
 	return normalizeStorageObjectContentType(rawContentType, head), io.MultiReader(bytes.NewReader(head), file), nil
+}
+
+func storageObjectSafeInlineImage(object model.StorageObject) bool {
+	switch strings.ToLower(strings.TrimSpace(object.ContentType)) {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp":
+		return true
+	default:
+		return false
+	}
 }
