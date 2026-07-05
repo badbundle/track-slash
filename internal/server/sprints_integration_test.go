@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -1140,6 +1141,87 @@ func TestHTTPListIssuesAssigneeFilters(t *testing.T) {
 	}
 }
 
+func TestHTTPListIssuesMultiStatusPrioritySortAndCursor(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+
+	todoP3, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "todo p3",
+		Priority:  model.PriorityP3,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue todo: %v", err)
+	}
+	doneP0, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "done p0",
+		Priority:  model.PriorityP0,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	progressP1, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "progress p1",
+		Priority:  model.PriorityP1,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue progress: %v", err)
+	}
+	closedP4, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "closed p4",
+		Priority:  model.PriorityP4,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue closed: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, doneP0.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("set done: %v", err)
+	}
+	progress := model.StatusInProgress
+	if _, err := e.store.UpdateIssue(e.ctx, progressP1.ID, store.UpdateIssueParams{Status: &progress}); err != nil {
+		t.Fatalf("set progress: %v", err)
+	}
+	closed := model.StatusClosed
+	reason := model.CloseReasonWontDo
+	if _, err := e.store.UpdateIssue(e.ctx, closedP4.ID, store.UpdateIssueParams{Status: &closed, CloseReason: &reason}); err != nil {
+		t.Fatalf("set closed: %v", err)
+	}
+
+	path := e.projectIssuesPath() + "?status=todo&status=done&status=in_progress&priority=P0&priority=P1&priority=P3&sort=priority&limit=2"
+	code, body := e.do(t, http.MethodGet, path, nil)
+	if code != http.StatusOK {
+		t.Fatalf("page 1 code = %d body = %s", code, body)
+	}
+	page := decodePage[model.Issue](t, body)
+	if len(page.Items) != 2 || page.Items[0].ID != doneP0.ID || page.Items[1].ID != progressP1.ID {
+		t.Fatalf("page 1 issues = %+v, want done/progress by priority", page.Items)
+	}
+	if page.NextCursor == nil {
+		t.Fatal("page 1 next_cursor = nil, want cursor")
+	}
+
+	code, body = e.do(t, http.MethodGet, path+"&cursor="+url.QueryEscape(*page.NextCursor), nil)
+	if code != http.StatusOK {
+		t.Fatalf("page 2 code = %d body = %s", code, body)
+	}
+	page = decodePage[model.Issue](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != todoP3.ID {
+		t.Fatalf("page 2 issues = %+v, want todo p3", page.Items)
+	}
+	if page.NextCursor != nil {
+		t.Fatalf("page 2 next_cursor = %q, want nil", *page.NextCursor)
+	}
+	for _, issue := range page.Items {
+		if issue.ID == closedP4.ID {
+			t.Fatalf("filtered page included closed issue: %+v", page.Items)
+		}
+	}
+}
+
 func TestHTTPListProjectAssignees(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -1599,12 +1681,18 @@ func TestHTTPListIssuesBadProjectID(t *testing.T) {
 	}
 }
 
-func TestHTTPListIssuesBadStatus(t *testing.T) {
+func TestHTTPListIssuesBadListParams(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
-	code, _ := e.do(t, http.MethodGet,
-		e.projectIssuesPath()+"?status=banana", nil)
-	if code != http.StatusBadRequest {
-		t.Fatalf("code = %d", code)
+	for _, query := range []string{
+		"status=banana",
+		"priority=P9",
+		"sort=banana",
+		"direction=sideways",
+	} {
+		code, _ := e.do(t, http.MethodGet, e.projectIssuesPath()+"?"+query, nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("%s code = %d, want 400", query, code)
+		}
 	}
 }

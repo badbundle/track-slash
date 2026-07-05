@@ -2,147 +2,50 @@ package server
 
 import (
 	"fmt"
-	"github.com/bradleymackey/track-slash/internal/model"
-	"github.com/bradleymackey/track-slash/internal/store"
-	"github.com/google/uuid"
 	"net/http"
 	"net/url"
 	"sort"
-	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 func uiParseIssueListQuery(r *http.Request) (uiIssueListQuery, error) {
-	statuses, err := uiParseProjectIssueStatusFilters(r)
+	query, err := parseIssueListQueryValues(r.URL.Query(), issueListQueryOptions{
+		DefaultSort:     uiIssueListDefaultSort,
+		AllowNumberSort: false,
+	})
 	if err != nil {
-		return uiIssueListQuery{}, err
-	}
-	priorities, err := uiParseProjectIssuePriorityFilters(r)
-	if err != nil {
-		return uiIssueListQuery{}, err
-	}
-	tagNames, err := uiParseIssueTagFilters(r)
-	if err != nil {
-		return uiIssueListQuery{}, err
-	}
-	sort, err := uiParseProjectIssueSort(r)
-	if err != nil {
-		return uiIssueListQuery{}, err
-	}
-	direction, err := uiParseProjectIssueSortDirection(r, sort)
-	if err != nil {
-		return uiIssueListQuery{}, err
+		return uiIssueListQuery{}, fmt.Errorf("%s: %w", err.Error(), errUIBadRequest)
 	}
 	return uiIssueListQuery{
-		Statuses:   statuses,
-		Priorities: priorities,
-		TagNames:   tagNames,
-		Sort:       sort,
-		Direction:  direction,
+		Statuses:   query.Statuses,
+		Priorities: query.Priorities,
+		TagNames:   query.TagNames,
+		Sort:       query.Sort,
+		Direction:  query.Direction,
 	}, nil
 }
 
 func uiParseProjectAllQuery(r *http.Request) (uiProjectAllQuery, error) {
-	assigneeIDs, err := uiParseAssigneeFilter(r)
+	query, err := parseIssueListQueryValues(r.URL.Query(), issueListQueryOptions{
+		DefaultSort:      uiIssueListDefaultSort,
+		IncludeAssignees: true,
+		AllowNumberSort:  false,
+	})
 	if err != nil {
-		return uiProjectAllQuery{}, err
+		return uiProjectAllQuery{}, fmt.Errorf("%s: %w", err.Error(), errUIBadRequest)
 	}
-	query, err := uiParseIssueListQuery(r)
-	if err != nil {
-		return uiProjectAllQuery{}, err
-	}
-	query.AssigneeIDs = assigneeIDs
-	return query, nil
-}
-
-func uiParseProjectIssueStatusFilters(r *http.Request) ([]model.Status, error) {
-	raws := r.URL.Query()["status"]
-	statuses := make([]model.Status, 0, len(raws))
-	seen := make(map[model.Status]struct{}, len(raws))
-	for _, raw := range raws {
-		status := model.Status(strings.TrimSpace(raw))
-		if status == "" {
-			continue
-		}
-		if !status.Valid() {
-			return nil, fmt.Errorf("invalid status: %w", errUIBadRequest)
-		}
-		if _, ok := seen[status]; ok {
-			continue
-		}
-		seen[status] = struct{}{}
-		statuses = append(statuses, status)
-	}
-	return statuses, nil
-}
-
-func uiParseProjectIssuePriorityFilters(r *http.Request) ([]model.IssuePriority, error) {
-	raws := r.URL.Query()["priority"]
-	priorities := make([]model.IssuePriority, 0, len(raws))
-	seen := make(map[model.IssuePriority]struct{}, len(raws))
-	for _, raw := range raws {
-		priority := model.IssuePriority(strings.TrimSpace(raw))
-		if priority == "" {
-			continue
-		}
-		if !priority.Valid() {
-			return nil, fmt.Errorf("invalid priority: %w", errUIBadRequest)
-		}
-		if _, ok := seen[priority]; ok {
-			continue
-		}
-		seen[priority] = struct{}{}
-		priorities = append(priorities, priority)
-	}
-	return priorities, nil
-}
-
-func uiParseIssueTagFilters(r *http.Request) ([]string, error) {
-	raws := r.URL.Query()["tag"]
-	tags := make([]string, 0, len(raws))
-	seen := make(map[string]struct{}, len(raws))
-	for _, raw := range raws {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		name, err := model.NormalizeIssueTagName(raw)
-		if err != nil {
-			return nil, fmt.Errorf("invalid tag: %w", errUIBadRequest)
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		tags = append(tags, name)
-	}
-	return tags, nil
-}
-
-func uiParseProjectIssueSort(r *http.Request) (store.ListIssuesSort, error) {
-	sort := store.ListIssuesSort(strings.TrimSpace(r.URL.Query().Get("sort")))
-	if sort == "" {
-		return uiIssueListDefaultSort, nil
-	}
-	switch sort {
-	case store.ListIssuesSortCreated, store.ListIssuesSortUpdated, store.ListIssuesSortStatus, store.ListIssuesSortPriority, store.ListIssuesSortDueDate:
-		return sort, nil
-	default:
-		return "", fmt.Errorf("invalid sort: %w", errUIBadRequest)
-	}
-}
-
-func uiParseProjectIssueSortDirection(r *http.Request, sort store.ListIssuesSort) (store.ListIssuesSortDirection, error) {
-	raw := strings.TrimSpace(r.URL.Query().Get("direction"))
-	if raw == "" {
-		return uiDefaultIssueSortDirection(sort), nil
-	}
-	direction := store.ListIssuesSortDirection(raw)
-	switch direction {
-	case store.ListIssuesSortAscending, store.ListIssuesSortDescending:
-		return direction, nil
-	default:
-		return "", fmt.Errorf("invalid direction: %w", errUIBadRequest)
-	}
+	return uiProjectAllQuery{
+		Statuses:    query.Statuses,
+		Priorities:  query.Priorities,
+		TagNames:    query.TagNames,
+		AssigneeIDs: query.AssigneeIDs,
+		Sort:        query.Sort,
+		Direction:   query.Direction,
+	}, nil
 }
 
 func uiSortIssueItems(items []uiIssueItem, sortBy store.ListIssuesSort, direction store.ListIssuesSortDirection) {
@@ -383,23 +286,6 @@ func uiAppendAssigneeQuery(path string, assigneeIDs []uuid.UUID) string {
 		values.Add("assignee_id", id.String())
 	}
 	return path + "?" + values.Encode()
-}
-
-func uiProjectAllIssueCursor(issue model.Issue, sort store.ListIssuesSort) store.IssuesCursor {
-	cursor := store.IssuesCursor{Number: issue.Number}
-	switch sort {
-	case store.ListIssuesSortCreated:
-		cursor.CreatedAt = issue.CreatedAt
-	case store.ListIssuesSortUpdated:
-		cursor.UpdatedAt = issue.UpdatedAt
-	case store.ListIssuesSortStatus:
-		cursor.Status = issue.Status
-	case store.ListIssuesSortPriority:
-		cursor.Priority = issue.Priority
-	case store.ListIssuesSortDueDate:
-		cursor.DueDate = issue.DueDate
-	}
-	return cursor
 }
 
 func uiWorkViewPath(view string, query uiIssueListQuery) string {

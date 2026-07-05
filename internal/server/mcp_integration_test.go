@@ -408,6 +408,97 @@ func TestMCPCreateIssuePeopleRequireProjectMembers(t *testing.T) {
 	}
 }
 
+func TestMCPListIssuesFiltersSortAndCursor(t *testing.T) {
+	t.Parallel()
+	storageSvc, _ := newLocalStorageService(t, 1024*1024)
+	e := newMCPHTTPEnv(t, storageSvc)
+	session := mcpConnect(t, e, e.authToken)
+
+	todoP3, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "mcp todo p3",
+		Priority:  model.PriorityP3,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue todo: %v", err)
+	}
+	doneP0, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "mcp done p0",
+		Priority:  model.PriorityP0,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue done: %v", err)
+	}
+	progressP1, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "mcp progress p1",
+		Priority:  model.PriorityP1,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue progress: %v", err)
+	}
+	skippedP4, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{
+		ProjectID: e.projectID,
+		Title:     "mcp skipped p4",
+		Priority:  model.PriorityP4,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue skipped: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, doneP0.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("set done: %v", err)
+	}
+	progress := model.StatusInProgress
+	if _, err := e.store.UpdateIssue(e.ctx, progressP1.ID, store.UpdateIssueParams{Status: &progress}); err != nil {
+		t.Fatalf("set progress: %v", err)
+	}
+	closed := model.StatusClosed
+	reason := model.CloseReasonWontDo
+	if _, err := e.store.UpdateIssue(e.ctx, skippedP4.ID, store.UpdateIssueParams{Status: &closed, CloseReason: &reason}); err != nil {
+		t.Fatalf("set closed: %v", err)
+	}
+
+	args := map[string]any{
+		"owner":      e.ownerUsername,
+		"key":        e.projKey,
+		"status":     string(model.StatusDone),
+		"statuses":   []string{string(model.StatusInProgress), string(model.StatusTodo)},
+		"priority":   string(model.PriorityP0),
+		"priorities": []string{string(model.PriorityP1), string(model.PriorityP3)},
+		"sort":       string(store.ListIssuesSortPriority),
+		"limit":      2,
+	}
+	out := mcpCall(t, e, session, "track_list_issues", args)
+	page1 := decodeMCPField[[]model.Issue](t, out, "items")
+	if len(page1) != 2 || page1[0].ID != doneP0.ID || page1[1].ID != progressP1.ID {
+		t.Fatalf("page 1 issues = %+v, want done/progress by priority", page1)
+	}
+	next := decodeMCPField[*string](t, out, "next_cursor")
+	if next == nil {
+		t.Fatal("page 1 next_cursor = nil, want cursor")
+	}
+
+	args["cursor"] = *next
+	out = mcpCall(t, e, session, "track_list_issues", args)
+	page2 := decodeMCPField[[]model.Issue](t, out, "items")
+	if len(page2) != 1 || page2[0].ID != todoP3.ID {
+		t.Fatalf("page 2 issues = %+v, want todo p3", page2)
+	}
+	next = decodeMCPField[*string](t, out, "next_cursor")
+	if next != nil {
+		t.Fatalf("page 2 next_cursor = %q, want nil", *next)
+	}
+
+	out = mcpCallExpectError(t, e, session, "track_list_issues", map[string]any{
+		"owner":    e.ownerUsername,
+		"key":      e.projKey,
+		"priority": "P9",
+	})
+	requireMCPErrorCode(t, out, "validation_error")
+}
+
 func TestMCPIssueLinksRejectCrossProjectRefsBeforeLookup(t *testing.T) {
 	t.Parallel()
 	e := newMCPHTTPEnv(t, nil)

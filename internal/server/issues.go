@@ -132,9 +132,13 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statusFilter := model.Status(r.URL.Query().Get("status"))
-	if statusFilter != "" && !statusFilter.Valid() {
-		writeError(w, http.StatusBadRequest, "invalid status")
+	query, err := parseIssueListQueryValues(r.URL.Query(), issueListQueryOptions{
+		DefaultSort:      store.ListIssuesSortNumber,
+		IncludeAssignees: true,
+		AllowNumberSort:  true,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -154,24 +158,16 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := store.ListIssuesParams{
-		ProjectID: project.ID,
-		Status:    statusFilter,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:   project.ID,
+		Statuses:    query.Statuses,
+		Priorities:  query.Priorities,
+		AssigneeIDs: query.AssigneeIDs,
+		TagNames:    query.TagNames,
+		Cursor:      cursor,
+		Limit:       limit,
+		Sort:        query.Sort,
+		Direction:   query.Direction,
 	}
-	for _, raw := range r.URL.Query()["assignee_id"] {
-		id, err := uuid.Parse(strings.TrimSpace(raw))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid assignee_id")
-			return
-		}
-		params.AssigneeIDs = append(params.AssigneeIDs, id)
-	}
-	tagNames, ok := parseIssueTagFilters(w, r)
-	if !ok {
-		return
-	}
-	params.TagNames = tagNames
 
 	sprintParam := r.URL.Query().Get("sprint")
 	sprintIDParam := r.URL.Query().Get("sprint_id")
@@ -204,32 +200,10 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	var next *string
 	if hasMore {
 		last := out[len(out)-1]
-		enc := encodeCursor(store.IssuesCursor{Number: last.Number})
+		enc := encodeCursor(issueListCursor(last, query.Sort))
 		next = &enc
 	}
 	writePage(w, out, next)
-}
-
-func parseIssueTagFilters(w http.ResponseWriter, r *http.Request) ([]string, bool) {
-	raws := r.URL.Query()["tag"]
-	tagNames := make([]string, 0, len(raws))
-	seen := make(map[string]struct{}, len(raws))
-	for _, raw := range raws {
-		if strings.TrimSpace(raw) == "" {
-			continue
-		}
-		name, err := model.NormalizeIssueTagName(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return nil, false
-		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		tagNames = append(tagNames, name)
-	}
-	return tagNames, true
 }
 
 func (s *Server) listDeletedIssues(w http.ResponseWriter, r *http.Request) {
