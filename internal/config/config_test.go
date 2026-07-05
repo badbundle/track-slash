@@ -86,6 +86,9 @@ func TestLoadStorageDefaults(t *testing.T) {
 	if cfg.Storage.MaxUploadBytes != 52428800 {
 		t.Fatalf("Storage.MaxUploadBytes = %d, want 52428800", cfg.Storage.MaxUploadBytes)
 	}
+	if cfg.Storage.S3Endpoint != "" || cfg.Storage.S3Region != "" || cfg.Storage.S3ForcePathStyle {
+		t.Fatalf("S3 storage defaults = endpoint %q region %q force=%v, want zero values", cfg.Storage.S3Endpoint, cfg.Storage.S3Region, cfg.Storage.S3ForcePathStyle)
+	}
 }
 
 func TestLoadStorageOverrides(t *testing.T) {
@@ -104,6 +107,39 @@ func TestLoadStorageOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadS3Storage(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_STORAGE_BACKEND", " S3 ")
+	t.Setenv("TRACK_SLASH_STORAGE_BUCKET", " track-slash ")
+	t.Setenv("TRACK_SLASH_STORAGE_S3_ENDPOINT", " http://garage:3900 ")
+	t.Setenv("TRACK_SLASH_STORAGE_MAX_UPLOAD_BYTES", "1234")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Storage.Backend != "s3" || cfg.Storage.Bucket != "track-slash" || cfg.Storage.S3Endpoint != "http://garage:3900" || cfg.Storage.S3Region != "us-east-1" || !cfg.Storage.S3ForcePathStyle || cfg.Storage.MaxUploadBytes != 1234 {
+		t.Fatalf("Storage = %+v", cfg.Storage)
+	}
+}
+
+func TestLoadS3StorageOverrides(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_STORAGE_BACKEND", "s3")
+	t.Setenv("TRACK_SLASH_STORAGE_BUCKET", "track-slash")
+	t.Setenv("TRACK_SLASH_STORAGE_S3_ENDPOINT", "http://garage:3900")
+	t.Setenv("TRACK_SLASH_STORAGE_S3_REGION", "eu-west-1")
+	t.Setenv("TRACK_SLASH_STORAGE_S3_FORCE_PATH_STYLE", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Storage.S3Region != "eu-west-1" || cfg.Storage.S3ForcePathStyle {
+		t.Fatalf("S3 config = region %q force=%v, want eu-west-1/false", cfg.Storage.S3Region, cfg.Storage.S3ForcePathStyle)
+	}
+}
+
 func TestLoadStorageValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -119,6 +155,53 @@ func TestLoadStorageValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
 			t.Setenv(tc.key, tc.val)
+			if _, err := Load(); err == nil {
+				t.Fatal("Load err = nil, want error")
+			}
+		})
+	}
+}
+
+func TestLoadS3StorageValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+	}{
+		{
+			name: "missing bucket",
+			env: map[string]string{
+				"TRACK_SLASH_STORAGE_S3_ENDPOINT": "http://garage:3900",
+			},
+		},
+		{
+			name: "missing endpoint",
+			env: map[string]string{
+				"TRACK_SLASH_STORAGE_BUCKET": "track-slash",
+			},
+		},
+		{
+			name: "empty region",
+			env: map[string]string{
+				"TRACK_SLASH_STORAGE_BUCKET":      "track-slash",
+				"TRACK_SLASH_STORAGE_S3_ENDPOINT": "http://garage:3900",
+				"TRACK_SLASH_STORAGE_S3_REGION":   "",
+			},
+		},
+		{
+			name: "bad force path style",
+			env: map[string]string{
+				"TRACK_SLASH_STORAGE_BUCKET":              "track-slash",
+				"TRACK_SLASH_STORAGE_S3_ENDPOINT":         "http://garage:3900",
+				"TRACK_SLASH_STORAGE_S3_FORCE_PATH_STYLE": "sometimes",
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+			t.Setenv("TRACK_SLASH_STORAGE_BACKEND", "s3")
+			for key, val := range tc.env {
+				t.Setenv(key, val)
+			}
 			if _, err := Load(); err == nil {
 				t.Fatal("Load err = nil, want error")
 			}
