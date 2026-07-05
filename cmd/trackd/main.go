@@ -72,7 +72,7 @@ func main() {
 	listener := realtime.NewListener(cfg.DatabaseURL, hub)
 	go listener.Run(ctx)
 
-	storageSvc, err := objectstorage.NewLocalService(cfg.Storage.LocalRoot, cfg.Storage.Bucket, cfg.Storage.MaxUploadBytes)
+	storageSvc, err := newObjectStorage(ctx, cfg.Storage)
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}
@@ -141,6 +141,21 @@ func createAdminToken(ctx context.Context, st *store.Store, email, name, tokenNa
 	fmt.Printf("token_id=%s\n", created.Token.ID)
 	fmt.Printf("token=%s\n", created.RawToken)
 	return nil
+}
+
+func newObjectStorage(ctx context.Context, cfg config.StorageConfig) (*objectstorage.Service, error) {
+	switch cfg.Backend {
+	case "local":
+		return objectstorage.NewLocalService(cfg.LocalRoot, cfg.Bucket, cfg.MaxUploadBytes)
+	case "s3":
+		return objectstorage.NewS3Service(ctx, cfg.Bucket, cfg.MaxUploadBytes, objectstorage.S3Config{
+			Endpoint:       cfg.S3Endpoint,
+			Region:         cfg.S3Region,
+			ForcePathStyle: cfg.S3ForcePathStyle,
+		})
+	default:
+		return nil, fmt.Errorf("unsupported storage backend %q", cfg.Backend)
+	}
 }
 
 func applyMigrations(dbURL string) error {
