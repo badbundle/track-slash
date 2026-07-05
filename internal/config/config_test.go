@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"reflect"
 	"testing"
 )
@@ -54,6 +55,27 @@ func TestEnvBool(t *testing.T) {
 	}
 }
 
+func TestLoadDatabaseOnly(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_STORAGE_BACKEND", "s3")
+
+	cfg, err := LoadDatabase()
+	if err != nil {
+		t.Fatalf("LoadDatabase: %v", err)
+	}
+	if cfg.DatabaseURL != "postgres://track:track@localhost:5432/track?sslmode=disable" {
+		t.Fatalf("DatabaseURL = %q", cfg.DatabaseURL)
+	}
+}
+
+func TestLoadDatabaseRequiresDatabaseURL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+
+	if _, err := LoadDatabase(); err == nil {
+		t.Fatal("LoadDatabase err = nil, want error")
+	}
+}
+
 func TestLoadDevReload(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
 	t.Setenv("TRACK_SLASH_DEV_RELOAD", "true")
@@ -64,6 +86,44 @@ func TestLoadDevReload(t *testing.T) {
 	}
 	if !cfg.DevReload {
 		t.Fatal("DevReload = false, want true")
+	}
+}
+
+func TestLoadAutoMigrateDefault(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_STORAGE_BACKEND", "local")
+	t.Setenv("TRACK_SLASH_STORAGE_LOCAL_ROOT", "tmp/storage")
+	t.Setenv("TRACK_SLASH_STORAGE_BUCKET", "local")
+	unsetenv(t, "TRACK_SLASH_AUTO_MIGRATE")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.AutoMigrate {
+		t.Fatal("AutoMigrate = false, want true")
+	}
+}
+
+func TestLoadAutoMigrateOverride(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_AUTO_MIGRATE", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AutoMigrate {
+		t.Fatal("AutoMigrate = true, want false")
+	}
+}
+
+func TestLoadAutoMigrateValidation(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_AUTO_MIGRATE", "sometimes")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load err = nil, want error")
 	}
 }
 
@@ -89,6 +149,25 @@ func TestLoadStorageDefaults(t *testing.T) {
 	if cfg.Storage.S3Endpoint != "" || cfg.Storage.S3Region != "" || cfg.Storage.S3ForcePathStyle {
 		t.Fatalf("S3 storage defaults = endpoint %q region %q force=%v, want zero values", cfg.Storage.S3Endpoint, cfg.Storage.S3Region, cfg.Storage.S3ForcePathStyle)
 	}
+}
+
+func unsetenv(t *testing.T, key string) {
+	t.Helper()
+	old, ok := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("Unsetenv(%q): %v", key, err)
+	}
+	t.Cleanup(func() {
+		if ok {
+			if err := os.Setenv(key, old); err != nil {
+				t.Fatalf("Setenv(%q): %v", key, err)
+			}
+			return
+		}
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatalf("Unsetenv(%q): %v", key, err)
+		}
+	})
 }
 
 func TestLoadStorageOverrides(t *testing.T) {

@@ -34,17 +34,27 @@ func main() {
 	adminTokenName := flag.String("token-name", "bootstrap", "token name for -create-admin-token")
 	flag.Parse()
 
+	if *migrateOnly {
+		db, err := config.LoadDatabase()
+		if err != nil {
+			log.Fatalf("config: %v", err)
+		}
+		if err := applyMigrations(db.DatabaseURL); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
+		log.Println("migrations applied; exiting (migrate-only)")
+		return
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
 
-	if err := applyMigrations(cfg.DatabaseURL); err != nil {
-		log.Fatalf("migrations: %v", err)
-	}
-	if *migrateOnly {
-		log.Println("migrations applied; exiting (migrate-only)")
-		return
+	if cfg.AutoMigrate {
+		if err := applyMigrations(cfg.DatabaseURL); err != nil {
+			log.Fatalf("migrations: %v", err)
+		}
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

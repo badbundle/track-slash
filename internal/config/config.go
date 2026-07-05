@@ -12,7 +12,12 @@ type Config struct {
 	DatabaseURL        string
 	CORSAllowedOrigins []string
 	DevReload          bool
+	AutoMigrate        bool
 	Storage            StorageConfig
+}
+
+type DatabaseConfig struct {
+	DatabaseURL string
 }
 
 type StorageConfig struct {
@@ -26,17 +31,31 @@ type StorageConfig struct {
 }
 
 func Load() (Config, error) {
+	db, err := LoadDatabase()
+	if err != nil {
+		return Config{}, err
+	}
+	autoMigrate, err := envBoolOr("TRACK_SLASH_AUTO_MIGRATE", true)
+	if err != nil {
+		return Config{}, err
+	}
 	storage, err := loadStorageConfig()
 	if err != nil {
 		return Config{}, err
 	}
 	cfg := Config{
 		Port:               envOr("PORT", "8080"),
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		DatabaseURL:        db.DatabaseURL,
 		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
+		AutoMigrate:        autoMigrate,
 		Storage:            storage,
 	}
+	return cfg, nil
+}
+
+func LoadDatabase() (DatabaseConfig, error) {
+	cfg := DatabaseConfig{DatabaseURL: os.Getenv("DATABASE_URL")}
 	if cfg.DatabaseURL == "" {
 		return cfg, errors.New("DATABASE_URL is required")
 	}
