@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/bradleymackey/track-slash/internal/passkeys"
 	"github.com/bradleymackey/track-slash/internal/realtime"
 	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
 	"github.com/bradleymackey/track-slash/internal/store"
@@ -19,10 +20,12 @@ type Server struct {
 	corsAllowedOrigins []string
 	devReload          bool
 	objectStorage      *objectstorage.Service
+	passkeys           *passkeys.Service
 }
 
 type Options struct {
 	CORSAllowedOrigins []string
+	PublicOrigin       string
 	DevReload          bool
 	ObjectStorage      *objectstorage.Service
 }
@@ -35,12 +38,17 @@ func New(s *store.Store, hub *realtime.Hub, corsAllowedOrigins []string) *Server
 }
 
 func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
+	var passkeyService *passkeys.Service
+	if s != nil {
+		passkeyService = passkeys.New(s, opts.PublicOrigin)
+	}
 	return &Server{
 		store:              s,
 		hub:                hub,
 		corsAllowedOrigins: opts.CORSAllowedOrigins,
 		devReload:          opts.DevReload,
 		objectStorage:      opts.ObjectStorage,
+		passkeys:           passkeyService,
 	}
 }
 
@@ -74,7 +82,11 @@ func (s *Server) Router() http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/healthz", s.healthz)
 		r.Post("/accounts", s.createAccount)
+		r.Post("/accounts/passkey/options", s.createPasskeyAccountOptions)
+		r.Post("/accounts/passkey", s.createPasskeyAccount)
 		r.Post("/session", s.createSession)
+		r.Post("/session/passkey/options", s.createPasskeySessionOptions)
+		r.Post("/session/passkey", s.createPasskeySession)
 
 		// WebSocket endpoint sits outside the request-timeout group: the
 		// connection is long-lived and would otherwise be killed mid-stream.
@@ -88,6 +100,13 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/me", s.getMe)
 			r.Patch("/me/settings", s.updateMySettings)
+			r.Get("/me/passkeys", s.listMyPasskeys)
+			r.Post("/me/reauth/password", s.createPasswordReauth)
+			r.Post("/me/reauth/passkey/options", s.createPasskeyReauthOptions)
+			r.Post("/me/reauth/passkey", s.createPasskeyReauth)
+			r.Post("/me/passkeys/options", s.createMyPasskeyOptions)
+			r.Post("/me/passkeys", s.createMyPasskey)
+			r.Delete("/me/passkeys/{id}", s.revokeMyPasskey)
 			r.Get("/me/tokens", s.listMyTokens)
 			r.Post("/me/tokens", s.createMyToken)
 			r.Delete("/me/tokens/{id}", s.revokeMyToken)

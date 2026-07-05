@@ -84,7 +84,7 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Settings", "Display name", "Email", "Current password", "New password"} {
+	for _, want := range []string{"Settings", "Display name", "Email", "Current password", "New password", "Passkeys", "Add passkey", "Use passkey", "No passkeys yet."} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
 		}

@@ -61,6 +61,11 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	passkeyCredentials, err := s.store.ListPasskeyCredentials(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:        user,
 		Projects:    projects,
@@ -71,6 +76,7 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 			ProfileSaved:    profileSaved,
 			PasswordError:   passwordError,
 			PasswordChanged: passwordChanged,
+			Passkeys:        passkeyCredentials,
 		},
 	})
 }

@@ -404,6 +404,68 @@ func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
 	}
 }
 
+func TestHTTPPasskeyManagementPasswordReauth(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	username := "passkeyapi" + strings.ToLower(uniqueProjectKey(t))
+	password := "correct-horse-battery"
+	u, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{
+		Username: username,
+		Password: password,
+		Name:     "Passkey API",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	session, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "session",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken session: %v", err)
+	}
+
+	code, body := e.doUnauth(t, http.MethodGet, "/me/passkeys", nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("unauth list passkeys code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodGet, "/me/passkeys", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list passkeys code = %d body = %s", code, body)
+	}
+	passkeys := decode[[]model.PasskeyCredential](t, body)
+	if len(passkeys) != 0 {
+		t.Fatalf("passkeys = %+v, want empty", passkeys)
+	}
+
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/reauth/password", map[string]any{
+		"current_password": "wrong-password",
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("bad password reauth code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/reauth/password", map[string]any{
+		"current_password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("password reauth code = %d body = %s", code, body)
+	}
+	reauth := decode[struct {
+		Token string `json:"reauth_token"`
+	}](t, body)
+	if reauth.Token == "" {
+		t.Fatalf("reauth token empty: %+v", reauth)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/passkeys/options", map[string]any{
+		"name":         "Laptop",
+		"reauth_token": "bad-token",
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("bad reauth add options code = %d body = %s", code, body)
+	}
+}
+
 func TestHTTPUpdateMySettings(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

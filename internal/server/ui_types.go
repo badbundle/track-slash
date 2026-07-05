@@ -552,4 +552,5 @@ type uiSettingsPanelData struct {
 	ProfileSaved    bool
 	PasswordError   string
 	PasswordChanged bool
+	Passkeys        []model.PasskeyCredential
 }

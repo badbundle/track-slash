@@ -44,6 +44,34 @@ func TestUILoginRejectsBadCredentials(t *testing.T) {
 	}
 }
 
+func TestUIAuthPagesRenderPasskeyControls(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/login?next=%2Ftokens", "", nil)
+	body := readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("login code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{"Sign in with passkey", `data-passkey-login`, "This browser does not support passkeys."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("login body missing %q: %s", want, body)
+		}
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, "/signup?next=%2Ftokens", "", nil)
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("signup code = %d body = %s", res.StatusCode, body)
+	}
+	for _, want := range []string{"Create with passkey", `data-passkey-signup`, "This browser does not support passkeys."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("signup body missing %q: %s", want, body)
+		}
+	}
+}
+
 func TestUILoginSetsCookie(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

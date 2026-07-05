@@ -184,6 +184,182 @@
           textarea.remove();
         }
       };
+      const setPasskeyStatus = (panel, message, kind = "error") => {
+        const status = panel && panel.querySelector("[data-passkey-status]");
+        if (!status) return;
+        status.textContent = message || "";
+        status.className = "mt-3 rounded-md border px-3 py-2 text-sm";
+        if (!message) {
+          status.classList.add("hidden");
+          return;
+        }
+        status.classList.add(
+          kind === "ok" ? "border-emerald-200" : "border-red-200",
+          kind === "ok" ? "bg-emerald-50" : "bg-red-50",
+          kind === "ok" ? "text-emerald-800" : "text-red-700",
+          kind === "ok" ? "dark:border-emerald-900" : "dark:border-red-900",
+          kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-red-950",
+          kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
+        );
+      };
+      const setPasskeyBusy = (panel, busy) => {
+        if (!panel) return;
+        panel.querySelectorAll("[data-passkey-add], [data-passkey-reauth], [data-passkey-revoke]").forEach((button) => {
+          button.disabled = busy;
+          button.classList.toggle("opacity-60", busy);
+          button.classList.toggle("cursor-wait", busy);
+        });
+      };
+      const assertPasskeysSupported = () => {
+        if (!window.PublicKeyCredential || !navigator.credentials) {
+          throw new Error("This browser does not support passkeys.");
+        }
+      };
+      const decodeBase64URL = (value) => {
+        const base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+        const binary = window.atob(padded);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+      };
+      const encodeBase64URL = (buffer) => {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      };
+      const parsePasskeyCreationOptions = (options) => {
+        if (PublicKeyCredential.parseCreationOptionsFromJSON) {
+          return PublicKeyCredential.parseCreationOptionsFromJSON(options);
+        }
+        const next = { ...options, challenge: decodeBase64URL(options.challenge) };
+        next.user = { ...options.user, id: decodeBase64URL(options.user.id) };
+        next.excludeCredentials = (options.excludeCredentials || []).map((credential) => ({
+          ...credential,
+          id: decodeBase64URL(credential.id),
+        }));
+        return next;
+      };
+      const parsePasskeyRequestOptions = (options) => {
+        if (PublicKeyCredential.parseRequestOptionsFromJSON) {
+          return PublicKeyCredential.parseRequestOptionsFromJSON(options);
+        }
+        const next = { ...options, challenge: decodeBase64URL(options.challenge) };
+        next.allowCredentials = (options.allowCredentials || []).map((credential) => ({
+          ...credential,
+          id: decodeBase64URL(credential.id),
+        }));
+        return next;
+      };
+      const passkeyCredentialJSON = (credential) => {
+        const response = credential.response;
+        const out = {
+          id: credential.id,
+          rawId: encodeBase64URL(credential.rawId),
+          type: credential.type,
+          clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+        };
+        if (credential.authenticatorAttachment) out.authenticatorAttachment = credential.authenticatorAttachment;
+        if (response.attestationObject) {
+          out.response = {
+            attestationObject: encodeBase64URL(response.attestationObject),
+            clientDataJSON: encodeBase64URL(response.clientDataJSON),
+          };
+          if (response.getTransports) out.response.transports = response.getTransports();
+          if (response.getAuthenticatorData) out.response.authenticatorData = encodeBase64URL(response.getAuthenticatorData());
+          if (response.getPublicKey) {
+            const key = response.getPublicKey();
+            if (key) out.response.publicKey = encodeBase64URL(key);
+          }
+          if (response.getPublicKeyAlgorithm) out.response.publicKeyAlgorithm = response.getPublicKeyAlgorithm();
+          return out;
+        }
+        out.response = {
+          authenticatorData: encodeBase64URL(response.authenticatorData),
+          clientDataJSON: encodeBase64URL(response.clientDataJSON),
+          signature: encodeBase64URL(response.signature),
+        };
+        if (response.userHandle) out.response.userHandle = encodeBase64URL(response.userHandle);
+        return out;
+      };
+      const postJSON = async (url, payload) => {
+        const res = await fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Accept": "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify(payload || {}),
+        });
+        let body = null;
+        try {
+          body = await res.json();
+        } catch (_) {}
+        if (!res.ok) throw new Error((body && body.error) || "Request failed.");
+        return body || {};
+      };
+      const createPasskeyReauthToken = async (panel) => {
+        assertPasskeysSupported();
+        const options = await postJSON("/settings/passkeys/reauth/passkey/options", {});
+        const credential = await navigator.credentials.get({
+          publicKey: parsePasskeyRequestOptions(options.publicKey),
+          mediation: options.mediation || "optional",
+        });
+        if (!credential) throw new Error("Passkey verification was canceled.");
+        const result = await postJSON("/settings/passkeys/reauth/passkey", {
+          ceremony_id: options.ceremony_id,
+          credential: passkeyCredentialJSON(credential),
+        });
+        panel.dataset.reauthToken = result.reauth_token || "";
+        return panel.dataset.reauthToken;
+      };
+      const getPasskeyReauthToken = async (panel) => {
+        if (panel.dataset.reauthToken) return panel.dataset.reauthToken;
+        const password = panel.querySelector("[data-passkey-current-password]")?.value || "";
+        if (password.trim()) {
+          const result = await postJSON("/settings/passkeys/reauth/password", { current_password: password });
+          panel.dataset.reauthToken = result.reauth_token || "";
+          const input = panel.querySelector("[data-passkey-current-password]");
+          if (input) input.value = "";
+          return panel.dataset.reauthToken;
+        }
+        return createPasskeyReauthToken(panel);
+      };
+      const passkeyReauth = async (panel) => {
+        await createPasskeyReauthToken(panel);
+        setPasskeyStatus(panel, "Passkey verified.", "ok");
+      };
+      const addPasskey = async (panel) => {
+        assertPasskeysSupported();
+        const token = await getPasskeyReauthToken(panel);
+        const name = panel.querySelector("[data-passkey-name]")?.value.trim() || "";
+        let options;
+        try {
+          options = await postJSON("/settings/passkeys/options", { name, reauth_token: token });
+        } finally {
+          delete panel.dataset.reauthToken;
+        }
+        const credential = await navigator.credentials.create({
+          publicKey: parsePasskeyCreationOptions(options.publicKey),
+          mediation: options.mediation || "optional",
+        });
+        if (!credential) throw new Error("Passkey creation was canceled.");
+        await postJSON("/settings/passkeys", {
+          ceremony_id: options.ceremony_id,
+          credential: passkeyCredentialJSON(credential),
+        });
+        window.location.reload();
+      };
+      const revokePasskey = async (panel, button) => {
+        const token = await getPasskeyReauthToken(panel);
+        const id = button.dataset.passkeyId || "";
+        if (!id) throw new Error("Passkey id missing.");
+        try {
+          await postJSON(`/settings/passkeys/${encodeURIComponent(id)}/revoke`, { reauth_token: token });
+        } finally {
+          delete panel.dataset.reauthToken;
+        }
+        window.location.reload();
+      };
       const showCopied = (button) => {
         const label = button.querySelector("[data-copy-label]");
         if (!label) return;
@@ -421,6 +597,22 @@
               if (count) count.textContent = String(rows.length);
               list.classList.toggle("hidden", rows.length === 0);
             });
+            return;
+          }
+        }
+        const passkeyAction = event.target.closest("[data-passkey-add], [data-passkey-reauth], [data-passkey-revoke]");
+        if (passkeyAction) {
+          const panel = passkeyAction.closest("[data-passkeys-panel]");
+          if (panel) {
+            event.preventDefault();
+            setPasskeyStatus(panel, "");
+            setPasskeyBusy(panel, true);
+            const action = passkeyAction.hasAttribute("data-passkey-add")
+              ? addPasskey(panel)
+              : passkeyAction.hasAttribute("data-passkey-reauth")
+                ? passkeyReauth(panel)
+                : revokePasskey(panel, passkeyAction);
+            action.catch((err) => setPasskeyStatus(panel, err && err.message ? err.message : "Passkey request failed.")).finally(() => setPasskeyBusy(panel, false));
             return;
           }
         }
