@@ -1,11 +1,13 @@
 package store_test
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -130,6 +132,12 @@ func TestAccountPasswordLifecycle(t *testing.T) {
 	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, "wrong-password"); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("bad password err = %v, want ErrUnauthorized", err)
 	}
+	if err := env.store.VerifyUserPassword(env.ctx, u.ID, password); err != nil {
+		t.Fatalf("VerifyUserPassword: %v", err)
+	}
+	if err := env.store.VerifyUserPassword(env.ctx, u.ID, "wrong-password"); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("VerifyUserPassword bad password err = %v, want ErrUnauthorized", err)
+	}
 
 	if _, err := env.pool.Exec(env.ctx, `
 		INSERT INTO auth_credentials (user_id, kind, identifier, public_key)
@@ -189,6 +197,195 @@ func TestAccountValidationAndLegacyTokenOnlyUser(t *testing.T) {
 	}
 }
 
+func TestPasskeyOnlyAccountLifecycle(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	rpID := "localhost"
+	handle := []byte("handle-" + uniqueProjectKey(t))
+	credential := testPasskeyCredential("credential-"+uniqueProjectKey(t), 1)
+	u, err := env.store.CreatePasskeyOnlyAccount(env.ctx, store.CreatePasskeyOnlyAccountParams{
+		Username:       "passkey" + strings.ToLower(uniqueProjectKey(t)),
+		Name:           "",
+		RPID:           rpID,
+		UserHandle:     handle,
+		CredentialName: "MacBook",
+		Credential:     credential,
+	})
+	if err != nil {
+		t.Fatalf("CreatePasskeyOnlyAccount: %v", err)
+	}
+	if u.Name != u.Username || u.Email != "" {
+		t.Fatalf("user = %+v", u)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, "correct-horse-battery"); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("passkey-only password err = %v, want ErrUnauthorized", err)
+	}
+
+	gotHandle, err := env.store.GetOrCreateWebAuthnHandle(env.ctx, u.ID, rpID)
+	if err != nil {
+		t.Fatalf("GetOrCreateWebAuthnHandle: %v", err)
+	}
+	if !bytes.Equal(gotHandle, handle) {
+		t.Fatalf("handle = %x, want %x", gotHandle, handle)
+	}
+	gotHandleAgain, err := env.store.GetOrCreateWebAuthnHandle(env.ctx, u.ID, rpID)
+	if err != nil {
+		t.Fatalf("GetOrCreateWebAuthnHandle second: %v", err)
+	}
+	if !bytes.Equal(gotHandleAgain, handle) {
+		t.Fatalf("second handle = %x, want %x", gotHandleAgain, handle)
+	}
+
+	passkeyUser, err := env.store.PasskeyUserByHandle(env.ctx, rpID, handle)
+	if err != nil {
+		t.Fatalf("PasskeyUserByHandle: %v", err)
+	}
+	if passkeyUser.User.ID != u.ID || len(passkeyUser.Credentials) != 1 {
+		t.Fatalf("passkey user = %+v", passkeyUser)
+	}
+
+	listed, err := env.store.ListPasskeyCredentials(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListPasskeyCredentials: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Name != "MacBook" || !listed[0].BackupEligible || !listed[0].BackupState {
+		t.Fatalf("listed passkeys = %+v", listed)
+	}
+	if _, err := env.store.AddPasskeyCredential(env.ctx, u.ID, rpID, "duplicate", credential); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("duplicate passkey err = %v, want ErrConflict", err)
+	}
+
+	updated := credential
+	updated.Authenticator.SignCount = 5
+	updated.Flags.BackupState = false
+	if err := env.store.UpdatePasskeyCredentialUsage(env.ctx, u.ID, rpID, updated); err != nil {
+		t.Fatalf("UpdatePasskeyCredentialUsage: %v", err)
+	}
+	listed, err = env.store.ListPasskeyCredentials(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListPasskeyCredentials after usage: %v", err)
+	}
+	if len(listed) != 1 || listed[0].LastUsedAt == nil || listed[0].Name != "MacBook" || listed[0].BackupState {
+		t.Fatalf("updated passkeys = %+v", listed)
+	}
+}
+
+func TestPasskeyRevokeProtectsFinalLoginCredential(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	rpID := "localhost"
+	u, err := env.store.CreatePasskeyOnlyAccount(env.ctx, store.CreatePasskeyOnlyAccountParams{
+		Username:       "pkrevoke" + strings.ToLower(uniqueProjectKey(t)),
+		Name:           "Passkey Revoke",
+		RPID:           rpID,
+		UserHandle:     []byte("handle-" + uniqueProjectKey(t)),
+		CredentialName: "Only passkey",
+		Credential:     testPasskeyCredential("credential-"+uniqueProjectKey(t), 1),
+	})
+	if err != nil {
+		t.Fatalf("CreatePasskeyOnlyAccount: %v", err)
+	}
+	listed, err := env.store.ListPasskeyCredentials(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListPasskeyCredentials: %v", err)
+	}
+	if err := env.store.RevokePasskeyCredentialForUser(env.ctx, u.ID, listed[0].ID); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("last passkey revoke err = %v, want ErrConflict", err)
+	}
+
+	passwordUser, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username: "pkpwd" + strings.ToLower(uniqueProjectKey(t)),
+		Password: "correct-horse-battery",
+		Name:     "Password User",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	added, err := env.store.AddPasskeyCredential(env.ctx, passwordUser.ID, rpID, "Phone", testPasskeyCredential("credential-"+uniqueProjectKey(t), 2))
+	if err != nil {
+		t.Fatalf("AddPasskeyCredential: %v", err)
+	}
+	if err := env.store.RevokePasskeyCredentialForUser(env.ctx, passwordUser.ID, added.ID); err != nil {
+		t.Fatalf("RevokePasskeyCredentialForUser: %v", err)
+	}
+	listed, err = env.store.ListPasskeyCredentials(env.ctx, passwordUser.ID)
+	if err != nil {
+		t.Fatalf("ListPasskeyCredentials after revoke: %v", err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("revoked passkeys still listed: %+v", listed)
+	}
+	if err := env.store.RevokePasskeyCredentialForUser(env.ctx, passwordUser.ID, added.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("second revoke err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPasskeySessionAndReauthTokenAreSingleUse(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	sessionID, err := env.store.CreatePasskeySession(env.ctx, store.CreatePasskeySessionParams{
+		Kind:        store.PasskeyCeremonyLogin,
+		RPID:        "localhost",
+		Challenge:   "challenge-" + uniqueProjectKey(t),
+		SessionData: []byte(`{"challenge":"test"}`),
+		ExpiresAt:   time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreatePasskeySession: %v", err)
+	}
+	session, err := env.store.ConsumePasskeySession(env.ctx, sessionID, store.PasskeyCeremonyLogin)
+	if err != nil {
+		t.Fatalf("ConsumePasskeySession: %v", err)
+	}
+	if session.ID != sessionID || session.RPID != "localhost" {
+		t.Fatalf("session = %+v", session)
+	}
+	if _, err := env.store.ConsumePasskeySession(env.ctx, sessionID, store.PasskeyCeremonyLogin); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("second session consume err = %v, want ErrUnauthorized", err)
+	}
+	expiredID, err := env.store.CreatePasskeySession(env.ctx, store.CreatePasskeySessionParams{
+		Kind:        store.PasskeyCeremonyLogin,
+		RPID:        "localhost",
+		Challenge:   "challenge-" + uniqueProjectKey(t),
+		SessionData: []byte(`{"challenge":"expired"}`),
+		ExpiresAt:   time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreatePasskeySession expired: %v", err)
+	}
+	if _, err := env.store.ConsumePasskeySession(env.ctx, expiredID, store.PasskeyCeremonyLogin); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("expired session err = %v, want ErrUnauthorized", err)
+	}
+
+	u, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username: "reauth" + strings.ToLower(uniqueProjectKey(t)),
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	token, err := env.store.CreatePasskeyReauthToken(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("CreatePasskeyReauthToken: %v", err)
+	}
+	if err := env.store.ConsumePasskeyReauthToken(env.ctx, u.ID, token); err != nil {
+		t.Fatalf("ConsumePasskeyReauthToken: %v", err)
+	}
+	if err := env.store.ConsumePasskeyReauthToken(env.ctx, u.ID, token); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("second reauth consume err = %v, want ErrUnauthorized", err)
+	}
+	expiredToken, err := env.store.CreatePasskeyReauthToken(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("CreatePasskeyReauthToken expired: %v", err)
+	}
+	if _, err := env.pool.Exec(env.ctx, `UPDATE passkey_reauth_tokens SET expires_at = now() - interval '1 minute' WHERE user_id = $1`, u.ID); err != nil {
+		t.Fatalf("expire reauth tokens: %v", err)
+	}
+	if err := env.store.ConsumePasskeyReauthToken(env.ctx, u.ID, expiredToken); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("expired reauth err = %v, want ErrUnauthorized", err)
+	}
+}
+
 func TestRevokeAuthTokenForUser(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
@@ -216,6 +413,20 @@ func TestRevokeAuthTokenForUser(t *testing.T) {
 	}
 	if _, err := env.store.AuthenticateToken(env.ctx, created.RawToken); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("revoked auth err = %v, want ErrUnauthorized", err)
+	}
+}
+
+func testPasskeyCredential(id string, signCount uint32) webauthn.Credential {
+	return webauthn.Credential{
+		ID:        []byte(id),
+		PublicKey: []byte("public-key-" + id),
+		Flags: webauthn.CredentialFlags{
+			UserPresent:    true,
+			UserVerified:   true,
+			BackupEligible: true,
+			BackupState:    true,
+		},
+		Authenticator: webauthn.Authenticator{SignCount: signCount},
 	}
 }
 
