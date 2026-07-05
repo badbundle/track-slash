@@ -2,6 +2,8 @@ package config
 
 import (
 	"errors"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -11,6 +13,7 @@ type Config struct {
 	Port               string
 	DatabaseURL        string
 	CORSAllowedOrigins []string
+	PublicOrigin       string
 	DevReload          bool
 	AutoMigrate        bool
 	Storage            StorageConfig
@@ -43,10 +46,15 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	publicOrigin, err := loadPublicOrigin()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		Port:               envOr("PORT", "8080"),
 		DatabaseURL:        db.DatabaseURL,
 		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		PublicOrigin:       publicOrigin,
 		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
 		AutoMigrate:        autoMigrate,
 		Storage:            storage,
@@ -96,6 +104,34 @@ func parseList(raw string) []string {
 		return nil
 	}
 	return out
+}
+
+func loadPublicOrigin() (string, error) {
+	raw := strings.TrimSpace(os.Getenv("TRACK_SLASH_PUBLIC_ORIGIN"))
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", errors.New("TRACK_SLASH_PUBLIC_ORIGIN must be an origin like https://track.example.com")
+	}
+	if path := strings.TrimRight(u.EscapedPath(), "/"); path != "" {
+		return "", errors.New("TRACK_SLASH_PUBLIC_ORIGIN must not include a path")
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "https" && !(scheme == "http" && isLocalWebHost(u.Hostname())) {
+		return "", errors.New("TRACK_SLASH_PUBLIC_ORIGIN must use https, except localhost development origins")
+	}
+	return (&url.URL{Scheme: scheme, Host: strings.ToLower(u.Host)}).String(), nil
+}
+
+func isLocalWebHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func loadStorageConfig() (StorageConfig, error) {

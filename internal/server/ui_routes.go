@@ -8,8 +8,12 @@ import (
 func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Get("/login", s.uiLoginPage)
 	r.Post("/login", s.uiLogin)
+	r.Post("/login/passkey/options", s.uiPasskeyLoginOptions)
+	r.Post("/login/passkey", s.uiPasskeyLogin)
 	r.Get("/signup", s.uiSignupPage)
 	r.Post("/signup", s.uiSignup)
+	r.Post("/signup/passkey/options", s.uiPasskeySignupOptions)
+	r.Post("/signup/passkey", s.uiPasskeySignup)
 	r.Post("/logout", s.uiLogout)
 
 	r.Group(func(r chi.Router) {
@@ -31,6 +35,13 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/settings", s.uiSettingsPage)
 		r.Post("/settings/profile", s.uiUpdateProfile)
 		r.Post("/settings/password", s.uiUpdatePassword)
+		r.Post("/settings/password-login", s.uiUpdatePasswordLogin)
+		r.Post("/settings/passkeys/reauth/password", s.uiPasskeyPasswordReauth)
+		r.Post("/settings/passkeys/reauth/passkey/options", s.uiPasskeyReauthOptions)
+		r.Post("/settings/passkeys/reauth/passkey", s.uiPasskeyReauth)
+		r.Post("/settings/passkeys/options", s.uiPasskeyAddOptions)
+		r.Post("/settings/passkeys", s.uiPasskeyAdd)
+		r.Post("/settings/passkeys/{id}/revoke", s.uiPasskeyRevoke)
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)

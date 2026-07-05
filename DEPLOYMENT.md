@@ -55,3 +55,11 @@ TRACK_SLASH_AUTO_MIGRATE=false
 ```
 
 Keep `TRACK_SLASH_AUTO_MIGRATE=true` or unset it for local development and single-container deployments.
+
+Set the public browser origin for passkeys in deployed environments:
+
+```bash
+TRACK_SLASH_PUBLIC_ORIGIN=https://track.example.com
+```
+
+The value must be an origin only: scheme, host, and optional port. Production passkeys require HTTPS; localhost development can omit this and use the request-derived local origin.

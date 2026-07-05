@@ -239,6 +239,24 @@ type AuthToken struct {
 	RevokedAt  *time.Time    `json:"revoked_at,omitempty"`
 }
 
+type PasskeyCredential struct {
+	ID             uuid.UUID  `json:"id"`
+	UserID         uuid.UUID  `json:"user_id"`
+	Name           string     `json:"name"`
+	CreatedAt      time.Time  `json:"created_at"`
+	LastUsedAt     *time.Time `json:"last_used_at,omitempty"`
+	BackupEligible bool       `json:"backup_eligible"`
+	BackupState    bool       `json:"backup_state"`
+	CloneWarning   bool       `json:"clone_warning"`
+}
+
+type PasswordLoginState struct {
+	HasPassword    bool `json:"has_password"`
+	Enabled        bool `json:"enabled"`
+	CanDisable     bool `json:"can_disable"`
+	ActivePasskeys int  `json:"active_passkeys"`
+}
+
 type ProjectMember struct {
 	ProjectID uuid.UUID `json:"project_id"`
 	UserID    uuid.UUID `json:"user_id"`

@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>track-slash</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
   <main class="flex min-h-screen items-center justify-center px-4">
@@ -13,19 +14,30 @@
       <input type="hidden" name="next" value="{{.Next}}">
       <div>
         <h1 class="text-lg font-semibold tracking-normal">track-slash</h1>
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Sign in with your username and password.</p>
+        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Sign in with a passkey or password.</p>
       </div>
       {{if .Error}}
       <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{{.Error}}</div>
       {{end}}
+      <div data-passkey-status class="hidden rounded-md border px-3 py-2 text-sm"></div>
+      <button type="button" data-passkey-login class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        <i data-lucide="key-round" class="h-4 w-4" aria-hidden="true"></i>
+        Sign in with passkey
+      </button>
+      <div class="flex items-center gap-3">
+        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+        <span class="text-xs font-medium uppercase text-slate-400 dark:text-slate-500">Password</span>
+        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+      </div>
       <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="username">Username</label>
       <input id="username" name="username" type="text" autofocus autocomplete="username" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
       <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
-      <button type="submit" class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Sign in</button>
+      <button type="submit" class="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Sign in with password</button>
       <a href="/signup{{if .Next}}?next={{urlquery .Next}}{{end}}" class="block rounded-md px-3 py-2 text-center text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Create account</a>
     </form>
   </main>
+  {{template "auth-passkey-scripts" .}}
 </body>
 </html>
 {{end}}
@@ -38,10 +50,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>track-slash</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
   <main class="flex min-h-screen items-center justify-center px-4">
-    <form method="post" action="/signup" class="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+    <form method="post" action="/signup" data-passkey-signup-form class="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
       <input type="hidden" name="next" value="{{.Next}}">
       <div>
         <h1 class="text-lg font-semibold tracking-normal">track-slash</h1>
@@ -50,16 +63,198 @@
       {{if .Error}}
       <div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{{.Error}}</div>
       {{end}}
+      <div data-passkey-status class="hidden rounded-md border px-3 py-2 text-sm"></div>
       <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="name">Display name</label>
       <input id="name" name="name" type="text" autocomplete="name" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
       <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="username">Username</label>
       <input id="username" name="username" type="text" autocomplete="username" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
+      <button type="button" data-passkey-signup class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        <i data-lucide="key-round" class="h-4 w-4" aria-hidden="true"></i>
+        Create with passkey
+      </button>
+      <div class="flex items-center gap-3">
+        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+        <span class="text-xs font-medium uppercase text-slate-400 dark:text-slate-500">Password</span>
+        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-800"></span>
+      </div>
       <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="new-password" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
-      <button type="submit" class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Create account</button>
+      <button type="submit" class="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Create with password</button>
       <a href="/login{{if .Next}}?next={{urlquery .Next}}{{end}}" class="block rounded-md px-3 py-2 text-center text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Sign in</a>
     </form>
   </main>
+  {{template "auth-passkey-scripts" .}}
 </body>
 </html>
+{{end}}
+
+{{define "auth-passkey-scripts"}}
+  <script>
+    (() => {
+      const createIcons = () => window.lucide && window.lucide.createIcons();
+      const status = document.querySelector("[data-passkey-status]");
+      const showStatus = (message, kind = "error") => {
+        if (!status) return;
+        status.textContent = message || "";
+        status.className = "rounded-md border px-3 py-2 text-sm";
+        if (!message) {
+          status.classList.add("hidden");
+          return;
+        }
+        status.classList.add(
+          kind === "ok" ? "border-emerald-200" : "border-red-200",
+          kind === "ok" ? "bg-emerald-50" : "bg-red-50",
+          kind === "ok" ? "text-emerald-800" : "text-red-700",
+          kind === "ok" ? "dark:border-emerald-900" : "dark:border-red-900",
+          kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-red-950",
+          kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
+        );
+      };
+      const setBusy = (button, busy) => {
+        if (!button) return;
+        button.disabled = busy;
+        button.classList.toggle("opacity-60", busy);
+        button.classList.toggle("cursor-wait", busy);
+      };
+      const passkeysSupported = () => !!(window.PublicKeyCredential && navigator.credentials);
+      const assertPasskeysSupported = () => {
+        if (!passkeysSupported()) throw new Error("This browser does not support passkeys.");
+      };
+      const decodeBase64URL = (value) => {
+        const base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+        const binary = window.atob(padded);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+      };
+      const encodeBase64URL = (buffer) => {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      };
+      const parseCreationOptions = (options) => {
+        if (PublicKeyCredential.parseCreationOptionsFromJSON) {
+          return PublicKeyCredential.parseCreationOptionsFromJSON(options);
+        }
+        const next = { ...options, challenge: decodeBase64URL(options.challenge) };
+        next.user = { ...options.user, id: decodeBase64URL(options.user.id) };
+        next.excludeCredentials = (options.excludeCredentials || []).map((credential) => ({
+          ...credential,
+          id: decodeBase64URL(credential.id),
+        }));
+        return next;
+      };
+      const parseRequestOptions = (options) => {
+        if (PublicKeyCredential.parseRequestOptionsFromJSON) {
+          return PublicKeyCredential.parseRequestOptionsFromJSON(options);
+        }
+        const next = { ...options, challenge: decodeBase64URL(options.challenge) };
+        next.allowCredentials = (options.allowCredentials || []).map((credential) => ({
+          ...credential,
+          id: decodeBase64URL(credential.id),
+        }));
+        return next;
+      };
+      const credentialToJSON = (credential) => {
+        const response = credential.response;
+        const out = {
+          id: credential.id,
+          rawId: encodeBase64URL(credential.rawId),
+          type: credential.type,
+          clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+        };
+        if (credential.authenticatorAttachment) out.authenticatorAttachment = credential.authenticatorAttachment;
+        if (response.attestationObject) {
+          out.response = {
+            attestationObject: encodeBase64URL(response.attestationObject),
+            clientDataJSON: encodeBase64URL(response.clientDataJSON),
+          };
+          if (response.getTransports) out.response.transports = response.getTransports();
+          if (response.getAuthenticatorData) out.response.authenticatorData = encodeBase64URL(response.getAuthenticatorData());
+          if (response.getPublicKey) {
+            const key = response.getPublicKey();
+            if (key) out.response.publicKey = encodeBase64URL(key);
+          }
+          if (response.getPublicKeyAlgorithm) out.response.publicKeyAlgorithm = response.getPublicKeyAlgorithm();
+          return out;
+        }
+        out.response = {
+          authenticatorData: encodeBase64URL(response.authenticatorData),
+          clientDataJSON: encodeBase64URL(response.clientDataJSON),
+          signature: encodeBase64URL(response.signature),
+        };
+        if (response.userHandle) out.response.userHandle = encodeBase64URL(response.userHandle);
+        return out;
+      };
+      const postJSON = async (url, payload) => {
+        const res = await fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Accept": "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify(payload || {}),
+        });
+        let body = null;
+        try {
+          body = await res.json();
+        } catch (_) {}
+        if (!res.ok) throw new Error((body && body.error) || "Passkey request failed.");
+        return body || {};
+      };
+      const login = async (button) => {
+        assertPasskeysSupported();
+        const next = document.querySelector("input[name='next']")?.value || "/";
+        const options = await postJSON("/login/passkey/options", {});
+        const credential = await navigator.credentials.get({
+          publicKey: parseRequestOptions(options.publicKey),
+          mediation: options.mediation || "optional",
+        });
+        if (!credential) throw new Error("Passkey sign-in was canceled.");
+        const result = await postJSON("/login/passkey", {
+          ceremony_id: options.ceremony_id,
+          credential: credentialToJSON(credential),
+          next,
+        });
+        window.location.assign(result.next || "/");
+      };
+      const signup = async (button) => {
+        assertPasskeysSupported();
+        const form = button.closest("form");
+        const username = form.querySelector("input[name='username']")?.value.trim() || "";
+        const name = form.querySelector("input[name='name']")?.value.trim() || "";
+        const next = form.querySelector("input[name='next']")?.value || "/";
+        if (!username) throw new Error("Username required.");
+        const options = await postJSON("/signup/passkey/options", { username, name });
+        const credential = await navigator.credentials.create({
+          publicKey: parseCreationOptions(options.publicKey),
+          mediation: options.mediation || "optional",
+        });
+        if (!credential) throw new Error("Passkey creation was canceled.");
+        const result = await postJSON("/signup/passkey", {
+          ceremony_id: options.ceremony_id,
+          credential: credentialToJSON(credential),
+          next,
+        });
+        window.location.assign(result.next || "/");
+      };
+      document.addEventListener("click", (event) => {
+        if (!(event.target instanceof Element)) return;
+        const loginButton = event.target.closest("[data-passkey-login]");
+        const signupButton = event.target.closest("[data-passkey-signup]");
+        const button = loginButton || signupButton;
+        if (!button) return;
+        event.preventDefault();
+        showStatus("");
+        setBusy(button, true);
+        const action = loginButton ? login(button) : signup(button);
+        action.catch((err) => showStatus(err && err.message ? err.message : "Passkey request failed.")).finally(() => setBusy(button, false));
+      });
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", createIcons);
+      } else {
+        createIcons();
+      }
+    })();
+  </script>
 {{end}}

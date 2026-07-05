@@ -127,6 +127,57 @@ func TestLoadAutoMigrateValidation(t *testing.T) {
 	}
 }
 
+func TestLoadPublicOrigin(t *testing.T) {
+	unsetenv(t, "TRACK_SLASH_PUBLIC_ORIGIN")
+	got, err := loadPublicOrigin()
+	if err != nil {
+		t.Fatalf("loadPublicOrigin unset: %v", err)
+	}
+	if got != "" {
+		t.Fatalf("unset public origin = %q, want empty", got)
+	}
+
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "https", raw: " https://Track.Example.COM ", want: "https://track.example.com"},
+		{name: "https port", raw: "https://track.example.com:8443/", want: "https://track.example.com:8443"},
+		{name: "localhost http", raw: "http://localhost:8080", want: "http://localhost:8080"},
+		{name: "loopback http", raw: "http://127.0.0.1:8080", want: "http://127.0.0.1:8080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TRACK_SLASH_PUBLIC_ORIGIN", tc.raw)
+			got, err := loadPublicOrigin()
+			if err != nil {
+				t.Fatalf("loadPublicOrigin: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("origin = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadPublicOriginRejectsInvalidOrigins(t *testing.T) {
+	for _, raw := range []string{
+		"track.example.com",
+		"http://track.example.com",
+		"https://track.example.com/app",
+		"https://track.example.com?x=1",
+		"https://user@track.example.com",
+		"ftp://track.example.com",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			t.Setenv("TRACK_SLASH_PUBLIC_ORIGIN", raw)
+			if _, err := loadPublicOrigin(); err == nil {
+				t.Fatal("loadPublicOrigin err = nil, want error")
+			}
+		})
+	}
+}
+
 func TestLoadStorageDefaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
 

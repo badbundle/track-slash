@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 
@@ -65,6 +66,7 @@ func (s *Store) ChangePassword(ctx context.Context, userID uuid.UUID, currentPas
 		WHERE c.user_id = $1
 		  AND c.kind = $2
 		  AND c.revoked_at IS NULL
+		  AND c.disabled_at IS NULL
 		  AND u.deleted_at IS NULL
 	`
 	var credentialID uuid.UUID
@@ -91,4 +93,131 @@ func (s *Store) ChangePassword(ctx context.Context, userID uuid.UUID, currentPas
 		return err
 	}
 	return nil
+}
+
+func (s *Store) HasPasswordCredential(ctx context.Context, userID uuid.UUID) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM auth_credentials c
+			JOIN users u ON u.id = c.user_id
+			WHERE c.user_id = $1
+			  AND c.kind = $2
+			  AND c.revoked_at IS NULL
+			  AND c.disabled_at IS NULL
+			  AND u.deleted_at IS NULL
+		)
+	`
+	var ok bool
+	if err := s.db.QueryRow(ctx, q, userID, string(model.AuthCredentialKindPassword)).Scan(&ok); err != nil {
+		return false, err
+	}
+	return ok, nil
+}
+
+type passwordLoginQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func (s *Store) PasswordLoginState(ctx context.Context, userID uuid.UUID) (model.PasswordLoginState, error) {
+	return passwordLoginState(ctx, s.db, userID)
+}
+
+func (s *Store) SetPasswordLoginEnabled(ctx context.Context, userID uuid.UUID, enabled bool) (model.PasswordLoginState, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return model.PasswordLoginState{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	state, err := passwordLoginState(ctx, tx, userID)
+	if err != nil {
+		return model.PasswordLoginState{}, err
+	}
+	if !state.HasPassword {
+		return model.PasswordLoginState{}, ErrConflict
+	}
+	if !enabled && state.ActivePasskeys == 0 {
+		return model.PasswordLoginState{}, ErrConflict
+	}
+
+	if enabled {
+		if _, err := tx.Exec(ctx, `
+			UPDATE auth_credentials
+			SET disabled_at = NULL
+			WHERE user_id = $1
+			  AND kind = $2
+			  AND revoked_at IS NULL
+		`, userID, string(model.AuthCredentialKindPassword)); err != nil {
+			return model.PasswordLoginState{}, err
+		}
+	} else if state.Enabled {
+		if _, err := tx.Exec(ctx, `
+			UPDATE auth_credentials
+			SET disabled_at = now()
+			WHERE user_id = $1
+			  AND kind = $2
+			  AND revoked_at IS NULL
+			  AND disabled_at IS NULL
+		`, userID, string(model.AuthCredentialKindPassword)); err != nil {
+			return model.PasswordLoginState{}, err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE passkey_reauth_tokens
+			SET consumed_at = now()
+			WHERE user_id = $1
+			  AND consumed_at IS NULL
+		`, userID); err != nil {
+			return model.PasswordLoginState{}, err
+		}
+	}
+
+	next, err := passwordLoginState(ctx, tx, userID)
+	if err != nil {
+		return model.PasswordLoginState{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return model.PasswordLoginState{}, err
+	}
+	return next, nil
+}
+
+func passwordLoginState(ctx context.Context, q passwordLoginQuerier, userID uuid.UUID) (model.PasswordLoginState, error) {
+	const query = `
+		SELECT
+			EXISTS (
+				SELECT 1 FROM auth_credentials c
+				WHERE c.user_id = u.id
+				  AND c.kind = $2
+				  AND c.revoked_at IS NULL
+			),
+			EXISTS (
+				SELECT 1 FROM auth_credentials c
+				WHERE c.user_id = u.id
+				  AND c.kind = $2
+				  AND c.revoked_at IS NULL
+				  AND c.disabled_at IS NULL
+			),
+			(
+				SELECT count(*)
+				FROM auth_credentials c
+				WHERE c.user_id = u.id
+				  AND c.kind = $3
+				  AND c.revoked_at IS NULL
+				  AND c.disabled_at IS NULL
+			)
+		FROM users u
+		WHERE u.id = $1 AND u.deleted_at IS NULL
+	`
+	var state model.PasswordLoginState
+	if err := q.QueryRow(ctx, query, userID, string(model.AuthCredentialKindPassword), string(model.AuthCredentialKindPasskey)).Scan(
+		&state.HasPassword, &state.Enabled, &state.ActivePasskeys,
+	); err != nil {
+		if isNoRows(err) {
+			return model.PasswordLoginState{}, ErrNotFound
+		}
+		return model.PasswordLoginState{}, err
+	}
+	state.CanDisable = state.HasPassword && state.Enabled && state.ActivePasskeys > 0
+	return state, nil
 }
