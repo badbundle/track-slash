@@ -647,7 +647,7 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 	if hasMore {
 		last := issues[len(issues)-1]
 		nextQuery := allQuery
-		nextQuery.Cursor = encodeCursor(uiProjectAllIssueCursor(last, allQuery.Sort))
+		nextQuery.Cursor = encodeCursor(issueListCursor(last, allQuery.Sort))
 		pageData.NextHXGet = uiProjectAllPagePath(project, nextQuery)
 	}
 	return pageData, nil

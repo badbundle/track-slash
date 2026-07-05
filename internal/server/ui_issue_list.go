@@ -1,12 +1,12 @@
 package server
 
 import (
-	"fmt"
+	"strings"
+
+	"github.com/google/uuid"
+
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
-	"github.com/google/uuid"
-	"net/http"
-	"strings"
 )
 
 func uiProjectTabs(project model.Project, view string, assigneeIDs []uuid.UUID) uiTabBarData {
@@ -95,24 +95,6 @@ func uiWorkTabs(view string, query uiIssueListQuery) uiTabBarData {
 func uiWorkIssueControls(view string, query uiIssueListQuery) uiIssueControlsData {
 	paths := uiWorkIssueListPaths(view)
 	return uiIssueControls(query, paths)
-}
-
-func uiParseAssigneeFilter(r *http.Request) ([]uuid.UUID, error) {
-	raws := r.URL.Query()["assignee_id"]
-	ids := make([]uuid.UUID, 0, len(raws))
-	seen := make(map[uuid.UUID]struct{}, len(raws))
-	for _, raw := range raws {
-		id, err := uuid.Parse(strings.TrimSpace(raw))
-		if err != nil {
-			return nil, fmt.Errorf("invalid assignee_id: %w", errUIBadRequest)
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
-	}
-	return ids, nil
 }
 
 func uiProjectAssigneeFilters(project model.Project, view string, assignees []model.ProjectAssignee, selectedIDs []uuid.UUID) []uiAssigneeFilterItem {
@@ -437,12 +419,7 @@ func uiIssueListDirection(query uiIssueListQuery) store.ListIssuesSortDirection 
 }
 
 func uiDefaultIssueSortDirection(sort store.ListIssuesSort) store.ListIssuesSortDirection {
-	switch sort {
-	case store.ListIssuesSortCreated, store.ListIssuesSortUpdated:
-		return store.ListIssuesSortDescending
-	default:
-		return store.ListIssuesSortAscending
-	}
+	return defaultIssueListSortDirection(sort)
 }
 
 func uiIssueSortLabel(sort store.ListIssuesSort) string {

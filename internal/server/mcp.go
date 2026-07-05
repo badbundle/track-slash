@@ -89,10 +89,15 @@ type mcpCreateIssueInput struct {
 type mcpListIssuesInput struct {
 	mcpProjectInput
 	mcpPageInput
-	Status      model.Status `json:"status,omitempty"`
-	AssigneeIDs []string     `json:"assignee_ids,omitempty"`
-	Tags        []string     `json:"tags,omitempty"`
-	Sprint      string       `json:"sprint,omitempty" jsonschema:"sprint ref, or backlog"`
+	Status      model.Status                  `json:"status,omitempty"`
+	Statuses    []model.Status                `json:"statuses,omitempty"`
+	Priority    model.IssuePriority           `json:"priority,omitempty"`
+	Priorities  []model.IssuePriority         `json:"priorities,omitempty"`
+	AssigneeIDs []string                      `json:"assignee_ids,omitempty"`
+	Tags        []string                      `json:"tags,omitempty"`
+	Sort        store.ListIssuesSort          `json:"sort,omitempty" jsonschema:"one of number, created, updated, status, priority, due"`
+	Direction   store.ListIssuesSortDirection `json:"direction,omitempty" jsonschema:"asc or desc"`
+	Sprint      string                        `json:"sprint,omitempty" jsonschema:"sprint ref, or backlog"`
 }
 
 type mcpBatchIssuesInput struct {
@@ -1147,9 +1152,6 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
-	if input.Status != "" && !input.Status.Valid() {
-		return nil, validationError("invalid status")
-	}
 	limit, err := mcpLimit(input.Limit)
 	if err != nil {
 		return nil, validationError(err.Error())
@@ -1166,22 +1168,50 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
+	rawStatuses := make([]string, 0, len(input.Statuses)+1)
+	if input.Status != "" {
+		rawStatuses = append(rawStatuses, string(input.Status))
+	}
+	for _, status := range input.Statuses {
+		rawStatuses = append(rawStatuses, string(status))
+	}
+	statuses, err := parseIssueStatusFilters(rawStatuses)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	rawPriorities := make([]string, 0, len(input.Priorities)+1)
+	if input.Priority != "" {
+		rawPriorities = append(rawPriorities, string(input.Priority))
+	}
+	for _, priority := range input.Priorities {
+		rawPriorities = append(rawPriorities, string(priority))
+	}
+	priorities, err := parseIssuePriorityFilters(rawPriorities)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	tagNames, err := parseIssueTagNames(input.Tags)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	sortBy, err := parseIssueListSort(string(input.Sort), store.ListIssuesSortNumber, true)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	direction, err := parseIssueListSortDirection(string(input.Direction), sortBy)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
 	params := store.ListIssuesParams{
 		ProjectID:   project.ID,
-		Status:      input.Status,
+		Statuses:    statuses,
+		Priorities:  priorities,
 		AssigneeIDs: assigneeIDs,
+		TagNames:    tagNames,
 		Cursor:      cursor,
 		Limit:       limit,
-	}
-	for _, rawTag := range input.Tags {
-		if strings.TrimSpace(rawTag) == "" {
-			continue
-		}
-		name, err := model.NormalizeIssueTagName(rawTag)
-		if err != nil {
-			return nil, validationError(err.Error())
-		}
-		params.TagNames = append(params.TagNames, name)
+		Sort:        sortBy,
+		Direction:   direction,
 	}
 	switch {
 	case input.Sprint == "backlog":
@@ -1204,7 +1234,7 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 	var next *string
 	if hasMore {
 		last := issues[len(issues)-1]
-		enc := encodeCursor(store.IssuesCursor{Number: last.Number})
+		enc := encodeCursor(issueListCursor(last, sortBy))
 		next = &enc
 	}
 	return mcpPageOut(issues, next), nil
