@@ -59,3 +59,51 @@ jobs:
 
       - name: Test
         run: go test -race -count=1 ./...
+
+  docker:
+    name: docker build + healthcheck
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: track
+          POSTGRES_PASSWORD: track
+          POSTGRES_DB: track
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U track -d track"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t track-slash-frontend:ci .
+
+      - name: Run Docker image
+        run: |
+          docker run -d --rm \
+            --name track-slash-frontend-ci \
+            --network host \
+            -e DATABASE_URL='postgres://track:track@127.0.0.1:5432/track?sslmode=disable' \
+            track-slash-frontend:ci
+
+      - name: Check container health
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/healthz; then
+              exit 0
+            fi
+            docker logs track-slash-frontend-ci || true
+            sleep 1
+          done
+          docker logs track-slash-frontend-ci
+          exit 1
+
+      - name: Stop Docker image
+        if: always()
+        run: docker stop track-slash-frontend-ci || true
