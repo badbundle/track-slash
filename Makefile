@@ -6,12 +6,13 @@ DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/track?sslmode=
 TEST_DATABASE_NAME ?= track_test
 TEST_DATABASE_URL ?= postgres://track:track@localhost:$(POSTGRES_PORT)/$(TEST_DATABASE_NAME)?sslmode=disable
 PORT ?= 8080
+IMAGE ?= track-slash-frontend
 SEED_USERNAME ?= demo
 SEED_PASSWORD ?= correct-horse-battery
 SEED_NAME ?= Demo User
 SEED_PROJECT_PREFIX ?= DEMO
 
-.PHONY: run run-once migrate seed up down db-logs test tidy build vet
+.PHONY: run run-once migrate docker-migrate seed up down db-logs test tidy build vet
 
 run:
 	DATABASE_URL='$(DATABASE_URL)' PORT='$(PORT)' TRACK_SLASH_DEV_RELOAD=1 go tool air -c .air.toml
@@ -33,6 +34,9 @@ tidy:
 
 migrate:
 	DATABASE_URL='$(DATABASE_URL)' go run ./cmd/trackd -migrate-only
+
+docker-migrate:
+	docker run --rm -e DATABASE_URL='$(DATABASE_URL)' $(IMAGE) -migrate-only
 
 seed:
 	DATABASE_URL='$(DATABASE_URL)' go run ./cmd/seed -username='$(SEED_USERNAME)' -password='$(SEED_PASSWORD)' -name='$(SEED_NAME)' -project-prefix='$(SEED_PROJECT_PREFIX)'
