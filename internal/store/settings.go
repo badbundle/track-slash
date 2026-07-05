@@ -92,3 +92,22 @@ func (s *Store) ChangePassword(ctx context.Context, userID uuid.UUID, currentPas
 	}
 	return nil
 }
+
+func (s *Store) HasPasswordCredential(ctx context.Context, userID uuid.UUID) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM auth_credentials c
+			JOIN users u ON u.id = c.user_id
+			WHERE c.user_id = $1
+			  AND c.kind = $2
+			  AND c.revoked_at IS NULL
+			  AND u.deleted_at IS NULL
+		)
+	`
+	var ok bool
+	if err := s.db.QueryRow(ctx, q, userID, string(model.AuthCredentialKindPassword)).Scan(&ok); err != nil {
+		return false, err
+	}
+	return ok, nil
+}

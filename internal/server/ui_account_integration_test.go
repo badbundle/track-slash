@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"net/http"
 	"net/url"
 	"strings"
@@ -84,10 +85,18 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Settings", "Display name", "Email", "Current password", "New password", "Passkeys", "Add passkey", "Use passkey", "No passkeys yet."} {
+	for _, want := range []string{"Settings", "Display name", "Email", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added."} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
 		}
+	}
+	for _, rejected := range []string{"Use passkey", "Confirm with", "Security check", "Leave blank to confirm", "Needed to add or remove passkeys.", `for="passkey_name">Name`} {
+		if strings.Contains(body, rejected) {
+			t.Fatalf("settings body still shows confusing passkey copy %q: %s", rejected, body)
+		}
+	}
+	if strings.Contains(body, `data-passkey-password-modal hidden class=`) || strings.Contains(body, `data-passkey-password-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("settings body renders passkey password modal open by default: %s", body)
 	}
 
 	form := url.Values{"name": {"New UI"}, "email": {"ui@example.com"}}
@@ -121,5 +130,48 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 	if _, err := e.store.AuthenticatePassword(e.ctx, username, newPassword); err != nil {
 		t.Fatalf("new password auth: %v", err)
+	}
+}
+
+func TestUISettingsPasskeyOnlyAccountHidesPasskeyPasswordField(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, err := e.store.CreatePasskeyOnlyAccount(e.ctx, store.CreatePasskeyOnlyAccountParams{
+		Username:       "uipasskey" + strings.ToLower(uniqueProjectKey(t)),
+		Name:           "UI Passkey",
+		RPID:           "localhost",
+		UserHandle:     []byte("ui-handle-" + uniqueProjectKey(t)),
+		CredentialName: "MacBook",
+		Credential: webauthn.Credential{
+			ID:        []byte("ui-credential-" + uniqueProjectKey(t)),
+			PublicKey: []byte("ui-public-key"),
+			Flags: webauthn.CredentialFlags{
+				UserPresent:  true,
+				UserVerified: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreatePasskeyOnlyAccount: %v", err)
+	}
+	token, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: user.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "session",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+
+	body := e.uiGet(t, "/settings", token.RawToken)
+	for _, want := range []string{"Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "MacBook"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("settings body missing %q: %s", want, body)
+		}
+	}
+	for _, rejected := range []string{"Security check", "Use passkey", "Confirm with", "Leave blank to confirm", "Needed to add or remove passkeys.", "Enter current password", "Required before changing passkeys.", "<div data-passkey-password-modal", `id="passkey_current_password"`} {
+		if strings.Contains(body, rejected) {
+			t.Fatalf("settings body still shows password passkey copy %q: %s", rejected, body)
+		}
 	}
 }

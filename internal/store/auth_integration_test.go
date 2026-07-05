@@ -110,6 +110,13 @@ func TestAccountPasswordLifecycle(t *testing.T) {
 	if u.ID == uuid.Nil || u.Username == "" || u.Email != "" || u.Name != u.Username || u.IsAdmin {
 		t.Fatalf("user = %+v", u)
 	}
+	hasPassword, err := env.store.HasPasswordCredential(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("HasPasswordCredential: %v", err)
+	}
+	if !hasPassword {
+		t.Fatalf("HasPasswordCredential = false, want true")
+	}
 
 	var storedHash string
 	if err := env.pool.QueryRow(env.ctx, `
@@ -157,6 +164,13 @@ func TestAccountPasswordLifecycle(t *testing.T) {
 	}
 	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, password); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("revoked credential err = %v, want ErrUnauthorized", err)
+	}
+	hasPassword, err = env.store.HasPasswordCredential(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("HasPasswordCredential revoked: %v", err)
+	}
+	if hasPassword {
+		t.Fatalf("HasPasswordCredential revoked = true, want false")
 	}
 }
 
@@ -219,6 +233,13 @@ func TestPasskeyOnlyAccountLifecycle(t *testing.T) {
 	}
 	if _, err := env.store.AuthenticatePassword(env.ctx, u.Username, "correct-horse-battery"); !errors.Is(err, store.ErrUnauthorized) {
 		t.Fatalf("passkey-only password err = %v, want ErrUnauthorized", err)
+	}
+	hasPassword, err := env.store.HasPasswordCredential(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("HasPasswordCredential passkey-only: %v", err)
+	}
+	if hasPassword {
+		t.Fatalf("HasPasswordCredential passkey-only = true, want false")
 	}
 
 	gotHandle, err := env.store.GetOrCreateWebAuthnHandle(env.ctx, u.ID, rpID)

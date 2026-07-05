@@ -204,7 +204,7 @@
       };
       const setPasskeyBusy = (panel, busy) => {
         if (!panel) return;
-        panel.querySelectorAll("[data-passkey-add], [data-passkey-reauth], [data-passkey-revoke]").forEach((button) => {
+        panel.querySelectorAll("[data-passkey-add], [data-passkey-revoke]").forEach((button) => {
           button.disabled = busy;
           button.classList.toggle("opacity-60", busy);
           button.classList.toggle("cursor-wait", busy);
@@ -312,21 +312,105 @@
         panel.dataset.reauthToken = result.reauth_token || "";
         return panel.dataset.reauthToken;
       };
+      const passkeyCanceledError = () => {
+        const err = new Error("Passkey change canceled.");
+        err.passkeyCanceled = true;
+        return err;
+      };
+      const showPasskeyPasswordError = (modal, message) => {
+        const error = modal && modal.querySelector("[data-passkey-password-error]");
+        if (!error) return;
+        error.textContent = message || "";
+        error.classList.toggle("hidden", !message);
+      };
+      const createPasswordReauthToken = (panel) => new Promise((resolve, reject) => {
+        const modal = panel.querySelector("[data-passkey-password-modal]");
+        const form = modal && modal.querySelector("[data-passkey-password-form]");
+        const input = modal && modal.querySelector("[data-passkey-current-password]");
+        const submit = modal && modal.querySelector("[data-passkey-password-submit]");
+        if (!modal || !form || !input || !submit) {
+          reject(new Error("Current password form missing."));
+          return;
+        }
+
+        const setSubmitBusy = (busy) => {
+          submit.disabled = busy;
+          submit.classList.toggle("opacity-60", busy);
+          submit.classList.toggle("cursor-wait", busy);
+        };
+        const setModalOpen = (open) => {
+          modal.classList.toggle("hidden", !open);
+          modal.classList.toggle("grid", open);
+        };
+        let settled = false;
+        const cleanup = () => {
+          setModalOpen(false);
+          input.value = "";
+          setSubmitBusy(false);
+          showPasskeyPasswordError(modal, "");
+          form.removeEventListener("submit", onSubmit);
+          modal.querySelectorAll("[data-passkey-password-cancel]").forEach((button) => button.removeEventListener("click", onCancel));
+          modal.removeEventListener("click", onBackdropClick);
+          document.removeEventListener("keydown", onKeydown);
+        };
+        const cancel = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(passkeyCanceledError());
+        };
+        const onCancel = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          cancel();
+        };
+        const onBackdropClick = (event) => {
+          if (event.target === modal) cancel();
+        };
+        const onKeydown = (event) => {
+          if (event.key === "Escape" && !modal.classList.contains("hidden")) {
+            event.preventDefault();
+            cancel();
+          }
+        };
+        const onSubmit = async (event) => {
+          event.preventDefault();
+          if (settled) return;
+          const password = input.value || "";
+          if (!password.trim()) {
+            showPasskeyPasswordError(modal, "Enter your current password.");
+            input.focus();
+            return;
+          }
+          setSubmitBusy(true);
+          try {
+            const result = await postJSON("/settings/passkeys/reauth/password", { current_password: password });
+            panel.dataset.reauthToken = result.reauth_token || "";
+            const token = panel.dataset.reauthToken;
+            settled = true;
+            cleanup();
+            resolve(token);
+          } catch (err) {
+            if (settled) return;
+            showPasskeyPasswordError(modal, err && err.message ? err.message : "Current password not accepted.");
+            input.select();
+            setSubmitBusy(false);
+          }
+        };
+
+        showPasskeyPasswordError(modal, "");
+        input.value = "";
+        setModalOpen(true);
+        form.addEventListener("submit", onSubmit);
+        modal.querySelectorAll("[data-passkey-password-cancel]").forEach((button) => button.addEventListener("click", onCancel));
+        modal.addEventListener("click", onBackdropClick);
+        document.addEventListener("keydown", onKeydown);
+        window.setTimeout(() => input.focus(), 0);
+      });
       const getPasskeyReauthToken = async (panel) => {
         if (panel.dataset.reauthToken) return panel.dataset.reauthToken;
-        const password = panel.querySelector("[data-passkey-current-password]")?.value || "";
-        if (password.trim()) {
-          const result = await postJSON("/settings/passkeys/reauth/password", { current_password: password });
-          panel.dataset.reauthToken = result.reauth_token || "";
-          const input = panel.querySelector("[data-passkey-current-password]");
-          if (input) input.value = "";
-          return panel.dataset.reauthToken;
-        }
+        if (panel.querySelector("[data-passkey-password-modal]")) return createPasswordReauthToken(panel);
         return createPasskeyReauthToken(panel);
-      };
-      const passkeyReauth = async (panel) => {
-        await createPasskeyReauthToken(panel);
-        setPasskeyStatus(panel, "Passkey verified.", "ok");
       };
       const addPasskey = async (panel) => {
         assertPasskeysSupported();
@@ -600,7 +684,7 @@
             return;
           }
         }
-        const passkeyAction = event.target.closest("[data-passkey-add], [data-passkey-reauth], [data-passkey-revoke]");
+        const passkeyAction = event.target.closest("[data-passkey-add], [data-passkey-revoke]");
         if (passkeyAction) {
           const panel = passkeyAction.closest("[data-passkeys-panel]");
           if (panel) {
@@ -609,10 +693,11 @@
             setPasskeyBusy(panel, true);
             const action = passkeyAction.hasAttribute("data-passkey-add")
               ? addPasskey(panel)
-              : passkeyAction.hasAttribute("data-passkey-reauth")
-                ? passkeyReauth(panel)
-                : revokePasskey(panel, passkeyAction);
-            action.catch((err) => setPasskeyStatus(panel, err && err.message ? err.message : "Passkey request failed.")).finally(() => setPasskeyBusy(panel, false));
+              : revokePasskey(panel, passkeyAction);
+            action.catch((err) => {
+              if (err && err.passkeyCanceled) return;
+              setPasskeyStatus(panel, err && err.message ? err.message : "Passkey request failed.");
+            }).finally(() => setPasskeyBusy(panel, false));
             return;
           }
         }
