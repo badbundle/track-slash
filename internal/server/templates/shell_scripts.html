@@ -202,9 +202,35 @@
           kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
         );
       };
+      const setPasswordLoginStatus = (panel, message, kind = "error") => {
+        const status = panel && panel.querySelector("[data-password-login-status]");
+        if (!status) return;
+        status.textContent = message || "";
+        status.className = "mt-3 rounded-md border px-3 py-2 text-sm";
+        if (!message) {
+          status.classList.add("hidden");
+          return;
+        }
+        status.classList.add(
+          kind === "ok" ? "border-emerald-200" : "border-red-200",
+          kind === "ok" ? "bg-emerald-50" : "bg-red-50",
+          kind === "ok" ? "text-emerald-800" : "text-red-700",
+          kind === "ok" ? "dark:border-emerald-900" : "dark:border-red-900",
+          kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-red-950",
+          kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
+        );
+      };
       const setPasskeyBusy = (panel, busy) => {
         if (!panel) return;
         panel.querySelectorAll("[data-passkey-add], [data-passkey-revoke]").forEach((button) => {
+          button.disabled = busy;
+          button.classList.toggle("opacity-60", busy);
+          button.classList.toggle("cursor-wait", busy);
+        });
+      };
+      const setPasswordLoginBusy = (panel, busy) => {
+        if (!panel) return;
+        panel.querySelectorAll("[data-password-login-action]").forEach((button) => {
           button.disabled = busy;
           button.classList.toggle("opacity-60", busy);
           button.classList.toggle("cursor-wait", busy);
@@ -442,6 +468,22 @@
         } finally {
           delete panel.dataset.reauthToken;
         }
+        window.location.reload();
+      };
+      const updatePasswordLogin = async (button) => {
+        const passkeysPanel = document.querySelector("[data-passkeys-panel]");
+        const passwordPanel = button.closest("[data-password-login-panel]");
+        if (!passkeysPanel) throw new Error("Passkey settings missing.");
+        const token = await getPasskeyReauthToken(passkeysPanel);
+        try {
+          await postJSON("/settings/password-login", {
+            enabled: button.dataset.passwordLoginEnabled === "true",
+            reauth_token: token,
+          });
+        } finally {
+          delete passkeysPanel.dataset.reauthToken;
+        }
+        setPasswordLoginStatus(passwordPanel, "Password login updated.", "ok");
         window.location.reload();
       };
       const showCopied = (button) => {
@@ -698,6 +740,26 @@
               if (err && err.passkeyCanceled) return;
               setPasskeyStatus(panel, err && err.message ? err.message : "Passkey request failed.");
             }).finally(() => setPasskeyBusy(panel, false));
+            return;
+          }
+        }
+        const passwordLoginAction = event.target.closest("[data-password-login-action]");
+        if (passwordLoginAction) {
+          const passwordPanel = passwordLoginAction.closest("[data-password-login-panel]");
+          const passkeysPanel = document.querySelector("[data-passkeys-panel]");
+          if (passwordPanel && passkeysPanel) {
+            event.preventDefault();
+            setPasswordLoginStatus(passwordPanel, "");
+            setPasskeyStatus(passkeysPanel, "");
+            setPasskeyBusy(passkeysPanel, true);
+            setPasswordLoginBusy(passwordPanel, true);
+            updatePasswordLogin(passwordLoginAction).catch((err) => {
+              if (err && err.passkeyCanceled) return;
+              setPasswordLoginStatus(passwordPanel, err && err.message ? err.message : "Password login update failed.");
+            }).finally(() => {
+              setPasskeyBusy(passkeysPanel, false);
+              setPasswordLoginBusy(passwordPanel, false);
+            });
             return;
           }
         }

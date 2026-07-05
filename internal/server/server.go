@@ -100,6 +100,8 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/me", s.getMe)
 			r.Patch("/me/settings", s.updateMySettings)
+			r.Get("/me/password-login", s.getMyPasswordLogin)
+			r.Patch("/me/password-login", s.updateMyPasswordLogin)
 			r.Get("/me/passkeys", s.listMyPasskeys)
 			r.Post("/me/reauth/password", s.createPasswordReauth)
 			r.Post("/me/reauth/passkey/options", s.createPasskeyReauthOptions)

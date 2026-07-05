@@ -261,6 +261,8 @@ func (s *Store) ListPasskeyCredentials(ctx context.Context, userID uuid.UUID) ([
 		SELECT id, user_id, identifier, metadata, created_at, last_used_at, revoked_at
 		FROM auth_credentials
 		WHERE user_id = $1 AND kind = $2
+		  AND revoked_at IS NULL
+		  AND disabled_at IS NULL
 		ORDER BY created_at ASC, id ASC
 	`, userID, string(model.AuthCredentialKindPasskey))
 	if err != nil {
@@ -274,9 +276,7 @@ func (s *Store) ListPasskeyCredentials(ctx context.Context, userID uuid.UUID) ([
 		if err != nil {
 			return nil, err
 		}
-		if cred.RevokedAt == nil {
-			out = append(out, cred.toModel())
-		}
+		out = append(out, cred.toModel())
 	}
 	return out, rows.Err()
 }
@@ -288,6 +288,7 @@ func (s *Store) ActivePasskeyCredentialsForUser(ctx context.Context, userID uuid
 		WHERE user_id = $1
 		  AND kind = $2
 		  AND revoked_at IS NULL
+		  AND disabled_at IS NULL
 		  AND metadata->>'rp_id' = $3
 		ORDER BY created_at ASC, id ASC
 	`, userID, string(model.AuthCredentialKindPasskey), rpID)
@@ -347,6 +348,7 @@ func (s *Store) UpdatePasskeyCredentialUsage(ctx context.Context, userID uuid.UU
 		  AND kind = $2
 		  AND identifier = $3
 		  AND revoked_at IS NULL
+		  AND disabled_at IS NULL
 		  AND metadata->>'rp_id' = $8
 	`, userID, string(model.AuthCredentialKindPasskey), identifier, credential.PublicKey,
 		int64(credential.Authenticator.SignCount), meta, defaultPasskeyName, rpID)
@@ -370,7 +372,11 @@ func (s *Store) RevokePasskeyCredentialForUser(ctx context.Context, userID, id u
 	if err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM auth_credentials
-			WHERE id = $1 AND user_id = $2 AND kind = $3 AND revoked_at IS NULL
+			WHERE id = $1
+			  AND user_id = $2
+			  AND kind = $3
+			  AND revoked_at IS NULL
+			  AND disabled_at IS NULL
 		)
 	`, id, userID, string(model.AuthCredentialKindPasskey)).Scan(&exists); err != nil {
 		return err
@@ -379,29 +385,59 @@ func (s *Store) RevokePasskeyCredentialForUser(ctx context.Context, userID, id u
 		return ErrNotFound
 	}
 
-	var active int
+	var activePasskeys int
 	if err := tx.QueryRow(ctx, `
 		SELECT count(*)
 		FROM auth_credentials
 		WHERE user_id = $1
-		  AND kind IN ($2, $3)
+		  AND kind = $2
 		  AND revoked_at IS NULL
-	`, userID, string(model.AuthCredentialKindPassword), string(model.AuthCredentialKindPasskey)).Scan(&active); err != nil {
+		  AND disabled_at IS NULL
+	`, userID, string(model.AuthCredentialKindPasskey)).Scan(&activePasskeys); err != nil {
 		return err
 	}
-	if active <= 1 {
-		return ErrConflict
+
+	var hasPassword bool
+	if activePasskeys <= 1 {
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM auth_credentials
+				WHERE user_id = $1
+				  AND kind = $2
+				  AND revoked_at IS NULL
+			)
+		`, userID, string(model.AuthCredentialKindPassword)).Scan(&hasPassword); err != nil {
+			return err
+		}
+		if !hasPassword {
+			return ErrConflict
+		}
 	}
 
 	tag, err := tx.Exec(ctx, `
 		UPDATE auth_credentials SET revoked_at = now()
-		WHERE id = $1 AND user_id = $2 AND kind = $3 AND revoked_at IS NULL
+		WHERE id = $1
+		  AND user_id = $2
+		  AND kind = $3
+		  AND revoked_at IS NULL
+		  AND disabled_at IS NULL
 	`, id, userID, string(model.AuthCredentialKindPasskey))
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	if hasPassword {
+		if _, err := tx.Exec(ctx, `
+			UPDATE auth_credentials
+			SET disabled_at = NULL
+			WHERE user_id = $1
+			  AND kind = $2
+			  AND revoked_at IS NULL
+		`, userID, string(model.AuthCredentialKindPassword)); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -455,6 +491,7 @@ func (s *Store) VerifyUserPassword(ctx context.Context, userID uuid.UUID, passwo
 		WHERE c.user_id = $1
 		  AND c.kind = $2
 		  AND c.revoked_at IS NULL
+		  AND c.disabled_at IS NULL
 		  AND u.deleted_at IS NULL
 	`
 	var hash string

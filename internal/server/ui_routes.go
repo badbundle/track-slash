@@ -35,6 +35,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/settings", s.uiSettingsPage)
 		r.Post("/settings/profile", s.uiUpdateProfile)
 		r.Post("/settings/password", s.uiUpdatePassword)
+		r.Post("/settings/password-login", s.uiUpdatePasswordLogin)
 		r.Post("/settings/passkeys/reauth/password", s.uiPasskeyPasswordReauth)
 		r.Post("/settings/passkeys/reauth/passkey/options", s.uiPasskeyReauthOptions)
 		r.Post("/settings/passkeys/reauth/passkey", s.uiPasskeyReauth)

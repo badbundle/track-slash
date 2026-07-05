@@ -66,7 +66,7 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	hasPassword, err := s.store.HasPasswordCredential(r.Context(), user.ID)
+	passwordLogin, err := s.store.PasswordLoginState(r.Context(), user.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -81,7 +81,7 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 			ProfileSaved:    profileSaved,
 			PasswordError:   passwordError,
 			PasswordChanged: passwordChanged,
-			HasPassword:     hasPassword,
+			PasswordLogin:   passwordLogin,
 			Passkeys:        passkeyCredentials,
 		},
 	})

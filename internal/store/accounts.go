@@ -120,6 +120,7 @@ func (s *Store) AuthenticatePassword(ctx context.Context, username, password str
 		WHERE c.kind = $1
 		  AND c.identifier = $2
 		  AND c.revoked_at IS NULL
+		  AND c.disabled_at IS NULL
 		  AND u.deleted_at IS NULL
 	`
 	var u model.User

@@ -85,10 +85,13 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Settings", "Display name", "Email", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added."} {
+	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added."} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "Disable password login") || strings.Contains(body, "Enable password login") {
+		t.Fatalf("settings body shows password login toggle without passkey: %s", body)
 	}
 	for _, rejected := range []string{"Use passkey", "Confirm with", "Security check", "Leave blank to confirm", "Needed to add or remove passkeys.", `for="passkey_name">Name`} {
 		if strings.Contains(body, rejected) {
@@ -133,6 +136,66 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 }
 
+func TestUISettingsPasswordLoginDisabledUsesPasskeyReauth(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	username := "uipwdoff" + strings.ToLower(uniqueProjectKey(t))
+	user, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{
+		Username: username,
+		Password: "correct-horse-battery",
+		Name:     "UI Password Off",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if _, err := e.store.AddPasskeyCredential(e.ctx, user.ID, "localhost", "Laptop", serverPasskeyCredential("credential-"+uniqueProjectKey(t), 1)); err != nil {
+		t.Fatalf("AddPasskeyCredential: %v", err)
+	}
+	if _, err := e.store.SetPasswordLoginEnabled(e.ctx, user.ID, false); err != nil {
+		t.Fatalf("SetPasswordLoginEnabled: %v", err)
+	}
+	token, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: user.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "session",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+
+	body := e.uiGet(t, "/settings", token.RawToken)
+	for _, want := range []string{"Password login", "Off", "Enable password login", "Password login is off.", "Passkeys", "Laptop"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("settings body missing %q: %s", want, body)
+		}
+	}
+	for _, rejected := range []string{`id="current_password"`, `for="current_password"`, "New password", "Change password", "Enter current password", "Required before changing passkeys.", "<div data-passkey-password-modal", "Disable password login", "Security check", "Confirm with"} {
+		if strings.Contains(body, rejected) {
+			t.Fatalf("disabled password settings still shows %q: %s", rejected, body)
+		}
+	}
+
+	reauth, err := e.store.CreatePasskeyReauthToken(e.ctx, user.ID)
+	if err != nil {
+		t.Fatalf("CreatePasskeyReauthToken: %v", err)
+	}
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/settings/password-login", token.RawToken, strings.NewReader(`{"enabled":true,"reauth_token":"`+reauth+`"}`), map[string]string{
+		"Content-Type": "application/json",
+	})
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("ui password-login code = %d body = %s", res.StatusCode, body)
+	}
+	state := decode[model.PasswordLoginState](t, []byte(body))
+	if !state.Enabled || !state.CanDisable {
+		t.Fatalf("ui password-login state = %+v", state)
+	}
+	if _, err := e.store.AuthenticatePassword(e.ctx, username, "correct-horse-battery"); err != nil {
+		t.Fatalf("AuthenticatePassword after UI enable: %v", err)
+	}
+}
+
 func TestUISettingsPasskeyOnlyAccountHidesPasskeyPasswordField(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -164,12 +227,12 @@ func TestUISettingsPasskeyOnlyAccountHidesPasskeyPasswordField(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "MacBook"} {
+	for _, want := range []string{"Password login", "No password", "No password is set.", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "MacBook"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
 		}
 	}
-	for _, rejected := range []string{"Security check", "Use passkey", "Confirm with", "Leave blank to confirm", "Needed to add or remove passkeys.", "Enter current password", "Required before changing passkeys.", "<div data-passkey-password-modal", `id="passkey_current_password"`} {
+	for _, rejected := range []string{"Security check", "Use passkey", "Confirm with", "Leave blank to confirm", "Needed to add or remove passkeys.", `id="current_password"`, `for="current_password"`, "New password", "Change password", "Enter current password", "Required before changing passkeys.", "<div data-passkey-password-modal", `id="passkey_current_password"`, "Enable password login", "Disable password login"} {
 		if strings.Contains(body, rejected) {
 			t.Fatalf("settings body still shows password passkey copy %q: %s", rejected, body)
 		}

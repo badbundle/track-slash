@@ -19,16 +19,42 @@
       <button type="submit" class="mt-4 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Save profile</button>
     </form>
 
-    <form method="post" action="/settings/password" class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+    <section data-password-login-panel class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Password</h2>
       {{if .PasswordError}}<div class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{{.PasswordError}}</div>{{end}}
       {{if .PasswordChanged}}<div class="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">Password changed.</div>{{end}}
-      <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300" for="current_password">Current password</label>
-      <input id="current_password" name="current_password" type="password" autocomplete="current-password" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
-      <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300" for="new_password">New password</label>
-      <input id="new_password" name="new_password" type="password" autocomplete="new-password" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
-      <button type="submit" class="mt-4 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Change password</button>
-    </form>
+      <div data-password-login-status class="mt-3 hidden rounded-md border px-3 py-2 text-sm"></div>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 dark:border-slate-800">
+        <div>
+          <div class="text-sm font-medium text-slate-900 dark:text-slate-100">Password login</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400">{{if .PasswordLogin.HasPassword}}{{if .PasswordLogin.Enabled}}On{{else}}Off{{end}}{{else}}No password{{end}}</div>
+        </div>
+        {{if .PasswordLogin.CanDisable}}
+        <button type="button" data-password-login-action data-password-login-enabled="false" class="inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+          <i data-lucide="lock-keyhole" class="h-4 w-4" aria-hidden="true"></i>
+          Disable password login
+        </button>
+        {{else if and .PasswordLogin.HasPassword (not .PasswordLogin.Enabled)}}
+        <button type="button" data-password-login-action data-password-login-enabled="true" class="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          <i data-lucide="key-round" class="h-4 w-4" aria-hidden="true"></i>
+          Enable password login
+        </button>
+        {{end}}
+      </div>
+      {{if .PasswordLogin.Enabled}}
+      <form method="post" action="/settings/password">
+        <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300" for="current_password">Current password</label>
+        <input id="current_password" name="current_password" type="password" autocomplete="current-password" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
+        <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-300" for="new_password">New password</label>
+        <input id="new_password" name="new_password" type="password" autocomplete="new-password" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" required>
+        <button type="submit" class="mt-4 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Change password</button>
+      </form>
+      {{else if .PasswordLogin.HasPassword}}
+      <p class="mt-4 text-sm text-slate-500 dark:text-slate-400">Password login is off.</p>
+      {{else}}
+      <p class="mt-4 text-sm text-slate-500 dark:text-slate-400">No password is set.</p>
+      {{end}}
+    </section>
 
     <section data-passkeys-panel class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:col-span-2">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -83,7 +109,7 @@
         </section>
       </div>
 
-      {{if .HasPassword}}
+      {{if .PasswordLogin.Enabled}}
       <div data-passkey-password-modal class="fixed inset-0 z-50 hidden place-items-center bg-slate-950/35 px-4 py-6" role="dialog" aria-modal="true" aria-labelledby="passkey-password-title">
         <section class="w-full max-w-sm rounded-lg border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-800 dark:bg-slate-900">
           <div class="flex items-start justify-between gap-3">

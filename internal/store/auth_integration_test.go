@@ -174,6 +174,86 @@ func TestAccountPasswordLifecycle(t *testing.T) {
 	}
 }
 
+func TestPasswordLoginDisableLifecycle(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	username := "disablepwd" + strings.ToLower(uniqueProjectKey(t))
+	password := "correct-horse-battery"
+	newPassword := "new-correct-horse"
+	u, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username: username,
+		Password: password,
+		Name:     "Disable Password",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	state, err := env.store.PasswordLoginState(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("PasswordLoginState: %v", err)
+	}
+	if !state.HasPassword || !state.Enabled || state.CanDisable || state.ActivePasskeys != 0 {
+		t.Fatalf("initial state = %+v", state)
+	}
+	if _, err := env.store.SetPasswordLoginEnabled(env.ctx, u.ID, false); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("disable without passkey err = %v, want ErrConflict", err)
+	}
+
+	if _, err := env.store.AddPasskeyCredential(env.ctx, u.ID, "localhost", "Phone", testPasskeyCredential("credential-"+uniqueProjectKey(t), 1)); err != nil {
+		t.Fatalf("AddPasskeyCredential: %v", err)
+	}
+	state, err = env.store.PasswordLoginState(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("PasswordLoginState with passkey: %v", err)
+	}
+	if !state.CanDisable || state.ActivePasskeys != 1 {
+		t.Fatalf("passkey state = %+v", state)
+	}
+
+	staleToken, err := env.store.CreatePasskeyReauthToken(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("CreatePasskeyReauthToken: %v", err)
+	}
+	state, err = env.store.SetPasswordLoginEnabled(env.ctx, u.ID, false)
+	if err != nil {
+		t.Fatalf("SetPasswordLoginEnabled false: %v", err)
+	}
+	if !state.HasPassword || state.Enabled || state.CanDisable || state.ActivePasskeys != 1 {
+		t.Fatalf("disabled state = %+v", state)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, username, password); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("disabled password auth err = %v, want ErrUnauthorized", err)
+	}
+	if err := env.store.VerifyUserPassword(env.ctx, u.ID, password); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("disabled VerifyUserPassword err = %v, want ErrUnauthorized", err)
+	}
+	if err := env.store.ChangePassword(env.ctx, u.ID, password, newPassword); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("disabled ChangePassword err = %v, want ErrUnauthorized", err)
+	}
+	hasPassword, err := env.store.HasPasswordCredential(env.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("HasPasswordCredential disabled: %v", err)
+	}
+	if hasPassword {
+		t.Fatalf("HasPasswordCredential disabled = true, want false")
+	}
+	if err := env.store.ConsumePasskeyReauthToken(env.ctx, u.ID, staleToken); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("stale reauth token err = %v, want ErrUnauthorized", err)
+	}
+
+	state, err = env.store.SetPasswordLoginEnabled(env.ctx, u.ID, true)
+	if err != nil {
+		t.Fatalf("SetPasswordLoginEnabled true: %v", err)
+	}
+	if !state.HasPassword || !state.Enabled || !state.CanDisable || state.ActivePasskeys != 1 {
+		t.Fatalf("re-enabled state = %+v", state)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, username, password); err != nil {
+		t.Fatalf("re-enabled password auth: %v", err)
+	}
+}
+
 func TestAccountValidationAndLegacyTokenOnlyUser(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
@@ -326,8 +406,17 @@ func TestPasskeyRevokeProtectsFinalLoginCredential(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddPasskeyCredential: %v", err)
 	}
+	if _, err := env.store.SetPasswordLoginEnabled(env.ctx, passwordUser.ID, false); err != nil {
+		t.Fatalf("SetPasswordLoginEnabled false: %v", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, passwordUser.Username, "correct-horse-battery"); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("disabled password err = %v, want ErrUnauthorized", err)
+	}
 	if err := env.store.RevokePasskeyCredentialForUser(env.ctx, passwordUser.ID, added.ID); err != nil {
 		t.Fatalf("RevokePasskeyCredentialForUser: %v", err)
+	}
+	if _, err := env.store.AuthenticatePassword(env.ctx, passwordUser.Username, "correct-horse-battery"); err != nil {
+		t.Fatalf("password auth after last passkey revoke: %v", err)
 	}
 	listed, err = env.store.ListPasskeyCredentials(env.ctx, passwordUser.ID)
 	if err != nil {

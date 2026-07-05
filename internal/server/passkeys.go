@@ -37,6 +37,11 @@ type passkeyReauthTokenReq struct {
 	ReauthToken string `json:"reauth_token"`
 }
 
+type passwordLoginReq struct {
+	Enabled     *bool  `json:"enabled"`
+	ReauthToken string `json:"reauth_token"`
+}
+
 type passkeyReauthResp struct {
 	ReauthToken string `json:"reauth_token"`
 }
@@ -111,6 +116,37 @@ func (s *Server) listMyPasskeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, passkeys)
+}
+
+func (s *Server) getMyPasswordLogin(w http.ResponseWriter, r *http.Request) {
+	state, err := s.store.PasswordLoginState(r.Context(), currentUser(r).ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
+}
+
+func (s *Server) updateMyPasswordLogin(w http.ResponseWriter, r *http.Request) {
+	var req passwordLoginReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Enabled == nil {
+		writeError(w, http.StatusBadRequest, "enabled required")
+		return
+	}
+	if err := s.store.ConsumePasskeyReauthToken(r.Context(), currentUser(r).ID, req.ReauthToken); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	state, err := s.store.SetPasswordLoginEnabled(r.Context(), currentUser(r).ID, *req.Enabled)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
 }
 
 func (s *Server) createPasswordReauth(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +293,10 @@ func (s *Server) uiPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uiPasskeyPasswordReauth(w http.ResponseWriter, r *http.Request) {
 	s.createPasswordReauth(w, r)
+}
+
+func (s *Server) uiUpdatePasswordLogin(w http.ResponseWriter, r *http.Request) {
+	s.updateMyPasswordLogin(w, r)
 }
 
 func (s *Server) uiPasskeyReauthOptions(w http.ResponseWriter, r *http.Request) {

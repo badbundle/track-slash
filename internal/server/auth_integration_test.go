@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -463,6 +464,164 @@ func TestHTTPPasskeyManagementPasswordReauth(t *testing.T) {
 	})
 	if code != http.StatusUnauthorized {
 		t.Fatalf("bad reauth add options code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPPasswordLoginStateAndToggle(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	username := "pwdlogin" + strings.ToLower(uniqueProjectKey(t))
+	password := "correct-horse-battery"
+	u, err := e.store.CreateAccount(e.ctx, store.CreateAccountParams{
+		Username: username,
+		Password: password,
+		Name:     "Password Login",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	session, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindSession,
+		Name:   "session",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken session: %v", err)
+	}
+
+	code, body := e.doUnauth(t, http.MethodGet, "/me/password-login", nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("unauth password-login code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodGet, "/me/password-login", nil)
+	if code != http.StatusOK {
+		t.Fatalf("password-login state code = %d body = %s", code, body)
+	}
+	state := decode[model.PasswordLoginState](t, body)
+	if !state.HasPassword || !state.Enabled || state.CanDisable || state.ActivePasskeys != 0 {
+		t.Fatalf("initial state = %+v", state)
+	}
+
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/password-login", map[string]any{
+		"reauth_token": "bad-token",
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("missing enabled code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/password-login", map[string]any{
+		"enabled":      false,
+		"reauth_token": "bad-token",
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("bad reauth token code = %d body = %s", code, body)
+	}
+
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/reauth/password", map[string]any{
+		"current_password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("password reauth code = %d body = %s", code, body)
+	}
+	noPasskeyReauth := decode[struct {
+		Token string `json:"reauth_token"`
+	}](t, body)
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/password-login", map[string]any{
+		"enabled":      false,
+		"reauth_token": noPasskeyReauth.Token,
+	})
+	if code != http.StatusConflict {
+		t.Fatalf("disable without passkey code = %d body = %s", code, body)
+	}
+
+	if _, err := e.store.AddPasskeyCredential(e.ctx, u.ID, "localhost", "Laptop", serverPasskeyCredential("credential-"+uniqueProjectKey(t), 1)); err != nil {
+		t.Fatalf("AddPasskeyCredential: %v", err)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/reauth/password", map[string]any{
+		"current_password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("first password reauth code = %d body = %s", code, body)
+	}
+	disableReauth := decode[struct {
+		Token string `json:"reauth_token"`
+	}](t, body)
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/reauth/password", map[string]any{
+		"current_password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("second password reauth code = %d body = %s", code, body)
+	}
+	staleReauth := decode[struct {
+		Token string `json:"reauth_token"`
+	}](t, body)
+
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/password-login", map[string]any{
+		"enabled":      false,
+		"reauth_token": disableReauth.Token,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("disable password-login code = %d body = %s", code, body)
+	}
+	state = decode[model.PasswordLoginState](t, body)
+	if !state.HasPassword || state.Enabled || state.CanDisable || state.ActivePasskeys != 1 {
+		t.Fatalf("disabled state = %+v", state)
+	}
+	code, body = e.doUnauth(t, http.MethodPost, "/session", map[string]any{
+		"username": username,
+		"password": password,
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("disabled password session code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPost, "/me/reauth/password", map[string]any{
+		"current_password": password,
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("disabled password reauth code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/password-login", map[string]any{
+		"enabled":      true,
+		"reauth_token": staleReauth.Token,
+	})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("stale reauth enable code = %d body = %s", code, body)
+	}
+
+	passkeyReauth, err := e.store.CreatePasskeyReauthToken(e.ctx, u.ID)
+	if err != nil {
+		t.Fatalf("CreatePasskeyReauthToken: %v", err)
+	}
+	code, body = e.doWithToken(t, session.RawToken, http.MethodPatch, "/me/password-login", map[string]any{
+		"enabled":      true,
+		"reauth_token": passkeyReauth,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("enable password-login code = %d body = %s", code, body)
+	}
+	state = decode[model.PasswordLoginState](t, body)
+	if !state.HasPassword || !state.Enabled || !state.CanDisable || state.ActivePasskeys != 1 {
+		t.Fatalf("enabled state = %+v", state)
+	}
+	code, body = e.doUnauth(t, http.MethodPost, "/session", map[string]any{
+		"username": username,
+		"password": password,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("re-enabled password session code = %d body = %s", code, body)
+	}
+}
+
+func serverPasskeyCredential(id string, signCount uint32) webauthn.Credential {
+	return webauthn.Credential{
+		ID:        []byte(id),
+		PublicKey: []byte("public-key-" + id),
+		Flags: webauthn.CredentialFlags{
+			UserPresent:    true,
+			UserVerified:   true,
+			BackupEligible: true,
+			BackupState:    true,
+		},
+		Authenticator: webauthn.Authenticator{SignCount: signCount},
 	}
 }
 
