@@ -79,10 +79,9 @@ func (s *Store) CreateAccount(ctx context.Context, p CreateAccountParams) (model
 	const userQ = `
 		INSERT INTO users (username, email, name)
 		VALUES ($1, NULL, $2)
-		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at
+		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
 	`
-	var u model.User
-	err = tx.QueryRow(ctx, userQ, username, name).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	u, err := scanUser(tx.QueryRow(ctx, userQ, username, name))
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -114,7 +113,9 @@ func (s *Store) AuthenticatePassword(ctx context.Context, username, password str
 		return model.User{}, ErrUnauthorized
 	}
 	const q = `
-		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at, c.id, c.secret_hash
+		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
+		       u.profile_image_object_id, u.profile_image_thumbnail_object_id,
+		       c.id, c.secret_hash
 		FROM auth_credentials c
 		JOIN users u ON u.id = c.user_id
 		WHERE c.kind = $1
@@ -124,16 +125,27 @@ func (s *Store) AuthenticatePassword(ctx context.Context, username, password str
 		  AND u.deleted_at IS NULL
 	`
 	var u model.User
+	var profileImageID, profileThumbnailID uuid.NullUUID
 	var credentialID string
 	var hash string
 	err = s.db.QueryRow(ctx, q, string(model.AuthCredentialKindPassword), normalized).Scan(
-		&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt, &credentialID, &hash,
+		&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt,
+		&profileImageID, &profileThumbnailID,
+		&credentialID, &hash,
 	)
 	if err != nil {
 		if isNoRows(err) {
 			return model.User{}, ErrUnauthorized
 		}
 		return model.User{}, err
+	}
+	if profileImageID.Valid {
+		id := profileImageID.UUID
+		u.ProfileImageObjectID = &id
+	}
+	if profileThumbnailID.Valid {
+		id := profileThumbnailID.UUID
+		u.ProfileImageThumbnailObjectID = &id
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
 		return model.User{}, ErrUnauthorized

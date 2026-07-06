@@ -221,7 +221,7 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			}
 		}
 		if tt.template == "issue-card-list" {
-			for _, want := range []string{`aria-label="Assigned to Ada Lovelace"`, `title="Ada Lovelace"`, ">AL</span>", "#Card Tag", "border-violet-200 bg-violet-50 text-violet-700"} {
+			for _, want := range []string{`aria-label="Ada Lovelace"`, `title="Ada Lovelace"`, "AL", "#Card Tag", "border-violet-200 bg-violet-50 text-violet-700"} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("%s missing assignee avatar markup %q: %s", tt.name, want, body)
 				}

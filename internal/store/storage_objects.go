@@ -27,6 +27,19 @@ type CreateStorageObjectParams struct {
 	CreatedByID uuid.UUID
 }
 
+type CreateUserStorageObjectParams struct {
+	ID          uuid.UUID
+	OwnerUserID uuid.UUID
+	Backend     string
+	Bucket      string
+	ObjectKey   string
+	Filename    string
+	ContentType string
+	ByteSize    int64
+	SHA256      string
+	CreatedByID uuid.UUID
+}
+
 type StorageObjectsCursor struct {
 	Number int `json:"n"`
 }
@@ -44,8 +57,9 @@ type storageObjectScanner interface {
 func scanStorageObject(row storageObjectScanner) (model.StorageObject, error) {
 	var out model.StorageObject
 	var deletedAt sql.NullTime
+	var projectID, ownerUserID uuid.NullUUID
 	err := row.Scan(
-		&out.ID, &out.ProjectID, &out.Number, &out.Backend, &out.Bucket, &out.ObjectKey,
+		&out.ID, &projectID, &out.Number, &ownerUserID, &out.Backend, &out.Bucket, &out.ObjectKey,
 		&out.Filename, &out.ContentType, &out.ByteSize, &out.SHA256, &out.CreatedByID,
 		&out.CreatedAt, &out.UpdatedAt, &deletedAt,
 	)
@@ -55,7 +69,16 @@ func scanStorageObject(row storageObjectScanner) (model.StorageObject, error) {
 	if deletedAt.Valid {
 		out.DeletedAt = &deletedAt.Time
 	}
-	out.Ref = model.StorageObjectRef(out.Number)
+	if projectID.Valid {
+		out.ProjectID = projectID.UUID
+	}
+	if ownerUserID.Valid {
+		id := ownerUserID.UUID
+		out.OwnerUserID = &id
+	}
+	if out.Number > 0 {
+		out.Ref = model.StorageObjectRef(out.Number)
+	}
 	return out, nil
 }
 
@@ -78,11 +101,11 @@ func (s *Store) CreateStorageObject(ctx context.Context, p CreateStorageObjectPa
 		var err error
 		out, err = scanStorageObject(tx.QueryRow(ctx, `
 			INSERT INTO storage_objects (
-				id, project_id, number, backend, bucket, object_key, filename, content_type,
+				id, project_id, number, owner_user_id, backend, bucket, object_key, filename, content_type,
 				byte_size, sha256, created_by_id
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-			RETURNING id, project_id, number, backend, bucket, object_key, filename, content_type,
+			VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11)
+			RETURNING id, project_id, number, owner_user_id, backend, bucket, object_key, filename, content_type,
 			          byte_size, sha256, created_by_id, created_at, updated_at, deleted_at
 		`, p.ID, p.ProjectID, number, p.Backend, p.Bucket, p.ObjectKey, p.Filename, p.ContentType, p.ByteSize, p.SHA256, p.CreatedByID))
 		if err != nil {
@@ -108,9 +131,48 @@ func (s *Store) CreateStorageObject(ctx context.Context, p CreateStorageObjectPa
 	return out, nil
 }
 
+func (s *Store) CreateUserStorageObject(ctx context.Context, p CreateUserStorageObjectParams) (model.StorageObject, error) {
+	var out model.StorageObject
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := scanUser(tx.QueryRow(ctx, `
+			SELECT id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
+			FROM users
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR UPDATE
+		`, p.OwnerUserID)); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err // defensive: DB outage past the no-rows branch
+		}
+
+		var err error
+		out, err = scanStorageObject(tx.QueryRow(ctx, `
+			INSERT INTO storage_objects (
+				id, project_id, number, owner_user_id, backend, bucket, object_key, filename, content_type,
+				byte_size, sha256, created_by_id
+			)
+			VALUES ($1, NULL, 0, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			RETURNING id, project_id, number, owner_user_id, backend, bucket, object_key, filename, content_type,
+			          byte_size, sha256, created_by_id, created_at, updated_at, deleted_at
+		`, p.ID, p.OwnerUserID, p.Backend, p.Bucket, p.ObjectKey, p.Filename, p.ContentType, p.ByteSize, p.SHA256, p.CreatedByID))
+		if err != nil {
+			if mapped := mapStorageObjectWriteError(err); mapped != nil {
+				return mapped
+			}
+			return err // defensive: non-pg or unmapped pg error
+		}
+		return nil
+	})
+	if err != nil {
+		return model.StorageObject{}, err
+	}
+	return out, nil
+}
+
 func (s *Store) GetStorageObjectByProjectNumber(ctx context.Context, projectID uuid.UUID, number int) (model.StorageObject, error) {
 	const q = `
-		SELECT so.id, so.project_id, so.number, so.backend, so.bucket, so.object_key,
+		SELECT so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 		       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 		       so.created_at, so.updated_at, so.deleted_at
 		FROM storage_objects so
@@ -133,7 +195,7 @@ func (s *Store) ListStorageObjects(ctx context.Context, p ListStorageObjectsPara
 	}
 	args := []any{p.ProjectID}
 	q := `
-		SELECT so.id, so.project_id, so.number, so.backend, so.bucket, so.object_key,
+		SELECT so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 		       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 		       so.created_at, so.updated_at, so.deleted_at
 		FROM storage_objects so
@@ -176,12 +238,12 @@ func (s *Store) DeleteStorageObject(ctx context.Context, id uuid.UUID) (model.St
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var err error
 		out, err = scanStorageObject(tx.QueryRow(ctx, `
-			SELECT so.id, so.project_id, so.number, so.backend, so.bucket, so.object_key,
+			SELECT so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 			       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 			       so.created_at, so.updated_at, so.deleted_at
 			FROM storage_objects so
-			JOIN projects p ON p.id = so.project_id
-			WHERE so.id = $1 AND so.deleted_at IS NULL AND p.deleted_at IS NULL
+			LEFT JOIN projects p ON p.id = so.project_id
+			WHERE so.id = $1 AND so.deleted_at IS NULL AND (so.project_id IS NULL OR p.deleted_at IS NULL)
 			FOR UPDATE OF so
 		`, id))
 		if err != nil {

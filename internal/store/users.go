@@ -12,6 +12,28 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 )
 
+type userScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanUser(row userScanner) (model.User, error) {
+	var u model.User
+	var profileImageID, profileThumbnailID uuid.NullUUID
+	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt, &profileImageID, &profileThumbnailID)
+	if err != nil {
+		return model.User{}, err
+	}
+	if profileImageID.Valid {
+		id := profileImageID.UUID
+		u.ProfileImageObjectID = &id
+	}
+	if profileThumbnailID.Valid {
+		id := profileThumbnailID.UUID
+		u.ProfileImageThumbnailObjectID = &id
+	}
+	return u, nil
+}
+
 func (s *Store) CreateUser(ctx context.Context, email, name string) (model.User, error) {
 	username := UsernameFromEmail(email)
 	return s.CreateUserProfile(ctx, username, email, name)
@@ -25,10 +47,9 @@ func (s *Store) CreateUserProfile(ctx context.Context, username, email, name str
 	const q = `
 		INSERT INTO users (username, email, name)
 		VALUES ($1, $2, $3)
-		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at
+		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
 	`
-	var u model.User
-	err = s.db.QueryRow(ctx, q, username, email, name).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	u, err := scanUser(s.db.QueryRow(ctx, q, username, email, name))
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -40,9 +61,8 @@ func (s *Store) CreateUserProfile(ctx context.Context, username, email, name str
 }
 
 func (s *Store) GetUser(ctx context.Context, id uuid.UUID) (model.User, error) {
-	const q = `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at FROM users WHERE id = $1 AND deleted_at IS NULL`
-	var u model.User
-	err := s.db.QueryRow(ctx, q, id).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	const q = `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id FROM users WHERE id = $1 AND deleted_at IS NULL`
+	u, err := scanUser(s.db.QueryRow(ctx, q, id))
 	if err != nil {
 		if isNoRows(err) {
 			return model.User{}, ErrNotFound
@@ -57,9 +77,8 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (model.U
 	if err != nil {
 		return model.User{}, err
 	}
-	const q = `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at FROM users WHERE username = $1 AND deleted_at IS NULL`
-	var u model.User
-	err = s.db.QueryRow(ctx, q, username).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	const q = `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id FROM users WHERE username = $1 AND deleted_at IS NULL`
+	u, err := scanUser(s.db.QueryRow(ctx, q, username))
 	if err != nil {
 		if isNoRows(err) {
 			return model.User{}, ErrNotFound
@@ -76,10 +95,10 @@ func (s *Store) CreateOrUpdateAdminUser(ctx context.Context, email, name string)
 		VALUES ($1, $2, $3, true)
 		ON CONFLICT (email) DO UPDATE
 		SET username = EXCLUDED.username, name = EXCLUDED.name, is_admin = true, deleted_at = NULL
-		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at
+		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
 	`
-	var u model.User
-	if err := s.db.QueryRow(ctx, q, username, email, name).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt); err != nil {
+	u, err := scanUser(s.db.QueryRow(ctx, q, username, email, name))
+	if err != nil {
 		return model.User{}, err
 	}
 	return u, nil
@@ -102,7 +121,7 @@ type ListUsersParams struct {
 // strictly monotonic.
 func (s *Store) ListUsers(ctx context.Context, p ListUsersParams) ([]model.User, bool, error) {
 	args := []any{}
-	q := `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at FROM users WHERE deleted_at IS NULL`
+	q := `SELECT id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id FROM users WHERE deleted_at IS NULL`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
 		q += ` AND (created_at, id) > ($1, $2)`
@@ -118,8 +137,8 @@ func (s *Store) ListUsers(ctx context.Context, p ListUsersParams) ([]model.User,
 
 	users := make([]model.User, 0, p.Limit)
 	for rows.Next() {
-		var u model.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt); err != nil {
+		u, err := scanUser(rows)
+		if err != nil {
 			return nil, false, err
 		}
 		users = append(users, u)

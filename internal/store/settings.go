@@ -38,10 +38,9 @@ func (s *Store) UpdateUserProfile(ctx context.Context, userID uuid.UUID, name, e
 		UPDATE users
 		SET name = $2, email = $3
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at
+		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
 	`
-	var u model.User
-	err := s.db.QueryRow(ctx, q, userID, name, emailValue).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	u, err := scanUser(s.db.QueryRow(ctx, q, userID, name, emailValue))
 	if err != nil {
 		if isNoRows(err) {
 			return model.User{}, ErrNotFound

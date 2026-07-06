@@ -35,16 +35,21 @@ AWS_SESSION_TOKEN=... # optional
 
 ## Data Model
 
-`storage_objects` is the metadata table. Each row belongs to one project and has a project-local public ref such as `object-1`.
+`storage_objects` is the metadata table. Each row belongs to exactly one owner scope:
+
+- Project-owned objects have `project_id`, no `owner_user_id`, and a project-local public ref such as `object-1`.
+- User-owned objects have `owner_user_id`, no `project_id`, and no public `object-N` ref.
 
 Important fields:
 
-- `project_id`, `number`: project scope and `object-N` ref.
-- `backend`, `bucket`, `object_key`: backend locator. Keys look like `projects/{project_id}/objects/{object_id}` for both local and S3-compatible storage.
+- `project_id`, `owner_user_id`, `number`: exactly one owner scope plus project-local numbering for project objects.
+- `backend`, `bucket`, `object_key`: backend locator. Project keys look like `projects/{project_id}/objects/{object_id}`. User profile image keys look like `users/{user_id}/profile-images/{object_id}/{variant}`.
 - `filename`, `content_type`, `byte_size`, `sha256`: download metadata and integrity metadata.
 - `created_by_id`, timestamps, `deleted_at`: audit and soft-delete state.
 
-Object rows are listed and fetched only when both the project and object are live. Project soft-delete makes objects inaccessible but does not physically remove backend bytes.
+Project object rows are listed and fetched only when both the project and object are live. Project soft-delete makes objects inaccessible but does not physically remove backend bytes. User-owned rows are fetched only through feature-specific routes, not project object routes.
+
+Profile images are account-wide user-owned objects. Each user can reference one original image row in `users.profile_image_object_id` and one generated thumbnail row in `users.profile_image_thumbnail_object_id`. Both rows must be live `storage_objects` rows owned by the same user.
 
 ## API
 
@@ -58,11 +63,24 @@ Project members can use:
 
 Downloads stream backend bytes and set `Content-Type`, `Content-Length`, `ETag` from SHA-256, and `Content-Disposition` with the stored filename.
 
+Signed-in users can use profile image routes:
+
+- `POST /api/v1/me/profile-image` with multipart field `file`.
+- `DELETE /api/v1/me/profile-image`.
+- `GET /api/v1/users/{id}/profile-image/content`.
+- `GET /api/v1/users/{id}/profile-image/thumbnail/content`.
+
+Any authenticated user may read any live user's profile image content. Profile image objects are not exposed through project `object-N` listing, metadata, content, or delete routes.
+
 ## Write And Delete Flow
 
 Uploads write bytes to the backend first, then insert metadata in Postgres. If the metadata insert fails, the server deletes the just-written backend object.
 
 Deletes soft-delete the Postgres row first, then remove backend bytes. This avoids live metadata pointing at a missing file. A crash between those steps can leave orphaned backend bytes, which are inaccessible through the API and should be handled by a future cleanup task.
+
+Profile image replacement writes the original and generated thumbnail to the backend first, creates user-owned metadata rows, then updates the user profile pointers in one transaction. Previous profile image rows are soft-deleted and their backend bytes are deleted best-effort. Removing a profile image clears both user pointers, soft-deletes the old rows, and also deletes backend bytes best-effort.
+
+The server accepts decodable PNG, JPEG, GIF, WebP, and BMP profile uploads. SVG, AVIF, non-images, corrupt images, oversized files, and unreasonable dimensions are rejected before profile metadata is linked. The generated thumbnail is a centered square `128x128` PNG; animated formats use the decoded first frame.
 
 ## Remote Backend Path
 

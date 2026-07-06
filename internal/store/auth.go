@@ -71,6 +71,7 @@ func (s *Store) AuthenticateToken(ctx context.Context, raw string) (Authenticate
 	const q = `
 		SELECT
 			u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
+			u.profile_image_object_id, u.profile_image_thumbnail_object_id,
 			t.id, t.user_id, t.kind, t.name, t.created_at, t.last_used_at, t.expires_at, t.revoked_at
 		FROM auth_tokens t
 		JOIN users u ON u.id = t.user_id
@@ -80,8 +81,10 @@ func (s *Store) AuthenticateToken(ctx context.Context, raw string) (Authenticate
 		  AND u.deleted_at IS NULL
 	`
 	var out AuthenticatedToken
+	var profileImageID, profileThumbnailID uuid.NullUUID
 	err := s.db.QueryRow(ctx, q, hash[:]).Scan(
 		&out.User.ID, &out.User.Username, &out.User.Email, &out.User.Name, &out.User.IsAdmin, &out.User.CreatedAt,
+		&profileImageID, &profileThumbnailID,
 		&out.Token.ID, &out.Token.UserID, &out.Token.Kind, &out.Token.Name,
 		&out.Token.CreatedAt, &out.Token.LastUsedAt, &out.Token.ExpiresAt, &out.Token.RevokedAt,
 	)
@@ -90,6 +93,14 @@ func (s *Store) AuthenticateToken(ctx context.Context, raw string) (Authenticate
 			return AuthenticatedToken{}, ErrUnauthorized
 		}
 		return AuthenticatedToken{}, err
+	}
+	if profileImageID.Valid {
+		id := profileImageID.UUID
+		out.User.ProfileImageObjectID = &id
+	}
+	if profileThumbnailID.Valid {
+		id := profileThumbnailID.UUID
+		out.User.ProfileImageThumbnailObjectID = &id
 	}
 	if _, err := s.db.Exec(ctx, `UPDATE auth_tokens SET last_used_at = now() WHERE id = $1`, out.Token.ID); err != nil {
 		// Defensive: token row was just read; failure here is a DB/runtime fault.
