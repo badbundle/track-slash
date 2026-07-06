@@ -173,8 +173,8 @@ func TestHTTPSoftDeleteProject(t *testing.T) {
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "S1",
-		StartDate: dateHTTP(2026, 6, 1),
-		EndDate:   dateHTTP(2026, 6, 14),
+		StartDate: datePtr(dateHTTP(2026, 6, 1)),
+		EndDate:   datePtr(dateHTTP(2026, 6, 14)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)
@@ -225,8 +225,8 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 	planned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "planned",
-		StartDate: dateHTTP(2026, 7, 1),
-		EndDate:   dateHTTP(2026, 7, 14),
+		StartDate: datePtr(dateHTTP(2026, 7, 1)),
+		EndDate:   datePtr(dateHTTP(2026, 7, 14)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint planned: %v", err)
@@ -234,8 +234,8 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 	active, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "active",
-		StartDate: dateHTTP(2026, 7, 15),
-		EndDate:   dateHTTP(2026, 7, 28),
+		StartDate: datePtr(dateHTTP(2026, 7, 15)),
+		EndDate:   datePtr(dateHTTP(2026, 7, 28)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint active: %v", err)
@@ -247,8 +247,8 @@ func TestHTTPSoftDeleteSprint(t *testing.T) {
 	completed, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "completed",
-		StartDate: dateHTTP(2026, 7, 29),
-		EndDate:   dateHTTP(2026, 8, 11),
+		StartDate: datePtr(dateHTTP(2026, 7, 29)),
+		EndDate:   datePtr(dateHTTP(2026, 8, 11)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint completed: %v", err)
@@ -333,8 +333,8 @@ func TestHTTPOldUUIDObjectRoutesRemoved(t *testing.T) {
 	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Old Route Sprint",
-		StartDate: dateHTTP(2026, 6, 1),
-		EndDate:   dateHTTP(2026, 6, 14),
+		StartDate: datePtr(dateHTTP(2026, 6, 1)),
+		EndDate:   datePtr(dateHTTP(2026, 6, 14)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)

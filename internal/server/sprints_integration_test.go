@@ -33,6 +33,10 @@ type httpEnv struct {
 	authToken     string
 }
 
+func datePtr(t time.Time) *time.Time {
+	return &t
+}
+
 func newHTTPEnv(t *testing.T) *httpEnv {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -191,6 +195,22 @@ func TestHTTPCreateSprintHappy(t *testing.T) {
 	}
 }
 
+func TestHTTPCreateSprintWithoutDates(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	code, body := e.do(t, http.MethodPost,
+		e.projectSprintsPath(),
+		map[string]any{"name": "No dates"},
+	)
+	if code != http.StatusCreated {
+		t.Fatalf("code = %d, body = %s", code, body)
+	}
+	sp := decode[model.Sprint](t, body)
+	if sp.StartDate != nil || sp.EndDate != nil {
+		t.Fatalf("dates = %v..%v, want nil..nil", sp.StartDate, sp.EndDate)
+	}
+}
+
 func TestHTTPCreateSprintBadProjectID(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -244,6 +264,20 @@ func TestHTTPCreateSprintEndBeforeStart(t *testing.T) {
 		map[string]any{"name": "x", "start_date": "2026-06-14", "end_date": "2026-06-01"})
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
+	}
+}
+
+func TestHTTPCreateSprintRejectsPartialDateRange(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	for _, body := range []map[string]any{
+		{"name": "start only", "start_date": "2026-06-01"},
+		{"name": "end only", "end_date": "2026-06-14"},
+	} {
+		code, _ := e.do(t, http.MethodPost, e.projectSprintsPath(), body)
+		if code != http.StatusBadRequest {
+			t.Fatalf("body=%v code=%d", body, code)
+		}
 	}
 }
 
@@ -543,6 +577,37 @@ func TestHTTPUpdateSprintBadDate(t *testing.T) {
 	}
 }
 
+func TestHTTPUpdateSprintClearDates(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	sp := createSprintFor(t, e, "S", "2026-06-01", "2026-06-14")
+	code, body := e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"clear_dates": true})
+	if code != http.StatusOK {
+		t.Fatalf("clear code = %d body = %s", code, body)
+	}
+	got := decode[model.Sprint](t, body)
+	if got.StartDate != nil || got.EndDate != nil {
+		t.Fatalf("cleared dates = %v..%v, want nil..nil", got.StartDate, got.EndDate)
+	}
+
+	code, _ = e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{"start_date": "2026-07-01"})
+	if code != http.StatusConflict {
+		t.Fatalf("start-only code = %d, want conflict", code)
+	}
+
+	code, body = e.do(t, http.MethodPatch, e.sprintPath(sp), map[string]any{
+		"start_date": "2026-07-01",
+		"end_date":   "2026-07-14",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("restore code = %d body = %s", code, body)
+	}
+	got = decode[model.Sprint](t, body)
+	if got.StartDate == nil || got.EndDate == nil {
+		t.Fatalf("restored dates = %v..%v, want range", got.StartDate, got.EndDate)
+	}
+}
+
 func TestHTTPUpdateSprintNameAndGoalTooLong(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -721,6 +786,7 @@ func TestHTTPCompletedSprintRenameOnly(t *testing.T) {
 		{"goal": "nope"},
 		{"start_date": "2026-06-02"},
 		{"end_date": "2026-06-15"},
+		{"clear_dates": true},
 		{"status": "active"},
 	} {
 		code, _ := e.do(t, http.MethodPatch, e.sprintPath(sp), body)
@@ -958,8 +1024,8 @@ func TestHTTPPatchIssueCrossProjectSprint(t *testing.T) {
 	}
 	otherSp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: other.ID, Name: "x",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other: %v", err)

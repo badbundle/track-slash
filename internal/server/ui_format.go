@@ -164,6 +164,16 @@ func uiSprintDate(t time.Time) string {
 	return t.Format("Jan 2")
 }
 
+func uiSprintDateRange(sprint model.Sprint) string {
+	if sprint.StartDate == nil && sprint.EndDate == nil {
+		return ""
+	}
+	if sprint.StartDate == nil || sprint.EndDate == nil {
+		return "Invalid dates"
+	}
+	return uiSprintDate(*sprint.StartDate) + "-" + uiSprintDate(*sprint.EndDate)
+}
+
 func uiSprintLabel(sprint model.Sprint) string {
 	name := strings.TrimSpace(sprint.Name)
 	if name != "" {

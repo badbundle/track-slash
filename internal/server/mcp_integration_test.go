@@ -168,6 +168,45 @@ func TestMCPToolErrorsAreStructured(t *testing.T) {
 	requireMCPErrorCode(t, out, "validation_error")
 }
 
+func TestMCPSprintOptionalDates(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	session := mcpConnect(t, e, e.authToken)
+
+	out := mcpCall(t, e, session, "track_create_sprint", map[string]any{
+		"owner": e.ownerUsername,
+		"key":   e.projKey,
+		"name":  "No dates",
+	})
+	sp := decodeMCPField[model.Sprint](t, out, "sprint")
+	if sp.StartDate != nil || sp.EndDate != nil {
+		t.Fatalf("created dates = %v..%v, want nil..nil", sp.StartDate, sp.EndDate)
+	}
+
+	out = mcpCall(t, e, session, "track_update_sprint", map[string]any{
+		"owner":      e.ownerUsername,
+		"key":        e.projKey,
+		"sprint":     sp.Ref,
+		"start_date": "2026-07-01",
+		"end_date":   "2026-07-14",
+	})
+	sp = decodeMCPField[model.Sprint](t, out, "sprint")
+	if sp.StartDate == nil || sp.EndDate == nil {
+		t.Fatalf("scheduled dates = %v..%v, want range", sp.StartDate, sp.EndDate)
+	}
+
+	out = mcpCall(t, e, session, "track_update_sprint", map[string]any{
+		"owner":       e.ownerUsername,
+		"key":         e.projKey,
+		"sprint":      sp.Ref,
+		"clear_dates": true,
+	})
+	sp = decodeMCPField[model.Sprint](t, out, "sprint")
+	if sp.StartDate != nil || sp.EndDate != nil {
+		t.Fatalf("cleared dates = %v..%v, want nil..nil", sp.StartDate, sp.EndDate)
+	}
+}
+
 func TestMCPRequiresAPIToken(t *testing.T) {
 	t.Parallel()
 	storageSvc, _ := newLocalStorageService(t, 1024*1024)

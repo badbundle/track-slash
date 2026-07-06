@@ -586,8 +586,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 			ProjectID: projectID,
 			Name:      "Current Sprint",
 			Goal:      "Ship filtering\nPolish sprint goals",
-			StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-			EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+			StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+			EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 		},
 		SprintColumns: columns,
 	})

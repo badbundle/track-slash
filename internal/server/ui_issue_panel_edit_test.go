@@ -9,6 +9,19 @@ import (
 	"time"
 )
 
+func TestUIIssueSprintOptionForNoDates(t *testing.T) {
+	t.Parallel()
+	option := uiIssueSprintOptionFor(model.Sprint{
+		Number: 3,
+		Ref:    "sprint-3",
+		Name:   "Flexible Sprint",
+		Status: model.SprintStatusPlanned,
+	}, "Planned")
+	if option.Label != "Planned - Flexible Sprint" {
+		t.Fatalf("label = %q", option.Label)
+	}
+}
+
 func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	t.Parallel()
 
@@ -249,6 +262,7 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 		SprintOptions: []uiIssueSprintOption{
 			{Value: "sprint-1", Label: "Active - Current Sprint - Jun 1-Jun 14"},
 			{Value: "sprint-3", Label: "Planned - Next Sprint - Jun 15-Jun 28"},
+			{Value: "sprint-5", Label: "Planned - Flexible Sprint"},
 		},
 		BackHref:  "/bradley/projects/TRACK/sprint",
 		BackHXGet: "/bradley/projects/TRACK/sprint/panel",
@@ -288,6 +302,8 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 		`Active - Current Sprint - Jun 1-Jun 14`,
 		`data-value="sprint-3"`,
 		`Planned - Next Sprint - Jun 15-Jun 28`,
+		`data-value="sprint-5"`,
+		`Planned - Flexible Sprint`,
 		`Choose an active or planned sprint.`,
 	} {
 		if !strings.Contains(body, want) {

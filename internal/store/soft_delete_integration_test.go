@@ -318,8 +318,8 @@ func TestSoftDeleteProjectCascades(t *testing.T) {
 	_, err = env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: env.projectID,
 		Name:      "nope",
-		StartDate: date(2026, 8, 1),
-		EndDate:   date(2026, 8, 14),
+		StartDate: datePtr(date(2026, 8, 1)),
+		EndDate:   datePtr(date(2026, 8, 14)),
 	})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("CreateSprint under deleted project err = %v, want ErrNotFound", err)

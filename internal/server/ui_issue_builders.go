@@ -249,9 +249,13 @@ func uiIssueSprintOptionFor(sprint model.Sprint, status string) uiIssueSprintOpt
 	if name == "" {
 		name = ref
 	}
+	label := fmt.Sprintf("%s - %s", status, name)
+	if dateRange := uiSprintDateRange(sprint); dateRange != "" {
+		label += " - " + dateRange
+	}
 	return uiIssueSprintOption{
 		Value: ref,
-		Label: fmt.Sprintf("%s - %s - %s-%s", status, name, uiSprintDate(sprint.StartDate), uiSprintDate(sprint.EndDate)),
+		Label: label,
 	}
 }
 

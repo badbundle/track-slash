@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+func datePtr(t time.Time) *time.Time {
+	return &t
+}
+
 func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	t.Parallel()
 
@@ -22,8 +26,8 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		Number:    1,
 		Ref:       "sprint-1",
 		Name:      "First Planned Sprint",
-		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)),
 	}
 
 	var buf bytes.Buffer
