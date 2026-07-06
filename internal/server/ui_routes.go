@@ -34,6 +34,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/issues", s.uiCreateIssue)
 		r.Get("/settings", s.uiSettingsPage)
 		r.Post("/settings/profile", s.uiUpdateProfile)
+		r.Post("/settings/profile-image", s.uiUpdateProfileImage)
+		r.Post("/settings/profile-image/delete", s.uiDeleteProfileImage)
 		r.Post("/settings/password", s.uiUpdatePassword)
 		r.Post("/settings/password-login", s.uiUpdatePasswordLogin)
 		r.Post("/settings/passkeys/reauth/password", s.uiPasskeyPasswordReauth)
@@ -45,6 +47,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
+		r.Get("/users/{id}/profile-image/content", s.uiGetUserProfileImageContent)
+		r.Get("/users/{id}/profile-image/thumbnail/content", s.uiGetUserProfileImageThumbnailContent)
 		if s.hub != nil {
 			r.Get("/realtime", s.uiRealtime)
 		}

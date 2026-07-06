@@ -20,6 +20,10 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 - `tag-badge`: compact hashtag badge for `model.IssueTag`, using `DisplayName` and `tagClass .Color`.
 - `issue-due-badge`: due-date badge with overdue/today/future styling.
 
+## Avatars
+
+- `user-avatar`: compact user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The caller owns dimensions, shape, colors, and borders through the class string; include `overflow-hidden` when rendering image thumbnails. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
+
 ## Forms
 
 - `option-dropdown`: expanded dropdown/listbox for choosing one option and submitting immediately. Backed by `uiOptionDropdownData`; use for compact enum-like changes such as issue status and close reason.

@@ -62,6 +62,7 @@ func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (mode
 			u.id,
 			u.username,
 			u.name,
+			u.profile_image_thumbnail_object_id,
 			COUNT(*)::INT,
 			(COUNT(*) FILTER (WHERE i.status = 'todo'))::INT,
 			(COUNT(*) FILTER (WHERE i.status = 'in_progress'))::INT,
@@ -72,7 +73,7 @@ func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (mode
 		WHERE i.project_id = $1
 		  AND i.deleted_at IS NULL
 		  AND u.deleted_at IS NULL
-		GROUP BY u.id, u.username, u.name
+		GROUP BY u.id, u.username, u.name, u.profile_image_thumbnail_object_id
 		ORDER BY COUNT(*) DESC, lower(u.name) ASC, lower(u.username) ASC, u.id ASC
 		LIMIT 5
 	`
@@ -85,10 +86,12 @@ func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (mode
 	stats.TopAssignees = []model.ProjectAssigneeIssueStats{}
 	for rows.Next() {
 		var assignee model.ProjectAssigneeIssueStats
+		var thumbnailID uuid.NullUUID
 		if err := rows.Scan(
 			&assignee.UserID,
 			&assignee.Username,
 			&assignee.Name,
+			&thumbnailID,
 			&assignee.Counts.Total,
 			&assignee.Counts.Todo,
 			&assignee.Counts.InProgress,
@@ -96,6 +99,10 @@ func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (mode
 			&assignee.Counts.Closed,
 		); err != nil {
 			return model.ProjectStats{}, err
+		}
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			assignee.ProfileImageThumbnailObjectID = &id
 		}
 		stats.TopAssignees = append(stats.TopAssignees, assignee)
 	}

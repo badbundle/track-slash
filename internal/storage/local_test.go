@@ -197,8 +197,33 @@ func TestServiceGeneratesObjectKeys(t *testing.T) {
 	if string(body) != "hi" {
 		t.Fatalf("body = %q, want hi", body)
 	}
+
+	userID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	profileObjectID := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	profileStored, err := svc.PutUserProfileImage(context.Background(), userID, profileObjectID, "thumbnail", strings.NewReader("avatar"))
+	if err != nil {
+		t.Fatalf("PutUserProfileImage: %v", err)
+	}
+	if profileStored.ObjectKey != "users/33333333-3333-3333-3333-333333333333/profile-images/44444444-4444-4444-4444-444444444444/thumbnail" {
+		t.Fatalf("profile object key = %q", profileStored.ObjectKey)
+	}
+	rc, err = svc.Open(context.Background(), profileStored.ObjectKey)
+	if err != nil {
+		t.Fatalf("Open profile: %v", err)
+	}
+	body, err = io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("ReadAll profile: %v", err)
+	}
+	_ = rc.Close()
+	if string(body) != "avatar" {
+		t.Fatalf("profile body = %q, want avatar", body)
+	}
 	if err := svc.Delete(context.Background(), stored.ObjectKey); err != nil {
 		t.Fatalf("Delete: %v", err)
+	}
+	if err := svc.Delete(context.Background(), profileStored.ObjectKey); err != nil {
+		t.Fatalf("Delete profile: %v", err)
 	}
 }
 

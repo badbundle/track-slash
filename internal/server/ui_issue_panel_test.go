@@ -138,7 +138,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`aria-label="Manage context"`,
 		`hx-get="/bradley/issues/TRACK-7/context"`,
 		`data-lucide="book-open"`,
-		`<span class="min-w-0 text-slate-900 dark:text-slate-100">Ada Lovelace</span>`,
+		`aria-label="Ada Lovelace" title="Ada Lovelace"`,
+		`class="flex min-w-0 items-center gap-2 text-slate-900 dark:text-slate-100"`,
 		`<span class="min-w-0 truncate text-slate-900 dark:text-slate-100">Planned One</span>`,
 		`aria-label="Add link"`,
 		`hx-get="/bradley/issues/TRACK-7/links/new"`,
@@ -165,7 +166,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700`,
 		`class="space-y-3 px-4"`,
 		`class="flex items-start gap-2"`,
-		`class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
+		`class="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`,
 		`class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25"`,
 		`class="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-1"`,
 		`class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-800 dark:text-slate-200"`,
@@ -252,7 +253,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if strings.Contains(body, `border-b border-slate-100 px-4 py-4 last:border-b-0`) {
 		t.Fatalf("comments should render as bubbles instead of bordered rows: %s", body)
 	}
-	commentMetaStart := strings.Index(body, "Ada Lovelace")
+	commentMetaStart := strings.Index(body, `<span class="text-xs font-medium text-slate-600 dark:text-slate-300">Ada Lovelace</span>`)
 	commentBodyStart := strings.Index(body, "Looks ready.")
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
 		t.Fatalf("issue panel should render comment metadata above the body: %s", body)
@@ -265,7 +266,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if commentBubbleStart < 0 || commentBubbleStart < commentMetaStart || commentBubbleStart > commentBodyStart {
 		t.Fatalf("comment body should render inside the bubble after metadata: %s", body)
 	}
-	commentAvatarStart := strings.Index(body, `class="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`)
+	commentAvatarStart := strings.Index(body, `class="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-sm bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300"`)
 	if commentAvatarStart < 0 || commentAvatarStart > commentMetaStart {
 		t.Fatalf("comment avatar should render with the metadata beside the author name: %s", body)
 	}
@@ -302,8 +303,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			t.Fatalf("title card still contains section action/status %q: %s", notWant, body)
 		}
 	}
-	if strings.Contains(body, "title=") {
-		t.Fatalf("issue panel controls should not render native title tooltips: %s", body)
+	if strings.Contains(titleHeader, "title=") {
+		t.Fatalf("issue panel title controls should not render native title tooltips: %s", body)
 	}
 }
 

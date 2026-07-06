@@ -190,12 +190,14 @@ func (s SprintStatus) Valid() bool {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email,omitempty"`
-	Name      string    `json:"name"`
-	IsAdmin   bool      `json:"is_admin"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                            uuid.UUID  `json:"id"`
+	Username                      string     `json:"username"`
+	Email                         string     `json:"email,omitempty"`
+	Name                          string     `json:"name"`
+	IsAdmin                       bool       `json:"is_admin"`
+	ProfileImageObjectID          *uuid.UUID `json:"profile_image_object_id,omitempty"`
+	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
+	CreatedAt                     time.Time  `json:"created_at"`
 }
 
 type AuthCredentialKind string
@@ -264,9 +266,10 @@ type ProjectMember struct {
 }
 
 type ProjectAssignee struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
+	ID                            uuid.UUID  `json:"id"`
+	Username                      string     `json:"username"`
+	Name                          string     `json:"name"`
+	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
 }
 
 type ProjectIssueStatusCounts struct {
@@ -278,10 +281,11 @@ type ProjectIssueStatusCounts struct {
 }
 
 type ProjectAssigneeIssueStats struct {
-	UserID   uuid.UUID                `json:"user_id"`
-	Username string                   `json:"username"`
-	Name     string                   `json:"name"`
-	Counts   ProjectIssueStatusCounts `json:"counts"`
+	UserID                        uuid.UUID                `json:"user_id"`
+	Username                      string                   `json:"username"`
+	Name                          string                   `json:"name"`
+	ProfileImageThumbnailObjectID *uuid.UUID               `json:"profile_image_thumbnail_object_id,omitempty"`
+	Counts                        ProjectIssueStatusCounts `json:"counts"`
 }
 
 type ProjectStats struct {
@@ -304,9 +308,10 @@ type ProjectChangelogDetails struct {
 }
 
 type ProjectChangelogActor struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
+	ID                            uuid.UUID  `json:"id"`
+	Username                      string     `json:"username"`
+	Name                          string     `json:"name"`
+	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
 }
 
 type ProjectChangelogEntry struct {
@@ -343,6 +348,7 @@ type StorageObject struct {
 	ProjectID   uuid.UUID  `json:"project_id"`
 	Number      int        `json:"number"`
 	Ref         string     `json:"ref"`
+	OwnerUserID *uuid.UUID `json:"owner_user_id,omitempty"`
 	Backend     string     `json:"backend"`
 	Bucket      string     `json:"bucket"`
 	ObjectKey   string     `json:"object_key"`

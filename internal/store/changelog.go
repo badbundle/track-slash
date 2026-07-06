@@ -65,11 +65,12 @@ func scanProjectChangelogEntry(row changelogScanner) (model.ProjectChangelogEntr
 	var out model.ProjectChangelogEntry
 	var actorID uuid.NullUUID
 	var actorUsername, actorName sql.NullString
+	var actorThumbnailID uuid.NullUUID
 	var details []byte
 	err := row.Scan(
 		&out.ID, &out.ProjectID, &actorID, &out.Entity, &out.Op, &out.EntityID, &out.IssueID, &out.ParentIssueID,
 		&out.TargetRef, &out.TargetTitle, &out.Summary, &details, &out.Version, &out.CreatedAt,
-		&actorUsername, &actorName,
+		&actorUsername, &actorName, &actorThumbnailID,
 	)
 	if err != nil {
 		return model.ProjectChangelogEntry{}, err
@@ -78,9 +79,14 @@ func scanProjectChangelogEntry(row changelogScanner) (model.ProjectChangelogEntr
 		id := actorID.UUID
 		out.ActorID = &id
 		out.Actor = &model.ProjectChangelogActor{
-			ID:       id,
-			Username: actorUsername.String,
-			Name:     actorName.String,
+			ID:                            id,
+			Username:                      actorUsername.String,
+			Name:                          actorName.String,
+			ProfileImageThumbnailObjectID: nil,
+		}
+		if actorThumbnailID.Valid {
+			thumbnailID := actorThumbnailID.UUID
+			out.Actor.ProfileImageThumbnailObjectID = &thumbnailID
 		}
 	}
 	if len(details) > 0 {
@@ -99,7 +105,7 @@ func (s *Store) ListProjectChangelog(ctx context.Context, p ListProjectChangelog
 	q := `
 		SELECT e.id, e.project_id, e.actor_id, e.entity, e.op, e.entity_id, e.issue_id, e.parent_issue_id,
 		       e.target_ref, e.target_title, e.summary, e.details, e.version, e.created_at,
-		       u.username, u.name
+		       u.username, u.name, u.profile_image_thumbnail_object_id
 		FROM project_changelog_entries e
 		LEFT JOIN users u ON u.id = e.actor_id
 		WHERE e.project_id = $1

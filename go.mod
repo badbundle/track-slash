@@ -17,6 +17,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.52.0
+	golang.org/x/image v0.30.0
 	golang.org/x/oauth2 v0.35.0
 )
 

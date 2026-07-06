@@ -99,6 +99,8 @@ func (s *Server) Router() http.Handler {
 			r.Use(middleware.Timeout(15 * time.Second))
 
 			r.Get("/me", s.getMe)
+			r.Post("/me/profile-image", s.createMyProfileImage)
+			r.Delete("/me/profile-image", s.deleteMyProfileImage)
 			r.Patch("/me/settings", s.updateMySettings)
 			r.Get("/me/password-login", s.getMyPasswordLogin)
 			r.Patch("/me/password-login", s.updateMyPasswordLogin)
@@ -117,6 +119,8 @@ func (s *Server) Router() http.Handler {
 			r.Route("/users", func(r chi.Router) {
 				r.Post("/", s.createUser)
 				r.Get("/", s.listUsers)
+				r.Get("/{id}/profile-image/content", s.getUserProfileImageContent)
+				r.Get("/{id}/profile-image/thumbnail/content", s.getUserProfileImageThumbnailContent)
 				r.Get("/{id}", s.getUser)
 				r.Delete("/{id}", s.deleteUser)
 				r.Post("/{id}/tokens", s.createUserToken)

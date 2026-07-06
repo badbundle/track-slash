@@ -138,17 +138,17 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 	}
 	const q = `
 		WITH assignees AS (
-			SELECT u.id, u.username, u.name
+			SELECT u.id, u.username, u.name, u.profile_image_thumbnail_object_id
 			FROM project_members pm
 			JOIN users u ON u.id = pm.user_id
 			WHERE pm.project_id = $1 AND u.deleted_at IS NULL
 			UNION
-			SELECT u.id, u.username, u.name
+			SELECT u.id, u.username, u.name, u.profile_image_thumbnail_object_id
 			FROM issues i
 			JOIN users u ON u.id = i.assignee_id
 			WHERE i.project_id = $1 AND i.deleted_at IS NULL AND u.deleted_at IS NULL
 		)
-		SELECT id, username, name
+		SELECT id, username, name, profile_image_thumbnail_object_id
 		FROM assignees
 		ORDER BY lower(name) ASC, lower(username) ASC, id ASC
 	`
@@ -161,8 +161,13 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 	out := []model.ProjectAssignee{}
 	for rows.Next() {
 		var a model.ProjectAssignee
-		if err := rows.Scan(&a.ID, &a.Username, &a.Name); err != nil {
+		var thumbnailID uuid.NullUUID
+		if err := rows.Scan(&a.ID, &a.Username, &a.Name, &thumbnailID); err != nil {
 			return nil, err
+		}
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			a.ProfileImageThumbnailObjectID = &id
 		}
 		out = append(out, a)
 	}
@@ -181,7 +186,8 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 	}
 	query := strings.ToLower(strings.TrimSpace(p.Query))
 	const q = `
-		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at
+		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
+		       u.profile_image_object_id, u.profile_image_thumbnail_object_id
 		FROM project_members pm
 		JOIN projects p ON p.id = pm.project_id
 		JOIN users u ON u.id = pm.user_id
@@ -205,8 +211,8 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 
 	out := []model.User{}
 	for rows.Next() {
-		var u model.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt); err != nil {
+		u, err := scanUser(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)

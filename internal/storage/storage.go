@@ -79,8 +79,21 @@ func (s *Service) ObjectKey(projectID, objectID uuid.UUID) string {
 	return fmt.Sprintf("projects/%s/objects/%s", projectID, objectID)
 }
 
+func (s *Service) UserProfileImageKey(userID, objectID uuid.UUID, variant string) string {
+	return fmt.Sprintf("users/%s/profile-images/%s/%s", userID, objectID, variant)
+}
+
 func (s *Service) Put(ctx context.Context, projectID, objectID uuid.UUID, r io.Reader) (StoredObject, error) {
 	key := s.ObjectKey(projectID, objectID)
+	return s.PutKey(ctx, key, r)
+}
+
+func (s *Service) PutUserProfileImage(ctx context.Context, userID, objectID uuid.UUID, variant string, r io.Reader) (StoredObject, error) {
+	key := s.UserProfileImageKey(userID, objectID, variant)
+	return s.PutKey(ctx, key, r)
+}
+
+func (s *Service) PutKey(ctx context.Context, key string, r io.Reader) (StoredObject, error) {
 	written, err := s.backend.Put(ctx, key, r, s.maxUploadBytes)
 	if err != nil {
 		return StoredObject{}, err

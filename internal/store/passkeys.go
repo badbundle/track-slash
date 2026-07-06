@@ -207,10 +207,9 @@ func (s *Store) CreatePasskeyOnlyAccount(ctx context.Context, p CreatePasskeyOnl
 	const userQ = `
 		INSERT INTO users (username, email, name)
 		VALUES ($1, NULL, $2)
-		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at
+		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
 	`
-	var u model.User
-	err = tx.QueryRow(ctx, userQ, username, name).Scan(&u.ID, &u.Username, &u.Email, &u.Name, &u.IsAdmin, &u.CreatedAt)
+	u, err := scanUser(tx.QueryRow(ctx, userQ, username, name))
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -310,19 +309,32 @@ func (s *Store) ActivePasskeyCredentialsForUser(ctx context.Context, userID uuid
 
 func (s *Store) PasskeyUserByHandle(ctx context.Context, rpID string, handle []byte) (PasskeyUser, error) {
 	const q = `
-		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at, h.handle
+		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
+		       u.profile_image_object_id, u.profile_image_thumbnail_object_id,
+		       h.handle
 		FROM webauthn_user_handles h
 		JOIN users u ON u.id = h.user_id
 		WHERE h.rp_id = $1 AND h.handle = $2 AND u.deleted_at IS NULL
 	`
 	var out PasskeyUser
+	var profileImageID, profileThumbnailID uuid.NullUUID
 	if err := s.db.QueryRow(ctx, q, rpID, handle).Scan(
-		&out.User.ID, &out.User.Username, &out.User.Email, &out.User.Name, &out.User.IsAdmin, &out.User.CreatedAt, &out.Handle,
+		&out.User.ID, &out.User.Username, &out.User.Email, &out.User.Name, &out.User.IsAdmin, &out.User.CreatedAt,
+		&profileImageID, &profileThumbnailID,
+		&out.Handle,
 	); err != nil {
 		if isNoRows(err) {
 			return PasskeyUser{}, ErrNotFound
 		}
 		return PasskeyUser{}, err
+	}
+	if profileImageID.Valid {
+		id := profileImageID.UUID
+		out.User.ProfileImageObjectID = &id
+	}
+	if profileThumbnailID.Valid {
+		id := profileThumbnailID.UUID
+		out.User.ProfileImageThumbnailObjectID = &id
 	}
 	creds, err := s.ActivePasskeyCredentialsForUser(ctx, out.User.ID, rpID)
 	if err != nil {

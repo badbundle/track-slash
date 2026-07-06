@@ -45,6 +45,14 @@ type uiSidebarFavoritesData struct {
 	OOB              bool
 }
 
+type uiUserAvatarData struct {
+	ID           uuid.UUID
+	Label        string
+	Initials     string
+	ThumbnailURL string
+	Class        string
+}
+
 type uiProjectFavoriteData struct {
 	Project  model.Project
 	View     string
@@ -150,10 +158,13 @@ type uiProjectAllIssuePageData struct {
 }
 
 type uiIssueCommentItem struct {
-	Comment     model.Comment
-	AuthorName  string
-	AuthorEmail string
-	CanEdit     bool
+	Comment                             model.Comment
+	AuthorID                            uuid.UUID
+	AuthorUsername                      string
+	AuthorName                          string
+	AuthorEmail                         string
+	AuthorProfileImageThumbnailObjectID *uuid.UUID
+	CanEdit                             bool
 }
 
 type uiIssueLinkItem struct {

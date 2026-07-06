@@ -2,10 +2,11 @@ package server
 
 import (
 	"fmt"
-	"github.com/bradleymackey/track-slash/internal/model"
-	"github.com/google/uuid"
 	"strings"
 	"time"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/google/uuid"
 )
 
 func uiInitials(name, email string) string {
@@ -23,6 +24,86 @@ func uiInitials(name, email string) string {
 	first := []rune(parts[0])
 	last := []rune(parts[len(parts)-1])
 	return strings.ToUpper(string(first[0]) + string(last[0]))
+}
+
+func uiUserAvatar(value any, class string) uiUserAvatarData {
+	switch v := value.(type) {
+	case model.User:
+		return uiUserAvatarFields(v.ID, v.Name, v.Username, v.Email, v.ProfileImageThumbnailObjectID, class)
+	case *model.User:
+		if v == nil {
+			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+		}
+		return uiUserAvatarFields(v.ID, v.Name, v.Username, v.Email, v.ProfileImageThumbnailObjectID, class)
+	case model.ProjectAssignee:
+		return uiUserAvatarFields(v.ID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case *model.ProjectAssignee:
+		if v == nil {
+			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+		}
+		return uiUserAvatarFields(v.ID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case model.ProjectAssigneeIssueStats:
+		return uiUserAvatarFields(v.UserID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case *model.ProjectAssigneeIssueStats:
+		if v == nil {
+			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+		}
+		return uiUserAvatarFields(v.UserID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case model.ProjectChangelogActor:
+		return uiUserAvatarFields(v.ID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case *model.ProjectChangelogActor:
+		if v == nil {
+			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+		}
+		return uiUserAvatarFields(v.ID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case uiIssueCommentItem:
+		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, v.AuthorEmail, v.AuthorProfileImageThumbnailObjectID, class)
+	case *uiIssueCommentItem:
+		if v == nil {
+			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+		}
+		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, v.AuthorEmail, v.AuthorProfileImageThumbnailObjectID, class)
+	default:
+		return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+	}
+}
+
+func uiUserAvatarFields(id uuid.UUID, name, username, email string, thumbnailID *uuid.UUID, class string) uiUserAvatarData {
+	label := uiUserLabel(name, username, email)
+	out := uiUserAvatarData{
+		ID:       id,
+		Label:    label,
+		Initials: uiInitials(name, uiUserFallback(username, email)),
+		Class:    class,
+	}
+	if id != uuid.Nil && thumbnailID != nil {
+		out.ThumbnailURL = uiUserProfileThumbnailPath(id, *thumbnailID)
+	}
+	return out
+}
+
+func uiUserLabel(name, username, email string) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	if username = strings.TrimSpace(username); username != "" {
+		return "@" + username
+	}
+	if email = strings.TrimSpace(email); email != "" {
+		return email
+	}
+	return "User"
+}
+
+func uiUserFallback(username, email string) string {
+	if username = strings.TrimSpace(username); username != "" {
+		return username
+	}
+	return strings.TrimSpace(email)
+}
+
+func uiUserProfileThumbnailPath(userID, thumbnailID uuid.UUID) string {
+	return fmt.Sprintf("/users/%s/profile-image/thumbnail/content?v=%s", userID, thumbnailID)
 }
 
 func uiProjectIcon(name, key string) string {

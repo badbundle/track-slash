@@ -37,9 +37,10 @@ type issueAttachmentScanner interface {
 func scanIssueAttachment(row issueAttachmentScanner) (model.IssueAttachment, error) {
 	var out model.IssueAttachment
 	var objectDeletedAt sql.NullTime
+	var objectProjectID, objectOwnerUserID uuid.NullUUID
 	err := row.Scan(
 		&out.ID, &out.ProjectID, &out.IssueID, &out.StorageObjectID, &out.CreatedByID, &out.CreatedAt, &out.UpdatedAt,
-		&out.Object.ID, &out.Object.ProjectID, &out.Object.Number, &out.Object.Backend, &out.Object.Bucket,
+		&out.Object.ID, &objectProjectID, &out.Object.Number, &objectOwnerUserID, &out.Object.Backend, &out.Object.Bucket,
 		&out.Object.ObjectKey, &out.Object.Filename, &out.Object.ContentType, &out.Object.ByteSize,
 		&out.Object.SHA256, &out.Object.CreatedByID, &out.Object.CreatedAt, &out.Object.UpdatedAt, &objectDeletedAt,
 	)
@@ -49,14 +50,23 @@ func scanIssueAttachment(row issueAttachmentScanner) (model.IssueAttachment, err
 	if objectDeletedAt.Valid {
 		out.Object.DeletedAt = &objectDeletedAt.Time
 	}
-	out.Object.Ref = model.StorageObjectRef(out.Object.Number)
+	if objectProjectID.Valid {
+		out.Object.ProjectID = objectProjectID.UUID
+	}
+	if objectOwnerUserID.Valid {
+		id := objectOwnerUserID.UUID
+		out.Object.OwnerUserID = &id
+	}
+	if out.Object.Number > 0 {
+		out.Object.Ref = model.StorageObjectRef(out.Object.Number)
+	}
 	return out, nil
 }
 
 func issueAttachmentSelect() string {
 	return `
 		SELECT ia.id, ia.project_id, ia.issue_id, ia.storage_object_id, ia.created_by_id, ia.created_at, ia.updated_at,
-		       so.id, so.project_id, so.number, so.backend, so.bucket, so.object_key,
+		       so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 		       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 		       so.created_at, so.updated_at, so.deleted_at
 		FROM issue_attachments ia
@@ -78,7 +88,7 @@ func (s *Store) CreateIssueAttachment(ctx context.Context, p CreateIssueAttachme
 		}
 
 		object, err := scanStorageObject(tx.QueryRow(ctx, `
-			SELECT so.id, so.project_id, so.number, so.backend, so.bucket, so.object_key,
+			SELECT so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 			       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 			       so.created_at, so.updated_at, so.deleted_at
 			FROM storage_objects so
@@ -103,7 +113,7 @@ func (s *Store) CreateIssueAttachment(ctx context.Context, p CreateIssueAttachme
 				RETURNING id, project_id, issue_id, storage_object_id, created_by_id, created_at, updated_at
 			)
 			SELECT ins.id, ins.project_id, ins.issue_id, ins.storage_object_id, ins.created_by_id, ins.created_at, ins.updated_at,
-			       so.id, so.project_id, so.number, so.backend, so.bucket, so.object_key,
+			       so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 			       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 			       so.created_at, so.updated_at, so.deleted_at
 			FROM inserted ins

@@ -64,9 +64,9 @@
     </div>
     {{end}}
     <div class="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-      {{if .Assignee}}
-      <span aria-label="Assigned to {{.Assignee.Name}}" title="{{.Assignee.Name}}" class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">{{initials .Assignee.Name .Assignee.Username}}</span>
-      {{end}}
+	      {{if .Assignee}}
+	      {{template "user-avatar" (userAvatar .Assignee "grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200")}}
+	      {{end}}
       <span class="min-w-0 truncate">{{.Project.Name}}</span>
       {{if .Sprint}}<span aria-hidden="true">·</span><span class="min-w-0 truncate">{{.Sprint.Name}}</span>{{end}}
     </div>

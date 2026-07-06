@@ -462,12 +462,15 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		}
 		item := uiIssueCommentItem{
 			Comment:    comment,
+			AuthorID:   comment.AuthorID,
 			AuthorName: "Unknown user",
 			CanEdit:    comment.AuthorID == currentUser(r).ID,
 		}
 		if author != nil {
+			item.AuthorUsername = author.Username
 			item.AuthorName = author.Name
 			item.AuthorEmail = author.Email
+			item.AuthorProfileImageThumbnailObjectID = author.ProfileImageThumbnailObjectID
 		}
 		commentItems = append(commentItems, item)
 	}
