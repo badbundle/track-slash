@@ -256,6 +256,13 @@ func changelogDateLabel(date *model.Date) string {
 	return date.String()
 }
 
+func changelogSprintDateLabel(date *time.Time) string {
+	if date == nil {
+		return "None"
+	}
+	return date.Format(model.DateLayout)
+}
+
 func changelogUUIDLabel(ctx context.Context, q changelogQueryer, id *uuid.UUID, query string) string {
 	if id == nil {
 		return "None"

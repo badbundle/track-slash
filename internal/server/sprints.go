@@ -14,18 +14,19 @@ import (
 const dateLayout = "2006-01-02"
 
 type createSprintReq struct {
-	Name      string `json:"name"`
-	Goal      string `json:"goal"`
-	StartDate string `json:"start_date"`
-	EndDate   string `json:"end_date"`
+	Name      string  `json:"name"`
+	Goal      string  `json:"goal"`
+	StartDate *string `json:"start_date,omitempty"`
+	EndDate   *string `json:"end_date,omitempty"`
 }
 
 type updateSprintReq struct {
-	Name      *string             `json:"name,omitempty"`
-	Goal      *string             `json:"goal,omitempty"`
-	StartDate *string             `json:"start_date,omitempty"`
-	EndDate   *string             `json:"end_date,omitempty"`
-	Status    *model.SprintStatus `json:"status,omitempty"`
+	Name       *string             `json:"name,omitempty"`
+	Goal       *string             `json:"goal,omitempty"`
+	StartDate  *string             `json:"start_date,omitempty"`
+	EndDate    *string             `json:"end_date,omitempty"`
+	ClearDates bool                `json:"clear_dates,omitempty"`
+	Status     *model.SprintStatus `json:"status,omitempty"`
 }
 
 type reorderPlannedSprintsReq struct {
@@ -57,18 +58,9 @@ func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	start, err := time.Parse(dateLayout, req.StartDate)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "start_date must be YYYY-MM-DD")
-		return
-	}
-	end, err := time.Parse(dateLayout, req.EndDate)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "end_date must be YYYY-MM-DD")
-		return
-	}
-	if end.Before(start) {
-		writeError(w, http.StatusBadRequest, "end_date must be on or after start_date")
+	start, end, message := parseCreateSprintDateRange(req.StartDate, req.EndDate)
+	if message != "" {
+		writeError(w, http.StatusBadRequest, message)
 		return
 	}
 
@@ -242,6 +234,7 @@ func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
 		}
 		params.EndDate = &d
 	}
+	params.ClearDates = req.ClearDates
 	if req.Status != nil {
 		if !req.Status.Valid() {
 			writeError(w, http.StatusBadRequest, "invalid status")
@@ -260,6 +253,27 @@ func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sp)
+}
+
+func parseCreateSprintDateRange(startInput, endInput *string) (*time.Time, *time.Time, string) {
+	if startInput == nil && endInput == nil {
+		return nil, nil, ""
+	}
+	if startInput == nil || endInput == nil {
+		return nil, nil, "start_date and end_date must be provided together"
+	}
+	start, err := time.Parse(dateLayout, *startInput)
+	if err != nil {
+		return nil, nil, "start_date must be YYYY-MM-DD"
+	}
+	end, err := time.Parse(dateLayout, *endInput)
+	if err != nil {
+		return nil, nil, "end_date must be YYYY-MM-DD"
+	}
+	if end.Before(start) {
+		return nil, nil, "end_date must be on or after start_date"
+	}
+	return &start, &end, ""
 }
 
 func (s *Server) completeSprint(w http.ResponseWriter, r *http.Request) {

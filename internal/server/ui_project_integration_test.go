@@ -260,8 +260,8 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 		ProjectID: e.projectID,
 		Name:      "Board Sprint",
 		Goal:      "Focus current sprint goals\nShip board clarity",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)
@@ -322,8 +322,8 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	otherSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: otherProject.ID,
 		Name:      "Other Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other: %v", err)
@@ -516,6 +516,68 @@ func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
 	}
 }
 
+func TestUIProjectSprintOptionalDates(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-sprint-dates")
+
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints", token, strings.NewReader(url.Values{
+		"name":       {"No date sprint"},
+		"start_date": {""},
+		"end_date":   {""},
+	}.Encode()))
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "No date sprint") || strings.Contains(body, "No dates") {
+		t.Fatalf("create no-date sprint code = %d body = %s", res.StatusCode, body)
+	}
+	sp, err := e.store.GetSprintByProjectNumber(e.ctx, e.projectID, 1)
+	if err != nil {
+		t.Fatalf("GetSprint: %v", err)
+	}
+	if sp.StartDate != nil || sp.EndDate != nil {
+		t.Fatalf("dates = %v..%v, want nil..nil", sp.StartDate, sp.EndDate)
+	}
+
+	body = e.uiGet(t, e.projectPath()+"/sprints/"+sp.Ref+"/edit", token)
+	if !strings.Contains(body, `name="start_date" value=""`) || !strings.Contains(body, `name="end_date" value=""`) {
+		t.Fatalf("edit form missing blank date values: %s", body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref, token, strings.NewReader(url.Values{
+		"name":       {"No date sprint"},
+		"start_date": {"2026-07-01"},
+		"end_date":   {""},
+	}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Start and end dates must both be set, or both left blank.") {
+		t.Fatalf("partial-date edit code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref, token, strings.NewReader(url.Values{
+		"name":       {"No date sprint"},
+		"start_date": {"2026-07-01"},
+		"end_date":   {"2026-07-14"},
+	}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Jul 1-Jul 14") {
+		t.Fatalf("schedule sprint code = %d body = %s", res.StatusCode, body)
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref, token, strings.NewReader(url.Values{
+		"name":       {"No date sprint"},
+		"start_date": {""},
+		"end_date":   {""},
+	}.Encode()))
+	defer res.Body.Close()
+	body = readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "No date sprint") || strings.Contains(body, "No dates") {
+		t.Fatalf("clear sprint dates code = %d body = %s", res.StatusCode, body)
+	}
+}
+
 func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -533,8 +595,8 @@ func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 	activeSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Filtered Active Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint active: %v", err)
@@ -546,8 +608,8 @@ func TestUIProjectAssigneeFilterAppliesAcrossProjectSections(t *testing.T) {
 	plannedSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Filtered Planned Sprint",
-		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint planned: %v", err)
@@ -655,8 +717,8 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	firstPlanned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "First Planned Sprint",
-		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint first planned: %v", err)
@@ -664,8 +726,8 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	secondPlanned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Second Planned Sprint",
-		StartDate: time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 28, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 28, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint second planned: %v", err)
@@ -704,8 +766,8 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	otherPlanned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: otherProject.ID,
 		Name:      "Other Planned Sprint",
-		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other planned: %v", err)

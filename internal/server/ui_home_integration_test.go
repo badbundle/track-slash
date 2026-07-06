@@ -52,8 +52,8 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	activeSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Personal Active Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint active: %v", err)
@@ -65,8 +65,8 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	plannedSprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Personal Planned Sprint",
-		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint planned: %v", err)
@@ -155,8 +155,8 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	otherActive, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: otherProject.ID,
 		Name:      "Other Active Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other active: %v", err)

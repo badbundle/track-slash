@@ -270,14 +270,18 @@ func createSprint(ctx context.Context, st *store.Store, projectID uuid.UUID, spr
 		ProjectID: projectID,
 		Name:      sprint.Name,
 		Goal:      sprint.Goal,
-		StartDate: sprint.StartDate,
-		EndDate:   sprint.EndDate,
+		StartDate: seedTimePtr(sprint.StartDate),
+		EndDate:   seedTimePtr(sprint.EndDate),
 	})
 	if err != nil {
 		return model.Sprint{}, err
 	}
 	summary.SprintsCreated++
 	return created, nil
+}
+
+func seedTimePtr(t time.Time) *time.Time {
+	return &t
 }
 
 func activateSprint(ctx context.Context, st *store.Store, sprintID uuid.UUID) error {

@@ -19,8 +19,8 @@ type CreateSprintParams struct {
 	ProjectID uuid.UUID
 	Name      string
 	Goal      string
-	StartDate time.Time
-	EndDate   time.Time
+	StartDate *time.Time
+	EndDate   *time.Time
 }
 
 type sprintScanner interface {
@@ -30,9 +30,10 @@ type sprintScanner interface {
 func scanSprint(row sprintScanner) (model.Sprint, error) {
 	var out model.Sprint
 	var plannedOrder sql.NullInt64
+	var startDate, endDate sql.NullTime
 	err := row.Scan(
 		&out.ID, &out.ProjectID, &out.Number, &out.Name, &out.Goal, &out.Status, &plannedOrder,
-		&out.StartDate, &out.EndDate, &out.CompletedAt, &out.CreatedAt, &out.UpdatedAt,
+		&startDate, &endDate, &out.CompletedAt, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
 		return model.Sprint{}, err
@@ -42,10 +43,21 @@ func scanSprint(row sprintScanner) (model.Sprint, error) {
 		order := plannedOrder.Int64
 		out.PlannedOrder = &order
 	}
+	if startDate.Valid {
+		t := startDate.Time
+		out.StartDate = &t
+	}
+	if endDate.Valid {
+		t := endDate.Time
+		out.EndDate = &t
+	}
 	return out, nil
 }
 
 func (s *Store) CreateSprint(ctx context.Context, p CreateSprintParams) (model.Sprint, error) {
+	if err := validateSprintDateRange(p.StartDate, p.EndDate); err != nil {
+		return model.Sprint{}, err
+	}
 	var out model.Sprint
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var (
@@ -154,12 +166,13 @@ type ListSprintsParams struct {
 }
 
 // SprintsCursor keys off the active ordering. Planned lists use
-// (planned_order, id); other lists use (start_date, created_at, id).
+// (planned_order, id); other lists use (start_date IS NULL, start_date,
+// created_at, id).
 type SprintsCursor struct {
-	PlannedOrder int64     `json:"p,omitempty"`
-	StartDate    time.Time `json:"s"`
-	CreatedAt    time.Time `json:"c"`
-	ID           uuid.UUID `json:"i"`
+	PlannedOrder int64      `json:"p,omitempty"`
+	StartDate    *time.Time `json:"s,omitempty"`
+	CreatedAt    time.Time  `json:"c"`
+	ID           uuid.UUID  `json:"i"`
 }
 
 func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.Sprint, bool, error) {
@@ -179,15 +192,21 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 		q += fmt.Sprintf(" AND (planned_order, id) > ($%d, $%d)",
 			len(args)-1, len(args))
 	} else if p.Cursor != nil {
-		args = append(args, p.Cursor.StartDate, p.Cursor.CreatedAt, p.Cursor.ID)
-		q += fmt.Sprintf(" AND (start_date, created_at, id) > ($%d, $%d, $%d)",
-			len(args)-2, len(args)-1, len(args))
+		if p.Cursor.StartDate == nil {
+			args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
+			q += fmt.Sprintf(" AND start_date IS NULL AND (created_at, id) > ($%d, $%d)",
+				len(args)-1, len(args))
+		} else {
+			args = append(args, *p.Cursor.StartDate, p.Cursor.CreatedAt, p.Cursor.ID)
+			q += fmt.Sprintf(" AND (start_date IS NULL OR start_date > $%d OR (start_date = $%d AND (created_at, id) > ($%d, $%d)))",
+				len(args)-2, len(args)-2, len(args)-1, len(args))
+		}
 	}
 	args = append(args, p.Limit+1)
 	if p.Status == model.SprintStatusPlanned {
 		q += fmt.Sprintf(" ORDER BY planned_order ASC NULLS LAST, id ASC LIMIT $%d", len(args))
 	} else {
-		q += fmt.Sprintf(" ORDER BY start_date ASC, created_at ASC, id ASC LIMIT $%d", len(args))
+		q += fmt.Sprintf(" ORDER BY start_date IS NULL ASC, start_date ASC, created_at ASC, id ASC LIMIT $%d", len(args))
 	}
 
 	rows, err := s.db.Query(ctx, q, args...)
@@ -215,10 +234,11 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 }
 
 type UpdateSprintParams struct {
-	Name      *string
-	Goal      *string
-	StartDate *time.Time
-	EndDate   *time.Time
+	Name       *string
+	Goal       *string
+	StartDate  *time.Time
+	EndDate    *time.Time
+	ClearDates bool
 	// Status: callers may only drive planned → active. Completion is
 	// reserved for CompleteSprint so the rollover always runs atomically.
 	Status *model.SprintStatus
@@ -242,11 +262,17 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 		}
 		current := before.Status
 		if current == model.SprintStatusCompleted &&
-			(p.Goal != nil || p.StartDate != nil || p.EndDate != nil || p.Status != nil) {
+			(p.Goal != nil || p.StartDate != nil || p.EndDate != nil || p.ClearDates || p.Status != nil) {
 			return fmt.Errorf("completed sprint can only be renamed: %w", ErrConflict)
 		}
 		if p.Status != nil {
 			if err := validateSprintTransition(current, *p.Status); err != nil {
+				return err
+			}
+		}
+		if p.ClearDates || p.StartDate != nil || p.EndDate != nil {
+			startDate, endDate := sprintUpdatedDateRange(before, p)
+			if err := validateSprintDateRange(startDate, endDate); err != nil {
 				return err
 			}
 		}
@@ -264,12 +290,14 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 			args = append(args, *p.Goal)
 			i++
 		}
-		if p.StartDate != nil {
+		if p.ClearDates {
+			sets = append(sets, "start_date = NULL", "end_date = NULL")
+		} else if p.StartDate != nil {
 			sets = append(sets, fmt.Sprintf("start_date = $%d", i))
 			args = append(args, *p.StartDate)
 			i++
 		}
-		if p.EndDate != nil {
+		if !p.ClearDates && p.EndDate != nil {
 			sets = append(sets, fmt.Sprintf("end_date = $%d", i))
 			args = append(args, *p.EndDate)
 			i++
@@ -313,8 +341,8 @@ func (s *Store) UpdateSprint(ctx context.Context, id uuid.UUID, p UpdateSprintPa
 		changes = changelogAppendChange(changes, "name", "Name", before.Name, out.Name)
 		changes = changelogAppendChange(changes, "goal", "Goal", changelogPreview(before.Goal), changelogPreview(out.Goal))
 		changes = changelogAppendChange(changes, "status", "Status", changelogSprintStatusLabel(before.Status), changelogSprintStatusLabel(out.Status))
-		changes = changelogAppendChange(changes, "start_date", "Start date", before.StartDate.Format(model.DateLayout), out.StartDate.Format(model.DateLayout))
-		changes = changelogAppendChange(changes, "end_date", "End date", before.EndDate.Format(model.DateLayout), out.EndDate.Format(model.DateLayout))
+		changes = changelogAppendChange(changes, "start_date", "Start date", changelogSprintDateLabel(before.StartDate), changelogSprintDateLabel(out.StartDate))
+		changes = changelogAppendChange(changes, "end_date", "End date", changelogSprintDateLabel(before.EndDate), changelogSprintDateLabel(out.EndDate))
 		if len(changes) == 0 {
 			return nil
 		}
@@ -346,6 +374,34 @@ func validateSprintTransition(from, to model.SprintStatus) error {
 		return fmt.Errorf("complete via POST /sprints/sprint-N/complete: %w", ErrConflict)
 	}
 	return fmt.Errorf("invalid sprint transition %s -> %s: %w", from, to, ErrConflict)
+}
+
+func sprintUpdatedDateRange(before model.Sprint, p UpdateSprintParams) (*time.Time, *time.Time) {
+	if p.ClearDates {
+		return nil, nil
+	}
+	startDate := before.StartDate
+	endDate := before.EndDate
+	if p.StartDate != nil {
+		startDate = p.StartDate
+	}
+	if p.EndDate != nil {
+		endDate = p.EndDate
+	}
+	return startDate, endDate
+}
+
+func validateSprintDateRange(startDate, endDate *time.Time) error {
+	switch {
+	case startDate == nil && endDate == nil:
+		return nil
+	case startDate == nil || endDate == nil:
+		return fmt.Errorf("sprint dates must include both start_date and end_date: %w", ErrConflict)
+	case endDate.Before(*startDate):
+		return fmt.Errorf("end_date must be on or after start_date: %w", ErrConflict)
+	default:
+		return nil
+	}
 }
 
 // CompleteSprint marks the sprint completed. Non-terminal issues roll into the

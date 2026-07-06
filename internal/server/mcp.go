@@ -154,10 +154,10 @@ type mcpSprintInput struct {
 
 type mcpCreateSprintInput struct {
 	mcpProjectInput
-	Name      string `json:"name,omitempty"`
-	Goal      string `json:"goal,omitempty"`
-	StartDate string `json:"start_date"`
-	EndDate   string `json:"end_date"`
+	Name      string  `json:"name,omitempty"`
+	Goal      string  `json:"goal,omitempty"`
+	StartDate *string `json:"start_date,omitempty"`
+	EndDate   *string `json:"end_date,omitempty"`
 }
 
 type mcpListSprintsInput struct {
@@ -168,11 +168,12 @@ type mcpListSprintsInput struct {
 
 type mcpUpdateSprintInput struct {
 	mcpSprintInput
-	Name      *string             `json:"name,omitempty"`
-	Goal      *string             `json:"goal,omitempty"`
-	StartDate *string             `json:"start_date,omitempty"`
-	EndDate   *string             `json:"end_date,omitempty"`
-	Status    *model.SprintStatus `json:"status,omitempty"`
+	Name       *string             `json:"name,omitempty"`
+	Goal       *string             `json:"goal,omitempty"`
+	StartDate  *string             `json:"start_date,omitempty"`
+	EndDate    *string             `json:"end_date,omitempty"`
+	ClearDates bool                `json:"clear_dates,omitempty"`
+	Status     *model.SprintStatus `json:"status,omitempty"`
 }
 
 type mcpReorderSprintsInput struct {
@@ -1648,22 +1649,36 @@ func (s *Server) mcpCreateSprint(ctx context.Context, req *mcp.CallToolRequest, 
 	if len(input.Goal) > 2000 {
 		return nil, validationError("goal max 2000 chars")
 	}
-	start, err := parseMCPDate(input.StartDate, "start_date")
+	start, end, err := parseMCPCreateSprintDateRange(input.StartDate, input.EndDate)
 	if err != nil {
 		return nil, err
-	}
-	end, err := parseMCPDate(input.EndDate, "end_date")
-	if err != nil {
-		return nil, err
-	}
-	if end.Before(start) {
-		return nil, validationError("end_date must be on or after start_date")
 	}
 	sprint, err := s.store.CreateSprint(ctx, store.CreateSprintParams{ProjectID: project.ID, Name: name, Goal: input.Goal, StartDate: start, EndDate: end})
 	if err != nil {
 		return nil, err
 	}
 	return mcpToolOutput{"sprint": sprint}, nil
+}
+
+func parseMCPCreateSprintDateRange(startInput, endInput *string) (*time.Time, *time.Time, error) {
+	if startInput == nil && endInput == nil {
+		return nil, nil, nil
+	}
+	if startInput == nil || endInput == nil {
+		return nil, nil, validationError("start_date and end_date must be provided together")
+	}
+	start, err := parseMCPDate(*startInput, "start_date")
+	if err != nil {
+		return nil, nil, err
+	}
+	end, err := parseMCPDate(*endInput, "end_date")
+	if err != nil {
+		return nil, nil, err
+	}
+	if end.Before(start) {
+		return nil, nil, validationError("end_date must be on or after start_date")
+	}
+	return &start, &end, nil
 }
 
 func (s *Server) mcpListSprints(ctx context.Context, req *mcp.CallToolRequest, input mcpListSprintsInput) (mcpToolOutput, error) {
@@ -1756,6 +1771,7 @@ func (s *Server) mcpUpdateSprint(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 		params.EndDate = &d
 	}
+	params.ClearDates = input.ClearDates
 	if input.Status != nil {
 		if !input.Status.Valid() {
 			return nil, validationError("invalid status")

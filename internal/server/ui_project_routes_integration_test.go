@@ -30,8 +30,8 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Linked Active Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)
@@ -96,8 +96,8 @@ func TestUIProjectChildRoutesRequireAccess(t *testing.T) {
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Denied Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)
@@ -207,8 +207,8 @@ func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Active UI Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)

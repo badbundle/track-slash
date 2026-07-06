@@ -67,8 +67,8 @@ func mustCreateSprint(t *testing.T, env *sprintsTestEnv, name string, start, end
 	sp, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: env.projectID,
 		Name:      name,
-		StartDate: start,
-		EndDate:   end,
+		StartDate: datePtr(start),
+		EndDate:   datePtr(end),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)
@@ -119,6 +119,10 @@ func date(y int, m time.Month, d int) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
+func datePtr(t time.Time) *time.Time {
+	return &t
+}
+
 func TestCreateAndGetSprint(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
@@ -149,11 +153,49 @@ func TestCreateSprintBadDateRange(t *testing.T) {
 	_, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: env.projectID,
 		Name:      "bad",
-		StartDate: date(2026, 6, 14),
-		EndDate:   date(2026, 6, 1),
+		StartDate: datePtr(date(2026, 6, 14)),
+		EndDate:   datePtr(date(2026, 6, 1)),
 	})
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+}
+
+func TestCreateSprintWithoutDates(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	sp, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
+		ProjectID: env.projectID,
+		Name:      "unscheduled",
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	if sp.StartDate != nil || sp.EndDate != nil {
+		t.Fatalf("dates = %v..%v, want nil..nil", sp.StartDate, sp.EndDate)
+	}
+	got, err := env.store.GetSprint(env.ctx, sp.ID)
+	if err != nil {
+		t.Fatalf("GetSprint: %v", err)
+	}
+	if got.StartDate != nil || got.EndDate != nil {
+		t.Fatalf("got dates = %v..%v, want nil..nil", got.StartDate, got.EndDate)
+	}
+}
+
+func TestCreateSprintRejectsPartialDateRange(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	start := date(2026, 6, 1)
+	end := date(2026, 6, 14)
+	cases := []store.CreateSprintParams{
+		{ProjectID: env.projectID, Name: "start only", StartDate: &start},
+		{ProjectID: env.projectID, Name: "end only", EndDate: &end},
+	}
+	for i, params := range cases {
+		if _, err := env.store.CreateSprint(env.ctx, params); !errors.Is(err, store.ErrConflict) {
+			t.Fatalf("case %d err = %v, want ErrConflict", i, err)
+		}
 	}
 }
 
@@ -195,6 +237,51 @@ func TestListSprintsOrderingAndStatusFilter(t *testing.T) {
 	}
 	if active[0].PlannedOrder != nil {
 		t.Fatalf("active planned_order = %v, want nil", active[0].PlannedOrder)
+	}
+}
+
+func TestListSprintsOrdersUndatedAfterDatedWithCursor(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	undatedA, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
+		ProjectID: env.projectID,
+		Name:      "undated A",
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint undated A: %v", err)
+	}
+	datedB := mustCreateSprint(t, env, "dated B", date(2026, 7, 1), date(2026, 7, 14))
+	datedA := mustCreateSprint(t, env, "dated A", date(2026, 6, 1), date(2026, 6, 14))
+	undatedB, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
+		ProjectID: env.projectID,
+		Name:      "undated B",
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint undated B: %v", err)
+	}
+
+	first, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID, Limit: 2})
+	if err != nil {
+		t.Fatalf("ListSprints first: %v", err)
+	}
+	if !more || len(first) != 2 {
+		t.Fatalf("first len/more = %d/%v, want 2/true", len(first), more)
+	}
+	if first[0].ID != datedA.ID || first[1].ID != datedB.ID {
+		t.Fatalf("first page IDs = %s, %s; want dated order", first[0].ID, first[1].ID)
+	}
+	last := first[len(first)-1]
+	next := &store.SprintsCursor{StartDate: last.StartDate, CreatedAt: last.CreatedAt, ID: last.ID}
+	second, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{ProjectID: env.projectID, Cursor: next, Limit: 100})
+	if err != nil {
+		t.Fatalf("ListSprints second: %v", err)
+	}
+	if more || len(second) != 2 {
+		t.Fatalf("second len/more = %d/%v, want 2/false", len(second), more)
+	}
+	gotUndated := map[uuid.UUID]bool{second[0].ID: true, second[1].ID: true}
+	if !gotUndated[undatedA.ID] || !gotUndated[undatedB.ID] {
+		t.Fatalf("second page IDs = %s, %s; want undated sprints", second[0].ID, second[1].ID)
 	}
 }
 
@@ -298,8 +385,8 @@ func TestReorderPlannedSprintsRejectsInvalidSets(t *testing.T) {
 	other, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: otherProject.ID,
 		Name:      "other",
-		StartDate: date(2026, 8, 1),
-		EndDate:   date(2026, 8, 14),
+		StartDate: datePtr(date(2026, 8, 1)),
+		EndDate:   datePtr(date(2026, 8, 14)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other: %v", err)
@@ -369,7 +456,7 @@ func TestUpdateSprintActivationUnique(t *testing.T) {
 	}
 	sp2, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: other.ID, Name: "X",
-		StartDate: date(2026, 6, 1), EndDate: date(2026, 6, 14),
+		StartDate: datePtr(date(2026, 6, 1)), EndDate: datePtr(date(2026, 6, 14)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other: %v", err)
@@ -551,7 +638,7 @@ func TestUpdateIssueSetSprintCrossProjectRejected(t *testing.T) {
 	}
 	otherSprint, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: otherProj.ID, Name: "x",
-		StartDate: date(2026, 6, 1), EndDate: date(2026, 6, 14),
+		StartDate: datePtr(date(2026, 6, 1)), EndDate: datePtr(date(2026, 6, 14)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other: %v", err)
@@ -579,8 +666,8 @@ func TestCreateSprintProjectNotFound(t *testing.T) {
 	_, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{
 		ProjectID: uuid.New(),
 		Name:      "ghost",
-		StartDate: date(2026, 6, 1),
-		EndDate:   date(2026, 6, 14),
+		StartDate: datePtr(date(2026, 6, 1)),
+		EndDate:   datePtr(date(2026, 6, 14)),
 	})
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
@@ -665,6 +752,7 @@ func TestUpdateSprintCompletedAllowsRenameOnly(t *testing.T) {
 		{Goal: &newGoal},
 		{StartDate: &newStart},
 		{EndDate: &newEnd},
+		{ClearDates: true},
 		{Status: &target},
 		{Name: &newName, Goal: &newGoal},
 	}
@@ -696,8 +784,36 @@ func TestUpdateSprintNameGoalDates(t *testing.T) {
 	if got.Name != newName || got.Goal != newGoal {
 		t.Fatalf("name/goal not updated: %+v", got)
 	}
-	if !got.StartDate.Equal(newStart) || !got.EndDate.Equal(newEnd) {
+	if got.StartDate == nil || got.EndDate == nil || !got.StartDate.Equal(newStart) || !got.EndDate.Equal(newEnd) {
 		t.Fatalf("dates not updated: %s..%s", got.StartDate, got.EndDate)
+	}
+}
+
+func TestUpdateSprintClearAndRestoreDates(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	sp := mustCreateSprint(t, env, "scheduled", date(2026, 6, 1), date(2026, 6, 14))
+
+	cleared, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{ClearDates: true})
+	if err != nil {
+		t.Fatalf("clear dates: %v", err)
+	}
+	if cleared.StartDate != nil || cleared.EndDate != nil {
+		t.Fatalf("cleared dates = %v..%v, want nil..nil", cleared.StartDate, cleared.EndDate)
+	}
+
+	start := date(2026, 7, 1)
+	if _, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{StartDate: &start}); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("start-only err = %v, want ErrConflict", err)
+	}
+
+	end := date(2026, 7, 14)
+	restored, err := env.store.UpdateSprint(env.ctx, sp.ID, store.UpdateSprintParams{StartDate: &start, EndDate: &end})
+	if err != nil {
+		t.Fatalf("restore dates: %v", err)
+	}
+	if restored.StartDate == nil || restored.EndDate == nil || !restored.StartDate.Equal(start) || !restored.EndDate.Equal(end) {
+		t.Fatalf("restored dates = %v..%v, want %s..%s", restored.StartDate, restored.EndDate, start, end)
 	}
 }
 

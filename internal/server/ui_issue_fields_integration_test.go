@@ -496,8 +496,8 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 	past, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Past Sprint",
-		StartDate: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint past: %v", err)
@@ -512,8 +512,8 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 	active, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Active Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint active: %v", err)
@@ -524,8 +524,8 @@ func TestUIEditIssueSprintUpdatesClearsAndValidates(t *testing.T) {
 	planned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Future Sprint",
-		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint planned: %v", err)
@@ -621,8 +621,8 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 	current, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Current Sprint",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint current: %v", err)
@@ -630,8 +630,8 @@ func TestUIIssueSprintDoneReadOnlyAndPostRejected(t *testing.T) {
 	next, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Next Sprint",
-		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint next: %v", err)

@@ -26,8 +26,8 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 	sp, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Detail Planned Sprint",
-		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)

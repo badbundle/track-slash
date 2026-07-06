@@ -179,10 +179,11 @@ func (s *Server) uiUpdateProjectSprint(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(form.NameInput)
 	goal := form.GoalInput
 	updated, err := s.store.UpdateSprint(r.Context(), sprint.ID, store.UpdateSprintParams{
-		Name:      &name,
-		Goal:      &goal,
-		StartDate: &start,
-		EndDate:   &end,
+		Name:       &name,
+		Goal:       &goal,
+		StartDate:  start,
+		EndDate:    end,
+		ClearDates: start == nil && end == nil,
 	})
 	if err != nil {
 		form.Error = uiSprintStoreMessage(err)
@@ -452,15 +453,20 @@ func uiProjectSprintView(sprint model.Sprint) string {
 }
 
 func uiSprintFormFor(sprint model.Sprint) uiSprintFormData {
-	return uiSprintFormData{
-		NameInput:      sprint.Name,
-		GoalInput:      sprint.Goal,
-		StartDateInput: sprint.StartDate.Format(dateLayout),
-		EndDateInput:   sprint.EndDate.Format(dateLayout),
+	form := uiSprintFormData{
+		NameInput: sprint.Name,
+		GoalInput: sprint.Goal,
 	}
+	if sprint.StartDate != nil {
+		form.StartDateInput = sprint.StartDate.Format(dateLayout)
+	}
+	if sprint.EndDate != nil {
+		form.EndDateInput = sprint.EndDate.Format(dateLayout)
+	}
+	return form
 }
 
-func uiSprintFormFromRequest(r *http.Request) (uiSprintFormData, time.Time, time.Time, string) {
+func uiSprintFormFromRequest(r *http.Request) (uiSprintFormData, *time.Time, *time.Time, string) {
 	form := uiSprintFormData{
 		NameInput:      r.Form.Get("name"),
 		GoalInput:      r.Form.Get("goal"),
@@ -469,23 +475,31 @@ func uiSprintFormFromRequest(r *http.Request) (uiSprintFormData, time.Time, time
 	}
 	name := strings.TrimSpace(form.NameInput)
 	if len(name) > 200 {
-		return form, time.Time{}, time.Time{}, "Name max 200 chars."
+		return form, nil, nil, "Name max 200 chars."
 	}
 	if len(form.GoalInput) > 2000 {
-		return form, time.Time{}, time.Time{}, "Description max 2000 chars."
+		return form, nil, nil, "Description max 2000 chars."
 	}
-	start, err := time.Parse(dateLayout, form.StartDateInput)
-	if err != nil {
-		return form, time.Time{}, time.Time{}, "Start date must be YYYY-MM-DD."
+	startInput := strings.TrimSpace(form.StartDateInput)
+	endInput := strings.TrimSpace(form.EndDateInput)
+	if startInput == "" && endInput == "" {
+		return form, nil, nil, ""
 	}
-	end, err := time.Parse(dateLayout, form.EndDateInput)
+	if startInput == "" || endInput == "" {
+		return form, nil, nil, "Start and end dates must both be set, or both left blank."
+	}
+	start, err := time.Parse(dateLayout, startInput)
 	if err != nil {
-		return form, time.Time{}, time.Time{}, "End date must be YYYY-MM-DD."
+		return form, nil, nil, "Start date must be YYYY-MM-DD."
+	}
+	end, err := time.Parse(dateLayout, endInput)
+	if err != nil {
+		return form, nil, nil, "End date must be YYYY-MM-DD."
 	}
 	if end.Before(start) {
-		return form, time.Time{}, time.Time{}, "End date must be on or after start date."
+		return form, nil, nil, "End date must be on or after start date."
 	}
-	return form, start, end, ""
+	return form, &start, &end, ""
 }
 
 func uiMarkSprintEdit(panel *uiProjectPanelData, sprint model.Sprint, form uiSprintFormData) {

@@ -9,7 +9,7 @@
           </div>
           {{if .ActiveSprint}}
           <h3 class="mt-2 truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{sprintLabel .ActiveSprint}}</h3>
-          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{sprintDate .ActiveSprint.StartDate}}-{{sprintDate .ActiveSprint.EndDate}}</p>
+          {{with sprintDateRange .ActiveSprint}}<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
           {{if .ActiveSprint.Goal}}<div class="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{{.ActiveSprint.Goal}}</div>{{end}}
           {{else}}
           <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No active sprint.</p>

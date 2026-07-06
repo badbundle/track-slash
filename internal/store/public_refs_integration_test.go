@@ -62,8 +62,8 @@ func TestStoreOwnerScopedPublicRefs(t *testing.T) {
 	sprint1, err := s.CreateSprint(ctx, store.CreateSprintParams{
 		ProjectID: projectA.ID,
 		Name:      "Sprint One",
-		StartDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint 1: %v", err)
@@ -71,8 +71,8 @@ func TestStoreOwnerScopedPublicRefs(t *testing.T) {
 	sprint2, err := s.CreateSprint(ctx, store.CreateSprintParams{
 		ProjectID: projectA.ID,
 		Name:      "Sprint Two",
-		StartDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint 2: %v", err)
@@ -90,8 +90,8 @@ func TestStoreOwnerScopedPublicRefs(t *testing.T) {
 	otherSprint, err := s.CreateSprint(ctx, store.CreateSprintParams{
 		ProjectID: projectB.ID,
 		Name:      "Other Sprint",
-		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC),
+		StartDate: datePtr(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint other: %v", err)

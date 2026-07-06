@@ -139,6 +139,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"dueDateShort":                 uiDueDateShort,
 	"dueDateValue":                 uiDueDateValue,
 	"sprintDate":                   uiSprintDate,
+	"sprintDateRange":              uiSprintDateRange,
 	"sprintLabel":                  uiSprintLabel,
 	"statusClass":                  uiStatusClass,
 	"statusLabel":                  uiStatusLabel,
