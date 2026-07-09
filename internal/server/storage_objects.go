@@ -266,7 +266,7 @@ func writeStorageError(w http.ResponseWriter, err error) {
 	case errors.Is(err, objectstorage.ErrExists), errors.Is(err, objectstorage.ErrInvalidKey):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w, "object storage", err)
 	}
 }
 

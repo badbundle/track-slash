@@ -29,7 +29,7 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui project visible projects", err)
 		return
 	}
 	panel, err := s.uiBuildProjectPanel(r.Context(), r, project.ID, view)
@@ -153,7 +153,7 @@ func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui deleted issues visible projects", err)
 		return
 	}
 	panel, err := s.uiBuildDeletedIssuesPanel(r.Context(), r, project.ID)

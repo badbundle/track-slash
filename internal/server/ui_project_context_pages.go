@@ -293,7 +293,7 @@ func (s *Server) renderUIContextManager(w http.ResponseWriter, r *http.Request, 
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui context manager visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{

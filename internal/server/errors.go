@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/bradleymackey/track-slash/internal/store"
@@ -15,6 +16,23 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, errorBody{Error: msg})
 }
 
+func logInternalError(source string, err error) {
+	if err == nil {
+		return
+	}
+	log.Printf("internal error: source=%q type=%T error=%q", source, err, err.Error())
+}
+
+func writeInternalError(w http.ResponseWriter, source string, err error) {
+	logInternalError(source, err)
+	writeError(w, http.StatusInternalServerError, "internal error")
+}
+
+func writeUIInternalError(w http.ResponseWriter, source string, err error) {
+	logInternalError(source, err)
+	http.Error(w, "internal error", http.StatusInternalServerError)
+}
+
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrUnauthorized):
@@ -24,6 +42,6 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w, "store", err)
 	}
 }

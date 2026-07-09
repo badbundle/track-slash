@@ -160,6 +160,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 func renderUITemplate(w http.ResponseWriter, status int, name string, data any) {
 	var buf bytes.Buffer
 	if err := uiTemplates.ExecuteTemplate(&buf, name, data); err != nil {
+		logInternalError("ui template", err)
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return
 	}
@@ -179,6 +180,6 @@ func writeUIStoreError(w http.ResponseWriter, err error) {
 	case errors.Is(err, errUIForbidden):
 		http.Error(w, "forbidden", http.StatusForbidden)
 	default:
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui store", err)
 	}
 }

@@ -58,17 +58,17 @@ func (s *Server) uiUpdatePassword(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user model.User, profileError string, profileSaved bool, passwordError string, passwordChanged bool) {
 	projects, err := s.uiVisibleProjects(r.Context(), user)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui settings visible projects", err)
 		return
 	}
 	passkeyCredentials, err := s.store.ListPasskeyCredentials(r.Context(), user.ID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui settings passkey credentials", err)
 		return
 	}
 	passwordLogin, err := s.store.PasswordLoginState(r.Context(), user.ID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui settings password login state", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -130,12 +130,12 @@ func (s *Server) uiRevokeToken(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renderUITokens(w http.ResponseWriter, r *http.Request, message, created string) {
 	tokens, err := s.store.ListAuthTokens(r.Context(), currentUser(r).ID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui tokens list auth tokens", err)
 		return
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui tokens visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{

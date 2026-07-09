@@ -20,7 +20,7 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 		}
 		projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeUIInternalError(w, "ui deleted issue visible projects", err)
 			return
 		}
 		s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -39,7 +39,7 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui issue visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
