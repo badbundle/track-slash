@@ -532,6 +532,7 @@ func normalizeMCPError(err error) mcpAppError {
 	case errors.Is(err, objectstorage.ErrTooLarge):
 		return mcpAppError{Code: "too_large", Message: "file too large"}
 	default:
+		logInternalError("mcp tool", err)
 		return mcpAppError{Code: "internal_error", Message: "internal error"}
 	}
 }

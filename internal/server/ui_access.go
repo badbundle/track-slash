@@ -46,7 +46,7 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 	}
 	favorites, err := s.uiFavoriteProjects(r.Context(), data.User)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui shell favorites", err)
 		return
 	}
 	data.SidebarFavorites = uiSidebarFavoritesData{

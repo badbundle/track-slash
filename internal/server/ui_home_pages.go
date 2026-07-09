@@ -12,7 +12,7 @@ import (
 func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui home visible projects", err)
 		return
 	}
 	if len(projects) == 0 {
@@ -30,7 +30,7 @@ func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string)
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui work visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -57,7 +57,7 @@ func (s *Server) uiProjectsPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) uiProjectsPanel(w http.ResponseWriter, r *http.Request) {
 	panel, err := s.uiBuildProjectsPanel(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui projects panel", err)
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "projects-panel", panel)
@@ -108,7 +108,7 @@ func (s *Server) uiNewIssuePage(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui new issue visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -134,7 +134,7 @@ func (s *Server) uiNewIssueProjectOptions(w http.ResponseWriter, r *http.Request
 	input := uiNewIssueInputFromValues(r.URL.Query())
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui new issue project options visible projects", err)
 		return
 	}
 	data := uiNewIssueProjectAutocomplete(&uiNewIssuePanelData{
@@ -162,7 +162,7 @@ func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui new project issue visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -331,7 +331,7 @@ func (s *Server) renderUINewIssueWithError(w http.ResponseWriter, r *http.Reques
 	if !isHTMXRequest(r) {
 		projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeUIInternalError(w, "ui new issue error visible projects", err)
 			return
 		}
 		s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -349,7 +349,7 @@ func (s *Server) renderUINewIssueWithError(w http.ResponseWriter, r *http.Reques
 func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status int) {
 	panel, err := s.uiBuildProjectsPanel(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui render projects panel", err)
 		return
 	}
 	s.renderUIShell(w, r, status, uiShellData{
@@ -363,7 +363,7 @@ func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status
 func (s *Server) renderUINewProject(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui new project visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, status, uiShellData{

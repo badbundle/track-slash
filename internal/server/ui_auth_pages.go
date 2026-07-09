@@ -34,7 +34,7 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 			renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Username or password not accepted.", Next: next})
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui login authenticate password", err)
 		return
 	}
 	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
@@ -43,7 +43,7 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		Name:   "web session",
 	})
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui login create session token", err)
 		return
 	}
 	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
@@ -81,7 +81,7 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 		Name:   "web session",
 	})
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui signup create session token", err)
 		return
 	}
 	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
@@ -90,7 +90,7 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
 	if err := s.revokeUISessionCookie(r.Context(), r); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui logout revoke session", err)
 		return
 	}
 	clearUISessionCookie(w, r)
@@ -169,7 +169,7 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 				redirectUILogin(w, r)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			writeUIInternalError(w, "ui auth middleware authenticate token", err)
 			return
 		}
 		ctx := context.WithValue(r.Context(), authContextKey{}, authContext{User: auth.User, Token: auth.Token})

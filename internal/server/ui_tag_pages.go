@@ -263,7 +263,7 @@ func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Reque
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui issue panel visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
@@ -282,7 +282,7 @@ func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, pane
 	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeUIInternalError(w, "ui tag manager visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
