@@ -33,6 +33,24 @@ AWS_SESSION_TOKEN=... # optional
 
 `TRACK_SLASH_STORAGE_S3_REGION` defaults to `us-east-1`; for S3-compatible services such as Garage this is primarily the SigV4 signing region. For AWS S3, set the real bucket region. `TRACK_SLASH_STORAGE_S3_FORCE_PATH_STYLE` defaults to `true` for compatibility with Garage and similar services. The app does not create buckets or access keys; create them in the storage service first. Garage's admin/API endpoint is not used by `trackd`; only the S3 endpoint is required.
 
+Google Cloud Storage can be used through the same S3-compatible backend by using the Cloud Storage XML API and GCS HMAC keys:
+
+```bash
+TRACK_SLASH_STORAGE_BACKEND=s3
+TRACK_SLASH_STORAGE_BUCKET=track-slash-main
+TRACK_SLASH_STORAGE_S3_ENDPOINT=https://storage.googleapis.com
+TRACK_SLASH_STORAGE_S3_REGION=auto
+TRACK_SLASH_STORAGE_S3_FORCE_PATH_STYLE=true
+TRACK_SLASH_STORAGE_MAX_UPLOAD_BYTES=52428800
+
+AWS_ACCESS_KEY_ID=...        # GCS HMAC access ID
+AWS_SECRET_ACCESS_KEY=...    # GCS HMAC secret
+AWS_REQUEST_CHECKSUM_CALCULATION=when_required
+AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+```
+
+GCS HMAC keys are separate from Google service account JSON credentials. The current `s3` backend does not use `GOOGLE_APPLICATION_CREDENTIALS`; it signs S3/XML API requests with the `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables. Keep the GCS bucket private. Downloads continue to flow through authenticated track-slash routes, so browser-facing signed URLs and GCS CORS rules are not required.
+
 ## Data Model
 
 `storage_objects` is the metadata table. Each row belongs to exactly one owner scope:
