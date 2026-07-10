@@ -179,7 +179,6 @@ func TestGCSV4SignerNormalizesRequests(t *testing.T) {
 		method           string
 		acceptEncoding   string
 		ifNoneMatch      string
-		wantGeneration   string
 		wantIfNoneMatch  string
 		wantAcceptSigned bool
 	}{
@@ -188,13 +187,11 @@ func TestGCSV4SignerNormalizesRequests(t *testing.T) {
 			method:           http.MethodPut,
 			acceptEncoding:   "identity",
 			ifNoneMatch:      "*",
-			wantGeneration:   "0",
 			wantAcceptSigned: false,
 		},
 		{
 			name:            "ordinary put",
 			method:          http.MethodPut,
-			wantGeneration:  "",
 			wantIfNoneMatch: "",
 		},
 		{
@@ -238,8 +235,8 @@ func TestGCSV4SignerNormalizesRequests(t *testing.T) {
 			if got := request.Header.Get("If-None-Match"); got != tt.wantIfNoneMatch {
 				t.Fatalf("If-None-Match = %q, want %q", got, tt.wantIfNoneMatch)
 			}
-			if got := request.Header.Get("X-Goog-If-Generation-Match"); got != tt.wantGeneration {
-				t.Fatalf("X-Goog-If-Generation-Match = %q, want %q", got, tt.wantGeneration)
+			if got := request.Header.Get("X-Goog-If-Generation-Match"); got != "" {
+				t.Fatalf("X-Goog-If-Generation-Match = %q, want empty", got)
 			}
 
 			authorization := request.Header.Get("Authorization")
@@ -248,8 +245,8 @@ func TestGCSV4SignerNormalizesRequests(t *testing.T) {
 				t.Fatalf("Authorization = %q, accept-encoding signed = %v, want %v", authorization, acceptSigned, tt.wantAcceptSigned)
 			}
 			generationSigned := strings.Contains(authorization, "x-goog-if-generation-match")
-			if generationSigned != (tt.wantGeneration != "") {
-				t.Fatalf("Authorization = %q, generation signed = %v", authorization, generationSigned)
+			if generationSigned {
+				t.Fatalf("Authorization = %q, generation header must not be signed", authorization)
 			}
 		})
 	}
