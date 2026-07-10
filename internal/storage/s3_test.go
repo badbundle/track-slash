@@ -12,6 +12,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 func TestS3BackendPutOpenDelete(t *testing.T) {
@@ -123,6 +127,131 @@ func TestS3BackendOpenDeleteMissing(t *testing.T) {
 	}
 	if err := backend.Delete(context.Background(), "projects/p1/objects/missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Delete missing err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestIsGCSXMLAPIEndpoint(t *testing.T) {
+	tests := []struct {
+		endpoint string
+		want     bool
+	}{
+		{endpoint: "https://storage.googleapis.com", want: true},
+		{endpoint: "https://STORAGE.GOOGLEAPIS.COM/", want: true},
+		{endpoint: "https://bucket.storage.googleapis.com", want: false},
+		{endpoint: "http://garage:3900", want: false},
+		{endpoint: "://invalid", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.endpoint, func(t *testing.T) {
+			if got := isGCSXMLAPIEndpoint(tt.endpoint); got != tt.want {
+				t.Fatalf("isGCSXMLAPIEndpoint(%q) = %v, want %v", tt.endpoint, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewS3BackendSelectsGCSInteropSigner(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+
+	backend, err := NewS3Backend(context.Background(), "bucket", S3Config{
+		Endpoint:       "https://storage.googleapis.com",
+		Region:         "auto",
+		ForcePathStyle: true,
+	})
+	if err != nil {
+		t.Fatalf("NewS3Backend: %v", err)
+	}
+	if _, ok := backend.client.Options().HTTPSignerV4.(*gcsV4Signer); !ok {
+		t.Fatalf("HTTPSignerV4 = %T, want *gcsV4Signer", backend.client.Options().HTTPSignerV4)
+	}
+
+	standard := newTestS3Backend(t, "http://example.com")
+	if _, ok := standard.client.Options().HTTPSignerV4.(*gcsV4Signer); ok {
+		t.Fatalf("standard HTTPSignerV4 = %T, want default signer", standard.client.Options().HTTPSignerV4)
+	}
+}
+
+func TestGCSV4SignerNormalizesRequests(t *testing.T) {
+	payloadHash := sha256.Sum256([]byte("hello"))
+	tests := []struct {
+		name             string
+		method           string
+		acceptEncoding   string
+		ifNoneMatch      string
+		wantGeneration   string
+		wantIfNoneMatch  string
+		wantAcceptSigned bool
+	}{
+		{
+			name:             "create-only put",
+			method:           http.MethodPut,
+			acceptEncoding:   "identity",
+			ifNoneMatch:      "*",
+			wantGeneration:   "0",
+			wantAcceptSigned: false,
+		},
+		{
+			name:            "ordinary put",
+			method:          http.MethodPut,
+			wantGeneration:  "",
+			wantIfNoneMatch: "",
+		},
+		{
+			name:            "get precondition remains unchanged",
+			method:          http.MethodGet,
+			ifNoneMatch:     `"etag"`,
+			wantIfNoneMatch: `"etag"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request, err := http.NewRequest(tt.method, "https://storage.googleapis.com/bucket/key", strings.NewReader("hello"))
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			if tt.acceptEncoding != "" {
+				request.Header.Set("Accept-Encoding", tt.acceptEncoding)
+			}
+			if tt.ifNoneMatch != "" {
+				request.Header.Set("If-None-Match", tt.ifNoneMatch)
+			}
+			request.Header.Set("X-Amz-Content-Sha256", hex.EncodeToString(payloadHash[:]))
+
+			signer := newGCSV4Signer(s3.Options{})
+			err = signer.SignHTTP(
+				context.Background(),
+				aws.Credentials{AccessKeyID: "access", SecretAccessKey: "secret"},
+				request,
+				hex.EncodeToString(payloadHash[:]),
+				"s3",
+				"auto",
+				time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC),
+			)
+			if err != nil {
+				t.Fatalf("SignHTTP: %v", err)
+			}
+
+			if got := request.Header.Get("Accept-Encoding"); got != tt.acceptEncoding {
+				t.Fatalf("Accept-Encoding = %q, want %q", got, tt.acceptEncoding)
+			}
+			if got := request.Header.Get("If-None-Match"); got != tt.wantIfNoneMatch {
+				t.Fatalf("If-None-Match = %q, want %q", got, tt.wantIfNoneMatch)
+			}
+			if got := request.Header.Get("X-Goog-If-Generation-Match"); got != tt.wantGeneration {
+				t.Fatalf("X-Goog-If-Generation-Match = %q, want %q", got, tt.wantGeneration)
+			}
+
+			authorization := request.Header.Get("Authorization")
+			acceptSigned := strings.Contains(authorization, "accept-encoding")
+			if acceptSigned != tt.wantAcceptSigned {
+				t.Fatalf("Authorization = %q, accept-encoding signed = %v, want %v", authorization, acceptSigned, tt.wantAcceptSigned)
+			}
+			generationSigned := strings.Contains(authorization, "x-goog-if-generation-match")
+			if generationSigned != (tt.wantGeneration != "") {
+				t.Fatalf("Authorization = %q, generation signed = %v", authorization, generationSigned)
+			}
+		})
 	}
 }
 

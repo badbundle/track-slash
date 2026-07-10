@@ -6,10 +6,14 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+	"net/http"
+	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
@@ -59,8 +63,54 @@ func NewS3Backend(ctx context.Context, bucket string, cfg S3Config) (*S3Backend,
 	}
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.UsePathStyle = cfg.ForcePathStyle
+		if isGCSXMLAPIEndpoint(endpoint) {
+			o.HTTPSignerV4 = newGCSV4Signer(*o)
+		}
 	})
 	return &S3Backend{client: client, bucket: bucket}, nil
+}
+
+func isGCSXMLAPIEndpoint(endpoint string) bool {
+	parsed, err := url.Parse(endpoint)
+	return err == nil && strings.EqualFold(parsed.Hostname(), "storage.googleapis.com")
+}
+
+type gcsV4Signer struct {
+	signer s3.HTTPSignerV4
+}
+
+func newGCSV4Signer(options s3.Options) *gcsV4Signer {
+	return &gcsV4Signer{signer: v4.NewSigner(func(o *v4.SignerOptions) {
+		o.Logger = options.Logger
+		o.LogSigning = options.ClientLogMode.IsSigning()
+		o.DisableURIPathEscaping = true
+	})}
+}
+
+func (s *gcsV4Signer) SignHTTP(
+	ctx context.Context,
+	credentials aws.Credentials,
+	request *http.Request,
+	payloadHash string,
+	service string,
+	region string,
+	signingTime time.Time,
+	optFns ...func(*v4.SignerOptions),
+) error {
+	if request.Method == http.MethodPut && request.Header.Get("If-None-Match") == "*" {
+		request.Header.Del("If-None-Match")
+		request.Header.Set("X-Goog-If-Generation-Match", "0")
+	}
+
+	acceptEncoding := append([]string(nil), request.Header.Values("Accept-Encoding")...)
+	if len(acceptEncoding) > 0 {
+		request.Header.Del("Accept-Encoding")
+		defer func() {
+			request.Header["Accept-Encoding"] = acceptEncoding
+		}()
+	}
+
+	return s.signer.SignHTTP(ctx, credentials, request, payloadHash, service, region, signingTime, optFns...)
 }
 
 func (b *S3Backend) Put(ctx context.Context, key string, r io.Reader, maxBytes int64) (WrittenObject, error) {
