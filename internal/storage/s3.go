@@ -99,8 +99,9 @@ func (s *gcsV4Signer) SignHTTP(
 	optFns ...func(*v4.SignerOptions),
 ) error {
 	if request.Method == http.MethodPut && request.Header.Get("If-None-Match") == "*" {
+		// GCS does not support S3's create-only PUT precondition, and its x-goog
+		// equivalent cannot be mixed with the AWS SigV4 x-amz headers.
 		request.Header.Del("If-None-Match")
-		request.Header.Set("X-Goog-If-Generation-Match", "0")
 	}
 
 	acceptEncoding := append([]string(nil), request.Header.Values("Accept-Encoding")...)
