@@ -63,6 +63,7 @@ func NewS3Backend(ctx context.Context, bucket string, cfg S3Config) (*S3Backend,
 	}
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.UsePathStyle = cfg.ForcePathStyle
+		o.HTTPClient = &s3DiagnosticHTTPClient{client: o.HTTPClient}
 		if isGCSXMLAPIEndpoint(endpoint) {
 			o.HTTPSignerV4 = newGCSV4Signer(*o)
 		}
@@ -207,6 +208,6 @@ func mapS3Error(err error) error {
 	case "PreconditionFailed", "ConditionalRequestConflict":
 		return ErrExists
 	default:
-		return err
+		return withS3Diagnostics(err)
 	}
 }

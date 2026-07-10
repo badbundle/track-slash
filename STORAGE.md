@@ -53,6 +53,8 @@ GCS HMAC keys are separate from Google service account JSON credentials. The cur
 
 When the configured endpoint is `storage.googleapis.com`, the S3 backend automatically applies the GCS XML API interoperability rules: `Accept-Encoding` is excluded from SigV4 because Google's frontend rewrites it in transit, and create-only `PUT` requests use `x-goog-if-generation-match: 0` instead of S3's `If-None-Match: *` precondition.
 
+For failed S3-compatible requests, the backend adds bounded diagnostics to the internal server error log: operation, HTTP request shape, status, API code, request IDs, SigV4 credential scope and signed-header names, and the GCS `Details`, `CanonicalRequest`, and `StringToSign` fields when present. Authorization values, access IDs, signatures, session tokens, cookies, and customer encryption keys are not logged. Error response capture is limited to 64 KiB and is never returned to API clients.
+
 ## Data Model
 
 `storage_objects` is the metadata table. Each row belongs to exactly one owner scope:
