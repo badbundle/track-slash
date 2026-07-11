@@ -182,14 +182,15 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
 
 	tests := []struct {
-		name     string
-		template string
-		data     any
-		hasBadge bool
+		name       string
+		template   string
+		data       any
+		hasBadge   bool
+		hasSummary bool
 	}{
-		{name: "project issue list", template: "issue-list", data: []model.Issue{issue}, hasBadge: true},
-		{name: "project inset issue list", template: "issue-list-inset", data: []model.Issue{issue}, hasBadge: true},
-		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true},
+		{name: "project issue list", template: "issue-list", data: []model.Issue{issue}, hasBadge: true, hasSummary: true},
+		{name: "project inset issue list", template: "issue-list-inset", data: []model.Issue{issue}, hasBadge: true, hasSummary: true},
+		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
 		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project, Assignee: &model.ProjectAssignee{ID: uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb"), Username: "ada", Name: "Ada Lovelace"}}}},
 	}
 
@@ -217,6 +218,21 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			for _, want := range []string{"Done", "border-emerald-300 bg-emerald-50 text-emerald-800"} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("%s missing status badge markup %q: %s", tt.name, want, body)
+				}
+			}
+		}
+		if tt.hasSummary {
+			for _, want := range []string{
+				`data-issue-summary-row`,
+				`sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto]`,
+				`sm:contents`,
+				`break-words`,
+				`sm:truncate`,
+				`flex-wrap`,
+				`sm:flex-nowrap`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s missing responsive issue summary markup %q: %s", tt.name, want, body)
 				}
 			}
 		}

@@ -1,10 +1,13 @@
 {{define "shell-sidebar"}}
-    <aside class="flex w-72 shrink-0 flex-col overflow-visible border-r border-slate-200 bg-white transition-all dark:border-slate-800 dark:bg-slate-900">
+    <aside id="app-sidebar" data-mobile-sidebar aria-hidden="true" inert class="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-visible border-r border-slate-200 bg-white transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:max-w-none md:transition-all">
       <div class="sidebar-head flex h-14 items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-800">
-        <label for="sidebar-toggle" class="grid h-6 w-6 shrink-0 cursor-pointer place-items-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" title="Toggle sidebar"><i data-lucide="menu" class="h-3.5 w-3.5" aria-hidden="true"></i></label>
+        <label for="sidebar-toggle" class="hidden h-6 w-6 shrink-0 cursor-pointer place-items-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 md:grid" title="Toggle sidebar"><i data-lucide="menu" class="h-3.5 w-3.5" aria-hidden="true"></i></label>
         <div class="wide-only min-w-0">
           <div class="truncate text-sm font-semibold">track-slash</div>
         </div>
+        <button type="button" data-mobile-sidebar-close aria-label="Close navigation" class="ml-auto grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 md:hidden">
+          <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
       </div>
 
       <nav class="scrollbar-none min-h-0 flex-1 overflow-y-auto p-2">

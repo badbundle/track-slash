@@ -317,13 +317,14 @@ type uiTabBarData struct {
 }
 
 type uiTabItem struct {
-	Label     string
-	Icon      string
-	Href      string
-	HXGet     string
-	HXTarget  string
-	HXPushURL string
-	Active    bool
+	Label          string
+	Icon           string
+	Href           string
+	HXGet          string
+	HXTarget       string
+	HXPushURL      string
+	Active         bool
+	MobileOverflow bool
 }
 
 type uiWorkPanelData struct {

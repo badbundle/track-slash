@@ -1,5 +1,5 @@
 {{define "shell-main"}}
-    <main id="main" class="min-w-0 flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950">
+    <main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 dark:bg-slate-950">
       {{if .WorkPanel}}
       {{template "work-panel" .WorkPanel}}
       {{else if .ProjectsPanel}}
@@ -25,7 +25,7 @@
       {{else if .SettingsPanel}}
       {{template "settings-panel" .SettingsPanel}}
       {{else}}
-      <section class="mx-auto max-w-6xl px-6 py-8">
+      <section class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
         <h1 class="text-xl font-semibold">No work</h1>
         <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No accessible work found.</p>
       </section>

@@ -518,6 +518,83 @@
           } catch (_) {}
         });
       }
+      const mobileSidebar = document.querySelector("[data-mobile-sidebar]");
+      const mobileSidebarToggle = document.querySelector("[data-mobile-sidebar-toggle]");
+      const mobileSidebarClose = document.querySelector("[data-mobile-sidebar-close]");
+      const mobileSidebarBackdrop = document.querySelector("[data-mobile-sidebar-backdrop]");
+      const mobileAppBar = document.querySelector("[data-mobile-app-bar]");
+      const mainContent = document.getElementById("main");
+      const mobileSidebarBreakpoint = window.matchMedia("(min-width: 768px)");
+      let mobileSidebarOpen = false;
+      let mobileSidebarReturnFocus = mobileSidebarToggle;
+      const syncMobileSidebar = () => {
+        if (!mobileSidebar) return;
+        const open = mobileSidebarOpen && !mobileSidebarBreakpoint.matches;
+        const visible = open || mobileSidebarBreakpoint.matches;
+        document.documentElement.toggleAttribute("data-mobile-sidebar-open", open);
+        mobileSidebar.setAttribute("aria-hidden", visible ? "false" : "true");
+        mobileSidebar.inert = !visible;
+        if (mobileAppBar) mobileAppBar.inert = open;
+        if (mainContent) mainContent.inert = open;
+        if (mobileSidebarToggle) mobileSidebarToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        if (mobileSidebarBackdrop) {
+          mobileSidebarBackdrop.hidden = !open;
+          mobileSidebarBackdrop.setAttribute("aria-hidden", open ? "false" : "true");
+        }
+      };
+      const openMobileSidebar = () => {
+        if (!mobileSidebar || mobileSidebarBreakpoint.matches) return;
+        if (document.activeElement instanceof HTMLElement) mobileSidebarReturnFocus = document.activeElement;
+        mobileSidebarOpen = true;
+        syncMobileSidebar();
+        window.requestAnimationFrame(() => {
+          if (mobileSidebarOpen && mobileSidebarClose) mobileSidebarClose.focus();
+        });
+      };
+      const closeMobileSidebar = (restoreFocus = true) => {
+        const wasOpen = mobileSidebarOpen;
+        mobileSidebarOpen = false;
+        syncMobileSidebar();
+        if (restoreFocus && wasOpen && mobileSidebarReturnFocus instanceof HTMLElement && mobileSidebarReturnFocus.isConnected) {
+          mobileSidebarReturnFocus.focus();
+        }
+      };
+      if (mobileSidebarToggle) mobileSidebarToggle.addEventListener("click", openMobileSidebar);
+      if (mobileSidebarClose) mobileSidebarClose.addEventListener("click", () => closeMobileSidebar());
+      if (mobileSidebarBackdrop) mobileSidebarBackdrop.addEventListener("click", () => closeMobileSidebar());
+      if (mobileSidebar) {
+        mobileSidebar.addEventListener("click", (event) => {
+          if (!(event.target instanceof Element) || !event.target.closest("a[href]")) return;
+          closeMobileSidebar();
+        });
+      }
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !mobileSidebarOpen) return;
+        event.preventDefault();
+        closeMobileSidebar();
+      });
+      const focusFirstDesktopSidebarControl = () => {
+        const target = mobileSidebar ? mobileSidebar.querySelector("[data-nav-link]") : null;
+        if (target instanceof HTMLElement) target.focus();
+      };
+      const handleMobileSidebarBreakpoint = (event) => {
+        const activeElement = document.activeElement;
+        const focusWasInSidebar = activeElement instanceof Element && mobileSidebar && mobileSidebar.contains(activeElement);
+        const focusWasInAppBar = activeElement instanceof Element && mobileAppBar && mobileAppBar.contains(activeElement);
+        mobileSidebarOpen = false;
+        syncMobileSidebar();
+        if (event.matches && (focusWasInSidebar || focusWasInAppBar)) {
+          focusFirstDesktopSidebarControl();
+        } else if (!event.matches && focusWasInSidebar && mobileSidebarToggle) {
+          mobileSidebarToggle.focus();
+        }
+      };
+      if (mobileSidebarBreakpoint.addEventListener) {
+        mobileSidebarBreakpoint.addEventListener("change", handleMobileSidebarBreakpoint);
+      } else {
+        mobileSidebarBreakpoint.addListener(handleMobileSidebarBreakpoint);
+      }
+      syncMobileSidebar();
       const setNavLoading = (link, loading) => {
         const icon = link.querySelector("[data-nav-icon]");
         const loader = link.querySelector("[data-nav-loader]");

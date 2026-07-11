@@ -477,7 +477,8 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	for _, want := range []string{
 		`role="img" aria-label="Sub-issue progress: 2 done, 1 in progress, 1 to do"`,
 		`class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
-		`class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs`,
+		`data-issue-summary-row`,
+		`sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto]`,
 		`bg-emerald-500 dark:bg-emerald-400" style="width: 50.00%;"`,
 		`bg-blue-400 dark:bg-blue-500" style="width: 25.00%;"`,
 	} {

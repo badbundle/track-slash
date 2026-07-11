@@ -125,14 +125,6 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project about view rendered assignee filter state %q: %s", notWant, body)
 		}
 	}
-	aboutIdx := strings.Index(body, `href="/bradley/projects/TRACK/about"`)
-	sprintsIdx := strings.Index(body, `href="/bradley/projects/TRACK/sprint"`)
-	plannedIdx := strings.Index(body, `href="/bradley/projects/TRACK/planned"`)
-	allIdx := strings.Index(body, `href="/bradley/projects/TRACK/all"`)
-	changelogIdx := strings.Index(body, `href="/bradley/projects/TRACK/changelog"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || changelogIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > changelogIdx || changelogIdx > aboutIdx {
-		t.Fatalf("project tabs not ordered sprints, planned, all, changelog, about: sprints=%d planned=%d all=%d changelog=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, changelogIdx, aboutIdx, body)
-	}
 	if strings.Contains(body, "Back to projects") || strings.Contains(body, ">Projects</a>") {
 		t.Fatalf("project back link uses verbose label: %s", body)
 	}
@@ -143,6 +135,25 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	tabMarkup := body[tabNav : tabNav+tabEnd]
 	if strings.Contains(tabMarkup, "Deleted") || strings.Contains(tabMarkup, `/deleted`) {
 		t.Fatalf("deleted rendered as project tab: %s", body)
+	}
+	aboutIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/about"`)
+	sprintsIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/sprint"`)
+	plannedIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/planned"`)
+	allIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/all"`)
+	changelogIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/changelog"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || changelogIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > changelogIdx || changelogIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprints, planned, all, changelog, about: sprints=%d planned=%d all=%d changelog=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, changelogIdx, aboutIdx, body)
+	}
+	for _, path := range []string{"changelog", "about"} {
+		href := `href="/bradley/projects/TRACK/` + path + `"`
+		if got := strings.Count(header, href); got != 2 {
+			t.Fatalf("project %s view should render once as a desktop tab and once in the mobile overflow menu; got %d: %s", path, got, body)
+		}
+	}
+	for _, want := range []string{"flex flex-nowrap", "gap-4 sm:gap-6", "hidden lg:inline-flex", "lg:hidden", "lg:border-t-0"} {
+		if !strings.Contains(header, want) {
+			t.Fatalf("project header missing responsive tab overflow markup %q: %s", want, body)
+		}
 	}
 	for _, want := range []string{"About", "Sprint", "Planned", "All", `data-lucide="person-standing"`, `data-lucide="calendar-range"`, `data-lucide="list-filter"`, "border-b-4", `aria-current="page"`, `href="/bradley/projects/TRACK/about"`} {
 		if !strings.Contains(body, want) {

@@ -4,7 +4,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Navigation
 
-- `tab-bar`: sibling-view navigation with optional Lucide icons. Use for project/work/settings style view switches.
+- `tab-bar`: single-line sibling-view navigation with optional Lucide icons, backed by `uiTabBarData`. Set an item's `MobileOverflow` flag when its owning page provides an equivalent constrained-screen overflow-menu link; those tabs return at `lg`.
 - `sidebar-favorites`: shell sidebar favorite-project shortcuts backed by `uiSidebarFavoritesData`. Keep it directly below the `Projects` nav item with a subtle divider from standard navigation, and refresh it with OOB HTMX swaps when favorite state changes.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.
 
@@ -39,7 +39,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Rows And Notices
 
-- `issue-summary-row-cells`: shared issue list row cells with key, priority, title, due date, status, and close reason.
+- `issue-summary-row`: responsive issue list row content accepting an issue. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
 - Context detail row: parent project/issue pages should use a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open manage link. On issue detail this link opens the context modal with `hx-push-url="false"`; on Project About it opens the project context manager. Keep create/attach/edit/delete controls out of parent panels.
 

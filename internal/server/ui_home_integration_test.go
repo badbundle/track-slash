@@ -15,10 +15,52 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-member")
 
 	body := e.uiGet(t, "/me", token)
-	for _, want := range []string{">Me<", ">Projects<", "Create issue", `href="/issues/new"`, `hx-get="/issues/new/panel"`, `data-sidebar-action`, `href="/settings"`, `href="/tokens"`, `data-lucide="plus"`, `data-lucide="user"`, `data-lucide="folder"`, "data-nav-loader", "#sidebar-toggle:checked ~ .app-shell > aside", `track-slash.sidebar.collapsed`, `data-member-menu`, `data-close-on-outside`, `closeOpenDropdowns`, `overflow-visible border-r`} {
+	for _, want := range []string{
+		">Me<",
+		">Projects<",
+		"Create issue",
+		`href="/issues/new"`,
+		`hx-get="/issues/new/panel"`,
+		`data-sidebar-action`,
+		`href="/settings"`,
+		`href="/tokens"`,
+		`data-lucide="plus"`,
+		`data-lucide="user"`,
+		`data-lucide="folder"`,
+		"data-nav-loader",
+		`data-mobile-app-bar`,
+		`data-mobile-sidebar-toggle`,
+		`aria-controls="app-sidebar"`,
+		`data-mobile-sidebar-backdrop`,
+		`id="app-sidebar" data-mobile-sidebar`,
+		`[data-mobile-sidebar] { visibility: hidden; transform: translateX(-100%); }`,
+		`data-mobile-sidebar-close`,
+		`syncMobileSidebar`,
+		`openMobileSidebar`,
+		`closeMobileSidebar`,
+		`mobileSidebar.inert = !visible`,
+		`@media (min-width: 768px)`,
+		"#sidebar-toggle:checked ~ .app-shell > aside",
+		`track-slash.sidebar.collapsed`,
+		`data-member-menu`,
+		`data-close-on-outside`,
+		`closeOpenDropdowns`,
+		`overflow-visible border-r`,
+		`overflow-x-hidden overflow-y-auto`,
+	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
 		}
+	}
+	toolbarStart := strings.Index(body, `data-mobile-app-bar`)
+	mainStart := strings.Index(body, `<main id="main"`)
+	if toolbarStart < 0 || mainStart < 0 || toolbarStart > mainStart {
+		t.Fatalf("mobile app bar must remain outside and before the HTMX main target: %s", body)
+	}
+	mediaStart := strings.Index(body, `@media (min-width: 768px)`)
+	desktopCollapseStart := strings.Index(body, `html[data-sidebar-collapsed] .app-shell > aside`)
+	if mediaStart < 0 || desktopCollapseStart < mediaStart {
+		t.Fatalf("desktop sidebar collapse CSS must be scoped to the md breakpoint: %s", body)
 	}
 	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
 		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)

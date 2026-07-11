@@ -2,13 +2,20 @@
 
 Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMPONENTS.md`.
 
+## Responsive Shell
+
+- Below the `md` breakpoint, use an off-canvas navigation drawer opened from a persistent mobile app bar. Do not reserve space for a permanent icon rail on narrow screens.
+- Keep mobile page gutters compact and consistent while preserving the established desktop content width and spacing.
+- Dense issue rows should reflow into stacked, readable metadata on narrow screens and return to the compact column layout at `sm` and above.
+- Keep primary tabs on one line. On narrow project pages, keep `Sprint`, `Planned`, and `All` visible and move `Changelog` and `About` into the project overflow menu instead of wrapping or scrolling the tab bar.
+
 ## Project View
 
 - Treat the project page as a focused planning console, not a place to introduce new workflow controls by default.
 - Prefer the stronger hierarchy of the issue detail page: clear title card, compact metadata, purposeful cards, and restrained section language.
 - Keep the project header cohesive. Project identity, actions, and tabs should feel like one unit, with the tab bar close to the project title and flush to the bottom of the header.
 - Keep `Deleted issues` in the project actions menu, not in the primary tab bar.
-- Use the project tabs `Sprint`, `Planned`, `All`, and `About`. `Sprint` is singular; use a human/running-style Lucide icon when available.
+- Use the wide-layout project tabs `Sprint`, `Planned`, `All`, `Changelog`, and `About`. `Sprint` is singular; use a human/running-style Lucide icon when available. Below `lg`, show only the first three as tabs and expose `Changelog` and `About` from project actions so the expanded desktop sidebar cannot squeeze the tab bar.
 - Show assignee filters only where they apply. Do not preserve or display assignee filters on `About`.
 - The `All` tab is the triage and discovery surface. It should feel dense and scan-friendly, with all current, past, completed, planned, and unplanned issues available through one list.
 - Keep `All` page controls in one coherent section. Avoid loose chip clusters; group filters in aligned rows and separate sort controls visually while keeping them in the same control shell.
