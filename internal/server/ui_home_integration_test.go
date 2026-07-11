@@ -47,6 +47,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 		`closeOpenDropdowns`,
 		`overflow-visible border-r`,
 		`overflow-x-hidden overflow-y-auto`,
+		`>@` + user.Username + `<`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %q: %s", want, body)
@@ -80,6 +81,9 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	}
 	if !strings.Contains(body, user.Name) {
 		t.Fatalf("body missing current user: %s", body)
+	}
+	if strings.Contains(body, ">Member<") {
+		t.Fatalf("account overlay should show @username instead of member role: %s", body)
 	}
 	if strings.Contains(body, "/app") {
 		t.Fatalf("body contains legacy /app path: %s", body)

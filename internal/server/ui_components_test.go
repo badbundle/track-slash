@@ -287,7 +287,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
-		User:        model.User{Name: "Demo User"},
+		User:        model.User{Name: "Demo User", Username: "demo"},
 		CurrentView: "projects",
 	})
 	if err != nil {
@@ -346,6 +346,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`data-member-summary`,
 		`data-member-label`,
 		`data-member-menu`,
+		`>@demo<`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing sidebar behavior %q: %s", want, body)
@@ -377,6 +378,11 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 	if strings.Contains(body[menuStart:menuStart+menuEnd], "wide-only") {
 		t.Fatalf("member menu should remain visible when the sidebar is collapsed: %s", body)
+	}
+	for _, roleLabel := range []string{">Member<", ">Admin<"} {
+		if strings.Contains(body, roleLabel) {
+			t.Fatalf("member menu should show @username instead of role label %q: %s", roleLabel, body)
+		}
 	}
 	for _, want := range []string{`[data-submit-shortcut='meta-enter']`, `event.metaKey`, `event.ctrlKey`, `form.requestSubmit()`} {
 		if !strings.Contains(body, want) {

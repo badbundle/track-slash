@@ -12,6 +12,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 ## User Identity
 
 - Render profile images and initials fallbacks as circles everywhere. The shared `user-avatar` component owns the crop shape so individual screens cannot diverge.
+- Identify the signed-in account as `@username` in the profile overlay instead of showing a generic role label such as `Member` or `Admin`.
 
 ## Project View
 
