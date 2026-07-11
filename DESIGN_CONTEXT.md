@@ -9,6 +9,10 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Dense issue rows should reflow into stacked, readable metadata on narrow screens and return to the compact column layout at `sm` and above.
 - Keep primary tabs on one line. On narrow project pages, keep `Sprint`, `Planned`, and `All` visible and move `Changelog` and `About` into the project overflow menu instead of wrapping or scrolling the tab bar.
 
+## User Identity
+
+- Render profile images and initials fallbacks as circles everywhere. The shared `user-avatar` component owns the crop shape so individual screens cannot diverge.
+
 ## Project View
 
 - Treat the project page as a focused planning console, not a place to introduce new workflow controls by default.

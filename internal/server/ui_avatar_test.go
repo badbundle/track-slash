@@ -35,7 +35,7 @@ func TestUIUserAvatarFallbackAndImageRendering(t *testing.T) {
 		t.Fatalf("ExecuteTemplate image avatar: %v", err)
 	}
 	body := buf.String()
-	for _, want := range []string{`aria-label="Ada Lovelace"`, `title="Ada Lovelace"`, `class="avatar-class"`, `src="` + wantURL + `"`, `loading="lazy"`, `object-cover`} {
+	for _, want := range []string{`aria-label="Ada Lovelace"`, `title="Ada Lovelace"`, `class="avatar-class overflow-hidden rounded-full"`, `src="` + wantURL + `"`, `loading="lazy"`, `class="h-full w-full rounded-full object-cover"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("image avatar missing %q: %s", want, body)
 		}
@@ -49,7 +49,7 @@ func TestUIUserAvatarFallbackAndImageRendering(t *testing.T) {
 		t.Fatalf("ExecuteTemplate fallback avatar: %v", err)
 	}
 	body = buf.String()
-	if !strings.Contains(body, "AL") || strings.Contains(body, "<img") {
+	if !strings.Contains(body, "AL") || !strings.Contains(body, `class="avatar-class overflow-hidden rounded-full"`) || strings.Contains(body, "<img") {
 		t.Fatalf("fallback avatar body = %s", body)
 	}
 }

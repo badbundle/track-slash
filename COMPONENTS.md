@@ -22,7 +22,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Avatars
 
-- `user-avatar`: compact user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The caller owns dimensions, shape, colors, and borders through the class string; include `overflow-hidden` when rendering image thumbnails. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
+- `user-avatar`: circular user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The shared component owns the circular crop and clipping; callers own dimensions, colors, and borders through the class string. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
 
 ## Forms
 
