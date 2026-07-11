@@ -149,7 +149,7 @@
 	            <dd class="mt-1 flex items-center justify-between gap-3">
 	              <span class="flex min-w-0 items-center gap-2 text-slate-900 dark:text-slate-100">
 	                {{if .Assignee}}
-	                {{template "user-avatar" (userAvatar .Assignee "grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200")}}
+	                {{template "user-avatar" (userAvatar .Assignee "grid h-6 w-6 shrink-0 place-items-center border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200")}}
 	                <span class="min-w-0 truncate">{{.Assignee.Name}}</span>
 	                {{else}}
 	                <span>Unassigned</span>
@@ -169,7 +169,7 @@
 	            <dd class="mt-1 flex items-center justify-between gap-3">
 	              <span class="flex min-w-0 items-center gap-2 text-slate-900 dark:text-slate-100">
 	                {{if .Reporter}}
-	                {{template "user-avatar" (userAvatar .Reporter "grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200")}}
+	                {{template "user-avatar" (userAvatar .Reporter "grid h-6 w-6 shrink-0 place-items-center border border-slate-300 bg-white text-[10px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200")}}
 	                <span class="min-w-0 truncate">{{.Reporter.Name}}</span>
 	                {{else}}
 	                <span>No reporter</span>

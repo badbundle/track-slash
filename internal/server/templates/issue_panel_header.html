@@ -1,6 +1,6 @@
 {{define "issue-panel-header"}}
-  <header class="rounded-lg border border-slate-200 p-5 dark:border-slate-800 {{statusSurface .Issue.Status}}">
-    <div class="flex flex-wrap items-start justify-between gap-4">
+  <header class="rounded-lg border border-slate-200 p-4 sm:p-5 dark:border-slate-800 {{statusSurface .Issue.Status}}">
+    <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           {{template "issue-key" .Issue.Identifier}}
@@ -10,7 +10,7 @@
         <form method="post" action="{{issueTitle .Issue}}" hx-post="{{issueTitle .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2">
           <div class="min-w-0">
             <div class="flex min-w-0 flex-wrap items-center gap-2">
-              <input name="title" value="{{.TitleInput}}" autofocus aria-label="Issue title" class="min-h-11 min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-2xl font-semibold tracking-normal text-slate-950 outline-none ring-indigo-500 [field-sizing:content] focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              <input name="title" value="{{.TitleInput}}" autofocus aria-label="Issue title" class="min-h-11 min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-2xl sm:text-3xl font-semibold tracking-normal text-slate-950 outline-none ring-indigo-500 [field-sizing:content] focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
               <button type="submit" aria-label="Save title" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                 <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
@@ -22,7 +22,7 @@
           </div>
         </form>
         {{else}}
-        <h1 class="mt-2 min-w-0 break-words text-3xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">
+        <h1 class="mt-2 min-w-0 break-words text-2xl sm:text-3xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">
           {{.Issue.Title}}
           <button type="button" aria-label="Edit title" hx-get="{{issueTitleEdit .Issue}}" hx-target="#main" hx-push-url="false" class="ml-2 inline-grid h-7 w-7 shrink-0 align-middle place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -61,7 +61,7 @@
         </a>
         {{end}}
       </div>
-      <div class="flex shrink-0 flex-wrap items-center gap-2">
+      <div class="flex shrink-0 flex-wrap items-center gap-2 justify-self-end">
         <details data-close-on-outside class="relative">
           <summary aria-label="Issue actions" class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>

@@ -34,6 +34,67 @@ func TestUIPriorityBadgeRendersFilledCircle(t *testing.T) {
 	}
 }
 
+func TestUIIssueSummaryRowReflowsForNarrowScreens(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-summary-row", model.Issue{
+		Identifier: "TRACK-12",
+		Title:      "Responsive issue row",
+		Status:     model.StatusDone,
+		Priority:   model.PriorityP1,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	for _, want := range []string{
+		`data-issue-summary-row`,
+		`grid min-w-0 gap-2 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3`,
+		`sm:contents`,
+		`break-words`,
+		`sm:truncate`,
+		`flex-wrap`,
+		`sm:flex-nowrap`,
+		`TRACK-12`,
+		`Responsive issue row`,
+		`aria-label="Priority P1"`,
+		`Done`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("responsive issue summary row missing %q: %s", want, body)
+		}
+	}
+}
+
+func TestUIIssueListsUseSharedResponsiveSummaryRow(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		path string
+		call string
+	}{
+		{name: "personal work", path: "templates/work_panel.html", call: `{{template "issue-summary-row" .Issue}}`},
+		{name: "project issue lists", path: "templates/project_issue_lists.html", call: `{{template "issue-summary-row" .}}`},
+		{name: "planned sprint", path: "templates/project_panel_planned.html", call: `{{template "issue-summary-row" .}}`},
+		{name: "sub-issues", path: "templates/issue_panel_relationships.html", call: `{{template "issue-summary-row" .}}`},
+	} {
+		src, err := uiTemplateFS.ReadFile(tt.path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", tt.name, err)
+		}
+		body := string(src)
+		if !strings.Contains(body, tt.call) {
+			t.Fatalf("%s missing shared responsive issue row call %q: %s", tt.name, tt.call, body)
+		}
+		if strings.Contains(body, `issue-summary-row-cells`) {
+			t.Fatalf("%s still uses the fixed-grid issue row cells: %s", tt.name, body)
+		}
+	}
+}
+
 func TestUIWorkPanelRendersTabsAndIssueControls(t *testing.T) {
 	t.Parallel()
 
@@ -221,12 +282,12 @@ func TestUITagManagerUsesTagNamesNotRefs(t *testing.T) {
 	}
 }
 
-func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
+func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
-		User:        model.User{Name: "Demo User"},
+		User:        model.User{Name: "Demo User", Username: "demo"},
 		CurrentView: "projects",
 	})
 	if err != nil {
@@ -235,6 +296,46 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
+		`data-mobile-app-bar class="flex h-14`,
+		`data-mobile-sidebar-toggle`,
+		`aria-controls="app-sidebar"`,
+		`aria-expanded="false"`,
+		`data-mobile-sidebar-backdrop`,
+		`hidden aria-hidden="true" tabindex="-1"`,
+		`id="app-sidebar" data-mobile-sidebar`,
+		`data-mobile-sidebar aria-hidden="true" inert`,
+		`w-72 max-w-[calc(100vw-2rem)]`,
+		`[data-mobile-sidebar] { visibility: hidden; transform: translateX(-100%); }`,
+		`data-mobile-sidebar-close`,
+		`data-mobile-sidebar-open`,
+		`syncMobileSidebar`,
+		`openMobileSidebar`,
+		`closeMobileSidebar`,
+		`let mobileSidebarOpen = false`,
+		`mobileSidebar.setAttribute("aria-hidden", visible ? "false" : "true")`,
+		`mobileSidebar.inert = !visible`,
+		`mobileAppBar.inert = open`,
+		`mainContent.inert = open`,
+		`mobileSidebarToggle.setAttribute("aria-expanded", open ? "true" : "false")`,
+		`mobileSidebarBackdrop.hidden = !open`,
+		`mobileSidebarClose.focus()`,
+		`mobileSidebarReturnFocus.focus()`,
+		`mobileSidebarToggle.addEventListener("click", openMobileSidebar)`,
+		`mobileSidebarClose.addEventListener("click", () => closeMobileSidebar())`,
+		`mobileSidebarBackdrop.addEventListener("click", () => closeMobileSidebar())`,
+		`mobileSidebar.addEventListener("click"`,
+		`event.target.closest("a[href]")`,
+		`event.key !== "Escape" || !mobileSidebarOpen`,
+		`mobileSidebarBreakpoint.addEventListener("change", handleMobileSidebarBreakpoint)`,
+		`focusFirstDesktopSidebarControl`,
+		`focusWasInSidebar`,
+		`focusWasInAppBar`,
+		`(min-width: 768px)`,
+		`@supports (height: 100dvh)`,
+		`height: 100vh`,
+		`height: 100dvh`,
+		`.modal-panel { max-height: calc(100vh - 3rem); max-height: calc(100dvh - 3rem); }`,
+		`overflow-x-hidden overflow-y-auto`,
 		"#sidebar-toggle:checked ~ .app-shell > aside",
 		`html[data-sidebar-collapsed] .app-shell > aside`,
 		`track-slash.sidebar.collapsed`,
@@ -245,10 +346,24 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 		`data-member-summary`,
 		`data-member-label`,
 		`data-member-menu`,
+		`>@demo<`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing sidebar behavior %q: %s", want, body)
 		}
+	}
+	mediaStart := strings.Index(body, `@media (min-width: 768px)`)
+	desktopCollapseStart := strings.Index(body, `html[data-sidebar-collapsed] .app-shell > aside`)
+	if mediaStart < 0 || desktopCollapseStart < mediaStart {
+		t.Fatalf("desktop sidebar collapse CSS must be scoped to the md breakpoint: %s", body)
+	}
+	mobileStateStart := strings.Index(body, `const mobileSidebar =`)
+	mobileStateEnd := strings.Index(body, `const setNavLoading =`)
+	if mobileStateStart < 0 || mobileStateEnd <= mobileStateStart {
+		t.Fatalf("shell missing isolated mobile sidebar state: %s", body)
+	}
+	if strings.Contains(body[mobileStateStart:mobileStateEnd], `localStorage`) {
+		t.Fatalf("mobile drawer state must not share desktop collapse persistence: %s", body[mobileStateStart:mobileStateEnd])
 	}
 	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
 		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
@@ -263,6 +378,11 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	}
 	if strings.Contains(body[menuStart:menuStart+menuEnd], "wide-only") {
 		t.Fatalf("member menu should remain visible when the sidebar is collapsed: %s", body)
+	}
+	for _, roleLabel := range []string{">Member<", ">Admin<"} {
+		if strings.Contains(body, roleLabel) {
+			t.Fatalf("member menu should show @username instead of role label %q: %s", roleLabel, body)
+		}
 	}
 	for _, want := range []string{`[data-submit-shortcut='meta-enter']`, `event.metaKey`, `event.ctrlKey`, `form.requestSubmit()`} {
 		if !strings.Contains(body, want) {
@@ -305,10 +425,12 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
+		`.markdown-body { min-width: 0; overflow-wrap: anywhere; }`,
 		`.markdown-body h1 { font-size: 1.5rem; }`,
 		`.markdown-body h2 { font-size: 1.25rem; }`,
 		`.markdown-body h3 { font-size: 1.125rem; }`,
 		`.markdown-body table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }`,
+		`.markdown-body table { display: block; max-width: 100%; overflow-x: auto; }`,
 		`.markdown-body th, .markdown-body td { border: 1px solid rgb(203 213 225); padding: 0.375rem 0.5rem; text-align: left; vertical-align: top; }`,
 		`.dark .markdown-body th, .dark .markdown-body td { border-color: rgb(51 65 85); }`,
 	} {
@@ -318,36 +440,130 @@ func TestUIShellSidebarCollapseTargetsOnlyTopLevelSidebar(t *testing.T) {
 	}
 }
 
-func TestUIPanelsUseConsistentPageWidth(t *testing.T) {
+func TestUIPanelsUseConsistentResponsivePageFrame(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
-		name      string
-		path      string
-		wantClass string
+		name string
+		path string
 	}{
-		{name: "work", path: "templates/work_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "projects", path: "templates/projects_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "new project", path: "templates/new_project_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "project", path: "templates/project_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "issue", path: "templates/issue_panel.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "settings", path: "templates/settings.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "tokens", path: "templates/tokens.html", wantClass: `class="mx-auto max-w-6xl px-6 py-6"`},
-		{name: "empty shell", path: "templates/shell_main.html", wantClass: `class="mx-auto max-w-6xl px-6 py-8"`},
+		{name: "work", path: "templates/work_panel.html"},
+		{name: "projects", path: "templates/projects_panel.html"},
+		{name: "new project", path: "templates/new_project_panel.html"},
+		{name: "new issue", path: "templates/new_issue_panel.html"},
+		{name: "project", path: "templates/project_panel.html"},
+		{name: "deleted issues", path: "templates/project_deleted_panel.html"},
+		{name: "deleted issue", path: "templates/deleted_issue_panel.html"},
+		{name: "issue", path: "templates/issue_panel.html"},
+		{name: "context manager", path: "templates/context_manager.html"},
+		{name: "tag manager", path: "templates/tag_manager.html"},
+		{name: "settings", path: "templates/settings.html"},
+		{name: "tokens", path: "templates/tokens.html"},
+		{name: "empty shell", path: "templates/shell_main.html"},
 	} {
 		src, err := uiTemplateFS.ReadFile(tt.path)
 		if err != nil {
 			t.Fatalf("%s: read template: %v", tt.name, err)
 		}
 		body := string(src)
-		if !strings.Contains(body, tt.wantClass) {
-			t.Fatalf("%s panel missing shared page width %q: %s", tt.name, tt.wantClass, body)
+		wantClass := `class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6"`
+		if !strings.Contains(body, wantClass) {
+			t.Fatalf("%s panel missing responsive page frame %q: %s", tt.name, wantClass, body)
 		}
 		if strings.Contains(body, "max-w-5xl") {
 			t.Fatalf("%s panel still uses narrower page width: %s", tt.name, body)
 		}
-		if tt.name != "issue" && strings.Contains(body, `data-lucide="arrow-left"`) {
+		if tt.name != "issue" && tt.name != "tag manager" && strings.Contains(body, `data-lucide="arrow-left"`) {
 			t.Fatalf("%s panel should not render app-level back buttons: %s", tt.name, body)
+		}
+	}
+}
+
+func TestUIModalAndSpecialRowsStayContainedOnNarrowScreens(t *testing.T) {
+	t.Parallel()
+
+	var modal bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&modal, "modal-open", uiModalData{
+		ID:         "responsive-modal",
+		Title:      "Responsive modal",
+		WidthClass: "max-w-lg",
+	}); err != nil {
+		t.Fatalf("render modal: %v", err)
+	}
+	for _, want := range []string{
+		`role="dialog"`,
+		`aria-modal="true"`,
+		`modal-panel`,
+		`overflow-y-auto`,
+	} {
+		if !strings.Contains(modal.String(), want) {
+			t.Fatalf("responsive modal missing %q: %s", want, modal.String())
+		}
+	}
+
+	for _, tt := range []struct {
+		name string
+		path string
+		want []string
+	}{
+		{
+			name: "linked issue",
+			path: "templates/issue_panel_relationships.html",
+			want: []string{
+				`grid-cols-[minmax(0,1fr)_auto]`,
+				`sm:grid-cols-[4.75rem_minmax(0,1fr)_auto]`,
+				`col-span-2 row-start-2`,
+				`sm:row-start-1`,
+				`flex-wrap`,
+				`sm:flex-nowrap`,
+			},
+		},
+		{
+			name: "deleted issue",
+			path: "templates/project_deleted_panel.html",
+			want: []string{
+				`class="grid gap-3`,
+				`sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto_auto]`,
+				`sm:contents`,
+			},
+		},
+	} {
+		src, err := uiTemplateFS.ReadFile(tt.path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", tt.name, err)
+		}
+		body := string(src)
+		for _, want := range tt.want {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s row missing responsive marker %q: %s", tt.name, want, body)
+			}
+		}
+	}
+}
+
+func TestUIActionMenusStayInsideNarrowHeaders(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		path string
+	}{
+		{name: "project", path: "templates/project_panel.html"},
+		{name: "issue", path: "templates/issue_panel_header.html"},
+	} {
+		src, err := uiTemplateFS.ReadFile(tt.path)
+		if err != nil {
+			t.Fatalf("%s: read template: %v", tt.name, err)
+		}
+		body := string(src)
+		for _, want := range []string{
+			`grid-cols-[minmax(0,1fr)_auto]`,
+			`justify-self-end`,
+			`absolute right-0 top-11 z-20 w-48`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s action menu missing narrow-screen alignment %q: %s", tt.name, want, body)
+			}
 		}
 	}
 }
@@ -361,6 +577,7 @@ func TestUITabBarComponentRendersReusableTabs(t *testing.T) {
 		Items: []uiTabItem{
 			{Label: "One", Icon: "circle", Href: "/one", HXGet: "/one/panel", HXTarget: "#main", HXPushURL: "/one", Active: true},
 			{Label: "Two", Icon: "square", Href: "/two", HXGet: "/two/panel", HXTarget: "#main", HXPushURL: "/two"},
+			{Label: "Three", Icon: "triangle", Href: "/three", HXGet: "/three/panel", HXTarget: "#main", HXPushURL: "/three", MobileOverflow: true},
 		},
 	})
 	if err != nil {
@@ -368,12 +585,14 @@ func TestUITabBarComponentRendersReusableTabs(t *testing.T) {
 	}
 
 	body := buf.String()
-	for _, want := range []string{`aria-label="Example views"`, "flex flex-wrap", "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`} {
+	for _, want := range []string{`aria-label="Example views"`, "flex flex-nowrap", "gap-4 sm:gap-6", "border-b-4", `data-lucide="circle"`, `href="/one"`, `hx-get="/one/panel"`, `aria-current="page"`, `href="/two"`, `href="/three"`, `hidden lg:inline-flex`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("tab bar missing markup %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "overflow-x-auto") {
-		t.Fatalf("tab bar should not force horizontal scrolling: %s", body)
+	for _, unwanted := range []string{"flex-wrap", "overflow-x-auto"} {
+		if strings.Contains(body, unwanted) {
+			t.Fatalf("tab bar should stay on one line instead of using %q: %s", unwanted, body)
+		}
 	}
 }

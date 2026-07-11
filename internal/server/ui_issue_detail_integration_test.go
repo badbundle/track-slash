@@ -152,11 +152,20 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body missing %q: %s", want, body)
 		}
 	}
-	titleHeaderEnd := strings.Index(body, "</header>")
-	if titleHeaderEnd < 0 {
+	mainStart := strings.Index(body, `<main id="main"`)
+	if mainStart < 0 {
+		t.Fatalf("issue body missing main content: %s", body)
+	}
+	titleHeaderStartOffset := strings.Index(body[mainStart:], "<header")
+	if titleHeaderStartOffset < 0 {
 		t.Fatalf("issue body missing title header: %s", body)
 	}
-	titleHeader := body[:titleHeaderEnd]
+	titleHeaderStart := mainStart + titleHeaderStartOffset
+	titleHeaderEndOffset := strings.Index(body[titleHeaderStart:], "</header>")
+	if titleHeaderEndOffset < 0 {
+		t.Fatalf("issue body missing title header end: %s", body)
+	}
+	titleHeader := body[titleHeaderStart : titleHeaderStart+titleHeaderEndOffset]
 	if !strings.Contains(titleHeader, "#UI") ||
 		!strings.Contains(titleHeader, `aria-label="Manage tags"`) ||
 		!strings.Contains(titleHeader, "Detail Planned Sprint") {

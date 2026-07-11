@@ -48,8 +48,8 @@
         {{if .SubIssues}}
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
-          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="grid grid-cols-[6.5rem_auto_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
-            {{template "issue-summary-row-cells" .}}
+          <a data-main-view="projects" href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="block min-w-0 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+            {{template "issue-summary-row" .}}
           </a>
           {{end}}
         </div>
@@ -129,21 +129,21 @@
             {{if $.LinkError}}<div class="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.LinkError}}</div>{{end}}
           </form>
           {{else}}
-          <div class="grid grid-cols-[4.75rem_1fr_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
-            <span class="text-[11px] font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
+          <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 sm:grid-cols-[4.75rem_minmax(0,1fr)_auto] {{if .HasIssue}}{{statusRow .LinkedIssue.Status}}{{else}}bg-white dark:bg-slate-900{{end}}">
+            <span class="col-start-1 row-start-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">{{linkLabel .Link $.Issue.ID}}</span>
             {{if .HasIssue}}
-            <a data-main-view="projects" href="{{issueHref .LinkedIssue}}" hx-get="{{issuePanel .LinkedIssue}}" hx-target="#main" hx-push-url="{{issueHref .LinkedIssue}}" class="flex min-w-0 items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
+            <a data-main-view="projects" href="{{issueHref .LinkedIssue}}" hx-get="{{issuePanel .LinkedIssue}}" hx-target="#main" hx-push-url="{{issueHref .LinkedIssue}}" class="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200 sm:col-span-1 sm:col-start-2 sm:row-start-1 sm:flex-nowrap">
               {{template "issue-key" .LinkedIssue.Identifier}}
               {{template "priority-badge" .LinkedIssue.Priority}}
-              <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.LinkedIssue.Title}}</span>
+              <span class="min-w-0 basis-full break-words text-slate-900 dark:text-slate-100 sm:basis-auto sm:flex-1 sm:truncate">{{.LinkedIssue.Title}}</span>
               {{template "issue-due-badge" .LinkedIssue}}
               {{template "status-badge" .LinkedIssue.Status}}
               {{if eq .LinkedIssue.Status "closed"}}{{template "close-reason-badge" .LinkedIssue.CloseReason}}{{end}}
             </a>
             {{else}}
-            <span class="text-slate-500 dark:text-slate-400">Deleted issue</span>
+            <span class="col-span-2 row-start-2 text-slate-500 dark:text-slate-400 sm:col-span-1 sm:col-start-2 sm:row-start-1">Deleted issue</span>
             {{end}}
-            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="col-start-2 row-start-1 grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900 sm:col-start-3 sm:row-start-1">
               <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
           </div>
