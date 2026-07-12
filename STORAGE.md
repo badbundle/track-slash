@@ -10,12 +10,14 @@ Local runtime config, with defaults:
 
 ```bash
 TRACK_SLASH_STORAGE_BACKEND=local
-TRACK_SLASH_STORAGE_LOCAL_ROOT=tmp/storage
+TRACK_SLASH_STORAGE_LOCAL_ROOT=data/storage
 TRACK_SLASH_STORAGE_BUCKET=local
 TRACK_SLASH_STORAGE_MAX_UPLOAD_BYTES=52428800
 ```
 
-`TRACK_SLASH_STORAGE_LOCAL_ROOT` is a directory on the machine running `trackd`. The default lives under `tmp/`, which is gitignored and suitable for local development. Production deployments should set an explicit durable path.
+`TRACK_SLASH_STORAGE_LOCAL_ROOT` is a directory on the machine running `trackd`. The default, `data/storage`, is project-relative and gitignored; it is deliberately separate from Air's disposable `tmp/air` build directory, so files survive `make run` restarts. Set it to an absolute path or another relative path to keep local assets elsewhere. Production deployments should set an explicit durable path.
+
+When upgrading from the former `tmp/storage` default, `trackd` moves that directory to `data/storage` at startup when the new default is in use. If both directories already exist, startup stops rather than merging or overwriting files; move the files manually before restarting. Assets previously deleted from `tmp/storage` cannot be recovered.
 
 S3-compatible runtime config:
 

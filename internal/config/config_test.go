@@ -188,8 +188,8 @@ func TestLoadStorageDefaults(t *testing.T) {
 	if cfg.Storage.Backend != "local" {
 		t.Fatalf("Storage.Backend = %q, want local", cfg.Storage.Backend)
 	}
-	if cfg.Storage.LocalRoot != "tmp/storage" {
-		t.Fatalf("Storage.LocalRoot = %q, want tmp/storage", cfg.Storage.LocalRoot)
+	if cfg.Storage.LocalRoot != DefaultLocalStorageRoot {
+		t.Fatalf("Storage.LocalRoot = %q, want %q", cfg.Storage.LocalRoot, DefaultLocalStorageRoot)
 	}
 	if cfg.Storage.Bucket != "local" {
 		t.Fatalf("Storage.Bucket = %q, want local", cfg.Storage.Bucket)
