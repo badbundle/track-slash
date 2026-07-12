@@ -8,9 +8,9 @@
         </div>
         <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
           {{if .PlannedHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
-          <button type="button" aria-label="New planned sprint" hx-get="{{projectSprintNew .Project}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+          {{if .CanWrite}}<button type="button" aria-label="New planned sprint" hx-get="{{projectSprintNew .Project}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
+          </button>{{end}}
         </div>
       </div>
 
@@ -68,7 +68,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
-              <form method="post" action="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-post="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">
+              {{if $.CanWrite}}<form method="post" action="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-post="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">
                 <button type="submit" aria-label="Move sprint up" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="arrow-up" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
@@ -93,7 +93,7 @@
                 <button type="submit" aria-label="Delete sprint" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
                   <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
-              </form>
+              </form>{{end}}
             </div>
           </header>
 

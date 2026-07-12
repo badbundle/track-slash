@@ -35,6 +35,7 @@ func TestUIActiveSprintDescriptionPreview(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel-sprint", &uiProjectPanelData{
+		CanWrite:     true,
 		Project:      project,
 		ActiveSprint: &sprint,
 		ActiveSprintDescription: uiSprintDescriptionData{
@@ -123,6 +124,7 @@ func TestUISprintEditUsesSharedAttachmentDropzone(t *testing.T) {
 	sprint := model.Sprint{ID: uuid.New(), Ref: "sprint-9", Name: "Edit", Goal: "Source", Status: model.SprintStatusActive}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel-sprint", &uiProjectPanelData{
+		CanWrite:           true,
 		Project:            project,
 		ActiveSprint:       &sprint,
 		ActiveSprintAction: "edit",

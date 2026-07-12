@@ -304,12 +304,12 @@
     {{template "issue-key" .Issue.Identifier}}
     <span class="min-w-0 truncate">{{.Issue.Title}}</span>
   </div>
-  <form method="post" action="{{issueRestore .Issue}}" hx-post="{{issueRestore .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
+  {{if .CanWrite}}<form method="post" action="{{issueRestore .Issue}}" hx-post="{{issueRestore .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}">
     <button type="submit" class="inline-flex items-center gap-2 rounded-md border border-emerald-300 bg-white px-2.5 py-1.5 text-sm font-medium text-emerald-800 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-emerald-800 dark:bg-slate-950 dark:text-emerald-200 dark:hover:bg-emerald-950/50 dark:focus:ring-offset-slate-900">
       <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
       Undo delete
     </button>
-  </form>
+  </form>{{end}}
 </div>
 {{end}}
 {{end}}

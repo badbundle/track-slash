@@ -34,7 +34,7 @@ func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, source.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, source.ProjectID) {
 		return
 	}
 	var req createIssueLinkReq
@@ -145,7 +145,7 @@ func (s *Server) updateIssueLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req updateIssueLinkReq
@@ -202,7 +202,7 @@ func (s *Server) deleteIssueLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if err := s.store.DeleteIssueLink(r.Context(), link.ID); err != nil {

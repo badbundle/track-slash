@@ -125,6 +125,60 @@ func TestUIProjectAboutStats(t *testing.T) {
 	}
 }
 
+func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	readonly, readonlyToken := e.mustUserToken(t, "ui-readonly")
+	adminBody := e.uiGet(t, e.projectPath()+"/planned", e.authToken)
+	membersPath := e.projectPath() + "/members"
+	for _, want := range []string{"Members", `data-lucide="users"`, `href="` + membersPath + `"`, `hx-get="` + membersPath + `/panel"`, `hx-push-url="` + membersPath + `"`} {
+		if !strings.Contains(adminBody, want) {
+			t.Fatalf("owner project menu missing %q: %s", want, adminBody)
+		}
+	}
+
+	pageBody := e.uiGet(t, membersPath, e.authToken)
+	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "@" + readonly.Username} {
+		if !strings.Contains(pageBody, want) {
+			t.Fatalf("member page missing %q: %s", want, pageBody)
+		}
+	}
+	for _, notWant := range []string{`id="project-members-modal"`, `role="dialog"`} {
+		if strings.Contains(pageBody, notWant) {
+			t.Fatalf("member page retained modal markup %q: %s", notWant, pageBody)
+		}
+	}
+
+	form := url.Values{"username": {readonly.Username}, "role": {"readonly"}}
+	res := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/members", e.authToken, strings.NewReader(form.Encode()))
+	body := readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "@"+readonly.Username) || !strings.Contains(body, `value="readonly" selected`) {
+		t.Fatalf("add readonly response code = %d body = %s", res.StatusCode, body)
+	}
+
+	readonlyBody := e.uiGet(t, e.projectPath()+"/planned", readonlyToken)
+	for _, notWant := range []string{"Members", `aria-label="New issue"`, `aria-label="Edit project name"`, `aria-label="New planned sprint"`} {
+		if strings.Contains(readonlyBody, notWant) {
+			t.Fatalf("readonly project rendered mutation control %q: %s", notWant, readonlyBody)
+		}
+	}
+	if !strings.Contains(readonlyBody, `aria-label="Favorite project"`) {
+		t.Fatalf("readonly project missing personal favorite: %s", readonlyBody)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, membersPath, readonlyToken, nil)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly member page code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res.Body.Close()
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, e.projectPath()+"/name/edit", readonlyToken, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly direct edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+}
+
 func TestUIProjectNameAndDescriptionEditing(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

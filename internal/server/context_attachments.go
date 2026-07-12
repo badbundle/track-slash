@@ -12,7 +12,7 @@ import (
 
 func (s *Server) createContextAttachment(w http.ResponseWriter, r *http.Request) {
 	project, contextItem, ok := s.projectContextFromRoute(w, r)
-	if !ok || !s.requireProjectAccess(w, r, project.ID) {
+	if !ok || !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	attachment, ok := s.createContextAttachmentForPage(w, r, project, contextItem)
@@ -68,6 +68,9 @@ func (s *Server) getContextAttachmentContent(w http.ResponseWriter, r *http.Requ
 func (s *Server) deleteContextAttachment(w http.ResponseWriter, r *http.Request) {
 	project, contextItem, attachment, ok := s.contextAttachmentFromRoute(w, r)
 	if !ok {
+		return
+	}
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if !s.deleteContextAttachmentForPage(w, r, project, contextItem, attachment) {

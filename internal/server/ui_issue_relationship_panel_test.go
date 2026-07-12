@@ -18,6 +18,7 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	basePanel := func() uiIssuePanelData {
 		return uiIssuePanelData{
+			CanWrite: true,
 			Issue: model.Issue{
 				ID:            issueID,
 				ProjectID:     projectID,
@@ -191,6 +192,7 @@ func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -265,6 +267,7 @@ func TestUIIssuePanelRendersAddLinkForm(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -334,6 +337,7 @@ func TestUIIssuePanelRendersLinkEditForm(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,

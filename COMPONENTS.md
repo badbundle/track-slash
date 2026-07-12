@@ -22,7 +22,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Avatars
 
-- `user-avatar`: circular user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The shared component owns the circular crop and clipping; callers own dimensions, colors, and borders through the class string. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
+- `user-avatar`: circular user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectMember`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The shared component owns the circular crop and clipping; callers own dimensions, colors, and borders through the class string. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
 
 ## Forms
 
@@ -46,6 +46,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 - `project-favorite-action`: project header star toggle backed by `uiProjectFavoriteData`/`uiProjectPanelData`. Keep it adjacent to the project title and update only the action wrapper plus `sidebar-favorites`.
 - `project-panel-context`: integrated project Context tab in `internal/server/templates/project_panel_context.html`; expects `uiContextManagerData` through `uiProjectPanelData.ContextManager`. It owns the ordered page list and selected Markdown page.
+- `project-member-page`: full project member manager in `internal/server/templates/project_member_page.html`; expects the member fields on `uiProjectPanelData`. Keep the owner fixed, use avatar/name/username rows with inline role selectors, confirm removals, and re-render the page after each mutation.
 - `context-manager-panel`: routes issue mode to the integrated list/document manager in `internal/server/templates/issue_context_manager.html`; project mode remains a compatibility fallback because project Context normally renders through `project-panel-context`.
 - `description-body`: shared safe Markdown display backed by `uiDescriptionBodyData`. Project, issue, and sprint adapters pass attachment-scoped rendered HTML.
 - `description-editor`: shared Markdown textarea backed by `uiDescriptionEditorData`, with optional upload and attachment-list URLs. Creation forms omit upload configuration until a parent ref exists.

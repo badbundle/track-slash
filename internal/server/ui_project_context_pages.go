@@ -429,6 +429,10 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	contexts, hasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
 		ProjectID: projectID,
 		Limit:     MaxLimit,
@@ -453,6 +457,7 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 	return &uiContextManagerData{
 		Mode:      "project",
 		Project:   project,
+		CanWrite:  permissions.CanWrite,
 		BackHref:  uiProjectViewPath(project, "context"),
 		BackHXGet: uiProjectPanelPath(project, "context"),
 		BackLabel: "Context",
@@ -512,6 +517,10 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	contexts, hasMore, err := s.store.ListContextsForIssue(ctx, store.ListContextsForIssueParams{
 		IssueID: issueID,
 		Limit:   MaxLimit,
@@ -542,6 +551,7 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 		Project:        project,
 		Issue:          issue,
 		HasIssue:       true,
+		CanWrite:       permissions.CanWrite,
 		BackHref:       uiIssuePath(issue),
 		BackHXGet:      uiIssuePanelPath(issue),
 		BackLabel:      "Issue",

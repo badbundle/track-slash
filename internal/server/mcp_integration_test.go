@@ -168,6 +168,134 @@ func TestMCPToolErrorsAreStructured(t *testing.T) {
 	requireMCPErrorCode(t, out, "validation_error")
 }
 
+func TestMCPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+
+	projectOwner, err := e.store.CreateUserProfile(e.ctx, "mcp-owner-"+e.projKey, "mcp-owner-"+e.projKey+"@example.com", "MCP Owner")
+	if err != nil {
+		t.Fatalf("CreateUserProfile owner: %v", err)
+	}
+	member, err := e.store.CreateUserProfile(e.ctx, "mcp-member-"+e.projKey, "mcp-member-"+e.projKey+"@example.com", "MCP Member")
+	if err != nil {
+		t.Fatalf("CreateUserProfile member: %v", err)
+	}
+	readonly, err := e.store.CreateUserProfile(e.ctx, "mcp-readonly-"+e.projKey, "mcp-readonly-"+e.projKey+"@example.com", "MCP Readonly")
+	if err != nil {
+		t.Fatalf("CreateUserProfile readonly: %v", err)
+	}
+	outsider, err := e.store.CreateUserProfile(e.ctx, "mcp-outsider-"+e.projKey, "mcp-outsider-"+e.projKey+"@example.com", "MCP Outsider")
+	if err != nil {
+		t.Fatalf("CreateUserProfile outsider: %v", err)
+	}
+	projectKey := uniqueProjectKey(t)
+	project, err := e.store.CreateProjectForUser(e.ctx, projectOwner.ID, projectKey, "MCP role project", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
+	}
+
+	tokenFor := func(t *testing.T, user model.User) string {
+		t.Helper()
+		token, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{UserID: user.ID, Kind: model.AuthTokenKindAPI, Name: "member role test"})
+		if err != nil {
+			t.Fatalf("CreateAuthToken %s: %v", user.Username, err)
+		}
+		return token.RawToken
+	}
+	ownerSession := mcpConnect(t, e, tokenFor(t, projectOwner))
+	memberSession := mcpConnect(t, e, tokenFor(t, member))
+	readonlySession := mcpConnect(t, e, tokenFor(t, readonly))
+	outsiderSession := mcpConnect(t, e, tokenFor(t, outsider))
+	adminSession := mcpConnect(t, e, e.authToken)
+	projectArgs := map[string]any{"owner": projectOwner.Username, "key": project.Key}
+
+	candidateOut := mcpCall(t, e, ownerSession, "track_search_project_member_candidates", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "query": "mcp-", "limit": 10,
+	})
+	candidates := decodeMCPField[[]model.ProjectMemberCandidate](t, candidateOut, "users")
+	if len(candidates) != 3 {
+		t.Fatalf("candidate count = %d, want 3: %+v", len(candidates), candidates)
+	}
+
+	memberOut := mcpCall(t, e, ownerSession, "track_grant_project_member", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "username": member.Username,
+	})
+	if got := decodeMCPField[model.ProjectMember](t, memberOut, "member"); got.Role != model.ProjectMemberRoleMember {
+		t.Fatalf("default member role = %q", got.Role)
+	}
+	readonlyOut := mcpCall(t, e, ownerSession, "track_grant_project_member", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "username": readonly.Username, "role": "readonly",
+	})
+	if got := decodeMCPField[model.ProjectMember](t, readonlyOut, "member"); got.Role != model.ProjectMemberRoleReadonly {
+		t.Fatalf("readonly role = %q", got.Role)
+	}
+
+	listOut := mcpCall(t, e, readonlySession, "track_list_project_members", projectArgs)
+	members := decodeMCPField[[]model.ProjectMember](t, listOut, "members")
+	if len(members) != 3 || members[0].UserID != projectOwner.ID {
+		t.Fatalf("members = %+v", members)
+	}
+	if bytes.Contains(listOut["members"], []byte("@example.com")) {
+		t.Fatalf("membership output exposed an email: %s", listOut["members"])
+	}
+	searchOut := mcpCall(t, e, readonlySession, "track_search_project_members", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "query": "mcp-", "limit": 10,
+	})
+	searched := decodeMCPField[[]model.ProjectMemberCandidate](t, searchOut, "users")
+	if len(searched) != 3 || bytes.Contains(searchOut["users"], []byte("@example.com")) {
+		t.Fatalf("safe member search = %s", searchOut["users"])
+	}
+
+	if out := mcpCallExpectError(t, e, memberSession, "track_search_project_member_candidates", projectArgs); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	if out := mcpCallExpectError(t, e, memberSession, "track_grant_project_member", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "username": outsider.Username,
+	}); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	created := mcpCall(t, e, memberSession, "track_create_issue", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "title": "member can write",
+	})
+	if issue := decodeMCPField[model.Issue](t, created, "issue"); issue.ProjectID != project.ID {
+		t.Fatalf("created issue project = %s, want %s", issue.ProjectID, project.ID)
+	}
+	if out := mcpCallExpectError(t, e, readonlySession, "track_create_issue", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "title": "readonly cannot write",
+	}); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	if out := mcpCallExpectError(t, e, outsiderSession, "track_list_project_members", projectArgs); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+
+	for _, test := range []struct {
+		name string
+		tool string
+		args map[string]any
+		code string
+	}{
+		{name: "invalid role", tool: "track_grant_project_member", args: map[string]any{"owner": projectOwner.Username, "key": project.Key, "username": outsider.Username, "role": "invalid"}, code: "validation_error"},
+		{name: "owner downgrade", tool: "track_grant_project_member", args: map[string]any{"owner": projectOwner.Username, "key": project.Key, "username": projectOwner.Username, "role": "readonly"}, code: "conflict"},
+		{name: "owner removal", tool: "track_revoke_project_member", args: map[string]any{"owner": projectOwner.Username, "key": project.Key, "username": projectOwner.Username}, code: "conflict"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			out := mcpCallExpectError(t, e, ownerSession, test.tool, test.args)
+			requireMCPErrorCode(t, out, test.code)
+		})
+	}
+
+	adminUpdate := mcpCall(t, e, adminSession, "track_grant_project_member", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "username": readonly.Username, "role": "member",
+	})
+	if got := decodeMCPField[model.ProjectMember](t, adminUpdate, "member"); got.Role != model.ProjectMemberRoleMember {
+		t.Fatalf("admin-updated role = %q", got.Role)
+	}
+	mcpCall(t, e, adminSession, "track_revoke_project_member", map[string]any{
+		"owner": projectOwner.Username, "key": project.Key, "username": readonly.Username,
+	})
+}
+
 func TestMCPSprintOptionalDates(t *testing.T) {
 	t.Parallel()
 	e := newMCPHTTPEnv(t, nil)

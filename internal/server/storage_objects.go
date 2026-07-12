@@ -33,7 +33,7 @@ func (s *Server) createStorageObject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if !s.requireObjectStorage(w) {
@@ -210,8 +210,11 @@ func (s *Server) deleteStorageBackendObject(parent context.Context, objectKey st
 }
 
 func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
-	_, object, ok := s.storageObjectFromRoute(w, r)
+	project, object, ok := s.storageObjectFromRoute(w, r)
 	if !ok {
+		return
+	}
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if !s.requireObjectStorage(w) {

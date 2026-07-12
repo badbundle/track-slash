@@ -62,7 +62,7 @@ SVG is not rendered inline. Non-image attachments render as download links.
 
 ## Routes
 
-Project members can use the API routes:
+Project readers, including readonly members, can use the `GET` routes below. Owners, admins, and members with write access can also use the `POST` and `DELETE` routes:
 
 - `POST /api/v1/{owner}/projects/{key}/attachments`
 - `GET /api/v1/{owner}/projects/{key}/attachments`

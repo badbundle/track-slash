@@ -1004,10 +1004,12 @@ func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID 
 	var ok bool
 	err := tx.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1
-			FROM project_members pm
-			JOIN users u ON u.id = pm.user_id
-			WHERE pm.project_id = $1 AND pm.user_id = $2 AND u.deleted_at IS NULL
+			SELECT 1 FROM projects p
+			JOIN users u ON u.id = $2 AND u.deleted_at IS NULL
+			LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = u.id
+			WHERE p.id = $1
+			  AND p.deleted_at IS NULL
+			  AND (p.owner_id = u.id OR pm.role = 'member')
 		)
 	`, projectID, userID).Scan(&ok)
 	return ok, err

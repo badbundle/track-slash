@@ -328,6 +328,7 @@ type mcpSprintAttachmentsPageInput struct {
 type mcpMemberInput struct {
 	mcpProjectInput
 	Username string `json:"username"`
+	Role     string `json:"role,omitempty" jsonschema:"member or readonly; defaults to member"`
 }
 
 type mcpSearchMembersInput struct {
@@ -444,10 +445,11 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_projects", "List projects visible to current user.", readOnly, s.mcpListProjects)
 	addMCPTool(srv, "track_get_project", "Get project by owner and key.", readOnly, s.mcpGetProject)
 	addMCPTool(srv, "track_delete_project", "Soft-delete a project. Admin only.", write, s.mcpDeleteProject)
-	addMCPTool(srv, "track_list_project_members", "List project members. Admin only.", readOnly, s.mcpListProjectMembers)
-	addMCPTool(srv, "track_grant_project_member", "Grant user access to project. Admin only.", write, s.mcpGrantProjectMember)
-	addMCPTool(srv, "track_revoke_project_member", "Revoke user access to project. Admin only.", write, s.mcpRevokeProjectMember)
+	addMCPTool(srv, "track_list_project_members", "List project members and roles.", readOnly, s.mcpListProjectMembers)
+	addMCPTool(srv, "track_grant_project_member", "Add a project member or update their role. Project owner or admin only.", write, s.mcpGrantProjectMember)
+	addMCPTool(srv, "track_revoke_project_member", "Remove a project member. Project owner or admin only.", write, s.mcpRevokeProjectMember)
 	addMCPTool(srv, "track_search_project_members", "Search users with access to project.", readOnly, s.mcpSearchProjectMembers)
+	addMCPTool(srv, "track_search_project_member_candidates", "Search existing users who can be added to a project. Project owner or admin only.", readOnly, s.mcpSearchProjectMemberCandidates)
 	addMCPTool(srv, "track_list_project_assignees", "List assignable users for project.", readOnly, s.mcpListProjectAssignees)
 	addMCPTool(srv, "track_get_project_stats", "Get project issue status stats.", readOnly, s.mcpGetProjectStats)
 	addMCPTool(srv, "track_list_project_changelog", "List project changelog entries.", readOnly, s.mcpListProjectChangelog)
@@ -617,13 +619,29 @@ func (s *Server) requireMCPAdmin(auth authContext) error {
 }
 
 func (s *Server) requireMCPProjectAccess(ctx context.Context, auth authContext, projectID uuid.UUID) error {
-	if auth.User.IsAdmin {
-		return nil
-	}
-	if _, err := s.store.GetProject(ctx, projectID); err != nil {
+	ok, err := s.store.UserCanAccessProject(ctx, auth.User, projectID)
+	if err != nil {
 		return err
 	}
-	ok, err := s.store.UserCanAccessProject(ctx, auth.User, projectID)
+	if !ok {
+		return errMCPForbidden
+	}
+	return nil
+}
+
+func (s *Server) requireMCPProjectWriteAccess(ctx context.Context, auth authContext, projectID uuid.UUID) error {
+	ok, err := s.store.UserCanWriteProject(ctx, auth.User, projectID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errMCPForbidden
+	}
+	return nil
+}
+
+func (s *Server) requireMCPProjectMemberManagement(ctx context.Context, auth authContext, projectID uuid.UUID) error {
+	ok, err := s.store.UserCanManageProjectMembers(ctx, auth.User, projectID)
 	if err != nil {
 		return err
 	}
@@ -952,9 +970,6 @@ func (s *Server) mcpListProjectMembers(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPAdmin(auth); err != nil {
-		return nil, err
-	}
 	project, err := s.mcpProject(ctx, auth, input)
 	if err != nil {
 		return nil, err
@@ -971,11 +986,11 @@ func (s *Server) mcpGrantProjectMember(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPAdmin(auth); err != nil {
-		return nil, err
-	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	username, err := store.NormalizeUsername(input.Username)
@@ -986,7 +1001,14 @@ func (s *Server) mcpGrantProjectMember(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, err
 	}
-	member, err := s.store.GrantProjectAccess(ctx, project.ID, user.ID)
+	role := model.ProjectMemberRole(input.Role)
+	if role == "" {
+		role = model.ProjectMemberRoleMember
+	}
+	if !role.Valid() {
+		return nil, validationError("role must be member or readonly")
+	}
+	member, err := s.store.SetProjectMemberRole(ctx, project.ID, user.ID, role)
 	if err != nil {
 		return nil, err
 	}
@@ -998,11 +1020,11 @@ func (s *Server) mcpRevokeProjectMember(ctx context.Context, req *mcp.CallToolRe
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPAdmin(auth); err != nil {
-		return nil, err
-	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	username, err := store.NormalizeUsername(input.Username)
@@ -1040,7 +1062,34 @@ func (s *Server) mcpSearchProjectMembers(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, err
 	}
-	return mcpToolOutput{"users": users}, nil
+	return mcpToolOutput{"users": safeProjectMemberIdentities(users)}, nil
+}
+
+func (s *Server) mcpSearchProjectMemberCandidates(ctx context.Context, req *mcp.CallToolRequest, input mcpSearchMembersInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
+	limit, err := mcpLimit(input.Limit)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	candidates, err := s.store.SearchAvailableProjectMembers(ctx, store.SearchAvailableProjectMembersParams{
+		ProjectID: project.ID,
+		Query:     input.Query,
+		Limit:     limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"users": candidates}, nil
 }
 
 func (s *Server) mcpListProjectAssignees(ctx context.Context, req *mcp.CallToolRequest, input mcpProjectInput) (mcpToolOutput, error) {
@@ -1122,6 +1171,9 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
 	title, err := validateMCPTitle(input.Title)
 	if err != nil {
 		return nil, err
@@ -1164,6 +1216,9 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 	}
 	parent, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, parent.ProjectID); err != nil {
 		return nil, err
 	}
 	title, err := validateMCPTitle(input.Title)
@@ -1437,6 +1492,9 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
+		return nil, err
+	}
 	if input.Title != nil {
 		t, err := validateMCPTitle(*input.Title)
 		if err != nil {
@@ -1513,6 +1571,9 @@ func (s *Server) mcpDeleteIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
+		return nil, err
+	}
 	if err := s.store.DeleteIssue(ctx, issue.ID); err != nil {
 		return nil, err
 	}
@@ -1526,6 +1587,9 @@ func (s *Server) mcpRestoreIssue(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	issue, err := s.mcpDeletedIssue(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	restored, err := s.store.RestoreIssue(ctx, issue.ID)
@@ -1566,6 +1630,9 @@ func (s *Server) mcpCreateComment(ctx context.Context, req *mcp.CallToolRequest,
 	}
 	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	body, err := validateMCPCommentBody(input.Body)
@@ -1630,8 +1697,11 @@ func (s *Server) mcpUpdateComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	_, comment, err := s.mcpComment(ctx, auth, input.mcpCommentInput)
+	issue, comment, err := s.mcpComment(ctx, auth, input.mcpCommentInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	if comment.AuthorID != auth.User.ID {
@@ -1653,8 +1723,11 @@ func (s *Server) mcpDeleteComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	_, comment, err := s.mcpComment(ctx, auth, input)
+	issue, comment, err := s.mcpComment(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	if comment.AuthorID != auth.User.ID {
@@ -1697,6 +1770,9 @@ func (s *Server) mcpCreateSprint(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	name := strings.TrimSpace(input.Name)
@@ -1796,8 +1872,11 @@ func (s *Server) mcpUpdateSprint(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, err
 	}
-	_, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
+	project, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	params := store.UpdateSprintParams{}
@@ -1850,8 +1929,11 @@ func (s *Server) mcpDeleteSprint(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, err
 	}
-	_, sprint, err := s.mcpSprint(ctx, auth, input)
+	project, sprint, err := s.mcpSprint(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	if err := s.store.DeleteSprint(ctx, sprint.ID); err != nil {
@@ -1865,8 +1947,11 @@ func (s *Server) mcpCompleteSprint(ctx context.Context, req *mcp.CallToolRequest
 	if err != nil {
 		return nil, err
 	}
-	_, sprint, err := s.mcpSprint(ctx, auth, input)
+	project, sprint, err := s.mcpSprint(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	updated, err := s.store.CompleteSprint(ctx, sprint.ID)
@@ -1883,6 +1968,9 @@ func (s *Server) mcpReorderPlannedSprints(ctx context.Context, req *mcp.CallTool
 	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	sprintIDs := make([]uuid.UUID, 0, len(input.SprintRefs))
@@ -1927,6 +2015,9 @@ func (s *Server) mcpCreateTag(ctx context.Context, req *mcp.CallToolRequest, inp
 	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	name, err := model.NormalizeIssueTagName(input.Name)
@@ -1995,8 +2086,11 @@ func (s *Server) mcpUpdateTag(ctx context.Context, req *mcp.CallToolRequest, inp
 	if err != nil {
 		return nil, err
 	}
-	_, tag, err := s.mcpTag(ctx, auth, input.mcpTagInput)
+	project, tag, err := s.mcpTag(ctx, auth, input.mcpTagInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	var name *string
@@ -2026,8 +2120,11 @@ func (s *Server) mcpDeleteTag(ctx context.Context, req *mcp.CallToolRequest, inp
 	if err != nil {
 		return nil, err
 	}
-	_, tag, err := s.mcpTag(ctx, auth, input)
+	project, tag, err := s.mcpTag(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	if err := s.store.DeleteIssueTag(ctx, tag.ID); err != nil {
@@ -2066,6 +2163,9 @@ func (s *Server) mcpAttachIssueTag(ctx context.Context, req *mcp.CallToolRequest
 	}
 	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	tag, err := s.mcpTagForIssue(ctx, issue, input.Tag, input.TagRef)
@@ -2121,6 +2221,9 @@ func (s *Server) mcpDetachIssueTag(ctx context.Context, req *mcp.CallToolRequest
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
+		return nil, err
+	}
 	number, err := mcpTypedRef(input.Tag, "tag")
 	if err != nil {
 		return nil, err
@@ -2158,6 +2261,9 @@ func (s *Server) mcpCreateLink(ctx context.Context, req *mcp.CallToolRequest, in
 	}
 	source, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, source.ProjectID); err != nil {
 		return nil, err
 	}
 	targetRef, err := parseIssueRef(input.TargetIssue)
@@ -2250,6 +2356,9 @@ func (s *Server) mcpUpdateLink(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
 	sourceRef, err := parseIssueRef(input.SourceIssue)
 	if err != nil {
 		return nil, validationError(err.Error())
@@ -2287,8 +2396,11 @@ func (s *Server) mcpDeleteLink(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
-	_, link, err := s.mcpLink(ctx, auth, input)
+	project, link, err := s.mcpLink(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	if err := s.store.DeleteIssueLink(ctx, link.ID); err != nil {
@@ -2323,6 +2435,9 @@ func (s *Server) mcpCreateProjectContext(ctx context.Context, req *mcp.CallToolR
 	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	title, err := validateProjectContextTitle(input.Title)
@@ -2402,8 +2517,11 @@ func (s *Server) mcpUpdateProjectContext(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, err
 	}
-	_, contextItem, err := s.mcpContext(ctx, auth, input.mcpContextInput)
+	project, contextItem, err := s.mcpContext(ctx, auth, input.mcpContextInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	var title *string
@@ -2452,8 +2570,11 @@ func (s *Server) mcpDeleteProjectContext(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, err
 	}
-	_, contextItem, err := s.mcpContext(ctx, auth, input)
+	project, contextItem, err := s.mcpContext(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	if err := s.deleteProjectContextAndObjects(ctx, contextItem); err != nil {
@@ -2485,6 +2606,9 @@ func (s *Server) mcpCreateContextAttachment(ctx context.Context, req *mcp.CallTo
 	}
 	project, contextItem, err := s.mcpContext(ctx, auth, input.mcpContextInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	attachment, err := mcpCreateDescriptionAttachment(s, ctx, project.ID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.ContextAttachment, error) {
@@ -2557,6 +2681,9 @@ func (s *Server) mcpDeleteContextAttachment(ctx context.Context, req *mcp.CallTo
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, contextItem.ProjectID); err != nil {
+		return nil, err
+	}
 	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.ContextAttachment, error) {
 		return s.store.DeleteContextAttachment(ctx, contextItem.ID, attachment.StorageObjectID)
 	}, func(deleted model.ContextAttachment) string { return deleted.Object.ObjectKey }); err != nil {
@@ -2572,6 +2699,9 @@ func (s *Server) mcpCreateIssueContext(ctx context.Context, req *mcp.CallToolReq
 	}
 	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	raw := strings.TrimSpace(input.Context)
@@ -2661,6 +2791,9 @@ func (s *Server) mcpDeleteIssueContext(ctx context.Context, req *mcp.CallToolReq
 	}
 	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	number, err := mcpTypedRef(input.Context, "context")
@@ -2753,6 +2886,9 @@ func (s *Server) mcpCreateObject(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	object, err := s.mcpCreateStorageObjectRecord(ctx, project.ID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64)
@@ -2848,8 +2984,11 @@ func (s *Server) mcpDeleteObject(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, err
 	}
-	_, object, err := s.mcpObject(ctx, auth, input)
+	project, object, err := s.mcpObject(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	if err := s.requireMCPObjectStorage(); err != nil {
@@ -2888,6 +3027,9 @@ func (s *Server) mcpCreateAttachment(ctx context.Context, req *mcp.CallToolReque
 	}
 	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
 		return nil, err
 	}
 	attachment, err := mcpCreateDescriptionAttachment(s, ctx, issue.ProjectID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.IssueAttachment, error) {
@@ -2961,6 +3103,9 @@ func (s *Server) mcpDeleteAttachment(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
+		return nil, err
+	}
 	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.IssueAttachment, error) {
 		return s.store.DeleteIssueAttachment(ctx, issue.ID, attachment.StorageObjectID)
 	}, func(deleted model.IssueAttachment) string { return deleted.Object.ObjectKey }); err != nil {
@@ -3021,6 +3166,9 @@ func (s *Server) mcpCreateProjectAttachment(ctx context.Context, req *mcp.CallTo
 	}
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	attachment, err := mcpCreateDescriptionAttachment(s, ctx, project.ID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.ProjectAttachment, error) {
@@ -3091,6 +3239,9 @@ func (s *Server) mcpDeleteProjectAttachment(ctx context.Context, req *mcp.CallTo
 	if err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
 	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.ProjectAttachment, error) {
 		return s.store.DeleteProjectAttachment(ctx, project.ID, attachment.StorageObjectID)
 	}, func(deleted model.ProjectAttachment) string { return deleted.Object.ObjectKey }); err != nil {
@@ -3120,8 +3271,11 @@ func (s *Server) mcpCreateSprintAttachment(ctx context.Context, req *mcp.CallToo
 	if err != nil {
 		return nil, err
 	}
-	_, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
+	project, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
 	attachment, err := mcpCreateDescriptionAttachment(s, ctx, sprint.ProjectID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.SprintAttachment, error) {
@@ -3190,6 +3344,9 @@ func (s *Server) mcpDeleteSprintAttachment(ctx context.Context, req *mcp.CallToo
 	}
 	sprint, attachment, err := s.mcpSprintAttachment(ctx, auth, input)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, sprint.ProjectID); err != nil {
 		return nil, err
 	}
 	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.SprintAttachment, error) {

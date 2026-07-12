@@ -13,12 +13,14 @@
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</p>
       <div class="mx-auto my-6 h-px max-w-xs bg-slate-200 dark:bg-slate-800"></div>
       <p class="mx-auto max-w-md break-words text-lg font-semibold text-slate-950 dark:text-slate-100">{{.Issue.Title}}</p>
+      {{if .CanWrite}}
       <form method="post" action="{{issueRestore .Issue}}" hx-post="{{issueRestore .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="mt-6 flex justify-center">
         <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
           <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
           Restore issue
         </button>
       </form>
+      {{end}}
     </section>
   </div>
 </section>

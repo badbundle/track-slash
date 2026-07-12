@@ -257,6 +257,7 @@ type uiContextManagerData struct {
 	Project            model.Project
 	Issue              model.Issue
 	HasIssue           bool
+	CanWrite           bool
 	BackHref           string
 	BackHXGet          string
 	BackLabel          string
@@ -363,7 +364,8 @@ type uiModalBadge struct {
 }
 
 type uiIssueDeleteNotice struct {
-	Issue model.Issue
+	Issue    model.Issue
+	CanWrite bool
 }
 
 type uiTabBarData struct {
@@ -398,6 +400,14 @@ type uiWorkPanelData struct {
 type uiProjectPanelData struct {
 	Project                         model.Project
 	View                            string
+	CanWrite                        bool
+	CanManageMembers                bool
+	MembersPage                     bool
+	Members                         []model.ProjectMember
+	MemberCandidates                []model.ProjectMemberCandidate
+	MemberInput                     string
+	MemberRoleInput                 model.ProjectMemberRole
+	MemberError                     string
 	Favorite                        bool
 	ProjectTabs                     uiTabBarData
 	EditProjectName                 bool
@@ -467,14 +477,16 @@ type uiProjectChangelogPageData struct {
 }
 
 type uiDeletedIssuesPanelData struct {
-	Project model.Project
-	Issues  []model.Issue
-	HasMore bool
+	Project  model.Project
+	Issues   []model.Issue
+	HasMore  bool
+	CanWrite bool
 }
 
 type uiDeletedIssuePanelData struct {
 	Issue     model.Issue
 	Project   model.Project
+	CanWrite  bool
 	BackHref  string
 	BackHXGet string
 }
@@ -482,6 +494,7 @@ type uiDeletedIssuePanelData struct {
 type uiIssuePanelData struct {
 	Issue              model.Issue
 	Project            model.Project
+	CanWrite           bool
 	ParentIssue        *model.Issue
 	Sprint             *model.Sprint
 	Assignee           *model.User
@@ -551,6 +564,7 @@ type uiTagManagerData struct {
 	Project     model.Project
 	Issue       model.Issue
 	HasIssue    bool
+	CanWrite    bool
 	Tags        []model.IssueTag
 	Available   []model.IssueTag
 	BackHref    string

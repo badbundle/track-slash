@@ -28,6 +28,18 @@ func TestStatusValid(t *testing.T) {
 	}
 }
 
+func TestProjectMemberRoleValid(t *testing.T) {
+	t.Parallel()
+	for _, role := range []ProjectMemberRole{ProjectMemberRoleMember, ProjectMemberRoleReadonly} {
+		if !role.Valid() {
+			t.Fatalf("role %q should be valid", role)
+		}
+	}
+	if ProjectMemberRole("owner").Valid() || ProjectMemberRole("").Valid() {
+		t.Fatal("unexpected valid project member role")
+	}
+}
+
 func TestStatusCountsAsDone(t *testing.T) {
 	cases := []struct {
 		in   Status

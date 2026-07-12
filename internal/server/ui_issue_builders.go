@@ -126,8 +126,9 @@ func (s *Server) renderUIIssuePanelWithCloseReasonError(w http.ResponseWriter, r
 
 func (s *Server) uiPopulateIssueMemberOptions(ctx context.Context, panel *uiIssuePanelData) error {
 	users, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
-		ProjectID: panel.Project.ID,
-		Limit:     MaxLimit,
+		ProjectID:    panel.Project.ID,
+		Limit:        MaxLimit,
+		WritableOnly: true,
 	})
 	if err != nil {
 		return err
@@ -180,9 +181,10 @@ func (s *Server) uiIssuePersonID(ctx context.Context, projectID uuid.UUID, raw s
 		return nil, false, "", err
 	}
 	users, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
-		ProjectID: projectID,
-		Query:     username,
-		Limit:     MaxLimit,
+		ProjectID:    projectID,
+		Query:        username,
+		Limit:        MaxLimit,
+		WritableOnly: true,
 	})
 	if err != nil {
 		return nil, false, "", err
@@ -401,6 +403,10 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	issue, err := s.store.GetIssue(ctx, issueID)
 	if err != nil {
 		return nil, err
@@ -468,7 +474,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 			Comment:    comment,
 			AuthorID:   comment.AuthorID,
 			AuthorName: "Unknown user",
-			CanEdit:    comment.AuthorID == currentUser(r).ID,
+			CanEdit:    permissions.CanWrite && comment.AuthorID == currentUser(r).ID,
 		}
 		if author != nil {
 			item.AuthorUsername = author.Username
@@ -521,11 +527,12 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	return &uiIssuePanelData{
 		Issue:              issue,
 		Project:            project,
+		CanWrite:           permissions.CanWrite,
 		ParentIssue:        parentIssue,
 		Sprint:             sprint,
 		Assignee:           assignee,
 		Reporter:           reporter,
-		CanEditSprint:      issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
+		CanEditSprint:      permissions.CanWrite && issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
 		DescriptionHTML:    renderIssueDescriptionMarkdown(issue, attachments),
 		Attachments:        attachments,
 		AttachmentsHasMore: attachmentsHasMore,

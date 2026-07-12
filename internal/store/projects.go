@@ -239,9 +239,10 @@ type ProjectsCursor struct {
 }
 
 type ListProjectsParams struct {
-	Cursor        *ProjectsCursor
-	Limit         int
-	VisibleToUser *uuid.UUID
+	Cursor         *ProjectsCursor
+	Limit          int
+	VisibleToUser  *uuid.UUID
+	WritableToUser *uuid.UUID
 }
 
 func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model.Project, bool, error) {
@@ -255,10 +256,25 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 	`
 	if p.VisibleToUser != nil {
 		args = append(args, *p.VisibleToUser)
-		q += fmt.Sprintf(` AND EXISTS (
-			SELECT 1 FROM project_members pm
-			WHERE pm.project_id = projects.id AND pm.user_id = $%d
-		)`, len(args))
+		q += fmt.Sprintf(` AND (
+			projects.owner_id = $%d
+			OR EXISTS (
+				SELECT 1 FROM project_members pm
+				WHERE pm.project_id = projects.id AND pm.user_id = $%d
+			)
+		)`, len(args), len(args))
+	}
+	if p.WritableToUser != nil {
+		args = append(args, *p.WritableToUser)
+		q += fmt.Sprintf(` AND (
+			projects.owner_id = $%d
+			OR EXISTS (
+				SELECT 1 FROM project_members pm
+				WHERE pm.project_id = projects.id
+				  AND pm.user_id = $%d
+				  AND pm.role = 'member'
+			)
+		)`, len(args), len(args))
 	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)

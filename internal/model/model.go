@@ -259,10 +259,36 @@ type PasswordLoginState struct {
 	ActivePasskeys int  `json:"active_passkeys"`
 }
 
+type ProjectMemberRole string
+
+const (
+	ProjectMemberRoleMember   ProjectMemberRole = "member"
+	ProjectMemberRoleReadonly ProjectMemberRole = "readonly"
+)
+
+func (r ProjectMemberRole) Valid() bool {
+	switch r {
+	case ProjectMemberRoleMember, ProjectMemberRoleReadonly:
+		return true
+	}
+	return false
+}
+
 type ProjectMember struct {
-	ProjectID uuid.UUID `json:"project_id"`
-	UserID    uuid.UUID `json:"user_id"`
-	CreatedAt time.Time `json:"created_at"`
+	ProjectID                     uuid.UUID         `json:"project_id"`
+	UserID                        uuid.UUID         `json:"user_id"`
+	Username                      string            `json:"username"`
+	Name                          string            `json:"name"`
+	ProfileImageThumbnailObjectID *uuid.UUID        `json:"profile_image_thumbnail_object_id,omitempty"`
+	Role                          ProjectMemberRole `json:"role"`
+	CreatedAt                     time.Time         `json:"created_at"`
+}
+
+type ProjectMemberCandidate struct {
+	ID                            uuid.UUID  `json:"id"`
+	Username                      string     `json:"username"`
+	Name                          string     `json:"name"`
+	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
 }
 
 type ProjectAssignee struct {

@@ -200,6 +200,7 @@ func TestUIProjectIssueControlsRenderTagFiltersAndBadges(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:    true,
 		Project:     project,
 		View:        "all",
 		ProjectTabs: uiProjectTabs(project, "all", nil),
@@ -256,6 +257,7 @@ func TestUITagManagerUsesTagNamesNotRefs(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "tag-manager-panel", &uiTagManagerData{
+		CanWrite:  true,
 		Mode:      "issue",
 		Project:   project,
 		Issue:     issue,

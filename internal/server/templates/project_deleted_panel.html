@@ -13,15 +13,15 @@
       <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Deleted issues</h2>
       {{if .HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
     </div>
-    {{template "deleted-issue-list" .Issues}}
+    {{template "deleted-issue-list" .}}
   </section>
 </section>
 {{end}}
 
 {{define "deleted-issue-list"}}
-{{if .}}
+{{if .Issues}}
 <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-  {{range .}}
+  {{range .Issues}}
   <div class="grid gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto_auto] sm:items-center">
     <div class="flex items-center gap-3 sm:contents">
       {{template "issue-key" .Identifier}}
@@ -35,12 +35,12 @@
       {{template "status-badge" .Status}}
       {{if eq .Status "closed"}}{{template "close-reason-badge" .CloseReason}}{{end}}
     </div>
-    <form method="post" action="{{issueRestore .}}" hx-post="{{issueRestore .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="justify-self-start sm:justify-self-end">
+    {{if $.CanWrite}}<form method="post" action="{{issueRestore .}}" hx-post="{{issueRestore .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="justify-self-start sm:justify-self-end">
       <button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
         <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
         Restore
       </button>
-    </form>
+    </form>{{end}}
   </div>
   {{end}}
 </div>

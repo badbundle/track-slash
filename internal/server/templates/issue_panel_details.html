@@ -26,10 +26,10 @@
             {{if .EditStatus}}
             {{template "option-dropdown" (issueStatusDropdown .)}}
             {{else}}
-            <button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="false" data-option-dropdown-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
+            {{if .CanWrite}}<button type="button" aria-label="Change status" aria-haspopup="listbox" aria-expanded="false" hx-get="{{issueStatusEdit .Issue}}" hx-target="#main" hx-push-url="false" data-option-dropdown-toggle class="inline-flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{statusClass .Issue.Status}}">
               <span>{{statusLabel .Issue.Status}}</span>
               <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
-            </button>
+            </button>{{else}}{{template "status-badge" .Issue.Status}}{{end}}
             {{end}}
           </div>
           {{if or .EditCloseReason (eq .Issue.Status "closed")}}
@@ -42,9 +42,11 @@
             {{else}}
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.CloseReason}}{{template "close-reason-badge" .Issue.CloseReason}}{{else}}{{template "missing-close-reason-badge" .}}{{end}}</span>
+              {{if .CanWrite}}
               <button type="button" aria-label="Edit close reason" hx-get="{{issueCloseReasonEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
+              {{end}}
             </dd>
             {{end}}
           </div>
@@ -83,9 +85,11 @@
                 {{end}}
               </form>
               {{else}}
+              {{if .CanWrite}}
               <button type="button" aria-label="Change priority" hx-get="{{issuePriorityEdit .Issue}}" hx-target="#main" hx-push-url="false" class="inline-flex items-center rounded-full p-1 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 {{template "priority-badge" .Issue.Priority}}
               </button>
+              {{else}}{{template "priority-badge" .Issue.Priority}}{{end}}
               {{end}}
             </dd>
           </div>
@@ -110,9 +114,11 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Due date</dt>
             <dd class="mt-1 flex items-center justify-between gap-3">
               <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.DueDate}}{{template "issue-due-badge" .Issue}}{{else}}None{{end}}</span>
+              {{if .CanWrite}}
               <button type="button" aria-label="Edit due date" hx-get="{{issueDueDateEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
+              {{end}}
             </dd>
           </div>
           {{end}}
@@ -155,9 +161,11 @@
 	                <span>Unassigned</span>
 	                {{end}}
 	              </span>
+	              {{if .CanWrite}}
 	              <button type="button" aria-label="Edit assignee" hx-get="{{issueAssigneeEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
+	              {{end}}
             </dd>
           </div>
           {{end}}
@@ -175,9 +183,11 @@
 	                <span>No reporter</span>
 	                {{end}}
 	              </span>
+	              {{if .CanWrite}}
 	              <button type="button" aria-label="Edit reporter" hx-get="{{issueReporterEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
+	              {{end}}
             </dd>
           </div>
           {{end}}
@@ -193,7 +203,7 @@
               <button type="button" aria-label="Edit sprint" hx-get="{{issueSprintEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
-              {{else}}
+              {{else if .CanWrite}}
               <button type="button" disabled aria-label="Edit sprint" class="grid h-7 w-7 shrink-0 cursor-not-allowed place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>

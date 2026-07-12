@@ -33,6 +33,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:             true,
 		Project:              project,
 		View:                 "about",
 		ProjectTabs:          uiProjectTabs(project, "about", selected),
@@ -184,6 +185,7 @@ func TestUIProjectPanelRendersChangelog(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", uiProjectPanelData{
+		CanWrite:    true,
 		Project:     project,
 		View:        "changelog",
 		ProjectTabs: uiProjectTabs(project, "changelog", nil),
@@ -388,6 +390,7 @@ func TestUIProjectAboutStatsEmptyTopAssignees(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:     true,
 		Project:      project,
 		View:         "about",
 		ProjectTabs:  uiProjectTabs(project, "about", nil),
@@ -462,6 +465,7 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 	}
 
 	body := renderProject(&uiProjectPanelData{
+		CanWrite:     true,
 		Project:      project,
 		View:         "about",
 		ProjectTabs:  uiProjectTabs(project, "about", nil),
@@ -483,6 +487,7 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		UpdatedAt:        when,
 	}
 	manager := &uiContextManagerData{
+		CanWrite:  true,
 		Mode:      "project",
 		Project:   project,
 		BackHref:  "/bradley/projects/TRACK/about",
@@ -550,13 +555,15 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 	sourceFilename := "architecture.md"
 	contextItem.SourceFilename = &sourceFilename
 	manager := &uiContextManagerData{
-		Mode: "project", Project: project, Action: "view", ActiveContextID: contextID, HasActiveContext: true, ActiveContext: contextItem,
+		CanWrite: true,
+		Mode:     "project", Project: project, Action: "view", ActiveContextID: contextID, HasActiveContext: true, ActiveContext: contextItem,
 		ActiveHTML: template.HTML("<h1>Architecture</h1><p>Use transactions.</p>"),
 		Items:      []uiContextManagerItem{{ID: contextID, Ref: "context-1", Number: 1, Scope: model.ProjectContextScopeProject, Position: &position, Title: "Architecture notes", ContentType: contextItem.ContentType, LinkedIssueCount: 2}},
 	}
 	var buf bytes.Buffer
 	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
-		Project: project, View: "context", ProjectTabs: uiProjectTabs(project, "context", nil), ContextManager: manager,
+		CanWrite: true,
+		Project:  project, View: "context", ProjectTabs: uiProjectTabs(project, "context", nil), ContextManager: manager,
 	}); err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
@@ -625,6 +632,7 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:             true,
 		Project:              project,
 		View:                 "sprint",
 		ProjectTabs:          uiProjectTabs(project, "sprint", selected),

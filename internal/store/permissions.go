@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,51 +13,100 @@ import (
 )
 
 func (s *Store) GrantProjectAccess(ctx context.Context, projectID, userID uuid.UUID) (model.ProjectMember, error) {
+	return s.SetProjectMemberRole(ctx, projectID, userID, model.ProjectMemberRoleMember)
+}
+
+func (s *Store) SetProjectMemberRole(ctx context.Context, projectID, userID uuid.UUID, role model.ProjectMemberRole) (model.ProjectMember, error) {
+	if !role.Valid() {
+		return model.ProjectMember{}, fmt.Errorf("invalid project member role: %w", ErrConflict)
+	}
 	var out model.ProjectMember
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		var project model.Project
-		if err := tx.QueryRow(ctx, `
+		project, err := scanProject(tx.QueryRow(ctx, `
 			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
 			FROM projects p
 			JOIN users u ON u.id = p.owner_id
 			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
-		`, projectID).Scan(&project.ID, &project.OwnerID, &project.OwnerUsername, &project.Key, &project.Name, &project.Description, &project.CreatedAt, &project.UpdatedAt); err != nil {
+			FOR UPDATE OF p
+		`, projectID))
+		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
 			}
 			return err
 		}
-		var username string
-		if err := tx.QueryRow(ctx, `SELECT username FROM users WHERE id = $1 AND deleted_at IS NULL`, userID).Scan(&username); err != nil {
+		var thumbnailID uuid.NullUUID
+		if err := tx.QueryRow(ctx, `
+			SELECT username, name, profile_image_thumbnail_object_id
+			FROM users WHERE id = $1 AND deleted_at IS NULL
+		`, userID).Scan(&out.Username, &out.Name, &thumbnailID); err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
 			}
 			return err
 		}
-		err := tx.QueryRow(ctx, `
-			INSERT INTO project_members (project_id, user_id)
-			VALUES ($1, $2)
-			ON CONFLICT (project_id, user_id) DO NOTHING
-			RETURNING project_id, user_id, created_at
-		`, projectID, userID).Scan(&out.ProjectID, &out.UserID, &out.CreatedAt)
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			out.ProfileImageThumbnailObjectID = &id
+		}
+		out.ProjectID = projectID
+		out.UserID = userID
+		out.Role = role
+
+		var existingRole model.ProjectMemberRole
+		var existingCreatedAt time.Time
+		err = tx.QueryRow(ctx, `
+			SELECT role, created_at FROM project_members
+			WHERE project_id = $1 AND user_id = $2
+			FOR UPDATE
+		`, projectID, userID).Scan(&existingRole, &existingCreatedAt)
+		exists := err == nil
 		if err != nil {
 			if !isNoRows(err) {
 				return err
 			}
-			return tx.QueryRow(ctx, `
-				SELECT project_id, user_id, created_at
-				FROM project_members
+			err = nil
+		}
+		if userID == project.OwnerID && role != model.ProjectMemberRoleMember {
+			return fmt.Errorf("project owner role cannot be changed: %w", ErrConflict)
+		}
+		if exists && existingRole == role {
+			out.CreatedAt = existingCreatedAt
+			return nil
+		}
+		if exists {
+			if err := tx.QueryRow(ctx, `
+				UPDATE project_members SET role = $3
 				WHERE project_id = $1 AND user_id = $2
-			`, projectID, userID).Scan(&out.ProjectID, &out.UserID, &out.CreatedAt)
+				RETURNING created_at
+			`, projectID, userID, role).Scan(&out.CreatedAt); err != nil {
+				return err
+			}
+		} else if err := tx.QueryRow(ctx, `
+			INSERT INTO project_members (project_id, user_id, role)
+			VALUES ($1, $2, $3)
+			RETURNING created_at
+		`, projectID, userID, role).Scan(&out.CreatedAt); err != nil {
+			return err
+		}
+
+		op := "grant"
+		summary := fmt.Sprintf("Added @%s to project %s as %s", out.Username, project.Key, role)
+		details := model.ProjectChangelogDetails{}
+		if exists {
+			op = "update"
+			summary = fmt.Sprintf("Changed @%s from %s to %s in project %s", out.Username, existingRole, role, project.Key)
+			details.Changes = []model.ProjectChangelogChange{{Field: "role", Label: "Role", From: string(existingRole), To: string(role)}}
 		}
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 			ProjectID:   project.ID,
 			Entity:      "project_member",
-			Op:          "grant",
+			Op:          op,
 			EntityID:    userID,
 			TargetRef:   project.Key,
 			TargetTitle: project.Name,
-			Summary:     fmt.Sprintf("Added @%s to project %s", username, project.Key),
+			Summary:     summary,
+			Details:     details,
 		})
 	})
 	if err != nil {
@@ -82,6 +132,9 @@ func (s *Store) RevokeProjectAccess(ctx context.Context, projectID, userID uuid.
 				return ErrNotFound
 			}
 			return err
+		}
+		if userID == project.OwnerID {
+			return fmt.Errorf("project owner cannot be removed: %w", ErrConflict)
 		}
 		tag, err := tx.Exec(ctx, `
 			DELETE FROM project_members WHERE project_id = $1 AND user_id = $2
@@ -109,11 +162,13 @@ func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]
 		return nil, err
 	}
 	const q = `
-		SELECT pm.project_id, pm.user_id, pm.created_at
+		SELECT pm.project_id, pm.user_id, u.username, u.name, u.profile_image_thumbnail_object_id,
+		       pm.role, pm.created_at
 		FROM project_members pm
+		JOIN projects p ON p.id = pm.project_id
 		JOIN users u ON u.id = pm.user_id
 		WHERE pm.project_id = $1 AND u.deleted_at IS NULL
-		ORDER BY pm.created_at ASC, pm.user_id ASC
+		ORDER BY (pm.user_id = p.owner_id) DESC, lower(u.name) ASC, lower(u.username) ASC, pm.user_id ASC
 	`
 	rows, err := s.db.Query(ctx, q, projectID)
 	if err != nil {
@@ -124,8 +179,13 @@ func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]
 	out := []model.ProjectMember{}
 	for rows.Next() {
 		var m model.ProjectMember
-		if err := rows.Scan(&m.ProjectID, &m.UserID, &m.CreatedAt); err != nil {
+		var thumbnailID uuid.NullUUID
+		if err := rows.Scan(&m.ProjectID, &m.UserID, &m.Username, &m.Name, &thumbnailID, &m.Role, &m.CreatedAt); err != nil {
 			return nil, err
+		}
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			m.ProfileImageThumbnailObjectID = &id
 		}
 		out = append(out, m)
 	}
@@ -175,9 +235,10 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 }
 
 type SearchProjectMembersParams struct {
-	ProjectID uuid.UUID
-	Query     string
-	Limit     int
+	ProjectID    uuid.UUID
+	Query        string
+	Limit        int
+	WritableOnly bool
 }
 
 func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembersParams) ([]model.User, error) {
@@ -185,7 +246,7 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 		return nil, err
 	}
 	query := strings.ToLower(strings.TrimSpace(p.Query))
-	const q = `
+	q := `
 		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
 		       u.profile_image_object_id, u.profile_image_thumbnail_object_id
 		FROM project_members pm
@@ -194,7 +255,11 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 		WHERE pm.project_id = $1
 		  AND p.deleted_at IS NULL
 		  AND u.deleted_at IS NULL
-		  AND (
+	`
+	if p.WritableOnly {
+		q += ` AND (pm.role = 'member' OR p.owner_id = u.id)`
+	}
+	q += ` AND (
 		      $2 = ''
 		      OR lower(u.name) LIKE '%' || $2 || '%'
 		      OR lower(u.username) LIKE '%' || $2 || '%'
@@ -220,24 +285,108 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 	return out, rows.Err()
 }
 
-func (s *Store) UserCanAccessProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
-	if user.IsAdmin {
-		var exists bool
-		err := s.db.QueryRow(ctx, `
-			SELECT EXISTS (SELECT 1 FROM projects WHERE id = $1 AND deleted_at IS NULL)
-		`, projectID).Scan(&exists)
-		return exists, err
+type SearchAvailableProjectMembersParams struct {
+	ProjectID uuid.UUID
+	Query     string
+	Limit     int
+}
+
+func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvailableProjectMembersParams) ([]model.ProjectMemberCandidate, error) {
+	project, err := s.GetProject(ctx, p.ProjectID)
+	if err != nil {
+		return nil, err
 	}
-	var ok bool
+	query := strings.ToLower(strings.TrimSpace(p.Query))
+	rows, err := s.db.Query(ctx, `
+		SELECT u.id, u.username, u.name, u.profile_image_thumbnail_object_id
+		FROM users u
+		WHERE u.deleted_at IS NULL
+		  AND u.id <> $2
+		  AND NOT EXISTS (
+		      SELECT 1 FROM project_members pm
+		      WHERE pm.project_id = $1 AND pm.user_id = u.id
+		  )
+		  AND (
+		      $3 = ''
+		      OR lower(u.name) LIKE '%' || $3 || '%'
+		      OR lower(u.username) LIKE '%' || $3 || '%'
+		  )
+		ORDER BY lower(u.name) ASC, lower(u.username) ASC, u.id ASC
+		LIMIT $4
+	`, p.ProjectID, project.OwnerID, query, p.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []model.ProjectMemberCandidate{}
+	for rows.Next() {
+		var candidate model.ProjectMemberCandidate
+		var thumbnailID uuid.NullUUID
+		if err := rows.Scan(&candidate.ID, &candidate.Username, &candidate.Name, &thumbnailID); err != nil {
+			return nil, err
+		}
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			candidate.ProfileImageThumbnailObjectID = &id
+		}
+		out = append(out, candidate)
+	}
+	return out, rows.Err()
+}
+
+type ProjectPermissions struct {
+	Role             model.ProjectMemberRole
+	IsOwner          bool
+	CanRead          bool
+	CanWrite         bool
+	CanManageMembers bool
+}
+
+func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, projectID uuid.UUID) (ProjectPermissions, error) {
+	var ownerID uuid.UUID
+	var role string
 	err := s.db.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM project_members pm
-			JOIN projects p ON p.id = pm.project_id
-			WHERE pm.project_id = $1 AND pm.user_id = $2 AND p.deleted_at IS NULL
-		)
-	`, projectID, user.ID).Scan(&ok)
-	return ok, err
+		SELECT p.owner_id, COALESCE(pm.role::text, '')
+		FROM projects p
+		JOIN users owner ON owner.id = p.owner_id
+		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $2
+		WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
+	`, projectID, user.ID).Scan(&ownerID, &role)
+	if err != nil {
+		if isNoRows(err) {
+			return ProjectPermissions{}, ErrNotFound
+		}
+		return ProjectPermissions{}, err
+	}
+	permissions := ProjectPermissions{Role: model.ProjectMemberRole(role), IsOwner: ownerID == user.ID}
+	if user.IsAdmin || permissions.IsOwner {
+		permissions.CanRead = true
+		permissions.CanWrite = true
+		permissions.CanManageMembers = true
+		if permissions.Role == "" {
+			permissions.Role = model.ProjectMemberRoleMember
+		}
+		return permissions, nil
+	}
+	permissions.CanRead = permissions.Role.Valid()
+	permissions.CanWrite = permissions.Role == model.ProjectMemberRoleMember
+	return permissions, nil
+}
+
+func (s *Store) UserCanAccessProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
+	permissions, err := s.ProjectPermissionsForUser(ctx, user, projectID)
+	return permissions.CanRead, err
+}
+
+func (s *Store) UserCanWriteProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
+	permissions, err := s.ProjectPermissionsForUser(ctx, user, projectID)
+	return permissions.CanWrite, err
+}
+
+func (s *Store) UserCanManageProjectMembers(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
+	permissions, err := s.ProjectPermissionsForUser(ctx, user, projectID)
+	return permissions.CanManageMembers, err
 }
 
 func (s *Store) ProjectIDForIssue(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {

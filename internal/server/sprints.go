@@ -38,7 +38,7 @@ func (s *Server) createSprint(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 
@@ -140,7 +140,7 @@ func (s *Server) reorderPlannedSprints(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 
@@ -192,7 +192,7 @@ func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req updateSprintReq
@@ -281,7 +281,7 @@ func (s *Server) completeSprint(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	sp, err := s.store.CompleteSprint(r.Context(), sprint.ID)
@@ -297,7 +297,7 @@ func (s *Server) deleteSprint(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if err := s.store.DeleteSprint(r.Context(), sprint.ID); err != nil {

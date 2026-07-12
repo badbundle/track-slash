@@ -79,14 +79,33 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) requireProjectAccess(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
 	user := currentUser(r)
-	if user.IsAdmin {
-		return true
-	}
-	if _, err := s.store.GetProject(r.Context(), projectID); err != nil {
+	ok, err := s.store.UserCanAccessProject(r.Context(), user, projectID)
+	if err != nil {
 		writeStoreError(w, err)
 		return false
 	}
-	ok, err := s.store.UserCanAccessProject(r.Context(), user, projectID)
+	if !ok {
+		writeForbidden(w)
+		return false
+	}
+	return true
+}
+
+func (s *Server) requireProjectWriteAccess(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
+	ok, err := s.store.UserCanWriteProject(r.Context(), currentUser(r), projectID)
+	if err != nil {
+		writeStoreError(w, err)
+		return false
+	}
+	if !ok {
+		writeForbidden(w)
+		return false
+	}
+	return true
+}
+
+func (s *Server) requireProjectMemberManagement(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
+	ok, err := s.store.UserCanManageProjectMembers(r.Context(), currentUser(r), projectID)
 	if err != nil {
 		writeStoreError(w, err)
 		return false

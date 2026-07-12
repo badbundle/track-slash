@@ -6,9 +6,9 @@
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Pages</h2>
         {{template "count-badge" (len .Items)}}
       </div>
-      <a href="{{projectContextNew .Project}}" aria-label="New context page" hx-get="{{projectContextNew .Project}}" hx-target="#main" hx-push-url="{{projectContextNew .Project}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200 dark:focus:ring-offset-slate-900">
+      {{if .CanWrite}}<a href="{{projectContextNew .Project}}" aria-label="New context page" hx-get="{{projectContextNew .Project}}" hx-target="#main" hx-push-url="{{projectContextNew .Project}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200 dark:focus:ring-offset-slate-900">
         <i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i>
-      </a>
+      </a>{{end}}
     </header>
     {{if .Items}}
     <nav aria-label="Context pages" class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -53,11 +53,11 @@
         <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with .ActiveContext.SourceFilename}}{{.}} · {{end}}Updated {{tokenTime .ActiveContext.UpdatedAt}}</p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
-        <form method="post" action="{{projectContextMoveUp .Project .ActiveContext}}" hx-post="{{projectContextMoveUp .Project .ActiveContext}}" hx-target="#main" hx-push-url="false"><button type="submit" aria-label="Move context page up" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="arrow-up" class="h-4 w-4" aria-hidden="true"></i></button></form>
+        {{if .CanWrite}}<form method="post" action="{{projectContextMoveUp .Project .ActiveContext}}" hx-post="{{projectContextMoveUp .Project .ActiveContext}}" hx-target="#main" hx-push-url="false"><button type="submit" aria-label="Move context page up" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="arrow-up" class="h-4 w-4" aria-hidden="true"></i></button></form>
         <form method="post" action="{{projectContextMoveDown .Project .ActiveContext}}" hx-post="{{projectContextMoveDown .Project .ActiveContext}}" hx-target="#main" hx-push-url="false"><button type="submit" aria-label="Move context page down" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="arrow-down" class="h-4 w-4" aria-hidden="true"></i></button></form>
         <a href="{{projectContextIssueNew .Project .ActiveContext}}" aria-label="Manage linked issues" hx-get="{{projectContextIssueNew .Project .ActiveContext}}" hx-target="#main" hx-push-url="{{projectContextIssueNew .Project .ActiveContext}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i></a>
         <a href="{{projectContextEdit .Project .ActiveContext}}" aria-label="Edit context page" hx-get="{{projectContextEdit .Project .ActiveContext}}" hx-target="#main" hx-push-url="{{projectContextEdit .Project .ActiveContext}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i></a>
-        <form method="post" action="{{projectContextDelete .Project .ActiveContext}}" hx-post="{{projectContextDelete .Project .ActiveContext}}" hx-target="#main" hx-confirm="Delete this context page and its attachments?"><button type="submit" aria-label="Delete context page" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"><i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i></button></form>
+        <form method="post" action="{{projectContextDelete .Project .ActiveContext}}" hx-post="{{projectContextDelete .Project .ActiveContext}}" hx-target="#main" hx-confirm="Delete this context page and its attachments?"><button type="submit" aria-label="Delete context page" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"><i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i></button></form>{{end}}
       </div>
     </header>
 
@@ -94,7 +94,7 @@
     </div>
     {{end}}
     {{else}}
-    <div class="p-8 text-center"><i data-lucide="book-open" class="mx-auto h-8 w-8 text-slate-400" aria-hidden="true"></i><h2 class="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Create the first context page</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Organize project knowledge as editable Markdown documents.</p><a href="{{projectContextNew .Project}}" hx-get="{{projectContextNew .Project}}" hx-target="#main" hx-push-url="{{projectContextNew .Project}}" class="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New page</a></div>
+    <div class="p-8 text-center"><i data-lucide="book-open" class="mx-auto h-8 w-8 text-slate-400" aria-hidden="true"></i><h2 class="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{{if .CanWrite}}Create the first context page{{else}}No context pages yet{{end}}</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Organize project knowledge as editable Markdown documents.</p>{{if .CanWrite}}<a href="{{projectContextNew .Project}}" hx-get="{{projectContextNew .Project}}" hx-target="#main" hx-push-url="{{projectContextNew .Project}}" class="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New page</a>{{end}}</div>
     {{end}}
   </section>
 </section>

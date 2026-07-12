@@ -22,9 +22,9 @@
         {{else}}
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
-          <button type="button" aria-label="Edit project description" hx-get="{{projectDescriptionEdit .Project}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          {{if .CanWrite}}<button type="button" aria-label="Edit project description" hx-get="{{projectDescriptionEdit .Project}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
+          </button>{{end}}
         </div>
         {{template "description-body" (projectDescriptionBody .Project .ProjectDescriptionHTML)}}
         {{template "description-attachment-list" (projectAttachmentListData .Project .ProjectAttachments .ProjectAttachmentsHasMore false)}}
@@ -144,9 +144,9 @@
                   {{template "count-badge" 0}}
                 {{end}}
               </div>
-              <a href="{{projectTags .Project}}" aria-label="Manage tags" hx-get="{{projectTags .Project}}" hx-target="#main" hx-push-url="{{projectTags .Project}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              {{if .CanWrite}}<a href="{{projectTags .Project}}" aria-label="Manage tags" hx-get="{{projectTags .Project}}" hx-target="#main" hx-push-url="{{projectTags .Project}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
-              </a>
+              </a>{{end}}
             </dd>
           </div>
           <div>
