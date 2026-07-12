@@ -46,8 +46,14 @@ func renderSprintDescriptionMarkdown(project model.Project, sprint model.Sprint,
 	})
 }
 
-func renderProjectDescriptionMarkdown(project model.Project) template.HTML {
-	return renderMarkdown(project.Description, nil)
+func renderProjectDescriptionMarkdown(project model.Project, attachments []model.ProjectAttachment) template.HTML {
+	objects := make([]model.StorageObject, 0, len(attachments))
+	for _, attachment := range attachments {
+		objects = append(objects, attachment.Object)
+	}
+	return renderDescriptionMarkdown(project.Description, objects, func(object model.StorageObject) string {
+		return uiProjectAttachmentContentPath(project, object)
+	})
 }
 
 func renderDescriptionMarkdown(source string, objects []model.StorageObject, contentHref func(model.StorageObject) string) template.HTML {

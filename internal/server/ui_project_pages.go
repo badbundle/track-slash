@@ -398,16 +398,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	panel := &uiProjectPanelData{
-		Project:                project,
-		View:                   view,
-		Favorite:               favorite,
-		ProjectTabs:            uiProjectTabs(project, view, assigneeIDs),
-		ProjectDescriptionHTML: renderProjectDescriptionMarkdown(project),
-		AssigneeFilterActive:   len(assigneeIDs) > 0,
-		ClearAssigneeHref:      uiProjectViewPath(project, view),
-		ClearAssigneeHXGet:     uiProjectPanelPath(project, view),
-		ClearAssigneeHXPush:    uiProjectViewPath(project, view),
-		DeleteNotice:           deleteNotice,
+		Project:              project,
+		View:                 view,
+		Favorite:             favorite,
+		ProjectTabs:          uiProjectTabs(project, view, assigneeIDs),
+		AssigneeFilterActive: len(assigneeIDs) > 0,
+		ClearAssigneeHref:    uiProjectViewPath(project, view),
+		ClearAssigneeHXGet:   uiProjectPanelPath(project, view),
+		ClearAssigneeHXPush:  uiProjectViewPath(project, view),
+		DeleteNotice:         deleteNotice,
 	}
 	if view == "sprint" || view == "all" {
 		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
@@ -440,6 +439,13 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 
 	switch view {
 	case "about":
+		attachments, attachmentsHasMore, err := s.store.ListProjectAttachments(ctx, store.ListProjectAttachmentsParams{ProjectID: projectID, Limit: MaxLimit})
+		if err != nil {
+			return nil, err
+		}
+		panel.ProjectAttachments = attachments
+		panel.ProjectAttachmentsHasMore = attachmentsHasMore
+		panel.ProjectDescriptionHTML = renderProjectDescriptionMarkdown(project, attachments)
 		stats, err := s.store.GetProjectStats(ctx, store.ProjectStatsParams{ProjectID: projectID})
 		if err != nil {
 			return nil, err

@@ -1,6 +1,6 @@
 # Description Attachments
 
-Description attachments connect issue and sprint descriptions to project object storage. Markdown source remains in `issues.description` or `sprints.goal`; files live in object storage and are linked through `issue_attachments` or `sprint_attachments`.
+Description attachments connect project, issue, and sprint descriptions to project object storage. Markdown source remains in `projects.description`, `issues.description`, or `sprints.goal`; files live in object storage and are linked through `project_attachments`, `issue_attachments`, or `sprint_attachments`.
 
 ## Data Model
 
@@ -13,11 +13,13 @@ Description attachments connect issue and sprint descriptions to project object 
 
 Do not copy filename, content type, size, hash, backend, bucket, or object key into `issue_attachments`. Those values belong only to `storage_objects`.
 
-`sprint_attachments` has the same shape, replacing `issue_id` with `sprint_id`. Both tables enforce same-project parent/object references. Their application adapters share storage lifecycle, Markdown rendering, pagination, and UI behavior while keeping parent-specific constraints explicit.
+`sprint_attachments` has the same shape, replacing `issue_id` with `sprint_id`. The issue and sprint tables enforce same-project parent/object references. Their application adapters share storage lifecycle, Markdown rendering, pagination, and UI behavior while keeping parent-specific constraints explicit.
+
+`project_attachments` uses the same object and audit fields, with `project_id` serving as both the owner scope and description parent. Its adapter shares the same storage lifecycle, Markdown rendering, pagination, and UI behavior.
 
 ## Upload Flow
 
-Issue and sprint attachment uploads use multipart field `file`.
+Project, issue, and sprint attachment uploads use multipart field `file`.
 
 1. Server writes bytes to configured object storage backend.
 2. Server inserts one `storage_objects` metadata row.
@@ -28,14 +30,14 @@ Objects attached through a description upload path are owned by that attachment 
 
 ## Markdown Resolution
 
-Issue and sprint description Markdown may reference attached files by project-local object ref:
+Project, issue, and sprint description Markdown may reference attached files by project-local object ref:
 
 ```markdown
 ![Screenshot](object-3)
 [Log file](object-4)
 ```
 
-Rendering resolves `object-N` only against attachments on the current issue or sprint. Missing, unattached, and cross-parent object refs render inert text instead of links or images.
+Rendering resolves `object-N` only against attachments on the current project, issue, or sprint description. Missing, unattached, and cross-parent object refs render inert text instead of links or images.
 
 External Markdown image URLs render inline when they use `http` or `https`, for example:
 
@@ -43,7 +45,7 @@ External Markdown image URLs render inline when they use `http` or `https`, for 
 ![](https://news.ycombinator.com/y18.svg)
 ```
 
-The shared issue/sprint UI shows attachments below the description editor or expanded view. Safe images include a compact preview, and every row has a copy action for the Markdown snippet. Active and planned sprint views start with a vertically cropped, attachment-scoped Markdown preview and load full Markdown plus attachment rows through “See more”.
+The shared project/issue/sprint UI shows attachments below the description editor or expanded view. Safe images include a compact preview, and every row has a copy action for the Markdown snippet. Active and planned sprint views start with a vertically cropped, attachment-scoped Markdown preview and load full Markdown plus attachment rows through “See more”.
 
 Safe image content types render inline through the issue attachment content route:
 
@@ -60,6 +62,13 @@ SVG is not rendered inline. Non-image attachments render as download links.
 
 Project members can use the API routes:
 
+- `POST /api/v1/{owner}/projects/{key}/attachments`
+- `GET /api/v1/{owner}/projects/{key}/attachments`
+- `GET /api/v1/{owner}/projects/{key}/attachments/{objectRef}/content`
+- `DELETE /api/v1/{owner}/projects/{key}/attachments/{objectRef}`
+
+Issue routes:
+
 - `POST /api/v1/{owner}/issues/{issueRef}/attachments`
 - `GET /api/v1/{owner}/issues/{issueRef}/attachments`
 - `GET /api/v1/{owner}/issues/{issueRef}/attachments/{objectRef}/content`
@@ -73,6 +82,13 @@ Sprint equivalents are nested under the project sprint:
 - `DELETE /api/v1/{owner}/projects/{key}/sprints/{sprintRef}/attachments/{objectRef}`
 
 The UI has cookie-authenticated equivalents under:
+
+- `/{owner}/projects/{key}/attachments`
+- `/{owner}/projects/{key}/attachments/{objectRef}/content`
+- `/{owner}/projects/{key}/attachments/{objectRef}/delete`
+- `DELETE /{owner}/projects/{key}/attachments/{objectRef}`
+
+Issue equivalents:
 
 - `/{owner}/issues/{issueRef}/attachments`
 - `/{owner}/issues/{issueRef}/attachments/{objectRef}/content`
@@ -88,5 +104,5 @@ Content responses stream bytes from the backend with stored content type, conten
 - Raw HTML in Markdown remains disabled.
 - Markdown links allow safe external URL schemes only, plus same-origin absolute paths and fragments.
 - Markdown images render inline only for attached safe images, same-origin absolute paths, or external `http`/`https` URLs. Unsafe schemes such as `javascript:`, `data:`, and `mailto:` do not render as images.
-- `object-N` refs never cross issue or sprint boundaries.
+- `object-N` refs never cross project, issue, or sprint description boundaries.
 - Inline rendering is limited to safe image content types; downloads use attachment disposition.

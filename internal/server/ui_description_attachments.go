@@ -60,6 +60,23 @@ func uiSprintAttachmentListData(project model.Project, sprint model.Sprint, atta
 	}
 }
 
+func uiProjectAttachmentListData(project model.Project, attachments []model.ProjectAttachment, hasMore, editing bool) uiAttachmentListData {
+	items := make([]uiDescriptionAttachment, 0, len(attachments))
+	for _, attachment := range attachments {
+		base := uiProjectAttachmentsPath(project) + "/" + attachment.Object.Ref
+		items = append(items, uiDescriptionAttachmentForObject(
+			attachment.Object,
+			uiProjectAttachmentContentPath(project, attachment.Object),
+			uiProjectAttachmentDeletePath(project, attachment.Object),
+			base,
+		))
+	}
+	return uiAttachmentListData{
+		ID: "project-attachments-list", Items: items, HasMore: hasMore, Editing: editing,
+		UploadURL: uiProjectAttachmentsPath(project),
+	}
+}
+
 func uiIssueDescriptionEditor(panel *uiIssuePanelData) uiDescriptionEditorData {
 	return uiDescriptionEditorData{
 		Name:        "description",
@@ -81,6 +98,13 @@ func uiSprintDescriptionEditor(project model.Project, sprint model.Sprint, sourc
 		UploadURL:   uiProjectSprintAttachmentsPath(project, sprint),
 		ListTarget:  "#sprint-attachments-" + sprint.Ref,
 		Placeholder: "Description",
+	}
+}
+
+func uiProjectDescriptionEditor(project model.Project, source string) uiDescriptionEditorData {
+	return uiDescriptionEditorData{
+		Name: "description", Source: source, Rows: 7, Autofocus: true,
+		UploadURL: uiProjectAttachmentsPath(project), ListTarget: "#project-attachments-list", Placeholder: "Description",
 	}
 }
 
@@ -106,4 +130,8 @@ func uiIssueDescriptionBody(panel *uiIssuePanelData) uiDescriptionBodyData {
 
 func uiSprintDescriptionBody(sprint model.Sprint, html template.HTML) uiDescriptionBodyData {
 	return uiDescriptionBodyData{Source: sprint.Goal, HTML: html}
+}
+
+func uiProjectDescriptionBody(project model.Project, html template.HTML) uiDescriptionBodyData {
+	return uiDescriptionBodyData{Source: project.Description, HTML: html, EmptyLabel: "No description."}
 }

@@ -281,6 +281,13 @@ type mcpCreateAttachmentInput struct {
 	ContentBase64 string `json:"content_base64"`
 }
 
+type mcpCreateProjectAttachmentInput struct {
+	mcpProjectInput
+	Filename      string `json:"filename"`
+	ContentType   string `json:"content_type,omitempty"`
+	ContentBase64 string `json:"content_base64"`
+}
+
 type mcpSprintAttachmentInput struct {
 	mcpSprintInput
 	Object string `json:"object" jsonschema:"object ref, for example object-1"`
@@ -483,6 +490,10 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_attachments", "List issue attachments.", readOnly, s.mcpListAttachments)
 	addMCPTool(srv, "track_read_attachment_content", "Read issue attachment content as base64.", readOnly, s.mcpReadAttachmentContent)
 	addMCPTool(srv, "track_delete_attachment", "Delete issue attachment and owned object.", write, s.mcpDeleteAttachment)
+	addMCPTool(srv, "track_create_project_attachment", "Upload and attach file to project description from base64 content.", write, s.mcpCreateProjectAttachment)
+	addMCPTool(srv, "track_list_project_attachments", "List project description attachments.", readOnly, s.mcpListProjectAttachments)
+	addMCPTool(srv, "track_read_project_attachment_content", "Read project description attachment content as base64.", readOnly, s.mcpReadProjectAttachmentContent)
+	addMCPTool(srv, "track_delete_project_attachment", "Delete project description attachment and owned object.", write, s.mcpDeleteProjectAttachment)
 	addMCPTool(srv, "track_create_sprint_attachment", "Upload and attach file to sprint from base64 content.", write, s.mcpCreateSprintAttachment)
 	addMCPTool(srv, "track_list_sprint_attachments", "List sprint attachments.", readOnly, s.mcpListSprintAttachments)
 	addMCPTool(srv, "track_read_sprint_attachment_content", "Read sprint attachment content as base64.", readOnly, s.mcpReadSprintAttachmentContent)
@@ -2841,6 +2852,107 @@ func mcpDeleteDescriptionAttachment[T any](s *Server, ctx context.Context, unlin
 		return zero, err
 	}
 	return deleted, nil
+}
+
+func (s *Server) mcpProjectAttachment(ctx context.Context, auth authContext, input mcpObjectInput) (model.Project, model.ProjectAttachment, error) {
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return model.Project{}, model.ProjectAttachment{}, err
+	}
+	number, err := mcpTypedRef(input.Object, "object")
+	if err != nil {
+		return model.Project{}, model.ProjectAttachment{}, err
+	}
+	attachment, err := s.store.GetProjectAttachmentByObjectNumber(ctx, project.ID, number)
+	if err != nil {
+		return model.Project{}, model.ProjectAttachment{}, err
+	}
+	return project, attachment, nil
+}
+
+func (s *Server) mcpCreateProjectAttachment(ctx context.Context, req *mcp.CallToolRequest, input mcpCreateProjectAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	attachment, err := mcpCreateDescriptionAttachment(s, ctx, project.ID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.ProjectAttachment, error) {
+		return s.store.CreateProjectAttachment(ctx, store.CreateProjectAttachmentParams{ProjectID: project.ID, StorageObjectID: object.ID, CreatedByID: auth.User.ID})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"attachment": attachment}, nil
+}
+
+func (s *Server) mcpListProjectAttachments(ctx context.Context, req *mcp.CallToolRequest, input mcpProjectPageInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	limit, err := mcpLimit(input.Limit)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	var cursor *store.ProjectAttachmentsCursor
+	if input.Cursor != "" {
+		var c store.ProjectAttachmentsCursor
+		if err := decodeCursor(input.Cursor, &c); err != nil {
+			return nil, validationError(err.Error())
+		}
+		cursor = &c
+	}
+	attachments, hasMore, err := s.store.ListProjectAttachments(ctx, store.ListProjectAttachmentsParams{ProjectID: project.ID, Cursor: cursor, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	var next *string
+	if hasMore {
+		last := attachments[len(attachments)-1]
+		encoded := encodeCursor(store.ProjectAttachmentsCursor{Number: last.Object.Number})
+		next = &encoded
+	}
+	return mcpPageOut(attachments, next), nil
+}
+
+func (s *Server) mcpReadProjectAttachmentContent(ctx context.Context, req *mcp.CallToolRequest, input mcpObjectInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	_, attachment, err := s.mcpProjectAttachment(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	data, err := s.mcpObjectContent(ctx, attachment.Object)
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"attachment": attachment, "content_base64": base64.StdEncoding.EncodeToString(data)}, nil
+}
+
+func (s *Server) mcpDeleteProjectAttachment(ctx context.Context, req *mcp.CallToolRequest, input mcpObjectInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, attachment, err := s.mcpProjectAttachment(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.ProjectAttachment, error) {
+		return s.store.DeleteProjectAttachment(ctx, project.ID, attachment.StorageObjectID)
+	}, func(deleted model.ProjectAttachment) string { return deleted.Object.ObjectKey }); err != nil {
+		return nil, err
+	}
+	return mcpOK(), nil
 }
 
 func (s *Server) mcpSprintAttachment(ctx context.Context, auth authContext, input mcpSprintAttachmentInput) (model.Sprint, model.SprintAttachment, error) {

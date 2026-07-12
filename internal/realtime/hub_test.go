@@ -151,6 +151,24 @@ func TestSprintAttachmentEventFansOutToProjectAndSprintTopics(t *testing.T) {
 	}
 }
 
+func TestProjectAttachmentEventFansOutToProjectTopic(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, ProjectTopic(uuid.New()))
+
+	hub.Publish(Event{Op: OpInsert, Entity: EntityProjectAttachment, ID: uuid.New(), ProjectID: &projectID, Version: 1})
+
+	if _, ok := recv(t, projectSub, time.Second); !ok {
+		t.Fatal("project subscriber did not receive project attachment event")
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated subscriber received project attachment event")
+	}
+}
+
 func TestCommentEventFansOutToCommentIssueAndProjectTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()

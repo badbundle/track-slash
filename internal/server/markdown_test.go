@@ -110,6 +110,8 @@ func TestRenderIssueDescriptionMarkdownHeadingsAndTables(t *testing.T) {
 func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 	t.Parallel()
 	project := model.Project{
+		OwnerUsername: "bradley",
+		Key:           "TRACK",
 		Description: strings.Join([]string{
 			"# Overview",
 			"**Bold**",
@@ -122,8 +124,12 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 			"![Object image](object-2)",
 		}, "\n\n"),
 	}
+	attachments := []model.ProjectAttachment{
+		{Object: model.StorageObject{Number: 1, Ref: "object-1", ContentType: "text/plain"}},
+		{Object: model.StorageObject{Number: 2, Ref: "object-2", ContentType: "image/png"}},
+	}
 
-	out := string(renderProjectDescriptionMarkdown(project))
+	out := string(renderProjectDescriptionMarkdown(project, attachments))
 	for _, want := range []string{
 		"<h1>Overview</h1>",
 		"<strong>Bold</strong>",
@@ -135,6 +141,8 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 		"Unsafe",
 		"Object",
 		"Object image",
+		`<a href="/bradley/projects/TRACK/attachments/object-1/content">Object</a>`,
+		`<img src="/bradley/projects/TRACK/attachments/object-2/content?inline=1" alt="Object image">`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("project markdown output missing %q: %s", want, out)
@@ -145,8 +153,6 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 		"javascript:",
 		`<a href="object-1"`,
 		`<img src="object-2"`,
-		`object-1/content`,
-		`object-2/content`,
 	} {
 		if strings.Contains(out, notWant) {
 			t.Fatalf("project markdown output included %q: %s", notWant, out)

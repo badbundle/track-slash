@@ -15,8 +15,9 @@
               </button>
             </div>
           </div>
-          <textarea name="description" rows="7" autofocus data-submit-shortcut="meta-enter" placeholder="Description" class="mt-3 min-h-40 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.ProjectDescriptionInput}}</textarea>
+          {{template "description-editor" (projectDescriptionEditor .Project .ProjectDescriptionInput)}}
           {{if .ProjectDescriptionError}}<p class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{.ProjectDescriptionError}}</p>{{end}}
+          {{template "description-attachment-list" (projectAttachmentListData .Project .ProjectAttachments .ProjectAttachmentsHasMore true)}}
         </form>
         {{else}}
         <div class="flex items-center justify-between gap-3">
@@ -25,11 +26,8 @@
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
           </button>
         </div>
-        {{if .Project.Description}}
-        <div class="markdown-body mt-3 text-sm leading-6 text-slate-800 dark:text-slate-200">{{if .ProjectDescriptionHTML}}{{.ProjectDescriptionHTML}}{{else}}{{.Project.Description}}{{end}}</div>
-        {{else}}
-        <div class="mt-3 rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No description.</div>
-        {{end}}
+        {{template "description-body" (projectDescriptionBody .Project .ProjectDescriptionHTML)}}
+        {{template "description-attachment-list" (projectAttachmentListData .Project .ProjectAttachments .ProjectAttachmentsHasMore false)}}
         {{end}}
       </section>
 

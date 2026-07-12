@@ -41,6 +41,18 @@ func uiProjectDescriptionEditPath(project model.Project) string {
 	return uiProjectDescriptionPath(project) + "/edit"
 }
 
+func uiProjectAttachmentsPath(project model.Project) string {
+	return uiProjectPath(project) + "/attachments"
+}
+
+func uiProjectAttachmentContentPath(project model.Project, object any) string {
+	return uiProjectAttachmentsPath(project) + "/" + uiStorageObjectRef(object) + "/content"
+}
+
+func uiProjectAttachmentDeletePath(project model.Project, object any) string {
+	return uiProjectAttachmentsPath(project) + "/" + uiStorageObjectRef(object) + "/delete"
+}
+
 func uiProjectFavoritePath(project model.Project) string {
 	return uiProjectPath(project) + "/favorite"
 }
