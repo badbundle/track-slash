@@ -123,7 +123,7 @@ func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
 
 func uiProjectFavoriteView(raw string) string {
 	switch raw {
-	case "about", "sprint", "planned", "all", "context", "changelog":
+	case "about", "sprint", "planned", "all", "context", "changelog", "members":
 		return raw
 	default:
 		return "sprint"
@@ -311,7 +311,7 @@ func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []mo
 
 func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, input uiNewIssuePanelData) (*uiNewIssuePanelData, error) {
 	user := currentUser(r)
-	projects, err := s.uiVisibleProjects(ctx, user)
+	projects, err := s.uiWritableProjects(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -327,8 +327,9 @@ func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, inpu
 		}
 		if ok {
 			members, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
-				ProjectID: project.ID,
-				Limit:     MaxLimit,
+				ProjectID:    project.ID,
+				Limit:        MaxLimit,
+				WritableOnly: true,
 			})
 			if err != nil {
 				return nil, err
@@ -366,6 +367,10 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	project, err := s.store.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -400,6 +405,8 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	panel := &uiProjectPanelData{
 		Project:              project,
 		View:                 view,
+		CanWrite:             permissions.CanWrite,
+		CanManageMembers:     permissions.CanManageMembers,
 		Favorite:             favorite,
 		ProjectTabs:          uiProjectTabs(project, view, assigneeIDs),
 		AssigneeFilterActive: len(assigneeIDs) > 0,
@@ -574,6 +581,20 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.ContextManager = manager
+	case "members":
+		if !permissions.CanManageMembers {
+			return nil, errUIForbidden
+		}
+		panel.Members, err = s.store.ListProjectMembers(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		panel.MemberCandidates, err = s.store.SearchAvailableProjectMembers(ctx, store.SearchAvailableProjectMembersParams{ProjectID: projectID, Limit: MaxLimit})
+		if err != nil {
+			return nil, err
+		}
+		panel.MembersPage = true
+		panel.MemberRoleInput = model.ProjectMemberRoleMember
 	default:
 		return nil, store.ErrNotFound
 	}
@@ -676,6 +697,10 @@ func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request,
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	deleted, hasMore, err := s.store.ListDeletedIssues(ctx, store.ListDeletedIssuesParams{
 		ProjectID: projectID,
 		Limit:     MaxLimit,
@@ -684,9 +709,10 @@ func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request,
 		return nil, err
 	}
 	return &uiDeletedIssuesPanelData{
-		Project: project,
-		Issues:  deleted,
-		HasMore: hasMore,
+		Project:  project,
+		Issues:   deleted,
+		HasMore:  hasMore,
+		CanWrite: permissions.CanWrite,
 	}, nil
 }
 
@@ -698,9 +724,14 @@ func (s *Server) uiBuildDeletedIssuePanel(ctx context.Context, r *http.Request, 
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	return &uiDeletedIssuePanelData{
 		Issue:     issue,
 		Project:   project,
+		CanWrite:  permissions.CanWrite,
 		BackHref:  uiProjectViewPath(project, "deleted"),
 		BackHXGet: uiProjectPanelPath(project, "deleted"),
 	}, nil

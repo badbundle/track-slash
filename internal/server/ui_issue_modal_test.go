@@ -31,6 +31,7 @@ func TestUIIssuePanelRendersTagModal(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite:          true,
 		Issue:             issue,
 		Project:           project,
 		EditTags:          true,
@@ -87,6 +88,7 @@ func TestUIIssuePanelRendersTagModal(t *testing.T) {
 
 	buf.Reset()
 	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite:  true,
 		Issue:     issue,
 		Project:   project,
 		EditTags:  true,
@@ -116,6 +118,7 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	issue := model.Issue{ID: issueID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-7", Title: "Parent issue", Status: model.StatusTodo}
 	base := func() uiContextManagerData {
 		return uiContextManagerData{
+			CanWrite:       true,
 			Mode:           "issue",
 			Project:        project,
 			Issue:          issue,

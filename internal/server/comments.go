@@ -24,7 +24,7 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	var req createCommentReq
@@ -117,7 +117,7 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "body required, max 10000 chars")
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	user := currentUser(r)
@@ -142,7 +142,7 @@ func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	user := currentUser(r)

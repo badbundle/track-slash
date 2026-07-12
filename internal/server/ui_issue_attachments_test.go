@@ -22,6 +22,7 @@ func TestUIIssuePanelRendersMarkdownDescriptionAndAttachments(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -91,6 +92,7 @@ func TestUIIssuePanelDescriptionEditHasAttachmentDropzone(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,

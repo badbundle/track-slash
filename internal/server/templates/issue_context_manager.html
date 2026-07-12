@@ -11,8 +11,10 @@
       </div>
       <div class="flex shrink-0 items-center gap-2">
         <a href="{{.BackHref}}" aria-label="Back to issue" hx-get="{{.BackHXGet}}" hx-target="#main" hx-push-url="{{.BackHref}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i></a>
+        {{if .CanWrite}}
         <a href="{{issueContextLinkNew .Issue}}" aria-label="Attach project context" hx-get="{{issueContextLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextLinkNew .Issue}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i></a>
         <a href="{{issueContextNew .Issue}}" aria-label="Add issue context" hx-get="{{issueContextNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextNew .Issue}}" class="grid h-8 w-8 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i></a>
+        {{end}}
       </div>
     </div>
   </header>
@@ -77,10 +79,10 @@
           <div class="flex min-w-0 flex-wrap items-center gap-2"><h2 class="truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{.ActiveContext.Title}}</h2>{{if eq .ActiveContext.Scope "issue"}}<span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Issue-only</span>{{end}}</div>
           <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with .ActiveContext.SourceFilename}}{{.}} · {{end}}Updated {{tokenTime .ActiveContext.UpdatedAt}}</p>
         </div>
-        <div class="flex shrink-0 items-center gap-2">
+        {{if .CanWrite}}<div class="flex shrink-0 items-center gap-2">
           <a href="{{issueContextEdit .Issue .ActiveContext}}" aria-label="Edit context" hx-get="{{issueContextEdit .Issue .ActiveContext}}" hx-target="#main" hx-push-url="{{issueContextEdit .Issue .ActiveContext}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i></a>
           <form method="post" action="{{issueContextDelete .Issue .ActiveContext}}" hx-post="{{issueContextDelete .Issue .ActiveContext}}" hx-target="#main" hx-confirm="{{if eq .ActiveContext.Scope "issue"}}Delete this issue-only context?{{else}}Remove this project context from the issue?{{end}}"><button type="submit" aria-label="Remove context" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"><i data-lucide="{{if eq .ActiveContext.Scope "issue"}}trash-2{{else}}unlink{{end}}" class="h-4 w-4" aria-hidden="true"></i></button></form>
-        </div>
+        </div>{{end}}
       </header>
 
       {{if eq .Action "edit"}}
@@ -107,7 +109,7 @@
       {{end}}
 
       {{else}}
-      <div class="p-8 text-center"><i data-lucide="book-open" class="mx-auto h-8 w-8 text-slate-400" aria-hidden="true"></i><h2 class="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Add context to this issue</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Create an issue-only note or attach a project context page.</p><div class="mt-4 flex flex-wrap justify-center gap-2"><a href="{{issueContextNew .Issue}}" hx-get="{{issueContextNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextNew .Issue}}" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New issue context</a><a href="{{issueContextLinkNew .Issue}}" hx-get="{{issueContextLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextLinkNew .Issue}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 dark:border-slate-800 dark:text-slate-200"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Attach project context</a></div></div>
+      {{if .CanWrite}}<div class="p-8 text-center"><i data-lucide="book-open" class="mx-auto h-8 w-8 text-slate-400" aria-hidden="true"></i><h2 class="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Add context to this issue</h2><p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Create an issue-only note or attach a project context page.</p><div class="mt-4 flex flex-wrap justify-center gap-2"><a href="{{issueContextNew .Issue}}" hx-get="{{issueContextNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextNew .Issue}}" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New issue context</a><a href="{{issueContextLinkNew .Issue}}" hx-get="{{issueContextLinkNew .Issue}}" hx-target="#main" hx-push-url="{{issueContextLinkNew .Issue}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-700 dark:border-slate-800 dark:text-slate-200"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Attach project context</a></div></div>{{else}}<div class="p-8 text-center"><i data-lucide="book-open" class="mx-auto h-8 w-8 text-slate-400" aria-hidden="true"></i><h2 class="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">No context attached</h2></div>{{end}}
       {{end}}
     </section>
   </section>

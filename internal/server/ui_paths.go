@@ -57,6 +57,22 @@ func uiProjectFavoritePath(project model.Project) string {
 	return uiProjectPath(project) + "/favorite"
 }
 
+func uiProjectMembersPath(project model.Project) string {
+	return uiProjectPath(project) + "/members"
+}
+
+func uiProjectMembersPanelPath(project model.Project) string {
+	return uiProjectMembersPath(project) + "/panel"
+}
+
+func uiProjectMemberPath(project model.Project, username string) string {
+	return uiProjectMembersPath(project) + "/" + username
+}
+
+func uiProjectMemberDeletePath(project model.Project, username string) string {
+	return uiProjectMemberPath(project, username) + "/delete"
+}
+
 func uiProjectSprintsPath(project model.Project) string {
 	return uiProjectPath(project) + "/sprints"
 }

@@ -20,6 +20,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Prefer the stronger hierarchy of the issue detail page: clear title card, compact metadata, purposeful cards, and restrained section language.
 - Keep the project header cohesive. Project identity, actions, and tabs should feel like one unit, with the tab bar close to the project title and flush to the bottom of the header.
 - Keep `Deleted issues` in the project actions menu, not in the primary tab bar.
+- Open project member management from the project actions menu as a full project page with its own URL, not as a modal.
 - Use the wide-layout project tabs `Sprint`, `Planned`, `All`, `Context`, and `About`. `Sprint` is singular; use a human/running-style Lucide icon when available. Below `lg`, show only the first three as tabs and expose `Context` and `About` from project actions. Keep `Changelog` in project overflow at every breakpoint.
 - Show assignee filters only where they apply. Do not preserve or display assignee filters on `About`.
 - The `All` tab is the triage and discovery surface. It should feel dense and scan-friendly, with all current, past, completed, planned, and unplanned issues available through one list.

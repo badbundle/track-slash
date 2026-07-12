@@ -32,6 +32,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:    true,
 		Project:     project,
 		View:        "planned",
 		ProjectTabs: uiProjectTabs(project, "planned", nil),
@@ -71,6 +72,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 
 	buf.Reset()
 	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:               true,
 		Project:                project,
 		View:                   "planned",
 		ProjectTabs:            uiProjectTabs(project, "planned", nil),
@@ -110,6 +112,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	assigneeFilters := uiProjectAllAssigneeFilters(project, []model.ProjectAssignee{{ID: assigneeID, Username: "ada", Name: "Ada Lovelace"}}, allQuery)
 	allControls := uiProjectAllIssueControls(project, allQuery, nil, assigneeFilters, true, uiProjectAllViewPath(project, clearAssigneeQuery), uiProjectAllPanelPath(project, clearAssigneeQuery), uiProjectAllViewPath(project, clearAssigneeQuery))
 	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		CanWrite:             true,
 		Project:              project,
 		View:                 "all",
 		ProjectTabs:          uiProjectTabs(project, "all", nil),

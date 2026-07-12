@@ -24,16 +24,16 @@
         <div class="mt-1 flex min-w-0 items-start gap-2">
           <h1 class="min-w-0 truncate text-2xl font-semibold tracking-normal">{{.Project.Name}}</h1>
           {{template "project-favorite-action" .}}
-          <button type="button" aria-label="Edit project name" hx-get="{{projectNameEdit .Project}}?view={{.View}}" hx-target="#main" hx-push-url="false" class="mt-1 inline-grid h-7 w-7 shrink-0 align-middle place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+          {{if .CanWrite}}<button type="button" aria-label="Edit project name" hx-get="{{projectNameEdit .Project}}?view={{.View}}" hx-target="#main" hx-push-url="false" class="mt-1 inline-grid h-7 w-7 shrink-0 align-middle place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-          </button>
+          </button>{{end}}
         </div>
         {{end}}
       </div>
       <div class="flex shrink-0 items-center gap-2 justify-self-end">
-        <a data-main-view="projects" href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" aria-label="New issue" class="grid h-9 w-9 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+        {{if .CanWrite}}<a data-main-view="projects" href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" aria-label="New issue" class="grid h-9 w-9 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
           <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-        </a>
+        </a>{{end}}
         <details data-close-on-outside class="relative">
           <summary aria-label="Project actions" class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
@@ -47,7 +47,11 @@
             </a>
             {{end}}
             {{end}}
-            <div class="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800">
+            <div class="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800 lg:mt-0 lg:border-t-0 lg:pt-0">
+              {{if .CanManageMembers}}<a href="{{projectMembers .Project}}" hx-get="{{projectMembersPanel .Project}}" hx-target="#main" hx-push-url="{{projectMembers .Project}}" {{if eq .View "members"}}aria-current="page"{{end}} class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm {{if eq .View "members"}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
+                <i data-lucide="users" class="h-4 w-4" aria-hidden="true"></i>
+                <span>Members</span>
+              </a>{{end}}
               <a href="{{projectView .Project "changelog"}}" hx-get="{{projectPanel .Project "changelog"}}" hx-target="#main" hx-push-url="{{projectView .Project "changelog"}}" {{if eq .View "changelog"}}aria-current="page"{{end}} class="flex items-center gap-2 rounded-md px-2 py-2 text-sm {{if eq .View "changelog"}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
                 <i data-lucide="history" class="h-4 w-4" aria-hidden="true"></i>
                 <span>Changelog</span>
@@ -69,7 +73,9 @@
 
   {{template "issue-delete-notice" .DeleteNotice}}
 
-  {{if eq .View "about"}}
+  {{if eq .View "members"}}
+  {{template "project-member-page" .}}
+  {{else if eq .View "about"}}
   {{template "project-panel-about" .}}
   {{else if eq .View "sprint"}}
   {{template "project-panel-sprint" .}}

@@ -30,6 +30,7 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -103,6 +104,7 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -180,6 +182,7 @@ func TestUIIssuePanelRendersDescriptionEditForm(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -243,6 +246,7 @@ func TestUIIssuePanelRendersSprintEditForm(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -339,6 +343,7 @@ func TestUIIssuePanelDoneDisablesSprintEdit(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -393,6 +398,7 @@ func TestUIIssuePanelClosedDisablesSprintEdit(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -447,6 +453,7 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -511,6 +518,7 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,

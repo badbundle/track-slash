@@ -33,6 +33,27 @@ func (s *Server) uiVisibleProjects(ctx context.Context, user model.User) ([]mode
 	}
 }
 
+func (s *Server) uiWritableProjects(ctx context.Context, user model.User) ([]model.Project, error) {
+	var all []model.Project
+	var cursor *store.ProjectsCursor
+	for {
+		params := store.ListProjectsParams{Cursor: cursor, Limit: MaxLimit}
+		if !user.IsAdmin {
+			params.WritableToUser = &user.ID
+		}
+		projects, hasMore, err := s.store.ListProjects(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, projects...)
+		if !hasMore {
+			return all, nil
+		}
+		last := projects[len(projects)-1]
+		cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+}
+
 func (s *Server) uiFavoriteProjects(ctx context.Context, user model.User) ([]model.Project, error) {
 	return s.store.ListFavoriteProjects(ctx, store.ListFavoriteProjectsParams{
 		User:  user,
@@ -57,12 +78,6 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 }
 
 func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
-	if user.IsAdmin {
-		return nil
-	}
-	if _, err := s.store.GetProject(ctx, projectID); err != nil {
-		return err
-	}
 	ok, err := s.store.UserCanAccessProject(ctx, user, projectID)
 	if err != nil {
 		return err
@@ -71,6 +86,60 @@ func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, pr
 		return errUIForbidden
 	}
 	return nil
+}
+
+func (s *Server) uiRequireProjectWriteAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
+	ok, err := s.store.UserCanWriteProject(ctx, user, projectID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errUIForbidden
+	}
+	return nil
+}
+
+func (s *Server) uiRequireProjectMemberManagement(ctx context.Context, user model.User, projectID uuid.UUID) error {
+	ok, err := s.store.UserCanManageProjectMembers(ctx, user, projectID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errUIForbidden
+	}
+	return nil
+}
+
+func (s *Server) uiProjectPermissions(ctx context.Context, user model.User, projectID uuid.UUID) (store.ProjectPermissions, error) {
+	return s.store.ProjectPermissionsForUser(ctx, user, projectID)
+}
+
+func (s *Server) uiProjectWriteHandler(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		project, ok := s.uiProjectFromRoute(w, r)
+		if !ok {
+			return
+		}
+		if err := s.uiRequireProjectWriteAccess(r.Context(), currentUser(r), project.ID); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (s *Server) uiIssueWriteHandler(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		issue, _, ok := s.uiIssueFromRouteIncludingDeleted(w, r)
+		if !ok {
+			return
+		}
+		if err := s.uiRequireProjectWriteAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) uiProjectFromNewIssueSelection(ctx context.Context, user model.User, raw string) (model.Project, bool, string, error) {
@@ -89,7 +158,7 @@ func (s *Server) uiProjectFromNewIssueSelection(ctx context.Context, user model.
 		}
 		return model.Project{}, false, "", err
 	}
-	if err := s.uiRequireProjectAccess(ctx, user, project.ID); err != nil {
+	if err := s.uiRequireProjectWriteAccess(ctx, user, project.ID); err != nil {
 		return model.Project{}, false, "", err
 	}
 	return project, true, "", nil
@@ -216,7 +285,11 @@ func (s *Server) uiDeletedIssueNotice(ctx context.Context, r *http.Request, owne
 	if issue.ProjectID != projectID {
 		return nil, nil
 	}
-	return &uiIssueDeleteNotice{Issue: issue}, nil
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
+	return &uiIssueDeleteNotice{Issue: issue, CanWrite: permissions.CanWrite}, nil
 }
 
 func (s *Server) uiIssueLinkFromRoute(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.IssueLink, bool) {

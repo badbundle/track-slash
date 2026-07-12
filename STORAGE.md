@@ -77,7 +77,7 @@ Profile images are account-wide user-owned objects. Each user can reference one 
 
 ## API
 
-Project members can use:
+Project readers can list object metadata and download object content. Owners, admins, and members with write access can also upload and delete objects:
 
 - `POST /api/v1/{owner}/projects/{key}/objects` with multipart field `file`.
 - `GET /api/v1/{owner}/projects/{key}/objects`.

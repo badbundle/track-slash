@@ -142,6 +142,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/changelog", s.listProjectChangelog)
 					r.Get("/stats", s.getProjectStats)
 					r.Get("/members/search", s.searchProjectMembers)
+					r.Get("/members/candidates", s.searchAvailableProjectMembers)
 					r.Get("/members", s.listProjectMembers)
 					r.Get("/assignees", s.listProjectAssignees)
 					r.Put("/members/{username}", s.grantProjectMember)

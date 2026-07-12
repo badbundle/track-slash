@@ -26,7 +26,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req createIssueReq
@@ -77,7 +77,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, parent.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, parent.ProjectID) {
 		return
 	}
 	var req createIssueReq
@@ -376,7 +376,7 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	var req updateIssueReq
@@ -458,7 +458,7 @@ func (s *Server) deleteIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	if err := s.store.DeleteIssue(r.Context(), issue.ID); err != nil {
@@ -473,7 +473,7 @@ func (s *Server) restoreIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	restored, err := s.store.RestoreIssue(r.Context(), issue.ID)

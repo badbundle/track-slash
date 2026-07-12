@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -124,6 +125,9 @@ func TestHTTPProjectMemberSearch(t *testing.T) {
 	if users[0].ID == nonMember.ID || users[0].ID == outsider.ID {
 		t.Fatalf("search included non-member users: %+v", users)
 	}
+	if bytes.Contains(body, []byte(target.Email)) {
+		t.Fatalf("member search exposed email: %s", body)
+	}
 
 	code, body = e.doWithToken(t, outsiderToken, http.MethodGet, e.projectPath()+"/members/search?q=target", nil)
 	if code != http.StatusForbidden {
@@ -133,6 +137,90 @@ func TestHTTPProjectMemberSearch(t *testing.T) {
 	code, body = e.do(t, http.MethodGet, e.projectPath()+"/members/search?limit=0", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("bad limit search code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	owner, ownerToken := e.mustUserToken(t, "role-owner")
+	member, memberToken := e.mustUserToken(t, "role-editor")
+	readonly, readonlyToken := e.mustUserToken(t, "role-readonly")
+	candidate, _ := e.mustUserToken(t, "role-candidate")
+
+	key := uniqueProjectKey(t)
+	project, err := e.store.CreateProjectForUser(e.ctx, owner.ID, key, "Role Project", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
+	}
+	path := "/" + project.OwnerUsername + "/projects/" + project.Key
+
+	code, body := e.doWithToken(t, ownerToken, http.MethodPut, path+"/members/"+member.Username, map[string]any{"role": "member"})
+	if code != http.StatusOK {
+		t.Fatalf("owner add member code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, ownerToken, http.MethodPut, path+"/members/"+readonly.Username, map[string]any{"role": "readonly"})
+	if code != http.StatusOK {
+		t.Fatalf("owner add readonly code = %d body = %s", code, body)
+	}
+	gotReadonly := decode[model.ProjectMember](t, body)
+	if gotReadonly.Role != model.ProjectMemberRoleReadonly || gotReadonly.Username != readonly.Username || gotReadonly.Name != readonly.Name {
+		t.Fatalf("readonly member = %+v", gotReadonly)
+	}
+
+	code, body = e.doWithToken(t, readonlyToken, http.MethodGet, path, nil)
+	if code != http.StatusOK {
+		t.Fatalf("readonly get project code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, readonlyToken, http.MethodGet, path+"/members", nil)
+	if code != http.StatusOK {
+		t.Fatalf("readonly list members code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, readonlyToken, http.MethodPatch, path, map[string]any{"name": "Denied"})
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly update project code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, readonlyToken, http.MethodPost, path+"/issues", map[string]any{"title": "Denied"})
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly create issue code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, readonlyToken, http.MethodPut, path+"/favorite", nil)
+	if code != http.StatusOK {
+		t.Fatalf("readonly favorite code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, readonlyToken, http.MethodGet, path+"/members/candidates", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly candidates code = %d body = %s", code, body)
+	}
+
+	code, body = e.doWithToken(t, memberToken, http.MethodPatch, path, map[string]any{"name": "Member Updated"})
+	if code != http.StatusOK {
+		t.Fatalf("member update project code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, memberToken, http.MethodPut, path+"/members/"+candidate.Username, nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("member manage members code = %d body = %s", code, body)
+	}
+
+	code, body = e.doWithToken(t, ownerToken, http.MethodGet, path+"/members/candidates?q="+url.QueryEscape(candidate.Username), nil)
+	if code != http.StatusOK {
+		t.Fatalf("owner candidates code = %d body = %s", code, body)
+	}
+	candidates := decode[[]model.ProjectMemberCandidate](t, body)
+	if len(candidates) != 1 || candidates[0].ID != candidate.ID {
+		t.Fatalf("candidates = %+v", candidates)
+	}
+	code, body = e.doWithToken(t, ownerToken, http.MethodPut, path+"/members/"+owner.Username, map[string]any{"role": "readonly"})
+	if code != http.StatusConflict {
+		t.Fatalf("downgrade owner code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, ownerToken, http.MethodDelete, path+"/members/"+owner.Username, nil)
+	if code != http.StatusConflict {
+		t.Fatalf("remove owner code = %d body = %s", code, body)
+	}
+	code, body = e.doWithToken(t, ownerToken, http.MethodPut, path+"/members/"+candidate.Username, map[string]any{"role": "invalid"})
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid role code = %d body = %s", code, body)
 	}
 }
 

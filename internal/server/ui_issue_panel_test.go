@@ -35,6 +35,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}}
 	var buf bytes.Buffer
 	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -318,6 +319,7 @@ func TestUIIssuePanelRendersTitleEditor(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -386,6 +388,7 @@ func TestUIDeletedIssuePanelRendersRestore(t *testing.T) {
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "deleted-issue-panel", &uiDeletedIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,
@@ -455,6 +458,7 @@ func TestUIIssuePanelRendersDueDateEditor(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	err = uiTemplates.ExecuteTemplate(&buf, "issue-panel", &uiIssuePanelData{
+		CanWrite: true,
 		Issue: model.Issue{
 			ID:            issueID,
 			ProjectID:     projectID,

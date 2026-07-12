@@ -115,7 +115,7 @@ func (s *Server) updateProject(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req updateProjectReq

@@ -1,0 +1,148 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/store"
+)
+
+func uiProjectMemberAutocomplete(panel *uiProjectPanelData) uiAutocompleteEditData {
+	options := make([]uiAutocompleteOption, 0, len(panel.MemberCandidates))
+	for _, candidate := range panel.MemberCandidates {
+		options = append(options, uiAutocompleteOption{
+			Value:      candidate.Username,
+			Badge:      "@" + candidate.Username,
+			Label:      candidate.Name,
+			SearchText: candidate.Name + " " + candidate.Username,
+		})
+	}
+	return uiAutocompleteEditData{
+		ID:          "project-member-user",
+		Label:       "User",
+		Name:        "username",
+		Value:       panel.MemberInput,
+		Placeholder: "Search existing users",
+		Autofocus:   true,
+		OptionsOpen: true,
+		OptionsID:   "project-member-options",
+		EmptyLabel:  "No users available to add.",
+		Options:     options,
+	}
+}
+
+func (s *Server) uiAddProjectMember(w http.ResponseWriter, r *http.Request) {
+	s.uiSaveProjectMember(w, r, "")
+}
+
+func (s *Server) uiUpdateProjectMember(w http.ResponseWriter, r *http.Request) {
+	s.uiSaveProjectMember(w, r, chi.URLParam(r, "username"))
+}
+
+func (s *Server) uiSaveProjectMember(w http.ResponseWriter, r *http.Request, routeUsername string) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectMemberManagement(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	usernameInput := routeUsername
+	if usernameInput == "" {
+		usernameInput = r.Form.Get("username")
+	}
+	username, err := store.NormalizeUsername(strings.TrimPrefix(strings.TrimSpace(usernameInput), "@"))
+	role := model.ProjectMemberRole(r.Form.Get("role"))
+	if role == "" {
+		role = model.ProjectMemberRoleMember
+	}
+	message := ""
+	if err != nil {
+		message = "Choose an existing user."
+	} else if !role.Valid() {
+		message = "Choose Member or Readonly."
+	} else {
+		user, getErr := s.store.GetUserByUsername(r.Context(), username)
+		if getErr != nil {
+			if errors.Is(getErr, store.ErrNotFound) {
+				message = "Choose an existing user."
+			} else {
+				writeUIStoreError(w, getErr)
+				return
+			}
+		} else if _, saveErr := s.store.SetProjectMemberRole(r.Context(), project.ID, user.ID, role); saveErr != nil {
+			if errors.Is(saveErr, store.ErrConflict) {
+				message = saveErr.Error()
+			} else {
+				writeUIStoreError(w, saveErr)
+				return
+			}
+		}
+	}
+	panel, buildErr := s.uiBuildProjectMemberPanel(r.Context(), r, project, usernameInput, role, message)
+	if buildErr != nil {
+		writeUIStoreError(w, buildErr)
+		return
+	}
+	if message == "" {
+		panel.MemberInput = ""
+		panel.MemberRoleInput = model.ProjectMemberRoleMember
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiDeleteProjectMember(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectMemberManagement(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	username, err := store.NormalizeUsername(chi.URLParam(r, "username"))
+	if err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	user, err := s.store.GetUserByUsername(r.Context(), username)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.RevokeProjectAccess(r.Context(), project.ID, user.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildProjectMemberPanel(r.Context(), r, project, "", model.ProjectMemberRoleMember, "")
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiBuildProjectMemberPanel(ctx context.Context, r *http.Request, project model.Project, input string, role model.ProjectMemberRole, message string) (*uiProjectPanelData, error) {
+	panel, err := s.uiBuildProjectPanel(ctx, r, project.ID, "members")
+	if err != nil {
+		return nil, err
+	}
+	panel.MemberInput = input
+	panel.MemberRoleInput = role
+	panel.MemberError = message
+	return panel, nil
+}

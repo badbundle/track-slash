@@ -52,7 +52,7 @@ func (s *Server) createProjectContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	params, ok := s.projectContextCreateParams(w, r, project.ID)
@@ -124,7 +124,7 @@ func (s *Server) updateProjectContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req updateProjectContextReq
@@ -183,7 +183,7 @@ func (s *Server) deleteProjectContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if err := s.deleteProjectContextAndObjects(r.Context(), contextItem); err != nil {
@@ -238,7 +238,7 @@ func (s *Server) createIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
@@ -335,7 +335,7 @@ func (s *Server) deleteIssueContextLink(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	number, ok := parseTypedRefParam(w, r, "contextRef", "context")

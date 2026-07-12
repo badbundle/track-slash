@@ -49,6 +49,13 @@ func uiUserAvatar(value any, class string) uiUserAvatarData {
 			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
 		}
 		return uiUserAvatarFields(v.UserID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case model.ProjectMember:
+		return uiUserAvatarFields(v.UserID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case *model.ProjectMember:
+		if v == nil {
+			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
+		}
+		return uiUserAvatarFields(v.UserID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
 	case model.ProjectChangelogActor:
 		return uiUserAvatarFields(v.ID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
 	case *model.ProjectChangelogActor:

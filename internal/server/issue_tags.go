@@ -28,7 +28,7 @@ func (s *Server) createIssueTag(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req createIssueTagReq
@@ -113,7 +113,7 @@ func (s *Server) updateIssueTag(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	var req updateIssueTagReq
@@ -154,7 +154,7 @@ func (s *Server) deleteIssueTag(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if err := s.store.DeleteIssueTag(r.Context(), tag.ID); err != nil {
@@ -209,7 +209,7 @@ func (s *Server) attachIssueTag(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	var req attachIssueTagReq
@@ -236,7 +236,7 @@ func (s *Server) detachIssueTag(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
 		return
 	}
 	number, ok := parseTypedRefParam(w, r, "tagRef", "tag")

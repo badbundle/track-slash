@@ -12,7 +12,7 @@ func (s *Server) createSprintAttachment(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	attachment, ok := s.createSprintAttachmentForSprint(w, r, sprint)
@@ -71,8 +71,11 @@ func (s *Server) getSprintAttachmentContent(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) deleteSprintAttachment(w http.ResponseWriter, r *http.Request) {
-	_, sprint, attachment, ok := s.sprintAttachmentFromRoute(w, r)
+	project, sprint, attachment, ok := s.sprintAttachmentFromRoute(w, r)
 	if !ok {
+		return
+	}
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if !s.deleteSprintAttachmentForSprint(w, r, sprint, attachment) {

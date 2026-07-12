@@ -12,7 +12,7 @@ func (s *Server) createProjectAttachment(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	attachment, ok := s.createProjectAttachmentForProject(w, r, project)
@@ -71,6 +71,9 @@ func (s *Server) getProjectAttachmentContent(w http.ResponseWriter, r *http.Requ
 func (s *Server) deleteProjectAttachment(w http.ResponseWriter, r *http.Request) {
 	project, attachment, ok := s.projectAttachmentFromRoute(w, r)
 	if !ok {
+		return
+	}
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
 	if !s.deleteProjectAttachmentForProject(w, r, project, attachment) {

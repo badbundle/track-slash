@@ -286,6 +286,10 @@ func (s *Server) uiBuildProjectTagManager(ctx context.Context, r *http.Request, 
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	tags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{ProjectID: projectID, Limit: MaxLimit})
 	if err != nil {
 		return nil, err
@@ -293,6 +297,7 @@ func (s *Server) uiBuildProjectTagManager(ctx context.Context, r *http.Request, 
 	return &uiTagManagerData{
 		Mode:       "project",
 		Project:    project,
+		CanWrite:   permissions.CanWrite,
 		Tags:       tags,
 		ColorInput: model.TagColorBlue,
 		BackHref:   uiProjectViewPath(project, "about"),
@@ -317,6 +322,10 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 	if err != nil {
 		return nil, err
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	if err != nil {
+		return nil, err
+	}
 	currentTags, available, err := s.uiIssueTagAttachmentOptions(ctx, issue)
 	if err != nil {
 		return nil, err
@@ -326,6 +335,7 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 		Project:   project,
 		Issue:     issue,
 		HasIssue:  true,
+		CanWrite:  permissions.CanWrite,
 		Tags:      currentTags,
 		Available: available,
 		BackHref:  uiIssuePath(issue),

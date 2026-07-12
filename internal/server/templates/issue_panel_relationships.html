@@ -14,7 +14,7 @@
               </div>
               {{if .SubIssuesHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
             </div>
-            <div class="flex shrink-0 items-center gap-2">
+            {{if .CanWrite}}<div class="flex shrink-0 items-center gap-2">
               {{if .AddSubIssue}}
               <button type="button" aria-label="Cancel adding sub-issue" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -24,7 +24,7 @@
                 <i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i>
               </button>
               {{end}}
-            </div>
+            </div>{{end}}
           </div>
           {{$subIssueProgress := subIssueProgress .SubIssues}}
           <div role="img" aria-label="{{$subIssueProgress.Label}}" class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
@@ -69,7 +69,7 @@
               </div>
               {{if .LinksHasMore}}<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Showing first 200</p>{{end}}
             </div>
-            {{if .AddLink}}
+            {{if .CanWrite}}{{if .AddLink}}
             <button type="button" aria-label="Cancel adding link" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
@@ -77,7 +77,7 @@
             <button type="button" aria-label="Add link" hx-get="{{issueLinkNew .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>
             </button>
-            {{end}}
+            {{end}}{{end}}
           </div>
           {{$linkedIssueProgress := linkedIssueProgress .Links}}
           <div role="img" aria-label="{{$linkedIssueProgress.Label}}" class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
@@ -143,9 +143,9 @@
             {{else}}
             <span class="col-span-2 row-start-2 text-slate-500 dark:text-slate-400 sm:col-span-1 sm:col-start-2 sm:row-start-1">Deleted issue</span>
             {{end}}
-            <button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="col-start-2 row-start-1 grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900 sm:col-start-3 sm:row-start-1">
+            {{if $.CanWrite}}<button type="button" aria-label="Edit link" hx-get="{{issueLinkEdit $.Issue .Link}}" hx-target="#main" hx-push-url="false" class="col-start-2 row-start-1 grid h-6 w-6 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900 sm:col-start-3 sm:row-start-1">
               <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
-            </button>
+            </button>{{end}}
           </div>
           {{end}}
           {{end}}
