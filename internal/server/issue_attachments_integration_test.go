@@ -420,6 +420,93 @@ func TestHTTPProjectAttachmentCRUDAndAboutUI(t *testing.T) {
 	}
 }
 
+func TestHTTPContextAttachmentCRUD(t *testing.T) {
+	t.Parallel()
+	e, root := newStorageHTTPEnv(t, 1024*1024)
+	contextItem, err := e.store.CreateProjectContext(e.ctx, store.CreateProjectContextParams{
+		ProjectID: e.projectID, Title: "Runbook", Body: "# Runbook\n\n[log](object-1)",
+		Kind: model.ProjectContextKindText, ContentType: "text/markdown; charset=utf-8", CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectContext: %v", err)
+	}
+	path := e.projectPath() + "/context/" + contextItem.Ref + "/attachments"
+	content := []byte("context attachment")
+	code, body := e.doMultipartPath(t, e.authToken, path, "runbook.txt", content)
+	if code != http.StatusCreated {
+		t.Fatalf("create context attachment code=%d body=%s", code, body)
+	}
+	attachment := decode[model.ContextAttachment](t, body)
+	if attachment.ContextID != contextItem.ID || attachment.Object.Ref != "object-1" {
+		t.Fatalf("context attachment = %+v", attachment)
+	}
+	code, body = e.do(t, http.MethodGet, path, nil)
+	if code != http.StatusOK {
+		t.Fatalf("list context attachments code=%d body=%s", code, body)
+	}
+	page := decodePage[model.ContextAttachment](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != attachment.ID {
+		t.Fatalf("context attachment page = %+v", page)
+	}
+	contentPath := path + "/" + attachment.Object.Ref + "/content"
+	res, raw := e.doRaw(t, e.authToken, http.MethodGet, contentPath, nil, "")
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !bytes.Equal(raw, content) {
+		t.Fatalf("context attachment content code=%d body=%q", res.StatusCode, raw)
+	}
+	code, body = e.do(t, http.MethodDelete, path+"/"+attachment.Object.Ref, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete context attachment code=%d body=%s", code, body)
+	}
+
+	res = e.uiDoMultipartContext(t, path, e.authToken, nil, "ui-runbook.txt", "ui context attachment")
+	raw = []byte(readBody(t, res))
+	res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("ui create context attachment code=%d body=%s", res.StatusCode, raw)
+	}
+	uiAttachment := decode[model.ContextAttachment](t, raw)
+	res = e.uiDoNoRedirect(t, http.MethodGet, path+"/"+uiAttachment.Object.Ref+"/content", e.authToken, nil)
+	raw = []byte(readBody(t, res))
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || string(raw) != "ui context attachment" {
+		t.Fatalf("ui context attachment content code=%d body=%q", res.StatusCode, raw)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodDelete, path+"/"+uiAttachment.Object.Ref, e.authToken, nil)
+	raw = []byte(readBody(t, res))
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("ui delete context attachment code=%d body=%s", res.StatusCode, raw)
+	}
+
+	res = e.uiDoMultipartContext(t, path, e.authToken, nil, "panel-runbook.txt", "panel context attachment")
+	raw = []byte(readBody(t, res))
+	res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("ui create panel context attachment code=%d body=%s", res.StatusCode, raw)
+	}
+	panelAttachment := decode[model.ContextAttachment](t, raw)
+	res = e.uiDoNoRedirect(t, http.MethodPost, path+"/"+panelAttachment.Object.Ref+"/delete", e.authToken, nil)
+	raw = []byte(readBody(t, res))
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(raw), "Runbook") || strings.Contains(string(raw), "panel-runbook.txt") {
+		t.Fatalf("ui panel delete context attachment code=%d body=%s", res.StatusCode, raw)
+	}
+
+	code, body = e.doMultipartPath(t, e.authToken, path, "page-owned.txt", []byte("delete with page"))
+	if code != http.StatusCreated {
+		t.Fatalf("create page-owned context attachment code=%d body=%s", code, body)
+	}
+	pageOwnedAttachment := decode[model.ContextAttachment](t, body)
+	code, body = e.do(t, http.MethodDelete, e.projectPath()+"/context/"+contextItem.Ref, nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete context page code=%d body=%s", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(pageOwnedAttachment.Object.ObjectKey))); !os.IsNotExist(err) {
+		t.Fatalf("page-owned attachment file stat err=%v, want not exist", err)
+	}
+}
+
 func TestHTTPProjectAttachmentAccessAndValidation(t *testing.T) {
 	t.Parallel()
 	e, _ := newStorageHTTPEnv(t, 8)

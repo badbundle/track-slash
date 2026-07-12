@@ -137,6 +137,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-7/sprint/edit"`,
 		`aria-label="Manage context"`,
 		`hx-get="/bradley/issues/TRACK-7/context"`,
+		`hx-push-url="/bradley/issues/TRACK-7/context"`,
 		`data-lucide="book-open"`,
 		`aria-label="Ada Lovelace" title="Ada Lovelace"`,
 		`class="flex min-w-0 items-center gap-2 text-slate-900 dark:text-slate-100"`,

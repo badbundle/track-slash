@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/google/uuid"
+	"html/template"
 	"strings"
 	"testing"
 	"time"
@@ -101,7 +102,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Context", `aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about view missing markup %q: %s", want, body)
 		}
@@ -109,14 +110,13 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if strings.Contains(body, "No assigned issues.") {
 		t.Fatalf("project about populated stats rendered empty assignee state: %s", body)
 	}
-	if !strings.Contains(body, `class="`+uiCountBadgeClass+`">0</span>`) {
-		t.Fatalf("project about context detail should show count only: %s", body)
-	}
 	if strings.Contains(header, ">Manage tags</span>") {
 		t.Fatalf("project title card should not render manage tags in overflow menu: %s", body)
 	}
 	requireMarkupOrder(t, body, ">Details</h2>", ">Tags</dt>")
-	requireMarkupOrder(t, body, ">Tags</dt>", ">Context</dt>")
+	if strings.Contains(body, ">Context</dt>") || strings.Contains(body, `aria-label="Manage context"`) {
+		t.Fatalf("project about should not render context in details: %s", body)
+	}
 	for _, notWant := range []string{`aria-label="Assignee filter"`, `assignee_id=`} {
 		if strings.Contains(header, notWant) {
 			t.Fatalf("project title card preserved about filter state %q: %s", notWant, body)
@@ -140,17 +140,23 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	sprintsIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/sprint"`)
 	plannedIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/planned"`)
 	allIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/all"`)
-	changelogIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/changelog"`)
-	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || changelogIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > changelogIdx || changelogIdx > aboutIdx {
-		t.Fatalf("project tabs not ordered sprints, planned, all, changelog, about: sprints=%d planned=%d all=%d changelog=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, changelogIdx, aboutIdx, body)
+	contextIdx := strings.Index(tabMarkup, `href="/bradley/projects/TRACK/context"`)
+	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || contextIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > contextIdx || contextIdx > aboutIdx {
+		t.Fatalf("project tabs not ordered sprint, planned, all, context, about: sprint=%d planned=%d all=%d context=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, contextIdx, aboutIdx, body)
 	}
-	for _, path := range []string{"changelog", "about"} {
+	if strings.Contains(tabMarkup, `href="/bradley/projects/TRACK/changelog"`) {
+		t.Fatalf("changelog should not render in project tabs: %s", body)
+	}
+	for _, path := range []string{"context", "about"} {
 		href := `href="/bradley/projects/TRACK/` + path + `"`
 		if got := strings.Count(header, href); got != 2 {
 			t.Fatalf("project %s view should render once as a desktop tab and once in the mobile overflow menu; got %d: %s", path, got, body)
 		}
 	}
-	for _, want := range []string{"flex flex-nowrap", "gap-4 sm:gap-6", "hidden lg:inline-flex", "lg:hidden", "lg:border-t-0"} {
+	if got := strings.Count(header, `href="/bradley/projects/TRACK/changelog"`); got != 1 {
+		t.Fatalf("changelog should render once in project overflow; got %d: %s", got, body)
+	}
+	for _, want := range []string{"flex flex-nowrap", "gap-4 sm:gap-6", "hidden lg:inline-flex", "lg:hidden"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("project header missing responsive tab overflow markup %q: %s", want, body)
 		}
@@ -461,26 +467,9 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		ProjectTabs:  uiProjectTabs(project, "about", nil),
 		ContextItems: []uiProjectContextItem{contextItem},
 	})
-	contextLabel := strings.Index(body, ">Context</dt>")
-	if contextLabel < 0 {
-		t.Fatalf("project about context detail missing: %s", body)
+	if strings.Contains(body, ">Context</dt>") || strings.Contains(body, `aria-label="Manage context"`) || strings.Contains(body, "Architecture notes") {
+		t.Fatalf("project about should not render project context: %s", body)
 	}
-	contextBlockEnd := contextLabel + 1100
-	if contextBlockEnd > len(body) {
-		contextBlockEnd = len(body)
-	}
-	contextBlock := body[contextLabel:contextBlockEnd]
-	for _, want := range []string{`aria-label="Manage context"`, `hx-get="/bradley/projects/TRACK/context"`, `class="` + uiCountBadgeClass + `">1</span>`} {
-		if !strings.Contains(contextBlock, want) {
-			t.Fatalf("project about context detail missing %q: %s", want, body)
-		}
-	}
-	for _, notWant := range []string{"context-1", "Architecture notes", "context items", "No context.", `aria-label="Link issue"`, `aria-label="Edit context"`, `aria-label="Delete context"`, `placeholder="TRACK-12"`} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("project about context detail should stay compact, found %q: %s", notWant, body)
-		}
-	}
-	requireMarkupOrder(t, body, ">Details</h2>", ">Context</dt>")
 
 	managerItem := uiContextManagerItem{
 		ID:               contextID,
@@ -544,6 +533,50 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context edit manager missing %q: %s", want, body)
 		}
+	}
+}
+
+func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	contextID := uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe")
+	position := int64(1)
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	contextItem := model.ProjectContext{
+		ID: contextID, ProjectID: projectID, Number: 1, Ref: "context-1", Scope: model.ProjectContextScopeProject,
+		Position: &position, Title: "Architecture notes", Kind: model.ProjectContextKindText,
+		ContentType: "text/markdown; charset=utf-8", Body: "# Architecture\n\nUse transactions.", UpdatedAt: time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC),
+	}
+	sourceFilename := "architecture.md"
+	contextItem.SourceFilename = &sourceFilename
+	manager := &uiContextManagerData{
+		Mode: "project", Project: project, Action: "view", ActiveContextID: contextID, HasActiveContext: true, ActiveContext: contextItem,
+		ActiveHTML: template.HTML("<h1>Architecture</h1><p>Use transactions.</p>"),
+		Items:      []uiContextManagerItem{{ID: contextID, Ref: "context-1", Number: 1, Scope: model.ProjectContextScopeProject, Position: &position, Title: "Architecture notes", ContentType: contextItem.ContentType, LinkedIssueCount: 2}},
+	}
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+		Project: project, View: "context", ProjectTabs: uiProjectTabs(project, "context", nil), ContextManager: manager,
+	}); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`aria-current="page"`, `href="/bradley/projects/TRACK/context/context-1"`, "Architecture notes",
+		"<h1>Architecture</h1>", "Use transactions.", `aria-label="Move context page up"`,
+		`aria-label="Move context page down"`, `aria-label="Manage linked issues"`, `aria-label="Edit context page"`,
+		`aria-label="Delete context page"`, `href="/bradley/projects/TRACK/changelog"`,
+		"architecture.md",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("integrated context panel missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, `href="/bradley/projects/TRACK/changelog" hx-get="/bradley/projects/TRACK/changelog/panel" hx-target="#main" hx-push-url="/bradley/projects/TRACK/changelog"  class="hidden`) {
+		t.Fatalf("changelog rendered as a tab: %s", body)
+	}
+	if strings.Contains(body, "text/markdown; charset=utf-8") {
+		t.Fatalf("integrated context panel should not display MIME metadata: %s", body)
 	}
 }
 

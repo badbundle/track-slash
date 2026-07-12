@@ -136,7 +136,7 @@ func uiChangelogIcon(entry model.ProjectChangelogEntry) string {
 		return "message-square"
 	case "issue_link":
 		return "link"
-	case "issue_attachment", "sprint_attachment", "project_attachment":
+	case "issue_attachment", "sprint_attachment", "project_attachment", "context_attachment":
 		return "paperclip"
 	case "issue_tag", "issue_tag_link":
 		return "tag"
@@ -540,24 +540,6 @@ func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
 			{
 				Label: uiStatusLabel(model.StatusClosed),
 				Class: uiStatusClass(model.StatusClosed),
-			},
-		},
-	}
-}
-
-func uiIssueContextModal(panel *uiIssuePanelData) uiModalData {
-	return uiModalData{
-		ID:              "issue-context",
-		Title:           "Manage context",
-		Description:     fmt.Sprintf("Attach project context or add issue-only notes for %s.", panel.Issue.Identifier),
-		WidthClass:      "max-w-2xl",
-		CancelLabel:     "Close context editor",
-		CancelHXGet:     uiIssuePanelPath(panel.Issue),
-		CancelHXPushURL: "false",
-		Badges: []uiModalBadge{
-			{
-				Label: panel.Issue.Identifier,
-				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
 			},
 		},
 	}

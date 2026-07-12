@@ -56,6 +56,16 @@ func renderProjectDescriptionMarkdown(project model.Project, attachments []model
 	})
 }
 
+func renderProjectContextMarkdown(project model.Project, contextItem model.ProjectContext, attachments []model.ContextAttachment) template.HTML {
+	objects := make([]model.StorageObject, 0, len(attachments))
+	for _, attachment := range attachments {
+		objects = append(objects, attachment.Object)
+	}
+	return renderDescriptionMarkdown(contextItem.Body, objects, func(object model.StorageObject) string {
+		return uiProjectContextAttachmentContentPath(project, contextItem, object)
+	})
+}
+
 func renderDescriptionMarkdown(source string, objects []model.StorageObject, contentHref func(model.StorageObject) string) template.HTML {
 	targets := make(map[string]markdownTarget, len(objects))
 	for _, object := range objects {

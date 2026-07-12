@@ -394,7 +394,7 @@ func safeUIProjectPath(path string) bool {
 		if len(parts) == 4 {
 			return true
 		}
-		if len(parts) == 5 && parts[4] == "new" {
+		if len(parts) == 5 && (parts[4] == "new" || parts[4] == "panel") {
 			return true
 		}
 		if _, err := parseTypedRef(parts[4], "context"); err != nil {
@@ -404,10 +404,22 @@ func safeUIProjectPath(path string) bool {
 			return true
 		}
 		if len(parts) == 6 {
-			return parts[5] == "edit" || parts[5] == "delete" || parts[5] == "issues"
+			return parts[5] == "panel" || parts[5] == "edit" || parts[5] == "delete" || parts[5] == "move-up" || parts[5] == "move-down" || parts[5] == "issues" || parts[5] == "attachments"
 		}
-		if len(parts) == 7 && parts[5] == "issues" {
-			return parts[6] == "new"
+		if len(parts) == 7 {
+			if parts[5] == "issues" {
+				return parts[6] == "new"
+			}
+			if parts[5] == "attachments" {
+				_, err := parseTypedRef(parts[6], "object")
+				return err == nil
+			}
+		}
+		if len(parts) == 8 && parts[5] == "attachments" {
+			if _, err := parseTypedRef(parts[6], "object"); err != nil {
+				return false
+			}
+			return parts[7] == "content" || parts[7] == "delete"
 		}
 		return false
 	}

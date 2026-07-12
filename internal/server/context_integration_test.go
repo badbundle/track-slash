@@ -77,7 +77,7 @@ func TestHTTPProjectContextCRUDAndIssueLinks(t *testing.T) {
 		t.Fatalf("create context code = %d body = %s", code, body)
 	}
 	contextItem := decode[model.ProjectContext](t, body)
-	if contextItem.Ref != "context-1" || contextItem.Scope != model.ProjectContextScopeProject || contextItem.Kind != model.ProjectContextKindText || contextItem.CreatedByID != e.adminID || contextItem.UpdatedByID != e.adminID {
+	if contextItem.Ref != "context-1" || contextItem.Scope != model.ProjectContextScopeProject || contextItem.Kind != model.ProjectContextKindText || contextItem.ContentType != "text/markdown; charset=utf-8" || contextItem.Position == nil || *contextItem.Position != 1 || contextItem.CreatedByID != e.adminID || contextItem.UpdatedByID != e.adminID {
 		t.Fatalf("created context = %+v", contextItem)
 	}
 
@@ -122,6 +122,16 @@ func TestHTTPProjectContextCRUDAndIssueLinks(t *testing.T) {
 	uploaded := decode[model.ProjectContext](t, body)
 	if uploaded.Ref != "context-2" || uploaded.Scope != model.ProjectContextScopeProject || uploaded.Title != "notes" || uploaded.ContentType != "text/markdown; charset=utf-8" || uploaded.SourceFilename == nil || *uploaded.SourceFilename != "notes.md" {
 		t.Fatalf("uploaded context = %+v", uploaded)
+	}
+	code, body = e.do(t, http.MethodPatch, e.projectContextPath(contextItem), map[string]any{
+		"position": 2, "content_type": "text/plain",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("reposition context code = %d body = %s", code, body)
+	}
+	contextItem = decode[model.ProjectContext](t, body)
+	if contextItem.Position == nil || *contextItem.Position != 2 || contextItem.ContentType != "text/plain; charset=utf-8" {
+		t.Fatalf("repositioned context = %+v", contextItem)
 	}
 
 	issue, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "context target"))
@@ -221,7 +231,6 @@ func TestHTTPProjectContextValidation(t *testing.T) {
 		body map[string]any
 	}{
 		{"empty title", map[string]any{"title": "", "body": "body"}},
-		{"empty body", map[string]any{"title": "Title", "body": ""}},
 		{"long title", map[string]any{"title": strings.Repeat("x", 201), "body": "body"}},
 	} {
 		code, body := e.do(t, http.MethodPost, e.projectPath()+"/context", tc.body)
@@ -229,7 +238,15 @@ func TestHTTPProjectContextValidation(t *testing.T) {
 			t.Fatalf("%s code = %d body = %s", tc.name, code, body)
 		}
 	}
-	code, body := e.doMultipartContext(t, nil, "image.png", "not really an image")
+	code, body := e.do(t, http.MethodPost, e.projectPath()+"/context", map[string]any{"title": "Blank page", "body": ""})
+	if code != http.StatusCreated {
+		t.Fatalf("blank project page code = %d body = %s", code, body)
+	}
+	blank := decode[model.ProjectContext](t, body)
+	if blank.Body != "" || blank.ContentType != "text/markdown; charset=utf-8" {
+		t.Fatalf("blank project page = %+v", blank)
+	}
+	code, body = e.doMultipartContext(t, nil, "image.png", "not really an image")
 	if code != http.StatusBadRequest {
 		t.Fatalf("bad upload extension code = %d body = %s", code, body)
 	}

@@ -2,6 +2,8 @@
 
 Description attachments connect project, issue, and sprint descriptions to project object storage. Markdown source remains in `projects.description`, `issues.description`, or `sprints.goal`; files live in object storage and are linked through `project_attachments`, `issue_attachments`, or `sprint_attachments`.
 
+Project context pages use the same storage contract through `context_attachments`. Markdown remains in `project_context.body`; each attachment row stores `project_id`, `context_id`, `storage_object_id`, and audit/realtime fields. A storage object may belong to only one description or context attachment flow.
+
 ## Data Model
 
 `issue_attachments` is a link/audit table. It stores:
@@ -67,6 +69,13 @@ Project members can use the API routes:
 - `GET /api/v1/{owner}/projects/{key}/attachments/{objectRef}/content`
 - `DELETE /api/v1/{owner}/projects/{key}/attachments/{objectRef}`
 
+Project context page routes are nested under the page:
+
+- `POST /api/v1/{owner}/projects/{key}/context/{contextRef}/attachments`
+- `GET /api/v1/{owner}/projects/{key}/context/{contextRef}/attachments`
+- `GET /api/v1/{owner}/projects/{key}/context/{contextRef}/attachments/{objectRef}/content`
+- `DELETE /api/v1/{owner}/projects/{key}/context/{contextRef}/attachments/{objectRef}`
+
 Issue routes:
 
 - `POST /api/v1/{owner}/issues/{issueRef}/attachments`
@@ -105,4 +114,5 @@ Content responses stream bytes from the backend with stored content type, conten
 - Markdown links allow safe external URL schemes only, plus same-origin absolute paths and fragments.
 - Markdown images render inline only for attached safe images, same-origin absolute paths, or external `http`/`https` URLs. Unsafe schemes such as `javascript:`, `data:`, and `mailto:` do not render as images.
 - `object-N` refs never cross project, issue, or sprint description boundaries.
+- Context-page `object-N` refs resolve only against attachments on that context page, including when the page is viewed from an issue.
 - Inline rendering is limited to safe image content types; downloads use attachment disposition.

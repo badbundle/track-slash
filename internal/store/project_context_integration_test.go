@@ -52,6 +52,9 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if first.Ref != "context-1" || second.Ref != "context-2" {
 		t.Fatalf("refs = %q %q, want context-1/context-2", first.Ref, second.Ref)
 	}
+	if first.Position == nil || *first.Position != 1 || second.Position == nil || *second.Position != 2 {
+		t.Fatalf("positions = %v %v, want 1/2", first.Position, second.Position)
+	}
 	if first.Scope != model.ProjectContextScopeProject || second.Scope != model.ProjectContextScopeProject {
 		t.Fatalf("project context scopes = %q %q, want project/project", first.Scope, second.Scope)
 	}
@@ -81,7 +84,7 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	}
 	page2, more, err := env.store.ListProjectContexts(env.ctx, store.ListProjectContextsParams{
 		ProjectID: env.projectID,
-		Cursor:    &store.ProjectContextsCursor{Number: page1[0].Number},
+		Cursor:    &store.ProjectContextsCursor{Position: *page1[0].Position},
 		Limit:     1,
 	})
 	if err != nil {
@@ -89,6 +92,20 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	}
 	if len(page2) != 1 || more || page2[0].Ref != second.Ref {
 		t.Fatalf("page2 = %+v more=%v", page2, more)
+	}
+	moveToFirst := int64(1)
+	moved, err := env.store.UpdateProjectContext(env.ctx, store.UpdateProjectContextParams{
+		ID: second.ID, Position: &moveToFirst, UpdatedByID: project.OwnerID,
+	})
+	if err != nil {
+		t.Fatalf("move context: %v", err)
+	}
+	if moved.Position == nil || *moved.Position != 1 {
+		t.Fatalf("moved position = %v, want 1", moved.Position)
+	}
+	ordered, _, err := env.store.ListProjectContexts(env.ctx, store.ListProjectContextsParams{ProjectID: env.projectID, Limit: 10})
+	if err != nil || len(ordered) != 2 || ordered[0].ID != second.ID || ordered[1].ID != first.ID {
+		t.Fatalf("reordered contexts = %+v err=%v", ordered, err)
 	}
 
 	issueA := mustCreateIssue(t, env, "A")
@@ -135,7 +152,7 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListProjectContexts after links: %v", err)
 	}
-	if len(summaries) != 2 || summaries[0].LinkedIssueCount != 2 {
+	if len(summaries) != 2 || summaries[1].LinkedIssueCount != 2 {
 		t.Fatalf("project context summaries = %+v, want two project contexts and first linked twice", summaries)
 	}
 
@@ -273,12 +290,12 @@ func TestProjectContextConflictAndValidation(t *testing.T) {
 	}); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("empty title err = %v, want ErrConflict", err)
 	}
-	if _, err := env.store.CreateProjectContext(env.ctx, store.CreateProjectContextParams{
-		ProjectID:   env.projectID,
+	if _, err := env.store.CreateIssueContext(env.ctx, store.CreateIssueContextParams{
+		IssueID:     issue.ID,
 		Title:       "Title",
 		Body:        "",
 		CreatedByID: project.OwnerID,
 	}); !errors.Is(err, store.ErrConflict) {
-		t.Fatalf("empty body err = %v, want ErrConflict", err)
+		t.Fatalf("empty issue context body err = %v, want ErrConflict", err)
 	}
 }

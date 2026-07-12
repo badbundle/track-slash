@@ -7,7 +7,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Below the `md` breakpoint, use an off-canvas navigation drawer opened from a persistent mobile app bar. Do not reserve space for a permanent icon rail on narrow screens.
 - Keep mobile page gutters compact and consistent while preserving the established desktop content width and spacing.
 - Dense issue rows should reflow into stacked, readable metadata on narrow screens and return to the compact column layout at `sm` and above.
-- Keep primary tabs on one line. On narrow project pages, keep `Sprint`, `Planned`, and `All` visible and move `Changelog` and `About` into the project overflow menu instead of wrapping or scrolling the tab bar.
+- Keep primary tabs on one line. On narrow project pages, keep `Sprint`, `Planned`, and `All` visible and move `Context` and `About` into the project overflow menu instead of wrapping or scrolling the tab bar. `Changelog` always lives in project overflow.
 
 ## User Identity
 
@@ -20,7 +20,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Prefer the stronger hierarchy of the issue detail page: clear title card, compact metadata, purposeful cards, and restrained section language.
 - Keep the project header cohesive. Project identity, actions, and tabs should feel like one unit, with the tab bar close to the project title and flush to the bottom of the header.
 - Keep `Deleted issues` in the project actions menu, not in the primary tab bar.
-- Use the wide-layout project tabs `Sprint`, `Planned`, `All`, `Changelog`, and `About`. `Sprint` is singular; use a human/running-style Lucide icon when available. Below `lg`, show only the first three as tabs and expose `Changelog` and `About` from project actions so the expanded desktop sidebar cannot squeeze the tab bar.
+- Use the wide-layout project tabs `Sprint`, `Planned`, `All`, `Context`, and `About`. `Sprint` is singular; use a human/running-style Lucide icon when available. Below `lg`, show only the first three as tabs and expose `Context` and `About` from project actions. Keep `Changelog` in project overflow at every breakpoint.
 - Show assignee filters only where they apply. Do not preserve or display assignee filters on `About`.
 - The `All` tab is the triage and discovery surface. It should feel dense and scan-friendly, with all current, past, completed, planned, and unplanned issues available through one list.
 - Keep `All` page controls in one coherent section. Avoid loose chip clusters; group filters in aligned rows and separate sort controls visually while keeping them in the same control shell.
@@ -35,14 +35,14 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 ## Context IA
 
-- Treat context as supporting project/issue metadata on parent pages. Project About and issue detail should show context in the Details sidebar as a compact `Context` row with a count badge and a book-open manage action.
-- Do not render large context cards, nested boxes, inline create/upload forms, or body previews on Project About or issue detail. Those parent pages should stay scannable and only answer "how much context is attached?" plus "where do I manage it?"
-- Use the project context manager page `/{owner}/projects/{key}/context` for project-scoped taxonomy work: create, upload, edit, delete, link, and unlink.
-- Use an issue modal for issue-scoped context work from issue detail. It should preserve the issue page, avoid URL pushes, show attached context first, support search/attach for existing project context, and allow issue-only create/upload/view/edit/remove without turning issue detail into a fullscreen manager.
-- Keep context manager rows compact by default. Show title, metadata, scope/link counts, and actions only. Body content appears only in explicit view/edit states.
+- Treat project context as a top-level project view. Do not duplicate it in the Project About details sidebar.
+- Use `/{owner}/projects/{key}/context` as an integrated project tab with the standard project header, a flat ordered page list, and one selected document.
+- Project pages use explicit Markdown edit/save/cancel behavior, support `.md`, `.markdown`, and `.txt` import, and use compact move-up/move-down controls rather than drag-and-drop.
+- Keep page rows compact and show body content only for the selected page. Page attachments use the shared description attachment behavior and resolve `object-N` only within that page.
+- Use an integrated issue Context manager rather than a modal. It should mirror the project Context list/document layout, keep the issue identity and a clear return action visible, and use addressable selected-page URLs.
+- Linked project pages render their Markdown and page attachments in the issue Context manager; issue-only context remains escaped pre-wrapped text.
 - Use user-facing titles for finding and attaching context. Do not expose refs such as `context-1` as visible row labels or search/link inputs; refs may remain in URLs/API mechanics.
-- Keep issue context modal actions explicit: one action to create issue-scoped context and one action to attach existing project context. Project context manager actions stay project-scoped.
-- Render text context as escaped pre-wrapped text when viewing; do not turn context body into Markdown HTML unless a future product decision changes that behavior.
+- Keep issue Context actions explicit: one action creates issue-scoped context and one attaches existing project context. Project page creation, ordering, deletion, attachments, and linked-issue management stay in the project Context tab.
 
 ## Tag IA
 

@@ -240,22 +240,6 @@ func (s *Server) renderUIIssuePanelWithTagModal(w http.ResponseWriter, r *http.R
 	s.renderUIIssuePanelResponse(w, r, panel)
 }
 
-func (s *Server) renderUIIssuePanelWithContextModal(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, mutate func(*uiIssuePanelData)) {
-	panel, err := s.uiBuildIssuePanel(r.Context(), r, issueID)
-	if err != nil {
-		writeUIStoreError(w, err)
-		return
-	}
-	if err := s.uiPopulateIssueContextModal(r.Context(), panel); err != nil {
-		writeUIStoreError(w, err)
-		return
-	}
-	if mutate != nil {
-		mutate(panel)
-	}
-	s.renderUIIssuePanelResponse(w, r, panel)
-}
-
 func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Request, panel *uiIssuePanelData) {
 	if isHTMXRequest(r) {
 		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
@@ -362,41 +346,6 @@ func (s *Server) uiPopulateIssueTagModal(ctx context.Context, panel *uiIssuePane
 	panel.TagError = message
 	panel.Issue.Tags = attached
 	return nil
-}
-
-func (s *Server) uiPopulateIssueContextModal(ctx context.Context, panel *uiIssuePanelData) error {
-	attached, available, err := s.uiIssueContextAttachmentOptions(ctx, panel.Issue, panel.Contexts)
-	if err != nil {
-		return err
-	}
-	panel.EditContext = true
-	panel.ContextModalItems = attached
-	panel.ContextAvailable = available
-	return nil
-}
-
-func (s *Server) uiIssueContextAttachmentOptions(ctx context.Context, issue model.Issue, current []model.ProjectContext) ([]uiContextManagerItem, []uiContextManagerItem, error) {
-	attached := make([]uiContextManagerItem, 0, len(current))
-	attachedIDs := make(map[uuid.UUID]struct{}, len(current))
-	for _, contextItem := range current {
-		attached = append(attached, uiContextManagerItemFromContext(contextItem))
-		attachedIDs[contextItem.ID] = struct{}{}
-	}
-	contexts, _, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
-		ProjectID: issue.ProjectID,
-		Limit:     MaxLimit,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	available := make([]uiContextManagerItem, 0, len(contexts))
-	for _, contextItem := range contexts {
-		if _, ok := attachedIDs[contextItem.ID]; ok {
-			continue
-		}
-		available = append(available, uiContextManagerItemFromSummary(contextItem))
-	}
-	return attached, available, nil
 }
 
 func (s *Server) uiIssueTagAttachmentOptions(ctx context.Context, issue model.Issue) ([]model.IssueTag, []model.IssueTag, error) {

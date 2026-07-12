@@ -116,4 +116,4 @@ Remote backends implement `internal/storage.Backend` and keep the same metadata 
 
 Do not store raw object bytes in Postgres. Product features such as project/issue/sprint description attachments or image fields should reference `storage_objects.id` from their own tables.
 
-Project, issue, and sprint description attachments are documented in `ATTACHMENTS.md`. Attachment links store only parent/object/audit data; object metadata such as filename, content type, byte size, hash, backend, bucket, and object key remains in `storage_objects`.
+Project, issue, sprint description, and project-context page attachments are documented in `ATTACHMENTS.md`. Attachment links store only parent/object/audit data; object metadata such as filename, content type, byte size, hash, backend, bucket, and object key remains in `storage_objects`.

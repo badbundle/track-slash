@@ -123,7 +123,7 @@ func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
 
 func uiProjectFavoriteView(raw string) string {
 	switch raw {
-	case "about", "sprint", "planned", "all", "changelog":
+	case "about", "sprint", "planned", "all", "context", "changelog":
 		return raw
 	default:
 		return "sprint"
@@ -459,29 +459,6 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.Tags = projectTags
-		contexts, contextHasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
-			ProjectID: projectID,
-			Limit:     MaxLimit,
-		})
-		if err != nil {
-			return nil, err
-		}
-		panel.ContextHasMore = contextHasMore
-		panel.ContextItems = make([]uiProjectContextItem, 0, len(contexts))
-		for _, contextItem := range contexts {
-			issues, issuesHasMore, err := s.store.ListIssuesForContext(ctx, store.ListIssuesForContextParams{
-				ContextID: contextItem.ID,
-				Limit:     MaxLimit,
-			})
-			if err != nil {
-				return nil, err
-			}
-			panel.ContextItems = append(panel.ContextItems, uiProjectContextItem{
-				Context:             contextItem,
-				LinkedIssues:        issues,
-				LinkedIssuesHasMore: issuesHasMore,
-			})
-		}
 		return panel, nil
 	case "sprint":
 		activeStatus := model.SprintStatusActive
@@ -588,6 +565,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.ChangelogPage = pageData
+	case "context":
+		manager, err := s.uiBuildProjectContextManager(ctx, r, projectID)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.uiHydrateProjectContextManager(ctx, manager); err != nil {
+			return nil, err
+		}
+		panel.ContextManager = manager
 	default:
 		return nil, store.ErrNotFound
 	}

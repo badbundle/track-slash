@@ -241,6 +241,7 @@ type uiContextManagerItem struct {
 	Ref                 string
 	Number              int
 	Scope               model.ProjectContextScope
+	Position            *int64
 	Title               string
 	ContentType         string
 	SourceFilename      *string
@@ -263,7 +264,11 @@ type uiContextManagerData struct {
 	HasMore            bool
 	ContextOptions     []uiProjectContextOption
 	ActiveContextID    uuid.UUID
+	HasActiveContext   bool
 	ActiveContext      model.ProjectContext
+	ActiveHTML         template.HTML
+	Attachments        []model.ContextAttachment
+	AttachmentsHasMore bool
 	ContextInput       string
 	ContextTitle       string
 	ContextBody        string
@@ -433,6 +438,7 @@ type uiProjectPanelData struct {
 	Tags                            []model.IssueTag
 	ContextItems                    []uiProjectContextItem
 	ContextHasMore                  bool
+	ContextManager                  *uiContextManagerData
 	DeleteNotice                    *uiIssueDeleteNotice
 	SprintIssuesHasMore             bool
 	PlannedHasMore                  bool
@@ -529,21 +535,6 @@ type uiIssuePanelData struct {
 	LinkError          string
 	Contexts           []model.ProjectContext
 	ContextsHasMore    bool
-	EditContext        bool
-	ContextAction      string
-	ContextModalItems  []uiContextManagerItem
-	ContextAvailable   []uiContextManagerItem
-	ActiveContextID    uuid.UUID
-	ActiveContext      model.ProjectContext
-	ContextInput       string
-	ContextTitle       string
-	ContextBody        string
-	ContextError       string
-	ContextCreateError string
-	ContextUploadError string
-	ContextEditTitle   string
-	ContextEditBody    string
-	ContextEditError   string
 	EditTags           bool
 	TagModalAttached   []model.IssueTag
 	TagModalAvailable  []model.IssueTag

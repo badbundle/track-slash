@@ -344,8 +344,8 @@ func TestListenerReceivesProjectContextEvents(t *testing.T) {
 
 	var contextID string
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO project_context (project_id, number, title, body, created_by_id, updated_by_id)
-		VALUES ($1, 1, 'Architecture', 'Use the existing store.', $2, $2)
+		INSERT INTO project_context (project_id, number, position, title, body, created_by_id, updated_by_id)
+		VALUES ($1, 1, 1, 'Architecture', 'Use the existing store.', $2, $2)
 		RETURNING id::text
 	`, projectID, ownerID).Scan(&contextID); err != nil {
 		t.Fatalf("insert project_context: %v", err)
@@ -587,6 +587,58 @@ func TestListenerReceivesProjectAttachmentEvent(t *testing.T) {
 		t.Fatalf("delete project attachment: %v", err)
 	}
 	waitForProjectAttachmentEvent(t, projectSub, attachmentID, projectID, OpDelete)
+}
+
+func TestListenerReceivesContextAttachmentEvent(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-context-attachment")
+	var ownerID, contextID, objectID string
+	if err := pool.QueryRow(ctx, `SELECT owner_id::text FROM projects WHERE id = $1`, projectID).Scan(&ownerID); err != nil {
+		t.Fatalf("select owner: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO project_context (project_id, number, scope, position, title, content_type, body, created_by_id, updated_by_id)
+		VALUES ($1, 1, 'project', 1, 'Runbook', 'text/markdown; charset=utf-8', '# Runbook', $2, $2)
+		RETURNING id::text
+	`, projectID, ownerID).Scan(&contextID); err != nil {
+		t.Fatalf("insert project context: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO storage_objects (
+			project_id, number, backend, bucket, object_key, filename, content_type,
+			byte_size, sha256, created_by_id
+		)
+		VALUES ($1::uuid, 1, 'local', 'local', 'projects/' || $1::text || '/objects/context-1',
+			'runbook.png', 'image/png', 4, repeat('a', 64), $2::uuid)
+		RETURNING id::text
+	`, projectID, ownerID).Scan(&objectID); err != nil {
+		t.Fatalf("insert storage object: %v", err)
+	}
+
+	projectSub := newTestClient(32)
+	contextSub := newTestClient(32)
+	hub.Subscribe(projectSub, "project:"+projectID)
+	hub.Subscribe(contextSub, "project_context:"+contextID)
+	var attachmentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO context_attachments (project_id, context_id, storage_object_id, created_by_id)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text
+	`, projectID, contextID, objectID, ownerID).Scan(&attachmentID); err != nil {
+		t.Fatalf("insert context attachment: %v", err)
+	}
+	waitForContextAttachmentEvent(t, projectSub, attachmentID, contextID, projectID, OpInsert)
+	waitForContextAttachmentEvent(t, contextSub, attachmentID, contextID, projectID, OpInsert)
+	if _, err := pool.Exec(ctx, `DELETE FROM context_attachments WHERE id = $1`, attachmentID); err != nil {
+		t.Fatalf("delete context attachment: %v", err)
+	}
+	waitForContextAttachmentEvent(t, projectSub, attachmentID, contextID, projectID, OpDelete)
+	waitForContextAttachmentEvent(t, contextSub, attachmentID, contextID, projectID, OpDelete)
 }
 
 // TestListenerReceivesProjectChangelogEvent verifies changelog inserts refresh
@@ -879,6 +931,28 @@ func waitForProjectAttachmentEvent(t *testing.T, c *Client, attachmentID, projec
 			return
 		case <-deadline:
 			t.Fatalf("did not receive project attachment %s event within 3s", op)
+		}
+	}
+}
+
+func waitForContextAttachmentEvent(t *testing.T, c *Client, attachmentID, contextID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntityContextAttachment || ev.Op != op || ev.ID.String() != attachmentID {
+				continue
+			}
+			if ev.ContextID == nil || ev.ContextID.String() != contextID {
+				t.Errorf("context_id = %v, want %s", ev.ContextID, contextID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive context attachment %s event within 3s", op)
 		}
 	}
 }

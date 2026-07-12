@@ -394,6 +394,17 @@ type ProjectAttachment struct {
 	UpdatedAt       time.Time     `json:"updated_at"`
 }
 
+type ContextAttachment struct {
+	ID              uuid.UUID     `json:"id"`
+	ProjectID       uuid.UUID     `json:"project_id"`
+	ContextID       uuid.UUID     `json:"context_id"`
+	StorageObjectID uuid.UUID     `json:"storage_object_id"`
+	Object          StorageObject `json:"object"`
+	CreatedByID     uuid.UUID     `json:"created_by_id"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+}
+
 type Issue struct {
 	ID            uuid.UUID         `json:"id"`
 	ProjectID     uuid.UUID         `json:"project_id"`
@@ -505,6 +516,7 @@ type ProjectContext struct {
 	Number         int                 `json:"number"`
 	Ref            string              `json:"ref"`
 	Scope          ProjectContextScope `json:"scope"`
+	Position       *int64              `json:"position,omitempty"`
 	Title          string              `json:"title"`
 	Kind           ProjectContextKind  `json:"kind"`
 	ContentType    string              `json:"content_type"`
@@ -522,6 +534,7 @@ type ProjectContextSummary struct {
 	Number           int                 `json:"number"`
 	Ref              string              `json:"ref"`
 	Scope            ProjectContextScope `json:"scope"`
+	Position         *int64              `json:"position,omitempty"`
 	Title            string              `json:"title"`
 	Kind             ProjectContextKind  `json:"kind"`
 	ContentType      string              `json:"content_type"`

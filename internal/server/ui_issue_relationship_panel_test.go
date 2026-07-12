@@ -82,7 +82,7 @@ func TestUIIssuePanelCollapsesEmptyRelationshipSections(t *testing.T) {
 		t.Fatalf("relationship sections should render one wrapping row, got %d: %s", got, emptyBody)
 	}
 	contextDetail := contextDetailBlock(t, emptyBody)
-	for _, want := range []string{`aria-label="Manage context"`, `data-lucide="book-open"`, `class="` + uiCountBadgeClass + `">0</span>`} {
+	for _, want := range []string{`aria-label="Manage context"`, `data-lucide="book-open"`, `hx-push-url="/bradley/issues/TRACK-7/context"`, `class="` + uiCountBadgeClass + `">0</span>`} {
 		if !strings.Contains(contextDetail, want) {
 			t.Fatalf("empty context detail row missing %q: %s", want, emptyBody)
 		}
