@@ -33,21 +33,20 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Modals
 
 - `modal-open` and `modal-close`: reusable modal shell with title, optional description, badges, and cancel action. Wrap workflow-specific body content between the two templates.
-- Issue-scoped relationship edits should prefer modals over fullscreen manager pages when the user is making a small local change from issue detail. Keep the surrounding issue context visible, avoid URL pushes for open/submit/close, support repeated HTMX updates inside the modal, and link out to the fuller manager when the task expands.
+- Issue-scoped relationship edits should prefer modals when the user is making a small local change from issue detail. Issue Context is the deliberate exception because browsing and editing multiple documents benefits from its integrated manager. Other modal workflows should keep the surrounding issue visible, avoid URL pushes for open/submit/close, support repeated HTMX updates, and link out when the task expands.
 - Issue tag modal convention: show attached tags first, then a searchable list of available project tags. Attach/detach existing tags only; create/edit/delete project tags stays in the project tag manager.
-- Issue context modal convention: show attached context first, then either a searchable list of available project context or the issue-only create/upload editor. View and edit bodies inside the modal; keep text escaped and pre-wrapped. Project-wide context creation, deletion, and linked-issue management stays in the project context manager.
 
 ## Rows And Notices
 
 - `issue-summary-row`: responsive issue list row content accepting an issue. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
-- Context detail row: issue detail uses a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open action that opens the issue context modal with `hx-push-url="false"`. Project About does not render context; project context is a top-level tab.
+- Context detail row: issue detail uses a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open action that opens the integrated issue Context manager and pushes its URL. Project About does not render context; project context is a top-level tab.
 
 ## Feature Panels
 
 - `project-favorite-action`: project header star toggle backed by `uiProjectFavoriteData`/`uiProjectPanelData`. Keep it adjacent to the project title and update only the action wrapper plus `sidebar-favorites`.
 - `project-panel-context`: integrated project Context tab in `internal/server/templates/project_panel_context.html`; expects `uiContextManagerData` through `uiProjectPanelData.ContextManager`. It owns the ordered page list and selected Markdown page.
-- `context-manager-panel`: issue-scoped context manager fallback in `internal/server/templates/context_manager.html`; issue detail normally renders context as a modal inside `issue-panel`.
+- `context-manager-panel`: routes issue mode to the integrated list/document manager in `internal/server/templates/issue_context_manager.html`; project mode remains a compatibility fallback because project Context normally renders through `project-panel-context`.
 - `description-body`: shared safe Markdown display backed by `uiDescriptionBodyData`. Project, issue, and sprint adapters pass attachment-scoped rendered HTML.
 - `description-editor`: shared Markdown textarea backed by `uiDescriptionEditorData`, with optional upload and attachment-list URLs. Creation forms omit upload configuration until a parent ref exists.
 - `description-attachment-list`: shared project/issue/sprint attachment rows backed by `uiAttachmentListData`, including previews, metadata, Markdown copy, download, delete, pagination notice, and editing state.
@@ -55,10 +54,10 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ### Context Page Conventions
 
-- Project tab route: `/{owner}/projects/{key}/context`; selected pages use `/context/{contextRef}`. Issue modal route: `/{owner}/issues/{issueRef}/context`.
+- Project tab route: `/{owner}/projects/{key}/context`; selected pages use `/context/{contextRef}`. Issue manager route: `/{owner}/issues/{issueRef}/context`, with the same selected-page suffix.
 - Project pages support create/import/edit/delete, page-scoped attachments, ordering, and linked-issue management. The list stays compact; only the selected page renders content.
 - Markdown pages use the shared safe Markdown renderer and attachment components. Plain-text imports remain escaped and pre-wrapped.
-- Issue modal mode supports creating issue-scoped context, attaching existing project pages, viewing/editing linked content, and removing links.
+- Issue manager mode supports creating issue-scoped context, attaching existing project pages, viewing/editing linked content, and removing links in the same responsive list/document pattern as project Context.
 - User-facing attach/search controls use context titles. Do not present refs such as `context-1` as visible identifiers, badges, placeholders, or option labels.
 
 When adding a reusable component, document its template name, purpose, and expected data shape here.

@@ -26,13 +26,13 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		r.Body = http.MaxBytesReader(w, r.Body, maxProjectContextUploadBytes+1024*1024)
 		upload, err := readProjectContextUpload(r)
 		if err != nil {
-			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-				panel.ContextAction = "create"
+			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+				panel.Action = "create"
 				panel.ContextUploadError = err.Error()
 			})
 			return
 		}
-		if _, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
+		created, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
 			IssueID:        issue.ID,
 			Title:          upload.Title,
 			Kind:           model.ProjectContextKindText,
@@ -40,12 +40,16 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 			Body:           upload.Body,
 			SourceFilename: upload.SourceFilename,
 			CreatedByID:    currentUser(r).ID,
-		}); err != nil {
+		})
+		if err != nil {
 			writeUIStoreError(w, err)
 			return
 		}
-		uiSetHXReplaceURL(w, r, uiIssuePath(issue))
-		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
+		uiSetHXReplaceURL(w, r, uiIssueContextItemPath(issue, created))
+		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+			panel.Action = "view"
+			panel.ActiveContextID = created.ID
+		})
 		return
 	}
 
@@ -58,8 +62,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		bodyInput := r.Form.Get("body")
 		title, err := validateProjectContextTitle(titleInput)
 		if err != nil {
-			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-				panel.ContextAction = "create"
+			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+				panel.Action = "create"
 				panel.ContextTitle = titleInput
 				panel.ContextBody = bodyInput
 				panel.ContextCreateError = err.Error()
@@ -68,27 +72,31 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		}
 		body, err := validateIssueContextBody(bodyInput)
 		if err != nil {
-			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-				panel.ContextAction = "create"
+			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+				panel.Action = "create"
 				panel.ContextTitle = titleInput
 				panel.ContextBody = bodyInput
 				panel.ContextCreateError = err.Error()
 			})
 			return
 		}
-		if _, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
+		created, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
 			IssueID:     issue.ID,
 			Title:       title,
 			Kind:        model.ProjectContextKindText,
 			ContentType: "text/plain; charset=utf-8",
 			Body:        body,
 			CreatedByID: currentUser(r).ID,
-		}); err != nil {
+		})
+		if err != nil {
 			writeUIStoreError(w, err)
 			return
 		}
-		uiSetHXReplaceURL(w, r, uiIssuePath(issue))
-		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
+		uiSetHXReplaceURL(w, r, uiIssueContextItemPath(issue, created))
+		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+			panel.Action = "view"
+			panel.ActiveContextID = created.ID
+		})
 		return
 	}
 
@@ -99,8 +107,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if message != "" {
-		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-			panel.ContextAction = "attach"
+		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+			panel.Action = "attach"
 			panel.ContextInput = input
 			panel.ContextError = message
 		})
@@ -108,8 +116,8 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 	}
 	if _, err := s.store.CreateIssueContextLink(r.Context(), issue.ID, contextItem.ID); err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-				panel.ContextAction = "attach"
+			s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+				panel.Action = "attach"
 				panel.ContextInput = input
 				panel.ContextError = "Context already linked."
 			})
@@ -118,8 +126,11 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssueContextItemPath(issue, contextItem))
+	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
+		panel.ActiveContextID = contextItem.ID
+	})
 }
 
 func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
@@ -127,8 +138,8 @@ func (s *Server) uiNewIssueContextLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-		panel.ContextAction = "attach"
+	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+		panel.Action = "attach"
 	})
 }
 
@@ -137,8 +148,8 @@ func (s *Server) uiNewIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-		panel.ContextAction = "create"
+	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+		panel.Action = "create"
 	})
 }
 
@@ -147,7 +158,7 @@ func (s *Server) uiViewIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
+	s.renderUIIssueContextManager(w, r, issue.ID, nil)
 }
 
 func (s *Server) uiViewIssueContextItem(w http.ResponseWriter, r *http.Request) {
@@ -159,8 +170,8 @@ func (s *Server) uiViewIssueContextItem(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-		panel.ContextAction = "view"
+	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
 		panel.ActiveContextID = contextItem.ID
 		panel.ActiveContext = contextItem
 	})
@@ -175,8 +186,8 @@ func (s *Server) uiEditIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-		panel.ContextAction = "edit"
+	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+		panel.Action = "edit"
 		panel.ActiveContextID = contextItem.ID
 		panel.ActiveContext = contextItem
 		panel.ContextEditTitle = contextItem.Title
@@ -205,8 +216,8 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 	bodyInput := r.Form.Get("body")
 	title, err := validateProjectContextTitle(titleInput)
 	if err != nil {
-		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-			panel.ContextAction = "edit"
+		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+			panel.Action = "edit"
 			panel.ActiveContextID = contextItem.ID
 			panel.ActiveContext = contextItem
 			panel.ContextEditTitle = titleInput
@@ -223,8 +234,8 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 		body, bodyErr = validateIssueContextBody(bodyInput)
 	}
 	if bodyErr != nil {
-		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
-			panel.ContextAction = "edit"
+		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+			panel.Action = "edit"
 			panel.ActiveContextID = contextItem.ID
 			panel.ActiveContext = contextItem
 			panel.ContextEditTitle = titleInput
@@ -242,8 +253,11 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssueContextItemPath(issue, contextItem))
+	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
+		panel.ActiveContextID = contextItem.ID
+	})
 }
 
 func (s *Server) uiIssueContextFromRoute(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.ProjectContext, bool) {
@@ -298,8 +312,8 @@ func (s *Server) uiDeleteIssueContextLink(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	uiSetHXReplaceURL(w, r, uiIssuePath(issue))
-	s.renderUIIssuePanelWithContextModal(w, r, issue.ID, nil)
+	uiSetHXReplaceURL(w, r, uiIssueContextPath(issue))
+	s.renderUIIssueContextManager(w, r, issue.ID, nil)
 }
 
 func (s *Server) uiProjectContextInput(ctx context.Context, projectID uuid.UUID, raw string) (model.ProjectContext, string, error) {

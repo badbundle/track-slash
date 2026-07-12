@@ -374,6 +374,10 @@ func (s *Server) renderUIIssueContextManager(w http.ResponseWriter, r *http.Requ
 	if mutate != nil {
 		mutate(panel)
 	}
+	if panel.ActiveContextID == uuid.Nil && panel.Action == "" && len(panel.Items) > 0 {
+		panel.Action = "view"
+		panel.ActiveContextID = panel.Items[0].ID
+	}
 	if panel.ActiveContextID != uuid.Nil {
 		contextItem, err := s.store.GetProjectContext(r.Context(), panel.ActiveContextID)
 		if err != nil {
@@ -381,6 +385,7 @@ func (s *Server) renderUIIssueContextManager(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		panel.ActiveContext = contextItem
+		panel.HasActiveContext = true
 		if contextItem.Scope == model.ProjectContextScopeProject {
 			attachments, hasMore, err := s.store.ListContextAttachments(r.Context(), store.ListContextAttachmentsParams{ContextID: contextItem.ID, Limit: MaxLimit})
 			if err != nil {
@@ -579,7 +584,7 @@ func uiProjectContextOptionLabel(contextItem model.ProjectContextSummary) string
 	if contextItem.SourceFilename != nil && strings.TrimSpace(*contextItem.SourceFilename) != "" {
 		return *contextItem.SourceFilename
 	}
-	return contextItem.ContentType
+	return ""
 }
 
 func (s *Server) renderUIProjectContextEditError(w http.ResponseWriter, r *http.Request, projectID, contextID uuid.UUID, title, body, message string) {

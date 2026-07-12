@@ -545,24 +545,6 @@ func uiCloseReasonModal(panel *uiIssuePanelData) uiModalData {
 	}
 }
 
-func uiIssueContextModal(panel *uiIssuePanelData) uiModalData {
-	return uiModalData{
-		ID:              "issue-context",
-		Title:           "Manage context",
-		Description:     fmt.Sprintf("Attach project context or add issue-only notes for %s.", panel.Issue.Identifier),
-		WidthClass:      "max-w-2xl",
-		CancelLabel:     "Close context editor",
-		CancelHXGet:     uiIssuePanelPath(panel.Issue),
-		CancelHXPushURL: "false",
-		Badges: []uiModalBadge{
-			{
-				Label: panel.Issue.Identifier,
-				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
-			},
-		},
-	}
-}
-
 func uiIssueTagsModal(panel *uiIssuePanelData) uiModalData {
 	return uiModalData{
 		ID:              "issue-tags",

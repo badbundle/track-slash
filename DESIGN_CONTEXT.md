@@ -39,10 +39,10 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Use `/{owner}/projects/{key}/context` as an integrated project tab with the standard project header, a flat ordered page list, and one selected document.
 - Project pages use explicit Markdown edit/save/cancel behavior, support `.md`, `.markdown`, and `.txt` import, and use compact move-up/move-down controls rather than drag-and-drop.
 - Keep page rows compact and show body content only for the selected page. Page attachments use the shared description attachment behavior and resolve `object-N` only within that page.
-- Use an issue modal for issue-scoped context work from issue detail. It should preserve the issue page, avoid URL pushes, show attached context first, support search/attach for existing project context, and allow issue-only create/upload/view/edit/remove without turning issue detail into a fullscreen manager.
-- Linked project pages render their Markdown and page attachments in the issue modal; issue-only context remains escaped pre-wrapped text.
+- Use an integrated issue Context manager rather than a modal. It should mirror the project Context list/document layout, keep the issue identity and a clear return action visible, and use addressable selected-page URLs.
+- Linked project pages render their Markdown and page attachments in the issue Context manager; issue-only context remains escaped pre-wrapped text.
 - Use user-facing titles for finding and attaching context. Do not expose refs such as `context-1` as visible row labels or search/link inputs; refs may remain in URLs/API mechanics.
-- Keep issue context modal actions explicit: one action to create issue-scoped context and one action to attach existing project context. Project page creation, ordering, deletion, attachments, and linked-issue management stay in the Context tab.
+- Keep issue Context actions explicit: one action creates issue-scoped context and one attaches existing project context. Project page creation, ordering, deletion, attachments, and linked-issue management stay in the project Context tab.
 
 ## Tag IA
 
