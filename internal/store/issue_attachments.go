@@ -2,14 +2,10 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bradleymackey/track-slash/internal/model"
 )
@@ -30,37 +26,16 @@ type ListIssueAttachmentsParams struct {
 	Limit   int
 }
 
-type issueAttachmentScanner interface {
-	Scan(dest ...any) error
-}
-
-func scanIssueAttachment(row issueAttachmentScanner) (model.IssueAttachment, error) {
-	var out model.IssueAttachment
-	var objectDeletedAt sql.NullTime
-	var objectProjectID, objectOwnerUserID uuid.NullUUID
-	err := row.Scan(
-		&out.ID, &out.ProjectID, &out.IssueID, &out.StorageObjectID, &out.CreatedByID, &out.CreatedAt, &out.UpdatedAt,
-		&out.Object.ID, &objectProjectID, &out.Object.Number, &objectOwnerUserID, &out.Object.Backend, &out.Object.Bucket,
-		&out.Object.ObjectKey, &out.Object.Filename, &out.Object.ContentType, &out.Object.ByteSize,
-		&out.Object.SHA256, &out.Object.CreatedByID, &out.Object.CreatedAt, &out.Object.UpdatedAt, &objectDeletedAt,
-	)
+func scanIssueAttachment(row descriptionAttachmentScanner) (model.IssueAttachment, error) {
+	fields, err := scanDescriptionAttachmentFields(row)
 	if err != nil {
 		return model.IssueAttachment{}, err
 	}
-	if objectDeletedAt.Valid {
-		out.Object.DeletedAt = &objectDeletedAt.Time
-	}
-	if objectProjectID.Valid {
-		out.Object.ProjectID = objectProjectID.UUID
-	}
-	if objectOwnerUserID.Valid {
-		id := objectOwnerUserID.UUID
-		out.Object.OwnerUserID = &id
-	}
-	if out.Object.Number > 0 {
-		out.Object.Ref = model.StorageObjectRef(out.Object.Number)
-	}
-	return out, nil
+	return model.IssueAttachment{
+		ID: fields.ID, ProjectID: fields.ProjectID, IssueID: fields.ParentID,
+		StorageObjectID: fields.StorageObjectID, Object: fields.Object, CreatedByID: fields.CreatedByID,
+		CreatedAt: fields.CreatedAt, UpdatedAt: fields.UpdatedAt,
+	}, nil
 }
 
 func issueAttachmentSelect() string {
@@ -209,21 +184,9 @@ func (s *Store) DeleteIssueAttachment(ctx context.Context, issueID, storageObjec
 			return ErrNotFound
 		}
 
-		var deletedAt time.Time
-		err = tx.QueryRow(ctx, `
-			UPDATE storage_objects
-			SET deleted_at = now(),
-			    updated_at = GREATEST(clock_timestamp(), updated_at + interval '1 microsecond')
-			WHERE id = $1 AND deleted_at IS NULL
-			RETURNING updated_at, deleted_at
-		`, storageObjectID).Scan(&out.Object.UpdatedAt, &deletedAt)
-		if err != nil {
-			if isNoRows(err) {
-				return ErrNotFound
-			}
-			return err // defensive: selected object was live and locked above
+		if err := softDeleteAttachedStorageObject(ctx, tx, storageObjectID, &out.Object); err != nil {
+			return err
 		}
-		out.Object.DeletedAt = &deletedAt
 
 		targetRef, targetTitle := changelogTarget(issue)
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
@@ -244,40 +207,9 @@ func (s *Store) DeleteIssueAttachment(ctx context.Context, issueID, storageObjec
 }
 
 func scanIssueAttachmentRows(ctx context.Context, s *Store, q string, args []any, limit int) ([]model.IssueAttachment, bool, error) {
-	rows, err := s.db.Query(ctx, q, args...)
-	if err != nil {
-		return nil, false, err
-	}
-	defer rows.Close()
-
-	out := make([]model.IssueAttachment, 0, limit)
-	for rows.Next() {
-		item, err := scanIssueAttachment(rows)
-		if err != nil {
-			return nil, false, err
-		}
-		out = append(out, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false, err
-	}
-	hasMore := len(out) > limit
-	if hasMore {
-		out = out[:limit]
-	}
-	return out, hasMore, nil
+	return scanDescriptionAttachmentRows(ctx, s, q, args, limit, scanIssueAttachment)
 }
 
 func mapIssueAttachmentWriteError(err error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return nil
-	}
-	switch pgErr.Code {
-	case "23503":
-		return fmt.Errorf("invalid issue attachment reference: %w", ErrConflict)
-	case "23505":
-		return fmt.Errorf("issue attachment already exists: %w", ErrConflict)
-	}
-	return nil
+	return mapDescriptionAttachmentWriteError(err, "issue")
 }

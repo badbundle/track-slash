@@ -31,7 +31,7 @@
             </div>
           </div>
           <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
-            <textarea name="goal" rows="4" class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.NewSprintForm.GoalInput}}</textarea>
+            {{template "description-editor" (newSprintDescriptionEditor .NewSprintForm.GoalInput)}}
           </label>
           {{if .NewSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.NewSprintForm.Error}}</p>{{end}}
           <div class="flex flex-wrap items-center gap-2">
@@ -54,7 +54,7 @@
         {{$actionOpen := and (eq $.PlannedSprintActionID $item.Sprint.ID) $.PlannedSprintAction}}
         {{$panelID := printf "planned-sprint-%s-issues" $item.Sprint.Ref}}
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <header class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <header class="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
             <div class="min-w-0">
               <div class="flex min-w-0 items-center gap-2">
                 <button type="button" data-disclosure-toggle aria-label="Toggle sprint issues" aria-controls="{{$panelID}}" aria-expanded="{{if $actionOpen}}true{{else}}false{{end}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
@@ -64,7 +64,7 @@
                 {{template "count-badge" (len $item.Issues)}}
               </div>
               {{with sprintDateRange $item.Sprint}}<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
-              {{if $item.Sprint.Goal}}<p class="mt-2 line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{{$item.Sprint.Goal}}</p>{{end}}
+              {{template "sprint-description" $item}}
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
@@ -113,8 +113,9 @@
               </div>
             </div>
             <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
-              <textarea name="goal" rows="4" class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{$.PlannedSprintForm.GoalInput}}</textarea>
+              {{template "description-editor" (sprintDescriptionEditor $.Project $item.Sprint $.PlannedSprintForm.GoalInput false)}}
             </label>
+            {{template "description-attachment-list" (sprintAttachmentListData $.Project $item.Sprint $.PlannedSprintAttachments $.PlannedSprintAttachmentsHasMore true)}}
             {{if $.PlannedSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{$.PlannedSprintForm.Error}}</p>{{end}}
             <div class="flex flex-wrap items-center gap-2">
               <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">

@@ -491,6 +491,62 @@ func TestListenerReceivesIssueAttachmentEvent(t *testing.T) {
 	waitForIssueAttachmentEvent(t, projectSub, attachmentID, issueID, projectID, OpInsert)
 }
 
+func TestListenerReceivesSprintAttachmentEvent(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-sprint-attachment")
+	var ownerID string
+	if err := pool.QueryRow(ctx, `SELECT owner_id::text FROM projects WHERE id = $1`, projectID).Scan(&ownerID); err != nil {
+		t.Fatalf("select owner: %v", err)
+	}
+	var sprintID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO sprints (project_id, number, name)
+		VALUES ($1, 1, 'attachment sprint')
+		RETURNING id::text
+	`, projectID).Scan(&sprintID); err != nil {
+		t.Fatalf("insert sprint: %v", err)
+	}
+	var objectID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO storage_objects (
+			project_id, number, backend, bucket, object_key, filename, content_type,
+			byte_size, sha256, created_by_id
+		)
+		VALUES ($1::uuid, 1, 'local', 'local', 'projects/' || $1::text || '/objects/sprint-1',
+			'plan.png', 'image/png', 4, repeat('a', 64), $2::uuid)
+		RETURNING id::text
+	`, projectID, ownerID).Scan(&objectID); err != nil {
+		t.Fatalf("insert storage object: %v", err)
+	}
+
+	sprintSub := newTestClient(32)
+	projectSub := newTestClient(32)
+	hub.Subscribe(sprintSub, "sprint:"+sprintID)
+	hub.Subscribe(projectSub, "project:"+projectID)
+
+	var attachmentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO sprint_attachments (project_id, sprint_id, storage_object_id, created_by_id)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text
+	`, projectID, sprintID, objectID, ownerID).Scan(&attachmentID); err != nil {
+		t.Fatalf("insert sprint attachment: %v", err)
+	}
+
+	waitForSprintAttachmentEvent(t, sprintSub, attachmentID, sprintID, projectID, OpInsert)
+	waitForSprintAttachmentEvent(t, projectSub, attachmentID, sprintID, projectID, OpInsert)
+	if _, err := pool.Exec(ctx, `DELETE FROM sprint_attachments WHERE id = $1`, attachmentID); err != nil {
+		t.Fatalf("delete sprint attachment: %v", err)
+	}
+	waitForSprintAttachmentEvent(t, sprintSub, attachmentID, sprintID, projectID, OpDelete)
+	waitForSprintAttachmentEvent(t, projectSub, attachmentID, sprintID, projectID, OpDelete)
+}
+
 // TestListenerReceivesProjectChangelogEvent verifies changelog inserts refresh
 // listeners on the project topic.
 func TestListenerReceivesProjectChangelogEvent(t *testing.T) {
@@ -740,6 +796,28 @@ func waitForIssueAttachmentEvent(t *testing.T, c *Client, attachmentID, issueID,
 			return
 		case <-deadline:
 			t.Fatalf("did not receive issue attachment %s event within 3s", op)
+		}
+	}
+}
+
+func waitForSprintAttachmentEvent(t *testing.T, c *Client, attachmentID, sprintID, projectID string, op Op) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-c.send:
+			if ev.Entity != EntitySprintAttachment || ev.Op != op || ev.ID.String() != attachmentID {
+				continue
+			}
+			if ev.SprintID == nil || ev.SprintID.String() != sprintID {
+				t.Errorf("sprint_id = %v, want %s", ev.SprintID, sprintID)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Errorf("project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatalf("did not receive sprint attachment %s event within 3s", op)
 		}
 	}
 }

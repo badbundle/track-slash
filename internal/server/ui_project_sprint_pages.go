@@ -149,9 +149,51 @@ func (s *Server) uiEditProjectSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := uiProjectSprintView(sprint)
+	var attachments []model.SprintAttachment
+	var attachmentsHasMore bool
+	if sprint.Status == model.SprintStatusPlanned {
+		var err error
+		attachments, attachmentsHasMore, err = s.store.ListSprintAttachments(r.Context(), store.ListSprintAttachmentsParams{SprintID: sprint.ID, Limit: MaxLimit})
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+	}
 	s.renderUIProjectPanel(w, r, project.ID, view, func(panel *uiProjectPanelData) {
 		uiMarkSprintEdit(panel, sprint, uiSprintFormFor(sprint))
+		if sprint.Status == model.SprintStatusPlanned {
+			panel.PlannedSprintAttachments = attachments
+			panel.PlannedSprintAttachmentsHasMore = attachmentsHasMore
+		}
 	})
+}
+
+func (s *Server) uiProjectSprintDescription(w http.ResponseWriter, r *http.Request) {
+	project, sprint, ok := s.uiProjectSprintFromRoute(w, r)
+	if !ok {
+		return
+	}
+	attachments, hasMore, err := s.store.ListSprintAttachments(r.Context(), store.ListSprintAttachmentsParams{
+		SprintID: sprint.ID,
+		Limit:    MaxLimit,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	expanded := r.URL.Query().Get("expanded") != "0"
+	item := uiSprintDescriptionData{
+		Project:             project,
+		Sprint:              sprint,
+		AttachmentCount:     len(attachments),
+		DescriptionHTML:     renderSprintDescriptionMarkdown(project, sprint, attachments),
+		DescriptionExpanded: expanded,
+	}
+	if expanded {
+		item.Attachments = attachments
+		item.AttachmentsHasMore = hasMore
+	}
+	renderUITemplate(w, http.StatusOK, "sprint-description", item)
 }
 
 func (s *Server) uiUpdateProjectSprint(w http.ResponseWriter, r *http.Request) {
@@ -360,6 +402,18 @@ func (s *Server) renderUIProjectPanel(w http.ResponseWriter, r *http.Request, pr
 	}
 	if mutate != nil {
 		mutate(panel)
+	}
+	if panel.ActiveSprint != nil && panel.ActiveSprintAction == "edit" {
+		attachments, attachmentsHasMore, err := s.store.ListSprintAttachments(r.Context(), store.ListSprintAttachmentsParams{
+			SprintID: panel.ActiveSprint.ID,
+			Limit:    MaxLimit,
+		})
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel.ActiveSprintDescription.Attachments = attachments
+		panel.ActiveSprintDescription.AttachmentsHasMore = attachmentsHasMore
 	}
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
 }

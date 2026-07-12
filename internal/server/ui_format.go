@@ -136,7 +136,7 @@ func uiChangelogIcon(entry model.ProjectChangelogEntry) string {
 		return "message-square"
 	case "issue_link":
 		return "link"
-	case "issue_attachment":
+	case "issue_attachment", "sprint_attachment":
 		return "paperclip"
 	case "issue_tag", "issue_tag_link":
 		return "tag"
@@ -296,15 +296,7 @@ func uiIssueAttachmentImage(attachment model.IssueAttachment) bool {
 }
 
 func uiIssueAttachmentMarkdown(attachment model.IssueAttachment) string {
-	label := strings.ReplaceAll(attachment.Object.Filename, `\`, `\\`)
-	label = strings.ReplaceAll(label, "]", `\]`)
-	if strings.TrimSpace(label) == "" {
-		label = attachment.Object.Ref
-	}
-	if storageObjectSafeInlineImage(attachment.Object) {
-		return fmt.Sprintf("![%s](%s)", label, attachment.Object.Ref)
-	}
-	return fmt.Sprintf("[%s](%s)", label, attachment.Object.Ref)
+	return uiStorageObjectMarkdown(attachment.Object)
 }
 
 func uiByteSize(n int64) string {

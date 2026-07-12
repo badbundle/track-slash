@@ -28,6 +28,11 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Put project tag management in the project About details sidebar, parallel to issue tag management. Keep it out of the project overflow menu.
 - Keep visual changes layout-focused unless the user explicitly asks for new creation, editing, drag/drop, or planning workflow controls.
 
+## Sprint Descriptions
+
+- Active and planned sprints retain a compact, vertically cropped Markdown preview. “See more” expands the full Markdown description and attachment rows; scheduled issues remain an independent disclosure.
+- Sprint description editing uses the same attachment dropzone, preview rows, Markdown-copy, download, and removal behavior as issue descriptions.
+
 ## Context IA
 
 - Treat context as supporting project/issue metadata on parent pages. Project About and issue detail should show context in the Details sidebar as a compact `Context` row with a count badge and a book-open manage action.

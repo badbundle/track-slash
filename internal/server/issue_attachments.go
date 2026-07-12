@@ -1,11 +1,9 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/bradleymackey/track-slash/internal/model"
-	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
@@ -135,40 +133,22 @@ func (s *Server) uiDeleteIssueAttachmentJSON(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) createIssueAttachmentForIssue(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.IssueAttachment, bool) {
-	if !s.requireObjectStorage(w) {
-		return model.IssueAttachment{}, false
-	}
-	object, ok := s.createStorageObjectFromRequest(w, r, issue.ProjectID, currentUser(r).ID)
-	if !ok {
-		return model.IssueAttachment{}, false
-	}
-	attachment, err := s.store.CreateIssueAttachment(r.Context(), store.CreateIssueAttachmentParams{
-		IssueID:         issue.ID,
-		StorageObjectID: object.ID,
-		CreatedByID:     currentUser(r).ID,
+	return createDescriptionAttachment(s, w, r, issue.ProjectID, func(object model.StorageObject) (model.IssueAttachment, error) {
+		return s.store.CreateIssueAttachment(r.Context(), store.CreateIssueAttachmentParams{
+			IssueID:         issue.ID,
+			StorageObjectID: object.ID,
+			CreatedByID:     currentUser(r).ID,
+		})
 	})
-	if err != nil {
-		s.cleanupStorageObject(r.Context(), object)
-		writeStoreError(w, err)
-		return model.IssueAttachment{}, false
-	}
-	return attachment, true
 }
 
 func (s *Server) deleteIssueAttachmentForIssue(w http.ResponseWriter, r *http.Request, issue model.Issue, attachment model.IssueAttachment) bool {
-	if !s.requireObjectStorage(w) {
-		return false
-	}
-	deleted, err := s.store.DeleteIssueAttachment(r.Context(), issue.ID, attachment.StorageObjectID)
-	if err != nil {
-		writeStoreError(w, err)
-		return false
-	}
-	if err := s.deleteStorageBackendObject(r.Context(), deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
-		writeStorageError(w, err)
-		return false
-	}
-	return true
+	_, ok := deleteDescriptionAttachment(s, w, r, func() (model.IssueAttachment, error) {
+		return s.store.DeleteIssueAttachment(r.Context(), issue.ID, attachment.StorageObjectID)
+	}, func(deleted model.IssueAttachment) string {
+		return deleted.Object.ObjectKey
+	})
+	return ok
 }
 
 func (s *Server) issueAttachmentFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, model.IssueAttachment, bool) {

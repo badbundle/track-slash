@@ -61,6 +61,26 @@ func uiProjectSprintEditPath(project model.Project, sprint any) string {
 	return uiProjectSprintPath(project, sprint) + "/edit"
 }
 
+func uiProjectSprintDescriptionPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/description"
+}
+
+func uiProjectSprintAttachmentsPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/attachments"
+}
+
+func uiProjectSprintAttachmentContentPath(project model.Project, sprint any, object any) string {
+	return uiProjectSprintAttachmentsPath(project, sprint) + "/" + uiStorageObjectRef(object) + "/content"
+}
+
+func uiProjectSprintAttachmentInlineContentPath(project model.Project, sprint any, object any) string {
+	return uiProjectSprintAttachmentContentPath(project, sprint, object) + "?inline=1"
+}
+
+func uiProjectSprintAttachmentDeletePath(project model.Project, sprint any, object any) string {
+	return uiProjectSprintAttachmentsPath(project, sprint) + "/" + uiStorageObjectRef(object) + "/delete"
+}
+
 func uiProjectSprintActivatePath(project model.Project, sprint any) string {
 	return uiProjectSprintPath(project, sprint) + "/activate"
 }

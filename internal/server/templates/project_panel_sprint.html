@@ -10,7 +10,6 @@
           {{if .ActiveSprint}}
           <h3 class="mt-2 truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{sprintLabel .ActiveSprint}}</h3>
           {{with sprintDateRange .ActiveSprint}}<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
-          {{if .ActiveSprint.Goal}}<div class="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-300">{{.ActiveSprint.Goal}}</div>{{end}}
           {{else}}
           <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No active sprint.</p>
           {{end}}
@@ -32,6 +31,11 @@
           {{end}}
         </div>
       </div>
+      {{if and .ActiveSprint (ne .ActiveSprintAction "edit") (or .ActiveSprint.Goal .ActiveSprintDescription.AttachmentCount)}}
+      <div class="mt-4 max-w-3xl border-t border-slate-100 pt-4 dark:border-slate-800">
+        {{template "sprint-description" .ActiveSprintDescription}}
+      </div>
+      {{end}}
       {{if and .ActiveSprint (eq .ActiveSprintAction "edit")}}
       <form method="post" action="{{projectSprint .Project .ActiveSprint}}" hx-post="{{projectSprint .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
         <div class="grid gap-3 md:grid-cols-2">
@@ -48,8 +52,9 @@
           </div>
         </div>
         <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
-          <textarea name="goal" rows="4" class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.ActiveSprintForm.GoalInput}}</textarea>
+          {{template "description-editor" (sprintDescriptionEditor .Project .ActiveSprint .ActiveSprintForm.GoalInput false)}}
         </label>
+        {{template "description-attachment-list" (sprintAttachmentListData .Project .ActiveSprint .ActiveSprintDescription.Attachments .ActiveSprintDescription.AttachmentsHasMore true)}}
         {{if .ActiveSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.ActiveSprintForm.Error}}</p>{{end}}
         <div class="flex flex-wrap items-center gap-2">
           <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
