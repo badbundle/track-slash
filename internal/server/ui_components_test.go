@@ -434,11 +434,17 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`.markdown-body table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }`,
 		`.markdown-body table { display: block; max-width: 100%; overflow-x: auto; }`,
 		`.markdown-body th, .markdown-body td { border: 1px solid rgb(203 213 225); padding: 0.375rem 0.5rem; text-align: left; vertical-align: top; }`,
-		`.dark .markdown-body th, .dark .markdown-body td { border-color: rgb(51 65 85); }`,
+		`@media (prefers-color-scheme: dark) {`,
+		`.markdown-body { color: rgb(226 232 240); }`,
+		`.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { color: rgb(241 245 249); }`,
+		`.markdown-body th, .markdown-body td { border-color: rgb(51 65 85); }`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing markdown CSS %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `.dark .markdown-body`) {
+		t.Fatalf("shell markdown dark-mode CSS should follow the system media query: %s", body)
 	}
 }
 

@@ -273,6 +273,9 @@ func TestUIRendersSubIssueDetailWithParentBacklinkAndNoSprintControls(t *testing
 
 	body := e.uiGet(t, e.issuePath(child), token)
 	for _, want := range []string{
+		`aria-label="Breadcrumb"`,
+		parent.Identifier,
+		child.Identifier,
 		"child detail issue",
 		"child detail body",
 		"Sub-issue of",

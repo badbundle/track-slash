@@ -20,6 +20,8 @@ var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":                       uiInitials,
+	"projectBreadcrumb":              uiProjectBreadcrumb,
+	"issueBreadcrumb":                uiIssueBreadcrumb,
 	"userAvatar":                     uiUserAvatar,
 	"byteSize":                       uiByteSize,
 	"issueAssignee":                  uiIssueAssigneePath,

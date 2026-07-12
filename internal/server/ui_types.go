@@ -60,6 +60,18 @@ type uiProjectFavoriteData struct {
 	Sidebar  uiSidebarFavoritesData
 }
 
+type uiBreadcrumbData struct {
+	Items []uiBreadcrumbItem
+}
+
+type uiBreadcrumbItem struct {
+	Label    string
+	Href     string
+	HXGet    string
+	IssueKey bool
+	Current  bool
+}
+
 type uiIssueItem struct {
 	Issue    model.Issue
 	Project  model.Project

@@ -10,6 +10,37 @@ import (
 	"time"
 )
 
+func TestUIProjectBreadcrumbIncludesCurrentView(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	for _, tt := range []struct {
+		view  string
+		label string
+	}{
+		{view: "sprint", label: "Sprint"},
+		{view: "planned", label: "Planned"},
+		{view: "all", label: "All"},
+		{view: "context", label: "Context"},
+		{view: "about", label: "About"},
+		{view: "members", label: "Members"},
+		{view: "changelog", label: "Changelog"},
+	} {
+		t.Run(tt.view, func(t *testing.T) {
+			items := uiProjectBreadcrumb(project, tt.view).Items
+			if len(items) != 3 {
+				t.Fatalf("breadcrumb item count = %d, want 3: %#v", len(items), items)
+			}
+			if items[1].Label != project.Name || items[1].Href != "/bradley/projects/TRACK/all" || items[1].HXGet != "/bradley/projects/TRACK/all/panel" || items[1].Current {
+				t.Fatalf("project breadcrumb = %#v, want linked project name", items[1])
+			}
+			if items[2].Label != tt.label || !items[2].Current {
+				t.Fatalf("view breadcrumb = %#v, want current %q", items[2], tt.label)
+			}
+		})
+	}
+}
+
 func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	t.Parallel()
 
@@ -85,8 +116,10 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	}
 	headerEnd += projectHeaderStart
 	header := body[projectHeaderStart:headerEnd]
-	if strings.Contains(body, `href="/projects"`) || strings.Contains(body, `hx-get="/projects/panel"`) {
-		t.Fatalf("project panel should not render projects back link: %s", body)
+	for _, want := range []string{`aria-label="Breadcrumb"`, `href="/projects"`, `hx-get="/projects/panel"`, `>Projects</a>`, `href="/bradley/projects/TRACK/all"`, `hx-get="/bradley/projects/TRACK/all/panel"`, `>Track Slash</a>`, `aria-current="page"`, `>About</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project panel missing breadcrumb markup %q: %s", want, body)
+		}
 	}
 	tabNav := strings.Index(body, `aria-label="Project views"`)
 	if tabNav < 0 {
@@ -126,8 +159,8 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project about view rendered assignee filter state %q: %s", notWant, body)
 		}
 	}
-	if strings.Contains(body, "Back to projects") || strings.Contains(body, ">Projects</a>") {
-		t.Fatalf("project back link uses verbose label: %s", body)
+	if strings.Contains(body, "Back to projects") {
+		t.Fatalf("project breadcrumb uses verbose label: %s", body)
 	}
 	tabEnd := strings.Index(body[tabNav:], "</nav>")
 	if tabEnd < 0 {

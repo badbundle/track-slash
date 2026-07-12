@@ -4,6 +4,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Navigation
 
+- `breadcrumb`: subtle entity hierarchy navigation backed by `uiBreadcrumbData`. Project pages show `Projects / Project name / Current view`; issue pages append the current issue key to the project, with a parent issue key between them for sub-issues.
 - `tab-bar`: single-line sibling-view navigation with optional Lucide icons, backed by `uiTabBarData`. Set an item's `MobileOverflow` flag when its owning page provides an equivalent constrained-screen overflow-menu link; those tabs return at `lg`.
 - `sidebar-favorites`: shell sidebar favorite-project shortcuts backed by `uiSidebarFavoritesData`. Keep it directly below the `Projects` nav item with a subtle divider from standard navigation, and refresh it with OOB HTMX swaps when favorite state changes.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.

@@ -26,6 +26,41 @@ func uiInitials(name, email string) string {
 	return strings.ToUpper(string(first[0]) + string(last[0]))
 }
 
+var uiProjectViewLabels = map[string]string{
+	"sprint":    "Sprint",
+	"planned":   "Planned",
+	"all":       "All",
+	"context":   "Context",
+	"about":     "About",
+	"members":   "Members",
+	"changelog": "Changelog",
+}
+
+func uiProjectBreadcrumb(project model.Project, view string) uiBreadcrumbData {
+	return uiBreadcrumbData{Items: []uiBreadcrumbItem{
+		{Label: "Projects", Href: "/projects", HXGet: "/projects/panel"},
+		{Label: project.Name, Href: uiProjectViewPath(project, "all"), HXGet: uiProjectPanelPath(project, "all")},
+		{Label: uiProjectViewLabels[view], Current: true},
+	}}
+}
+
+func uiIssueBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue) uiBreadcrumbData {
+	items := []uiBreadcrumbItem{
+		{Label: "Projects", Href: "/projects", HXGet: "/projects/panel"},
+		{Label: project.Name, Href: uiProjectViewPath(project, "all"), HXGet: uiProjectPanelPath(project, "all")},
+	}
+	if parentIssue != nil {
+		items = append(items, uiBreadcrumbItem{
+			Label:    parentIssue.Identifier,
+			Href:     uiIssuePath(*parentIssue),
+			HXGet:    uiIssuePanelPath(*parentIssue),
+			IssueKey: true,
+		})
+	}
+	items = append(items, uiBreadcrumbItem{Label: issue.Identifier, IssueKey: true, Current: true})
+	return uiBreadcrumbData{Items: items}
+}
+
 func uiUserAvatar(value any, class string) uiUserAvatarData {
 	switch v := value.(type) {
 	case model.User:
