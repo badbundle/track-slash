@@ -83,10 +83,13 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if push := res.Header.Get("HX-Push-Url"); push != "" {
 		t.Fatalf("create context HX-Push-Url = %q, want empty", push)
 	}
-	for _, want := range []string{"Architecture", "Use the existing store path.", "text/markdown; charset=utf-8", `aria-label="Manage linked issues"`, `aria-label="Edit context page"`, `aria-label="Delete context page"`} {
+	for _, want := range []string{"Architecture", "Use the existing store path.", `aria-label="Manage linked issues"`, `aria-label="Edit context page"`, `aria-label="Delete context page"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("created context body missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "text/markdown; charset=utf-8") {
+		t.Fatalf("created context body should not display MIME metadata: %s", body)
 	}
 	contextPath := e.projectPath() + "/context/context-1"
 

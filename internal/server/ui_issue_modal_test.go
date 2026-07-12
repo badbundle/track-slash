@@ -197,6 +197,9 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	if strings.Contains(populatedBody, "Use the compact path.") {
 		t.Fatalf("populated issue context manager should not show body preview: %s", populatedBody)
 	}
+	if strings.Contains(populatedBody, "text/plain; charset=utf-8") {
+		t.Fatalf("populated issue context manager should not display MIME metadata: %s", populatedBody)
+	}
 
 	viewPanel := populatedPanel
 	viewPanel.Action = "view"
@@ -239,6 +242,8 @@ func TestUIIssuePanelRendersContextModal(t *testing.T) {
 	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
 	linkedID := uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe")
 	availableID := uuid.MustParse("c71792f3-4e4a-4ab2-9cde-e7921ff8a431")
+	linkedFilename := "agent-notes.txt"
+	availableFilename := "architecture.md"
 	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
 	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
 	issue := model.Issue{ID: issueID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-7", Title: "Parent issue", Status: model.StatusTodo, CreatedAt: when, UpdatedAt: when}
@@ -248,13 +253,14 @@ func TestUIIssuePanelRendersContextModal(t *testing.T) {
 			Project:     project,
 			EditContext: true,
 			ContextModalItems: []uiContextManagerItem{{
-				ID:          linkedID,
-				Ref:         "context-1",
-				Number:      1,
-				Scope:       model.ProjectContextScopeIssue,
-				Title:       "Agent notes",
-				ContentType: "text/plain; charset=utf-8",
-				UpdatedAt:   when,
+				ID:             linkedID,
+				Ref:            "context-1",
+				Number:         1,
+				Scope:          model.ProjectContextScopeIssue,
+				Title:          "Agent notes",
+				ContentType:    "text/plain; charset=utf-8",
+				SourceFilename: &linkedFilename,
+				UpdatedAt:      when,
 			}},
 			ContextAvailable: []uiContextManagerItem{{
 				ID:               availableID,
@@ -263,6 +269,7 @@ func TestUIIssuePanelRendersContextModal(t *testing.T) {
 				Scope:            model.ProjectContextScopeProject,
 				Title:            "Architecture notes",
 				ContentType:      "text/plain; charset=utf-8",
+				SourceFilename:   &availableFilename,
 				LinkedIssueCount: 1,
 				UpdatedAt:        when,
 			}},
@@ -288,6 +295,8 @@ func TestUIIssuePanelRendersContextModal(t *testing.T) {
 		`Attach project context`,
 		`Search context by title`,
 		`data-search-option data-value="Architecture notes"`,
+		`agent-notes.txt`,
+		`architecture.md`,
 		`Agent notes`,
 		`Issue-only`,
 		`aria-label="View context"`,
@@ -301,6 +310,9 @@ func TestUIIssuePanelRendersContextModal(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue context modal missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "text/plain; charset=utf-8") {
+		t.Fatalf("issue context modal should not display MIME metadata: %s", body)
 	}
 	contextDetail := body[strings.Index(body, ">Context</dt>"):]
 	contextDetail = contextDetail[:min(len(contextDetail), 1100)]

@@ -547,6 +547,8 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 		Position: &position, Title: "Architecture notes", Kind: model.ProjectContextKindText,
 		ContentType: "text/markdown; charset=utf-8", Body: "# Architecture\n\nUse transactions.", UpdatedAt: time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC),
 	}
+	sourceFilename := "architecture.md"
+	contextItem.SourceFilename = &sourceFilename
 	manager := &uiContextManagerData{
 		Mode: "project", Project: project, Action: "view", ActiveContextID: contextID, HasActiveContext: true, ActiveContext: contextItem,
 		ActiveHTML: template.HTML("<h1>Architecture</h1><p>Use transactions.</p>"),
@@ -564,6 +566,7 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 		"<h1>Architecture</h1>", "Use transactions.", `aria-label="Move context page up"`,
 		`aria-label="Move context page down"`, `aria-label="Manage linked issues"`, `aria-label="Edit context page"`,
 		`aria-label="Delete context page"`, `href="/bradley/projects/TRACK/changelog"`,
+		"architecture.md",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("integrated context panel missing %q: %s", want, body)
@@ -571,6 +574,9 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 	}
 	if strings.Contains(body, `href="/bradley/projects/TRACK/changelog" hx-get="/bradley/projects/TRACK/changelog/panel" hx-target="#main" hx-push-url="/bradley/projects/TRACK/changelog"  class="hidden`) {
 		t.Fatalf("changelog rendered as a tab: %s", body)
+	}
+	if strings.Contains(body, "text/markdown; charset=utf-8") {
+		t.Fatalf("integrated context panel should not display MIME metadata: %s", body)
 	}
 }
 
