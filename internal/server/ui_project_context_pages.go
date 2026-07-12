@@ -442,17 +442,7 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 	}
 	items := make([]uiContextManagerItem, 0, len(contexts))
 	for _, contextItem := range contexts {
-		issues, issuesHasMore, err := s.store.ListIssuesForContext(ctx, store.ListIssuesForContextParams{
-			ContextID: contextItem.ID,
-			Limit:     MaxLimit,
-		})
-		if err != nil {
-			return nil, err
-		}
-		item := uiContextManagerItemFromSummary(contextItem)
-		item.LinkedIssues = issues
-		item.LinkedIssuesHasMore = issuesHasMore
-		items = append(items, item)
+		items = append(items, uiContextManagerItemFromSummary(contextItem))
 	}
 	return &uiContextManagerData{
 		Mode:      "project",
@@ -483,6 +473,23 @@ func (s *Server) uiHydrateProjectContextManager(ctx context.Context, panel *uiCo
 	if contextItem.ProjectID != panel.Project.ID || contextItem.Scope != model.ProjectContextScopeProject {
 		return store.ErrNotFound
 	}
+	var issueCursor *store.IssuesCursor
+	for {
+		issues, hasMore, err := s.store.ListIssuesForContext(ctx, store.ListIssuesForContextParams{
+			ContextID: contextItem.ID,
+			Cursor:    issueCursor,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return err // defensive: context was validated above; remaining failures require a DB outage or concurrent delete
+		}
+		panel.LinkedIssues = append(panel.LinkedIssues, issues...)
+		if !hasMore {
+			break
+		}
+		issueCursor = &store.IssuesCursor{Number: issues[len(issues)-1].Number}
+	}
+	panel.LinkedIssueCount = len(panel.LinkedIssues)
 	attachments, hasMore, err := s.store.ListContextAttachments(ctx, store.ListContextAttachmentsParams{
 		ContextID: contextItem.ID, Limit: MaxLimit,
 	})
@@ -563,16 +570,15 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 
 func uiContextManagerItemFromSummary(contextItem model.ProjectContextSummary) uiContextManagerItem {
 	return uiContextManagerItem{
-		ID:               contextItem.ID,
-		Ref:              contextItem.Ref,
-		Number:           contextItem.Number,
-		Scope:            contextItem.Scope,
-		Position:         contextItem.Position,
-		Title:            contextItem.Title,
-		ContentType:      contextItem.ContentType,
-		SourceFilename:   contextItem.SourceFilename,
-		LinkedIssueCount: contextItem.LinkedIssueCount,
-		UpdatedAt:        contextItem.UpdatedAt,
+		ID:             contextItem.ID,
+		Ref:            contextItem.Ref,
+		Number:         contextItem.Number,
+		Scope:          contextItem.Scope,
+		Position:       contextItem.Position,
+		Title:          contextItem.Title,
+		ContentType:    contextItem.ContentType,
+		SourceFilename: contextItem.SourceFilename,
+		UpdatedAt:      contextItem.UpdatedAt,
 	}
 }
 

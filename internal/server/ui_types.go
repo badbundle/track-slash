@@ -269,18 +269,15 @@ type uiProjectContextOption struct {
 }
 
 type uiContextManagerItem struct {
-	ID                  uuid.UUID
-	Ref                 string
-	Number              int
-	Scope               model.ProjectContextScope
-	Position            *int64
-	Title               string
-	ContentType         string
-	SourceFilename      *string
-	LinkedIssueCount    int
-	LinkedIssues        []model.Issue
-	LinkedIssuesHasMore bool
-	UpdatedAt           time.Time
+	ID             uuid.UUID
+	Ref            string
+	Number         int
+	Scope          model.ProjectContextScope
+	Position       *int64
+	Title          string
+	ContentType    string
+	SourceFilename *string
+	UpdatedAt      time.Time
 }
 
 type uiContextManagerData struct {
@@ -302,6 +299,8 @@ type uiContextManagerData struct {
 	ActiveHTML         template.HTML
 	Attachments        []model.ContextAttachment
 	AttachmentsHasMore bool
+	LinkedIssues       []model.Issue
+	LinkedIssueCount   int
 	ContextInput       string
 	ContextTitle       string
 	ContextBody        string

@@ -83,7 +83,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if push := res.Header.Get("HX-Push-Url"); push != "" {
 		t.Fatalf("create context HX-Push-Url = %q, want empty", push)
 	}
-	for _, want := range []string{"Architecture", "Use the existing store path.", `aria-label="Manage linked issues"`, `aria-label="Edit context page"`, `aria-label="Delete context page"`} {
+	for _, want := range []string{"Architecture", "Use the existing store path.", "Linked issues", ">0</span>", "No linked issues.", `aria-label="Manage linked issues"`, `aria-label="Edit context page"`, `aria-label="Delete context page"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("created context body missing %q: %s", want, body)
 		}
@@ -152,6 +152,17 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	body = e.uiGet(t, contextPath+"/issues/new", token)
 	if !strings.Contains(body, issue.Identifier) || !strings.Contains(body, `aria-label="Unlink issue"`) {
 		t.Fatalf("project link context manager missing linked issue: %s", body)
+	}
+	body = e.uiGet(t, contextPath, token)
+	for _, want := range []string{"Linked issues", issue.Identifier, issue.Title, ">1</span>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project context view missing linked issue detail %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`placeholder="` + e.projKey + `-12"`, `aria-label="Unlink issue"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project context view rendered link-management control %q: %s", notWant, body)
+		}
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, contextPath+"/issues", token, strings.NewReader(url.Values{"issue": {issue.Identifier}}.Encode()))
@@ -405,6 +416,45 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 	if strings.Contains(body, contextPath) || strings.Contains(body, "Architecture v3") {
 		t.Fatalf("delete context body still shows deleted context: %s", body)
+	}
+}
+
+func TestUIProjectContextRendersAllLinkedIssues(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	contextItem, err := e.store.CreateProjectContext(e.ctx, store.CreateProjectContextParams{
+		ProjectID: e.projectID, Scope: model.ProjectContextScopeProject, Title: "Pagination context",
+		Kind: model.ProjectContextKindText, ContentType: "text/markdown; charset=utf-8", Body: "All linked issues.", CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectContext: %v", err)
+	}
+	if _, err := e.pool.Exec(e.ctx, `
+		WITH inserted AS (
+			INSERT INTO issues (project_id, number, title)
+			SELECT $1, n, 'linked context issue ' || n
+			FROM generate_series(1, 201) AS n
+			RETURNING id
+		)
+		INSERT INTO issue_context_links (project_id, issue_id, context_id)
+		SELECT $1, id, $2 FROM inserted
+	`, e.projectID, contextItem.ID); err != nil {
+		t.Fatalf("bulk insert linked issues: %v", err)
+	}
+
+	body := e.uiGet(t, e.projectPath()+"/context/"+contextItem.Ref, e.authToken)
+	first := strings.Index(body, e.projKey+"-1")
+	last := strings.Index(body, e.projKey+"-201")
+	if first < 0 || last < first {
+		t.Fatalf("project context did not render all linked issues in number order: %s", body)
+	}
+	for _, want := range []string{"Linked issues", ">201</span>", "linked context issue 201"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project context full linked-issue list missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Showing first 200") {
+		t.Fatalf("project context linked-issue list was truncated: %s", body)
 	}
 }
 

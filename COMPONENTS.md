@@ -48,7 +48,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Feature Panels
 
 - `project-favorite-action`: project header star toggle backed by `uiProjectFavoriteData`/`uiProjectPanelData`. Keep it adjacent to the project title and update only the action wrapper plus `sidebar-favorites`.
-- `project-panel-context`: integrated project Context tab in `internal/server/templates/project_panel_context.html`; expects `uiContextManagerData` through `uiProjectPanelData.ContextManager`. It owns the ordered page list and selected Markdown page.
+- `project-panel-context`: integrated project Context tab in `internal/server/templates/project_panel_context.html`; expects `uiContextManagerData` through `uiProjectPanelData.ContextManager`. It owns the ordered page list, selected Markdown page, and complete linked-issue list in a separate section below the document card.
 - `project-member-page`: full project member manager in `internal/server/templates/project_member_page.html`; expects the member fields on `uiProjectPanelData`. Keep the owner fixed, use avatar/name/username rows with inline role selectors, confirm removals, and re-render the page after each mutation.
 - `context-manager-panel`: routes issue mode to the integrated list/document manager in `internal/server/templates/issue_context_manager.html`; project mode remains a compatibility fallback because project Context normally renders through `project-panel-context`.
 - `description-body`: shared safe Markdown display backed by `uiDescriptionBodyData`. Project, issue, and sprint adapters pass attachment-scoped rendered HTML.
@@ -59,7 +59,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ### Context Page Conventions
 
 - Project tab route: `/{owner}/projects/{key}/context`; selected pages use `/context/{contextRef}`. Issue manager route: `/{owner}/issues/{issueRef}/context`, with the same selected-page suffix.
-- Project pages support create/import/edit/delete, page-scoped attachments, ordering, and linked-issue management. The list stays compact; only the selected page renders content.
+- Project pages support create/import/edit/delete, page-scoped attachments, ordering, and linked-issue management. The page list stays compact without per-page issue counts; only the selected page renders content, followed by its complete linked-issue list and count.
 - Markdown pages use the shared safe Markdown renderer and attachment components. Plain-text imports remain escaped and pre-wrapped.
 - Issue manager mode supports creating issue-scoped context, attaching existing project pages, viewing/editing linked content, and removing links in the same responsive list/document pattern as project Context.
 - User-facing attach/search controls use context titles. Do not present refs such as `context-1` as visible identifiers, badges, placeholders, or option labels.

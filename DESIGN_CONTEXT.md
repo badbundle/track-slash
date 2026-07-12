@@ -42,6 +42,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Use `/{owner}/projects/{key}/context` as an integrated project tab with the standard project header, a flat ordered page list, and one selected document.
 - Project pages use explicit Markdown edit/save/cancel behavior, support `.md`, `.markdown`, and `.txt` import, and use compact move-up/move-down controls rather than drag-and-drop.
 - Keep page rows compact and show body content only for the selected page. Page attachments use the shared description attachment behavior and resolve `object-N` only within that page.
+- Keep linked-issue counts out of project context page rows. Show the complete linked-issue list in its own section below, but visually separate from, the selected document card, with the count beside the section title.
 - Keep the project Context Pages sidebar content-height; it must not stretch to match the selected document pane.
 - Use an integrated issue Context manager rather than a modal. It should mirror the project Context list/document layout, keep the issue identity and a clear return action visible, and use addressable selected-page URLs.
 - Linked project pages render their Markdown and page attachments in the issue Context manager; issue-only context remains escaped pre-wrapped text.
