@@ -511,15 +511,13 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 	}
 
 	managerItem := uiContextManagerItem{
-		ID:               contextID,
-		Ref:              "context-1",
-		Number:           1,
-		Scope:            model.ProjectContextScopeProject,
-		Title:            "Architecture notes",
-		ContentType:      "text/plain; charset=utf-8",
-		LinkedIssueCount: 1,
-		LinkedIssues:     []model.Issue{linkedIssue},
-		UpdatedAt:        when,
+		ID:          contextID,
+		Ref:         "context-1",
+		Number:      1,
+		Scope:       model.ProjectContextScopeProject,
+		Title:       "Architecture notes",
+		ContentType: "text/plain; charset=utf-8",
+		UpdatedAt:   when,
 	}
 	manager := &uiContextManagerData{
 		CanWrite:  true,
@@ -531,7 +529,7 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		Items:     []uiContextManagerItem{managerItem},
 	}
 	body = renderManager(manager)
-	for _, want := range []string{"Context", "Architecture notes", "linked issues", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/edit"`, `aria-label="Delete context"`} {
+	for _, want := range []string{"Context", "Architecture notes", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/edit"`, `aria-label="Delete context"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context manager row missing %q: %s", want, body)
 		}
@@ -550,6 +548,8 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 	linkManager.Action = "link"
 	linkManager.ActiveContextID = contextID
 	linkManager.ActiveContext = activeContext
+	linkManager.LinkedIssues = []model.Issue{linkedIssue}
+	linkManager.LinkedIssueCount = 1
 	linkManager.LinkIssueInput = "TRACK-9"
 	linkManager.LinkIssueError = "Issue already linked."
 	body = renderManager(&linkManager)
@@ -580,6 +580,7 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 	t.Parallel()
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	contextID := uuid.MustParse("845bc7de-5238-4df2-a024-799f9dbeb5fe")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
 	position := int64(1)
 	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
 	contextItem := model.ProjectContext{
@@ -593,23 +594,32 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 		CanWrite: true,
 		Mode:     "project", Project: project, Action: "view", ActiveContextID: contextID, HasActiveContext: true, ActiveContext: contextItem,
 		ActiveHTML: template.HTML("<h1>Architecture</h1><p>Use transactions.</p>"),
-		Items:      []uiContextManagerItem{{ID: contextID, Ref: "context-1", Number: 1, Scope: model.ProjectContextScopeProject, Position: &position, Title: "Architecture notes", ContentType: contextItem.ContentType, LinkedIssueCount: 2}},
+		LinkedIssues: []model.Issue{{
+			ID: issueID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Number: 8,
+			Identifier: "TRACK-8", Title: "Linked work", Status: model.StatusTodo,
+		}},
+		LinkedIssueCount: 1,
+		Items:            []uiContextManagerItem{{ID: contextID, Ref: "context-1", Number: 1, Scope: model.ProjectContextScopeProject, Position: &position, Title: "Architecture notes", ContentType: contextItem.ContentType}},
 	}
-	var buf bytes.Buffer
-	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
+	renderProject := func(panel *uiProjectPanelData) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", panel); err != nil {
+			t.Fatalf("ExecuteTemplate: %v", err)
+		}
+		return buf.String()
+	}
+	body := renderProject(&uiProjectPanelData{
 		CanWrite: true,
 		Project:  project, View: "context", ProjectTabs: uiProjectTabs(project, "context", nil), ContextManager: manager,
-	}); err != nil {
-		t.Fatalf("ExecuteTemplate: %v", err)
-	}
-	body := buf.String()
+	})
 	for _, want := range []string{
 		`<aside class="min-w-0 self-start overflow-hidden`,
 		`aria-current="page"`, `href="/bradley/projects/TRACK/context/context-1"`, "Architecture notes",
 		"<h1>Architecture</h1>", "Use transactions.", `aria-label="Move context page up"`,
 		`aria-label="Move context page down"`, `aria-label="Manage linked issues"`, `aria-label="Edit context page"`,
 		`aria-label="Delete context page"`, `href="/bradley/projects/TRACK/changelog"`,
-		"architecture.md",
+		"architecture.md", `aria-labelledby="context-linked-issues-title"`, "Linked issues", "TRACK-8", "Linked work",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("integrated context panel missing %q: %s", want, body)
@@ -620,6 +630,52 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 	}
 	if strings.Contains(body, "text/markdown; charset=utf-8") {
 		t.Fatalf("integrated context panel should not display MIME metadata: %s", body)
+	}
+	for _, notWant := range []string{`placeholder="TRACK-12"`, `aria-label="Unlink issue"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("project context view should render linked issues read-only, found %q: %s", notWant, body)
+		}
+	}
+	navStart := strings.Index(body, `<nav aria-label="Context pages"`)
+	if navStart < 0 {
+		t.Fatalf("context page navigation missing: %s", body)
+	}
+	navEnd := strings.Index(body[navStart:], `</nav>`)
+	if navEnd < 0 {
+		t.Fatalf("context page navigation missing: %s", body)
+	}
+	contextNav := body[navStart : navStart+navEnd]
+	if strings.Contains(contextNav, `inline-flex shrink-0 items-center rounded-md border`) {
+		t.Fatalf("context page row should not render a linked-issue count: %s", contextNav)
+	}
+
+	readOnlyManager := *manager
+	readOnlyManager.CanWrite = false
+	body = renderProject(&uiProjectPanelData{
+		Project: project, View: "context", ProjectTabs: uiProjectTabs(project, "context", nil), ContextManager: &readOnlyManager,
+	})
+	for _, want := range []string{"Linked issues", "TRACK-8", "Linked work"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("read-only project context missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{`aria-label="Manage linked issues"`, `aria-label="Edit context page"`, `aria-label="Delete context page"`, `aria-label="Unlink issue"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("read-only project context rendered mutation %q: %s", notWant, body)
+		}
+	}
+
+	emptyManager := *manager
+	emptyManager.LinkedIssues = nil
+	emptyManager.LinkedIssueCount = 0
+	body = renderProject(&uiProjectPanelData{
+		CanWrite: true,
+		Project:  project, View: "context", ProjectTabs: uiProjectTabs(project, "context", nil), ContextManager: &emptyManager,
+	})
+	for _, want := range []string{"Linked issues", ">0</span>", "No linked issues."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("empty project context linked-issue section missing %q: %s", want, body)
+		}
 	}
 }
 
