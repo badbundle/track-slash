@@ -20,7 +20,10 @@ type projectScanner interface {
 
 func scanProject(row projectScanner) (model.Project, error) {
 	var p model.Project
-	err := row.Scan(&p.ID, &p.OwnerID, &p.OwnerUsername, &p.Key, &p.Name, &p.Description, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(
+		&p.ID, &p.OwnerID, &p.OwnerUsername, &p.Key, &p.Name, &p.Description,
+		&p.ImageObjectID, &p.ImageThumbnailObjectID, &p.CreatedAt, &p.UpdatedAt,
+	)
 	return p, err
 }
 
@@ -42,10 +45,11 @@ func (s *Store) CreateProjectForUser(ctx context.Context, userID uuid.UUID, key,
 			inserted AS (
 				INSERT INTO projects (owner_id, key, name, description)
 				SELECT id, $2, $3, $4 FROM owner
-				RETURNING id, owner_id, key, name, description, created_at, updated_at
+				RETURNING id, owner_id, key, name, description, image_object_id, image_thumbnail_object_id, created_at, updated_at
 			)
 			SELECT inserted.id, inserted.owner_id, owner.username, inserted.key,
-			       inserted.name, inserted.description, inserted.created_at, inserted.updated_at
+			       inserted.name, inserted.description, inserted.image_object_id, inserted.image_thumbnail_object_id,
+			       inserted.created_at, inserted.updated_at
 			FROM inserted
 			JOIN owner ON owner.id = inserted.owner_id
 		`
@@ -97,7 +101,8 @@ func (s *Store) CreateProjectForUser(ctx context.Context, userID uuid.UUID, key,
 
 func (s *Store) GetProject(ctx context.Context, id uuid.UUID) (model.Project, error) {
 	const q = `
-		SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+		SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description,
+		       p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at
 		FROM projects p
 		JOIN users u ON u.id = p.owner_id
 		WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
@@ -116,7 +121,8 @@ func (s *Store) GetProjectByOwnerKey(ctx context.Context, ownerUsername, key str
 	ownerUsername = strings.ToLower(strings.TrimSpace(ownerUsername))
 	key = strings.ToUpper(strings.TrimSpace(key))
 	const q = `
-		SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+		SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description,
+		       p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at
 		FROM projects p
 		JOIN users u ON u.id = p.owner_id
 		WHERE u.username = $1
@@ -158,7 +164,8 @@ func (s *Store) UpdateProject(ctx context.Context, id uuid.UUID, p UpdateProject
 	var out model.Project
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		before, err := scanProject(tx.QueryRow(ctx, `
-			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description,
+			       p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at
 			FROM projects p
 			JOIN users u ON u.id = p.owner_id
 			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
@@ -199,7 +206,8 @@ func (s *Store) UpdateProject(ctx context.Context, id uuid.UUID, p UpdateProject
 			  AND p.owner_id = u.id
 			  AND p.deleted_at IS NULL
 			  AND u.deleted_at IS NULL
-			RETURNING p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			RETURNING p.id, p.owner_id, u.username, p.key, p.name, p.description,
+			          p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at
 		`, strings.Join(sets, ", "), i)
 
 		out, err = scanProject(tx.QueryRow(ctx, q, args...))
@@ -249,7 +257,8 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 	args := []any{}
 	q := `
 		SELECT projects.id, projects.owner_id, u.username, projects.key,
-		       projects.name, projects.description, projects.created_at, projects.updated_at
+		       projects.name, projects.description, projects.image_object_id, projects.image_thumbnail_object_id,
+		       projects.created_at, projects.updated_at
 		FROM projects
 		JOIN users u ON u.id = projects.owner_id
 		WHERE projects.deleted_at IS NULL AND u.deleted_at IS NULL
@@ -328,7 +337,8 @@ func (s *Store) firstProjectOwner(ctx context.Context) (uuid.UUID, error) {
 func (s *Store) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		project, err := scanProject(tx.QueryRow(ctx, `
-			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description,
+			       p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at
 			FROM projects p
 			JOIN users u ON u.id = p.owner_id
 			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL

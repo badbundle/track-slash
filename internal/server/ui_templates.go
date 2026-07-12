@@ -114,6 +114,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectNameEdit":                uiProjectNameEditPath,
 	"projectDescription":             uiProjectDescriptionPath,
 	"projectDescriptionEdit":         uiProjectDescriptionEditPath,
+	"projectImage":                   uiProjectImagePath,
+	"projectImageDelete":             uiProjectImageDeletePath,
 	"projectFavorite":                uiProjectFavoritePath,
 	"projectMembers":                 uiProjectMembersPath,
 	"projectMembersPanel":            uiProjectMembersPanelPath,

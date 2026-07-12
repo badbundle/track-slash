@@ -46,14 +46,16 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	selectedID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
+	projectThumbnailID := uuid.MustParse("6a0d51f8-4a4f-46d5-8de1-726a7823d8f4")
 	project := model.Project{
-		ID:            projectID,
-		OwnerUsername: "bradley",
-		Key:           "TRACK",
-		Name:          "Track Slash",
-		Description:   "Fast issue tracking.",
-		CreatedAt:     time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
-		UpdatedAt:     time.Date(2026, 6, 2, 10, 45, 0, 0, time.UTC),
+		ID:                     projectID,
+		OwnerUsername:          "bradley",
+		Key:                    "TRACK",
+		Name:                   "Track Slash",
+		Description:            "Fast issue tracking.",
+		ImageThumbnailObjectID: &projectThumbnailID,
+		CreatedAt:              time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
+		UpdatedAt:              time.Date(2026, 6, 2, 10, 45, 0, 0, time.UTC),
 	}
 	selected := []uuid.UUID{selectedID}
 	assignees := []model.ProjectAssignee{
@@ -136,7 +138,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Project image", `action="/bradley/projects/TRACK/image"`, `hx-post="/bradley/projects/TRACK/image"`, `hx-encoding="multipart/form-data"`, `accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"`, `action="/bradley/projects/TRACK/image/delete"`, `/bradley/projects/TRACK/image/thumbnail/content?v=` + projectThumbnailID.String(), `rounded-md object-cover`, "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about view missing markup %q: %s", want, body)
 		}

@@ -160,6 +160,12 @@
 </span>
 {{end}}
 
+{{define "project-icon"}}
+<span aria-label="{{.Label}}" title="{{.Label}}" class="{{.Class}} overflow-hidden rounded-md">
+  {{if .ThumbnailURL}}<img src="{{.ThumbnailURL}}" alt="" loading="lazy" class="h-full w-full rounded-md object-cover">{{else}}{{.Initial}}{{end}}
+</span>
+{{end}}
+
 {{define "status-badge"}}
 <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{statusClass .}}">{{statusLabel .}}</span>
 {{end}}

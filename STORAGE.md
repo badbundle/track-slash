@@ -75,6 +75,8 @@ Project object rows are listed and fetched only when both the project and object
 
 Profile images are account-wide user-owned objects. Each user can reference one original image row in `users.profile_image_object_id` and one generated thumbnail row in `users.profile_image_thumbnail_object_id`. Both rows must be live `storage_objects` rows owned by the same user.
 
+Project images are project-owned objects referenced by `projects.image_object_id` and `projects.image_thumbnail_object_id`. Both rows must be live objects owned by that project. Although they retain internal project object numbers, current project-image rows are excluded from generic `object-N` listing, metadata, content, attachment, and delete flows; they are available only through the project-image routes.
+
 ## API
 
 Project readers can list object metadata and download object content. Owners, admins, and members with write access can also upload and delete objects:
@@ -84,6 +86,13 @@ Project readers can list object metadata and download object content. Owners, ad
 - `GET /api/v1/{owner}/projects/{key}/objects/{objectRef}`.
 - `GET /api/v1/{owner}/projects/{key}/objects/{objectRef}/content`.
 - `DELETE /api/v1/{owner}/projects/{key}/objects/{objectRef}`.
+
+Project readers can fetch the current project image. Project writers can replace or remove it:
+
+- `POST /api/v1/{owner}/projects/{key}/image` with multipart field `file`.
+- `DELETE /api/v1/{owner}/projects/{key}/image`.
+- `GET /api/v1/{owner}/projects/{key}/image/content`.
+- `GET /api/v1/{owner}/projects/{key}/image/thumbnail/content`.
 
 Downloads stream backend bytes and set `Content-Type`, `Content-Length`, `ETag` from SHA-256, and `Content-Disposition` with the stored filename.
 
@@ -104,7 +113,9 @@ Deletes soft-delete the Postgres row first, then remove backend bytes. This avoi
 
 Profile image replacement writes the original and generated thumbnail to the backend first, creates user-owned metadata rows, then updates the user profile pointers in one transaction. Previous profile image rows are soft-deleted and their backend bytes are deleted best-effort. Removing a profile image clears both user pointers, soft-deletes the old rows, and also deletes backend bytes best-effort.
 
-The server accepts decodable PNG, JPEG, GIF, WebP, and BMP profile uploads. SVG, AVIF, non-images, corrupt images, oversized files, and unreasonable dimensions are rejected before profile metadata is linked. The generated thumbnail is a centered square `128x128` PNG; animated formats use the decoded first frame.
+Project image replacement follows the same lifecycle with project-owned metadata rows and transactional project pointers. Project image keys use `projects/{project_id}/images/{object_id}/{variant}`. Replacement and removal soft-delete the previous pair before deleting backend bytes best-effort.
+
+The server accepts decodable PNG, JPEG, GIF, WebP, and BMP profile and project-image uploads. SVG, AVIF, non-images, corrupt images, oversized files, and unreasonable dimensions are rejected before image metadata is linked. The generated thumbnail is a centered square `128x128` PNG; animated formats use the decoded first frame. User images render as circles; project images retain the square crop with a small corner radius.
 
 ## Remote Backend Path
 

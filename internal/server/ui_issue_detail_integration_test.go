@@ -192,10 +192,13 @@ func TestUIRendersIssueDetailPage(t *testing.T) {
 			t.Fatalf("issue body still renders native title tooltip %q: %s", notWant, body)
 		}
 	}
-	for _, notWant := range []string{`href="` + e.projectPath() + `/all"`, `hx-get="` + e.projectPath() + `/all/panel"`, `>Tags</dt>`} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("issue body included stale tag or back target markup %q: %s", notWant, body)
+	for _, notWant := range []string{`href="` + e.projectPath() + `/all"`, `hx-get="` + e.projectPath() + `/all/panel"`} {
+		if strings.Contains(titleHeader, notWant) {
+			t.Fatalf("issue title card included stale back target markup %q: %s", notWant, body)
 		}
+	}
+	if strings.Contains(body, `>Tags</dt>`) {
+		t.Fatalf("issue body included stale tag detail row: %s", body)
 	}
 	for _, notWant := range []string{`aria-label="Edit status"`, ">Status</dt>"} {
 		if strings.Contains(body, notWant) {

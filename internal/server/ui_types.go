@@ -53,6 +53,13 @@ type uiUserAvatarData struct {
 	Class        string
 }
 
+type uiProjectIconData struct {
+	Label        string
+	Initial      string
+	ThumbnailURL string
+	Class        string
+}
+
 type uiProjectFavoriteData struct {
 	Project  model.Project
 	View     string

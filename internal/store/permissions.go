@@ -23,7 +23,8 @@ func (s *Store) SetProjectMemberRole(ctx context.Context, projectID, userID uuid
 	var out model.ProjectMember
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		project, err := scanProject(tx.QueryRow(ctx, `
-			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description, p.created_at, p.updated_at
+			SELECT p.id, p.owner_id, u.username, p.key, p.name, p.description,
+			       p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at
 			FROM projects p
 			JOIN users u ON u.id = p.owner_id
 			WHERE p.id = $1 AND p.deleted_at IS NULL AND u.deleted_at IS NULL
@@ -120,14 +121,18 @@ func (s *Store) RevokeProjectAccess(ctx context.Context, projectID, userID uuid.
 		var project model.Project
 		var username string
 		if err := tx.QueryRow(ctx, `
-			SELECT p.id, p.owner_id, owner.username, p.key, p.name, p.description, p.created_at, p.updated_at, member.username
+			SELECT p.id, p.owner_id, owner.username, p.key, p.name, p.description,
+			       p.image_object_id, p.image_thumbnail_object_id, p.created_at, p.updated_at, member.username
 			FROM project_members pm
 			JOIN projects p ON p.id = pm.project_id
 			JOIN users owner ON owner.id = p.owner_id
 			JOIN users member ON member.id = pm.user_id
 			WHERE pm.project_id = $1 AND pm.user_id = $2 AND p.deleted_at IS NULL
 			FOR UPDATE OF pm
-		`, projectID, userID).Scan(&project.ID, &project.OwnerID, &project.OwnerUsername, &project.Key, &project.Name, &project.Description, &project.CreatedAt, &project.UpdatedAt, &username); err != nil {
+		`, projectID, userID).Scan(
+			&project.ID, &project.OwnerID, &project.OwnerUsername, &project.Key, &project.Name, &project.Description,
+			&project.ImageObjectID, &project.ImageThumbnailObjectID, &project.CreatedAt, &project.UpdatedAt, &username,
+		); err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
 			}

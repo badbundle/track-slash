@@ -24,6 +24,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Avatars
 
 - `user-avatar`: circular user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectMember`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The shared component owns the circular crop and clipping; callers own dimensions, colors, and borders through the class string. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
+- `project-icon`: square project image with a small corner radius and project-initial fallback, backed by `uiProjectIconData`. Pass `projectIcon <project> <class>`; the helper adds a cache-busting thumbnail URL and the component owns the square crop and radius.
 
 ## Forms
 

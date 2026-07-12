@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/google/uuid"
 	"strings"
 	"testing"
 	"time"
@@ -10,20 +12,43 @@ import (
 func TestUIProjectIcon(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	thumbID := uuid.MustParse("6a0d51f8-4a4f-46d5-8de1-726a7823d8f4")
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK", Name: "Roadmap", ImageThumbnailObjectID: &thumbID}
+	icon := uiProjectIcon(project, "icon-class")
+	if icon.Label != "Roadmap" || icon.Initial != "R" || icon.Class != "icon-class" {
+		t.Fatalf("project icon = %+v", icon)
+	}
+	wantURL := "/bradley/projects/TRACK/image/thumbnail/content?v=" + thumbID.String()
+	if icon.ThumbnailURL != wantURL {
+		t.Fatalf("ThumbnailURL = %q, want %q", icon.ThumbnailURL, wantURL)
+	}
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-icon", icon); err != nil {
+		t.Fatalf("ExecuteTemplate project icon: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{`aria-label="Roadmap"`, `class="icon-class overflow-hidden rounded-md"`, `src="` + wantURL + `"`, `class="h-full w-full rounded-md object-cover"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("image project icon missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "rounded-full") || strings.Contains(body, ">R</span>") {
+		t.Fatalf("image project icon should be square without fallback: %s", body)
+	}
+
+	for _, tt := range []struct {
 		name string
 		key  string
 		want string
 	}{
-		{name: "Roadmap", key: "TRACK", want: "R"},
 		{name: " roadmap", key: "TRACK", want: "R"},
 		{name: "", key: "TRACK", want: "T"},
 		{name: "", key: "", want: "?"},
-	}
-
-	for _, tt := range tests {
-		if got := uiProjectIcon(tt.name, tt.key); got != tt.want {
-			t.Fatalf("uiProjectIcon(%q, %q) = %q, want %q", tt.name, tt.key, got, tt.want)
+	} {
+		fallback := uiProjectIcon(model.Project{Name: tt.name, Key: tt.key}, "icon-class")
+		if fallback.Initial != tt.want || fallback.ThumbnailURL != "" {
+			t.Fatalf("uiProjectIcon(%q, %q) = %+v, want initial %q", tt.name, tt.key, fallback, tt.want)
 		}
 	}
 }

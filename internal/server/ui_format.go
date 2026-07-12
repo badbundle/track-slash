@@ -148,7 +148,26 @@ func uiUserProfileThumbnailPath(userID, thumbnailID uuid.UUID) string {
 	return fmt.Sprintf("/users/%s/profile-image/thumbnail/content?v=%s", userID, thumbnailID)
 }
 
-func uiProjectIcon(name, key string) string {
+func uiProjectIcon(project model.Project, class string) uiProjectIconData {
+	label := strings.TrimSpace(project.Name)
+	if label == "" {
+		label = strings.TrimSpace(project.Key)
+	}
+	if label == "" {
+		label = "Project"
+	}
+	out := uiProjectIconData{
+		Label:   label,
+		Initial: uiProjectInitial(project.Name, project.Key),
+		Class:   class,
+	}
+	if project.ImageThumbnailObjectID != nil {
+		out.ThumbnailURL = uiProjectImageThumbnailContentPath(project) + "?v=" + project.ImageThumbnailObjectID.String()
+	}
+	return out
+}
+
+func uiProjectInitial(name, key string) string {
 	source := strings.TrimSpace(name)
 	if source == "" {
 		source = strings.TrimSpace(key)

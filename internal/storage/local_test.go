@@ -219,6 +219,14 @@ func TestServiceGeneratesObjectKeys(t *testing.T) {
 	if string(body) != "avatar" {
 		t.Fatalf("profile body = %q, want avatar", body)
 	}
+	projectImageID := uuid.MustParse("55555555-5555-5555-5555-555555555555")
+	projectImageStored, err := svc.PutProjectImage(context.Background(), projectID, projectImageID, "thumbnail", strings.NewReader("icon"))
+	if err != nil {
+		t.Fatalf("PutProjectImage: %v", err)
+	}
+	if projectImageStored.ObjectKey != "projects/11111111-1111-1111-1111-111111111111/images/55555555-5555-5555-5555-555555555555/thumbnail" {
+		t.Fatalf("project image object key = %q", projectImageStored.ObjectKey)
+	}
 	if err := svc.Delete(context.Background(), stored.ObjectKey); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}

@@ -16,6 +16,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 ## Project View
 
+- Render project images as squares with a small corner radius everywhere, using the shared project icon component and a project-initial fallback. Keep them visually distinct from circular user avatars.
 - Treat the project page as a focused planning console, not a place to introduce new workflow controls by default.
 - Prefer the stronger hierarchy of the issue detail page: clear title card, compact metadata, purposeful cards, and restrained section language.
 - Keep the project header cohesive. Project identity, actions, and tabs should feel like one unit, with the tab bar close to the project title and flush to the bottom of the header.
