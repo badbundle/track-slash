@@ -319,6 +319,178 @@ func TestHTTPSprintAttachmentCRUDAndUIRoutes(t *testing.T) {
 	}
 }
 
+func TestHTTPProjectAttachmentCRUDAndAboutUI(t *testing.T) {
+	t.Parallel()
+	e, root := newStorageHTTPEnv(t, 1024)
+	description := "![Project plan](object-1)"
+	if _, err := e.store.UpdateProject(e.ctx, e.projectID, store.UpdateProjectParams{Description: &description}); err != nil {
+		t.Fatalf("UpdateProject: %v", err)
+	}
+	path := e.projectPath() + "/attachments"
+	content := append([]byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}, []byte("project-image")...)
+
+	code, body := e.doMultipartPath(t, e.authToken, path, "project-plan.png", content)
+	if code != http.StatusCreated {
+		t.Fatalf("upload code = %d body = %s", code, body)
+	}
+	attachment := decode[model.ProjectAttachment](t, body)
+	if attachment.ProjectID != e.projectID || attachment.Object.Ref != "object-1" {
+		t.Fatalf("attachment = %+v", attachment)
+	}
+	code, body = e.do(t, http.MethodGet, path+"?limit=1", nil)
+	if code != http.StatusOK {
+		t.Fatalf("list code = %d body = %s", code, body)
+	}
+	page := decodePage[model.ProjectAttachment](t, body)
+	if len(page.Items) != 1 || page.Items[0].ID != attachment.ID {
+		t.Fatalf("page = %+v", page)
+	}
+
+	res, raw := e.doRaw(t, e.authToken, http.MethodGet, path+"/object-1/content?inline=1", nil, "")
+	if res.StatusCode != http.StatusOK || !bytes.Equal(raw, content) || !strings.HasPrefix(res.Header.Get("Content-Disposition"), "inline") {
+		t.Fatalf("content code=%d disposition=%q body=%q", res.StatusCode, res.Header.Get("Content-Disposition"), raw)
+	}
+	uiRes := e.uiDoNoRedirect(t, http.MethodGet, path+"/object-1/content", e.authToken, nil)
+	uiRaw := readBody(t, uiRes)
+	uiRes.Body.Close()
+	if uiRes.StatusCode != http.StatusOK || uiRaw != string(content) {
+		t.Fatalf("ui content code=%d body=%q", uiRes.StatusCode, uiRaw)
+	}
+	uiBody := e.uiGet(t, e.projectPath()+"/about", e.authToken)
+	for _, want := range []string{
+		`src="` + path + `/object-1/content?inline=1"`,
+		`data-attachment-ref="object-1"`,
+		`project-plan.png`,
+	} {
+		if !strings.Contains(uiBody, want) {
+			t.Fatalf("about page missing %q: %s", want, uiBody)
+		}
+	}
+	editBody := e.uiGet(t, e.projectPath()+"/description/edit", e.authToken)
+	for _, want := range []string{
+		`data-attachment-dropzone`,
+		`data-attachment-upload-url="` + path + `"`,
+		`data-attachment-list="#project-attachments-list"`,
+		`data-attachment-editing="true"`,
+	} {
+		if !strings.Contains(editBody, want) {
+			t.Fatalf("description editor missing %q: %s", want, editBody)
+		}
+	}
+	emptyDescription := ""
+	if _, err := e.store.UpdateProject(e.ctx, e.projectID, store.UpdateProjectParams{Description: &emptyDescription}); err != nil {
+		t.Fatalf("clear project description: %v", err)
+	}
+	emptyBody := e.uiGet(t, e.projectPath()+"/about", e.authToken)
+	if !strings.Contains(emptyBody, "No description.") || !strings.Contains(emptyBody, `data-attachment-ref="object-1"`) {
+		t.Fatalf("empty project description did not retain attachments: %s", emptyBody)
+	}
+
+	uiRes = e.uiDoMultipartContext(t, path, e.authToken, nil, "ui-project.txt", "ui project attachment")
+	uiRaw = readBody(t, uiRes)
+	uiRes.Body.Close()
+	if uiRes.StatusCode != http.StatusCreated {
+		t.Fatalf("ui upload code=%d body=%s", uiRes.StatusCode, uiRaw)
+	}
+	uiAttachment := decode[model.ProjectAttachment](t, []byte(uiRaw))
+	uiRes = e.uiDoNoRedirect(t, http.MethodDelete, path+"/"+uiAttachment.Object.Ref, e.authToken, nil)
+	uiRaw = readBody(t, uiRes)
+	uiRes.Body.Close()
+	if uiRes.StatusCode != http.StatusNoContent {
+		t.Fatalf("ui JSON delete code=%d body=%s", uiRes.StatusCode, uiRaw)
+	}
+
+	uiRes = e.uiDoMultipartContext(t, path, e.authToken, nil, "panel-project.txt", "panel project attachment")
+	uiRaw = readBody(t, uiRes)
+	uiRes.Body.Close()
+	panelAttachment := decode[model.ProjectAttachment](t, []byte(uiRaw))
+	uiRes = e.uiDoNoRedirect(t, http.MethodPost, path+"/"+panelAttachment.Object.Ref+"/delete", e.authToken, nil)
+	uiRaw = readBody(t, uiRes)
+	uiRes.Body.Close()
+	if uiRes.StatusCode != http.StatusOK || strings.Contains(uiRaw, "panel-project.txt") {
+		t.Fatalf("ui panel delete code=%d body=%s", uiRes.StatusCode, uiRaw)
+	}
+
+	code, body = e.do(t, http.MethodDelete, path+"/object-1", nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("delete code = %d body = %s", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(attachment.Object.ObjectKey))); !os.IsNotExist(err) {
+		t.Fatalf("deleted file stat err = %v, want not exist", err)
+	}
+}
+
+func TestHTTPProjectAttachmentAccessAndValidation(t *testing.T) {
+	t.Parallel()
+	e, _ := newStorageHTTPEnv(t, 8)
+	path := e.projectPath() + "/attachments"
+	code, body := e.doMultipartPath(t, e.authToken, path, "project.txt", []byte("12345678"))
+	if code != http.StatusCreated {
+		t.Fatalf("upload code=%d body=%s", code, body)
+	}
+	attachment := decode[model.ProjectAttachment](t, body)
+
+	code, body = e.doUnauth(t, http.MethodGet, path, nil)
+	if code != http.StatusUnauthorized {
+		t.Fatalf("unauth list code=%d body=%s", code, body)
+	}
+	_, outsiderToken := e.mustUserToken(t, "project-attachment-outsider")
+	for _, request := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, path},
+		{http.MethodGet, path + "/" + attachment.Object.Ref + "/content"},
+		{http.MethodDelete, path + "/" + attachment.Object.Ref},
+	} {
+		code, body = e.doWithToken(t, outsiderToken, request.method, request.path, nil)
+		if code != http.StatusForbidden {
+			t.Fatalf("outsider %s %s code=%d body=%s", request.method, request.path, code, body)
+		}
+	}
+	code, body = e.doMultipartPath(t, outsiderToken, path, "nope.txt", []byte("1"))
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider upload code=%d body=%s", code, body)
+	}
+	uiRes := e.uiDoMultipartContext(t, path, outsiderToken, nil, "nope-ui.txt", "1")
+	uiBody := readBody(t, uiRes)
+	uiRes.Body.Close()
+	if uiRes.StatusCode != http.StatusForbidden {
+		t.Fatalf("outsider UI upload code=%d body=%s", uiRes.StatusCode, uiBody)
+	}
+	for _, request := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodGet, path + "/" + attachment.Object.Ref + "/content"},
+		{http.MethodDelete, path + "/" + attachment.Object.Ref},
+		{http.MethodPost, path + "/" + attachment.Object.Ref + "/delete"},
+	} {
+		uiRes = e.uiDoNoRedirect(t, request.method, request.path, outsiderToken, nil)
+		uiBody = readBody(t, uiRes)
+		uiRes.Body.Close()
+		if uiRes.StatusCode != http.StatusForbidden {
+			t.Fatalf("outsider UI %s %s code=%d body=%s", request.method, request.path, uiRes.StatusCode, uiBody)
+		}
+	}
+	for _, requestPath := range []string{path + "?cursor=not-base64", path + "?limit=0"} {
+		code, body = e.do(t, http.MethodGet, requestPath, nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("invalid list %s code=%d body=%s", requestPath, code, body)
+		}
+	}
+	for _, requestPath := range []string{path + "/not-an-object/content", path + "/object-999/content"} {
+		code, body = e.do(t, http.MethodGet, requestPath, nil)
+		if code != http.StatusBadRequest && code != http.StatusNotFound {
+			t.Fatalf("invalid object %s code=%d body=%s", requestPath, code, body)
+		}
+	}
+	code, body = e.doMultipartPath(t, e.authToken, path, "too-big.txt", []byte("123456789"))
+	if code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversize upload code=%d body=%s", code, body)
+	}
+}
+
 func TestHTTPSprintAttachmentAccessAndValidation(t *testing.T) {
 	t.Parallel()
 	e, _ := newStorageHTTPEnv(t, 8)
@@ -602,6 +774,42 @@ func TestHTTPSprintAttachmentCleansUpObjectWhenLinkFails(t *testing.T) {
 
 	path := e.projectPath() + "/sprints/" + sprint.Ref + "/attachments"
 	code, body := e.doMultipartPath(t, e.authToken, path, "plan.png", []byte("image"))
+	if code != http.StatusInternalServerError {
+		t.Fatalf("upload code = %d body = %s", code, body)
+	}
+	objects, more, err := e.store.ListStorageObjects(e.ctx, store.ListStorageObjectsParams{ProjectID: e.projectID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListStorageObjects: %v", err)
+	}
+	if len(objects) != 0 || more {
+		t.Fatalf("storage objects after failed link = %+v more=%v", objects, more)
+	}
+	if files := regularFilesUnder(t, root); len(files) != 0 {
+		t.Fatalf("regular files after failed link = %v, want none", files)
+	}
+}
+
+func TestHTTPProjectAttachmentCleansUpObjectWhenLinkFails(t *testing.T) {
+	t.Parallel()
+	e, root := newStorageHTTPEnv(t, 1024)
+	if _, err := e.pool.Exec(e.ctx, `
+		CREATE FUNCTION fail_project_attachment_insert() RETURNS trigger AS $$
+		BEGIN
+			RAISE EXCEPTION 'forced project attachment failure';
+		END;
+		$$ LANGUAGE plpgsql;
+	`); err != nil {
+		t.Fatalf("install failing function: %v", err)
+	}
+	if _, err := e.pool.Exec(e.ctx, `
+		CREATE TRIGGER fail_project_attachment_insert
+		BEFORE INSERT ON project_attachments
+		FOR EACH ROW EXECUTE FUNCTION fail_project_attachment_insert();
+	`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	code, body := e.doMultipartPath(t, e.authToken, e.projectPath()+"/attachments", "project.png", []byte("image"))
 	if code != http.StatusInternalServerError {
 		t.Fatalf("upload code = %d body = %s", code, body)
 	}

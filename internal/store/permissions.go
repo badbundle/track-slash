@@ -324,6 +324,16 @@ func (s *Store) ProjectIDForIssueAttachment(ctx context.Context, id uuid.UUID) (
 	`, id)
 }
 
+func (s *Store) ProjectIDForProjectAttachment(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	return s.lookupProjectID(ctx, `
+		SELECT pa.project_id
+		FROM project_attachments pa
+		JOIN projects p ON p.id = pa.project_id
+		JOIN storage_objects so ON so.id = pa.storage_object_id
+		WHERE pa.id = $1 AND p.deleted_at IS NULL AND so.deleted_at IS NULL
+	`, id)
+}
+
 func (s *Store) ProjectIDForProjectChangelog(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	return s.lookupProjectID(ctx, `
 		SELECT e.project_id

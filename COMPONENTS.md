@@ -47,9 +47,9 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 - `project-favorite-action`: project header star toggle backed by `uiProjectFavoriteData`/`uiProjectPanelData`. Keep it adjacent to the project title and update only the action wrapper plus `sidebar-favorites`.
 - `context-manager-panel`: project context manager page in `internal/server/templates/context_manager.html`; expects `uiContextManagerData`. Use this as the full project context workflow surface, not an inline parent-page form. Issue detail context management now renders as a modal inside `issue-panel`.
-- `description-body`: shared safe Markdown display backed by `uiDescriptionBodyData`. Issue and sprint adapters pass attachment-scoped rendered HTML; project descriptions continue using the same renderer without attachment targets.
+- `description-body`: shared safe Markdown display backed by `uiDescriptionBodyData`. Project, issue, and sprint adapters pass attachment-scoped rendered HTML.
 - `description-editor`: shared Markdown textarea backed by `uiDescriptionEditorData`, with optional upload and attachment-list URLs. Creation forms omit upload configuration until a parent ref exists.
-- `description-attachment-list`: shared issue/sprint attachment rows backed by `uiAttachmentListData`, including previews, metadata, Markdown copy, download, delete, pagination notice, and editing state.
+- `description-attachment-list`: shared project/issue/sprint attachment rows backed by `uiAttachmentListData`, including previews, metadata, Markdown copy, download, delete, pagination notice, and editing state.
 - `sprint-description`: shared active/planned sprint cropped-Markdown preview backed by `uiSprintDescriptionData` or the matching fields on `uiPlannedSprint`. It lazily swaps full Markdown and attachment rows through `See more` without affecting the scheduled-issues disclosure.
 
 ### Context Manager Conventions

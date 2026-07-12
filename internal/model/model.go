@@ -384,6 +384,16 @@ type SprintAttachment struct {
 	UpdatedAt       time.Time     `json:"updated_at"`
 }
 
+type ProjectAttachment struct {
+	ID              uuid.UUID     `json:"id"`
+	ProjectID       uuid.UUID     `json:"project_id"`
+	StorageObjectID uuid.UUID     `json:"storage_object_id"`
+	Object          StorageObject `json:"object"`
+	CreatedByID     uuid.UUID     `json:"created_by_id"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+}
+
 type Issue struct {
 	ID            uuid.UUID         `json:"id"`
 	ProjectID     uuid.UUID         `json:"project_id"`

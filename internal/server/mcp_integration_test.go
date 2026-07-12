@@ -696,4 +696,39 @@ func TestMCPAttachmentAndResourceRoundTrip(t *testing.T) {
 		"sprint": sprint.Ref,
 		"object": sprintAttachment.Object.Ref,
 	})
+
+	projectContent := []byte("project description attachment")
+	projectAttachOut := mcpCall(t, e, session, "track_create_project_attachment", map[string]any{
+		"owner":          e.ownerUsername,
+		"key":            e.projKey,
+		"filename":       "project.txt",
+		"content_type":   "text/plain",
+		"content_base64": base64.StdEncoding.EncodeToString(projectContent),
+	})
+	projectAttachment := decodeMCPField[model.ProjectAttachment](t, projectAttachOut, "attachment")
+	if projectAttachment.ProjectID != e.projectID || projectAttachment.Object.Ref != "object-3" {
+		t.Fatalf("bad project attachment: %+v", projectAttachment)
+	}
+	projectListOut := mcpCall(t, e, session, "track_list_project_attachments", map[string]any{
+		"owner": e.ownerUsername,
+		"key":   e.projKey,
+	})
+	if items := decodeMCPField[[]model.ProjectAttachment](t, projectListOut, "items"); len(items) != 1 || items[0].ID != projectAttachment.ID {
+		t.Fatalf("project attachment list = %+v", items)
+	}
+	readProjectOut := mcpCall(t, e, session, "track_read_project_attachment_content", map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"object": projectAttachment.Object.Ref,
+	})
+	encoded = decodeMCPField[string](t, readProjectOut, "content_base64")
+	decoded, err = base64.StdEncoding.DecodeString(encoded)
+	if err != nil || string(decoded) != string(projectContent) {
+		t.Fatalf("project content = %q err=%v", decoded, err)
+	}
+	mcpCall(t, e, session, "track_delete_project_attachment", map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"object": projectAttachment.Object.Ref,
+	})
 }

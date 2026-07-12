@@ -402,6 +402,8 @@ type uiProjectPanelData struct {
 	ProjectDescriptionInput         string
 	ProjectDescriptionError         string
 	ProjectDescriptionHTML          template.HTML
+	ProjectAttachments              []model.ProjectAttachment
+	ProjectAttachmentsHasMore       bool
 	AssigneeFilters                 []uiAssigneeFilterItem
 	AssigneeFilterActive            bool
 	ClearAssigneeHref               string

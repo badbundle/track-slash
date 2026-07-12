@@ -19,18 +19,19 @@ const (
 type Entity string
 
 const (
-	EntityIssue            Entity = "issue"
-	EntityProject          Entity = "project"
-	EntitySprint           Entity = "sprint"
-	EntityIssueLink        Entity = "issue_link"
-	EntityComment          Entity = "comment"
-	EntityContext          Entity = "project_context"
-	EntityContextLink      Entity = "issue_context_link"
-	EntityIssueTag         Entity = "issue_tag"
-	EntityIssueTagLink     Entity = "issue_tag_link"
-	EntityAttachment       Entity = "issue_attachment"
-	EntitySprintAttachment Entity = "sprint_attachment"
-	EntityChangelog        Entity = "project_changelog"
+	EntityIssue             Entity = "issue"
+	EntityProject           Entity = "project"
+	EntitySprint            Entity = "sprint"
+	EntityIssueLink         Entity = "issue_link"
+	EntityComment           Entity = "comment"
+	EntityContext           Entity = "project_context"
+	EntityContextLink       Entity = "issue_context_link"
+	EntityIssueTag          Entity = "issue_tag"
+	EntityIssueTagLink      Entity = "issue_tag_link"
+	EntityAttachment        Entity = "issue_attachment"
+	EntitySprintAttachment  Entity = "sprint_attachment"
+	EntityProjectAttachment Entity = "project_attachment"
+	EntityChangelog         Entity = "project_changelog"
 )
 
 // Event is the wire envelope sent over both pg_notify and the WebSocket.
@@ -140,6 +141,11 @@ func (e Event) Topics() []string {
 			topics = append(topics, ProjectTopic(*e.ProjectID))
 		}
 		return topics
+	case EntityProjectAttachment:
+		if e.ProjectID != nil {
+			return []string{ProjectTopic(*e.ProjectID)}
+		}
+		return nil
 	case EntityChangelog:
 		topics := []string{ProjectChangelogTopic(e.ID)}
 		if e.ProjectID != nil {
