@@ -186,10 +186,10 @@ func (s *Server) uiProjectSprintDescription(w http.ResponseWriter, r *http.Reque
 		Project:             project,
 		Sprint:              sprint,
 		AttachmentCount:     len(attachments),
+		DescriptionHTML:     renderSprintDescriptionMarkdown(project, sprint, attachments),
 		DescriptionExpanded: expanded,
 	}
 	if expanded {
-		item.DescriptionHTML = renderSprintDescriptionMarkdown(project, sprint, attachments)
 		item.Attachments = attachments
 		item.AttachmentsHasMore = hasMore
 	}

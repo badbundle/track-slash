@@ -236,10 +236,14 @@ func TestHTTPSprintAttachmentCRUDAndUIRoutes(t *testing.T) {
 	}
 
 	plannedBody := e.uiGet(t, e.projectPath()+"/planned", e.authToken)
-	for _, want := range []string{"![Plan](object-1)", "See more", `hx-get="` + e.projectPath() + `/sprints/` + sprint.Ref + `/description?expanded=1"`} {
+	previewContentHref := e.projectPath() + "/sprints/" + sprint.Ref + "/attachments/object-1/content?inline=1"
+	for _, want := range []string{"-mt-3 max-h-20 overflow-hidden", previewContentHref, "See more", `hx-get="` + e.projectPath() + `/sprints/` + sprint.Ref + `/description?expanded=1"`} {
 		if !strings.Contains(plannedBody, want) {
 			t.Fatalf("planned sprint missing %q: %s", want, plannedBody)
 		}
+	}
+	if strings.Contains(plannedBody, "![Plan](object-1)") || strings.Contains(plannedBody, `data-attachment-ref="object-1"`) {
+		t.Fatalf("planned sprint preview = %s", plannedBody)
 	}
 	expandedBody := e.uiGet(t, e.projectPath()+"/sprints/"+sprint.Ref+"/description?expanded=1", e.authToken)
 	for _, want := range []string{"See less", "plan.png", e.projectPath() + "/sprints/" + sprint.Ref + "/attachments/object-1/content?inline=1"} {
@@ -248,7 +252,7 @@ func TestHTTPSprintAttachmentCRUDAndUIRoutes(t *testing.T) {
 		}
 	}
 	collapsedBody := e.uiGet(t, e.projectPath()+"/sprints/"+sprint.Ref+"/description?expanded=0", e.authToken)
-	if !strings.Contains(collapsedBody, "See more") || strings.Contains(collapsedBody, "plan.png") {
+	if !strings.Contains(collapsedBody, "See more") || !strings.Contains(collapsedBody, previewContentHref) || strings.Contains(collapsedBody, `data-attachment-ref="object-1"`) {
 		t.Fatalf("collapsed sprint description body = %s", collapsedBody)
 	}
 
@@ -257,13 +261,13 @@ func TestHTTPSprintAttachmentCRUDAndUIRoutes(t *testing.T) {
 		t.Fatalf("activate sprint: %v", err)
 	}
 	activeBody := e.uiGet(t, e.projectPath()+"/sprint", e.authToken)
-	for _, want := range []string{"![Plan](object-1)", "See more", `hx-get="` + e.projectPath() + "/sprints/" + sprint.Ref + `/description?expanded=1"`} {
+	for _, want := range []string{"-mt-3 max-h-20 overflow-hidden", previewContentHref, "See more", `hx-get="` + e.projectPath() + "/sprints/" + sprint.Ref + `/description?expanded=1"`} {
 		if !strings.Contains(activeBody, want) {
 			t.Fatalf("active sprint missing %q: %s", want, activeBody)
 		}
 	}
-	if strings.Contains(activeBody, "plan.png") {
-		t.Fatalf("active sprint preview rendered attachments: %s", activeBody)
+	if strings.Contains(activeBody, "![Plan](object-1)") || strings.Contains(activeBody, `data-attachment-ref="object-1"`) {
+		t.Fatalf("active sprint preview = %s", activeBody)
 	}
 	if strings.Index(activeBody, "See more") > strings.Index(activeBody, `aria-label="Issue controls"`) {
 		t.Fatalf("active sprint preview rendered below issue controls: %s", activeBody)

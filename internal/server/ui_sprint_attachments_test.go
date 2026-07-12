@@ -41,6 +41,7 @@ func TestUIActiveSprintDescriptionPreview(t *testing.T) {
 			Project:         project,
 			Sprint:          sprint,
 			AttachmentCount: 1,
+			DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, nil),
 		},
 	})
 	if err != nil {
@@ -48,8 +49,8 @@ func TestUIActiveSprintDescriptionPreview(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
-		"line-clamp-2",
-		"**Ship it**",
+		"-mt-3 max-h-20 overflow-hidden",
+		`<strong>Ship it</strong>`,
 		"See more",
 		`hx-get="/bradley/projects/TRACK/sprints/sprint-2/description?expanded=1"`,
 	} {
@@ -59,6 +60,9 @@ func TestUIActiveSprintDescriptionPreview(t *testing.T) {
 	}
 	if strings.Contains(body, "roadmap.png") {
 		t.Fatalf("active sprint preview rendered attachments: %s", body)
+	}
+	if strings.Contains(body, "**Ship it**") {
+		t.Fatalf("active sprint preview rendered Markdown source: %s", body)
 	}
 	if strings.Index(body, "See more") > strings.Index(body, `aria-label="Issue controls"`) {
 		t.Fatalf("active sprint description rendered below controls: %s", body)
@@ -71,18 +75,26 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 	sprint := model.Sprint{ID: uuid.New(), Ref: "sprint-7", Goal: "Preview **markdown**", Status: model.SprintStatusPlanned}
 
 	var collapsed bytes.Buffer
-	err := uiTemplates.ExecuteTemplate(&collapsed, "sprint-description", uiPlannedSprint{Project: project, Sprint: sprint, AttachmentCount: 1})
+	err := uiTemplates.ExecuteTemplate(&collapsed, "sprint-description", uiPlannedSprint{
+		Project:         project,
+		Sprint:          sprint,
+		AttachmentCount: 1,
+		DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, nil),
+	})
 	if err != nil {
 		t.Fatalf("collapsed template: %v", err)
 	}
 	body := collapsed.String()
-	for _, want := range []string{"line-clamp-2", "Preview **markdown**", "See more", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`} {
+	for _, want := range []string{"-mt-3 max-h-20 overflow-hidden", `<strong>markdown</strong>`, "See more", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("collapsed planned description missing %q: %s", want, body)
 		}
 	}
 	if strings.Contains(body, "roadmap.png") {
 		t.Fatalf("collapsed planned description rendered attachments: %s", body)
+	}
+	if strings.Contains(body, "Preview **markdown**") {
+		t.Fatalf("collapsed planned description rendered Markdown source: %s", body)
 	}
 
 	attachment := testSprintAttachment(sprint.ID)

@@ -18,7 +18,7 @@
     {{template "description-attachment-list" (sprintAttachmentListData .Project .Sprint .Attachments .AttachmentsHasMore false)}}
     <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=0" hx-target="#sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See less</button>
   {{else}}
-    {{if .Sprint.Goal}}<p class="line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{{.Sprint.Goal}}</p>{{end}}
+    {{if .Sprint.Goal}}<div class="-mt-3 max-h-20 overflow-hidden">{{template "description-body" (sprintDescriptionBody .Sprint .DescriptionHTML)}}</div>{{end}}
     {{if or .Sprint.Goal .AttachmentCount}}
     <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=1" hx-target="#sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See more</button>
     {{end}}

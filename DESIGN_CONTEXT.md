@@ -30,7 +30,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 ## Sprint Descriptions
 
-- Active and planned sprints retain a compact two-line source preview. “See more” expands only the full Markdown description and attachments; scheduled issues remain an independent disclosure.
+- Active and planned sprints retain a compact, vertically cropped Markdown preview. “See more” expands the full Markdown description and attachment rows; scheduled issues remain an independent disclosure.
 - Sprint description editing uses the same attachment dropzone, preview rows, Markdown-copy, download, and removal behavior as issue descriptions.
 
 ## Context IA

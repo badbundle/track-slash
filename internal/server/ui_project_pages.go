@@ -493,14 +493,18 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return panel, nil
 		}
 		panel.ActiveSprint = &activeSprints[0]
-		attachmentCounts, err := s.store.CountSprintAttachments(ctx, []uuid.UUID{panel.ActiveSprint.ID})
+		activeAttachments, _, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
+			SprintID: panel.ActiveSprint.ID,
+			Limit:    MaxLimit,
+		})
 		if err != nil {
 			return nil, err
 		}
 		panel.ActiveSprintDescription = uiSprintDescriptionData{
 			Project:         project,
 			Sprint:          *panel.ActiveSprint,
-			AttachmentCount: attachmentCounts[panel.ActiveSprint.ID],
+			AttachmentCount: len(activeAttachments),
+			DescriptionHTML: renderSprintDescriptionMarkdown(project, *panel.ActiveSprint, activeAttachments),
 		}
 		sprintIssues, sprintHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 			ProjectID:   projectID,
@@ -538,16 +542,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.PlannedHasMore = plannedHasMore
-		plannedIDs := make([]uuid.UUID, 0, len(planned))
-		for _, sprint := range planned {
-			plannedIDs = append(plannedIDs, sprint.ID)
-		}
-		attachmentCounts, err := s.store.CountSprintAttachments(ctx, plannedIDs)
-		if err != nil {
-			return nil, err
-		}
 		panel.PlannedSprints = make([]uiPlannedSprint, 0, len(planned))
 		for _, sprint := range planned {
+			attachments, _, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
+				SprintID: sprint.ID,
+				Limit:    MaxLimit,
+			})
+			if err != nil {
+				return nil, err
+			}
 			issues, issuesHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 				ProjectID: projectID,
 				SprintID:  &sprint.ID,
@@ -561,7 +564,8 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 				Sprint:          sprint,
 				Issues:          issues,
 				HasMore:         issuesHasMore,
-				AttachmentCount: attachmentCounts[sprint.ID],
+				AttachmentCount: len(attachments),
+				DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, attachments),
 			})
 		}
 	case "all":
