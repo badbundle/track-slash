@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+const (
+	DefaultLocalStorageRoot = "data/storage"
+	LegacyLocalStorageRoot  = "tmp/storage"
+)
+
 type Config struct {
 	Port               string
 	DatabaseURL        string
@@ -142,7 +147,7 @@ func loadStorageConfig() (StorageConfig, error) {
 
 	localRoot := ""
 	if backend == "local" {
-		localRoot = strings.TrimSpace(envOrLookup("TRACK_SLASH_STORAGE_LOCAL_ROOT", "tmp/storage"))
+		localRoot = strings.TrimSpace(envOrLookup("TRACK_SLASH_STORAGE_LOCAL_ROOT", DefaultLocalStorageRoot))
 		if localRoot == "" {
 			return StorageConfig{}, errors.New("TRACK_SLASH_STORAGE_LOCAL_ROOT is required")
 		}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -82,6 +83,9 @@ func main() {
 	listener := realtime.NewListener(cfg.DatabaseURL, hub)
 	go listener.Run(ctx)
 
+	if err := migrateLegacyLocalStorage(cfg.Storage); err != nil {
+		log.Fatalf("storage: %v", err)
+	}
 	storageSvc, err := newObjectStorage(ctx, cfg.Storage)
 	if err != nil {
 		log.Fatalf("storage: %v", err)
@@ -151,6 +155,36 @@ func createAdminToken(ctx context.Context, st *store.Store, email, name, tokenNa
 	fmt.Printf("user_id=%s\n", u.ID)
 	fmt.Printf("token_id=%s\n", created.Token.ID)
 	fmt.Printf("token=%s\n", created.RawToken)
+	return nil
+}
+
+func migrateLegacyLocalStorage(cfg config.StorageConfig) error {
+	if cfg.Backend != "local" || cfg.LocalRoot != config.DefaultLocalStorageRoot {
+		return nil
+	}
+
+	legacyRoot := config.LegacyLocalStorageRoot
+	legacyInfo, err := os.Stat(legacyRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect legacy local storage root %q: %w", legacyRoot, err)
+	}
+	if !legacyInfo.IsDir() {
+		return fmt.Errorf("legacy local storage root %q is not a directory", legacyRoot)
+	}
+	if _, err := os.Stat(cfg.LocalRoot); err == nil {
+		return fmt.Errorf("cannot relocate legacy local storage from %q to %q: destination already exists; move the files manually", legacyRoot, cfg.LocalRoot)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect local storage root %q: %w", cfg.LocalRoot, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.LocalRoot), 0700); err != nil {
+		return fmt.Errorf("create local storage parent directory: %w", err)
+	}
+	if err := os.Rename(legacyRoot, cfg.LocalRoot); err != nil {
+		return fmt.Errorf("relocate legacy local storage from %q to %q: %w", legacyRoot, cfg.LocalRoot, err)
+	}
 	return nil
 }
 

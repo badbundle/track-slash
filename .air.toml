@@ -1,9 +1,9 @@
 root = "."
-tmp_dir = "tmp"
+tmp_dir = "tmp/air"
 
 [build]
-cmd = "go build -o ./tmp/trackd ./cmd/trackd"
-entrypoint = ["./tmp/trackd"]
+cmd = "go build -o ./tmp/air/trackd ./cmd/trackd"
+entrypoint = ["./tmp/air/trackd"]
 include_dir = ["cmd", "internal"]
 include_ext = ["go", "html", "sql"]
 exclude_dir = ["tmp", "vendor", ".git", ".codex", ".agents"]
