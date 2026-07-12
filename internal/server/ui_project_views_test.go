@@ -56,7 +56,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	if strings.Contains(body, "All issues") || strings.Contains(body, "Backlog") {
 		t.Fatalf("planned panel included all/backlog content: %s", body)
 	}
-	for _, want := range []string{`data-disclosure-toggle`, `aria-controls="planned-sprint-sprint-1-issues"`, `aria-expanded="false"`, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`} {
+	for _, want := range []string{`flex flex-wrap items-start justify-between`, `data-disclosure-toggle`, `aria-controls="planned-sprint-sprint-1-issues"`, `aria-expanded="false"`, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project planned panel missing collapsed markup %q: %s", want, body)
 		}
