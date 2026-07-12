@@ -60,6 +60,19 @@ type uiProjectIconData struct {
 	Class        string
 }
 
+type uiImagePickerData struct {
+	Modal        uiModalData
+	Label        string
+	ThumbnailURL string
+	Fallback     string
+	Circular     bool
+	TriggerLabel string
+	UploadAction string
+	DeleteAction string
+	HasImage     bool
+	HXTarget     string
+}
+
 type uiProjectFavoriteData struct {
 	Project  model.Project
 	View     string
@@ -367,14 +380,15 @@ type uiAutocompleteEditData struct {
 }
 
 type uiModalData struct {
-	ID              string
-	Title           string
-	Description     string
-	WidthClass      string
-	CancelLabel     string
-	CancelHXGet     string
-	CancelHXPushURL string
-	Badges          []uiModalBadge
+	ID               string
+	Title            string
+	Description      string
+	WidthClass       string
+	CancelLabel      string
+	CancelHXGet      string
+	CancelHXPushURL  string
+	Badges           []uiModalBadge
+	ClientControlled bool
 }
 
 type uiModalBadge struct {

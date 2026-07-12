@@ -178,6 +178,59 @@ func uiProjectInitial(name, key string) string {
 	return strings.ToUpper(string([]rune(source)[0]))
 }
 
+func uiProfileImagePicker(user model.User) uiImagePickerData {
+	avatar := uiUserAvatar(user, "")
+	hasImage := user.ProfileImageThumbnailObjectID != nil
+	return uiImagePickerData{
+		Modal: uiModalData{
+			ID:               "profile-image-picker",
+			Title:            "Profile image",
+			Description:      "Choose an image to represent your account.",
+			WidthClass:       "max-w-md",
+			CancelLabel:      "Close profile image picker",
+			ClientControlled: true,
+		},
+		Label:        avatar.Label,
+		ThumbnailURL: avatar.ThumbnailURL,
+		Fallback:     avatar.Initials,
+		Circular:     true,
+		TriggerLabel: uiImagePickerTriggerLabel(hasImage),
+		UploadAction: "/settings/profile-image",
+		DeleteAction: "/settings/profile-image/delete",
+		HasImage:     hasImage,
+	}
+}
+
+func uiProjectImagePicker(project model.Project) uiImagePickerData {
+	icon := uiProjectIcon(project, "")
+	hasImage := project.ImageThumbnailObjectID != nil
+	return uiImagePickerData{
+		Modal: uiModalData{
+			ID:               "project-image-picker",
+			Title:            "Project image",
+			Description:      "Choose an image to identify this project.",
+			WidthClass:       "max-w-md",
+			CancelLabel:      "Close project image picker",
+			ClientControlled: true,
+		},
+		Label:        icon.Label,
+		ThumbnailURL: icon.ThumbnailURL,
+		Fallback:     icon.Initial,
+		TriggerLabel: uiImagePickerTriggerLabel(hasImage),
+		UploadAction: uiProjectImagePath(project),
+		DeleteAction: uiProjectImageDeletePath(project),
+		HasImage:     hasImage,
+		HXTarget:     "#main",
+	}
+}
+
+func uiImagePickerTriggerLabel(hasImage bool) string {
+	if hasImage {
+		return "Change image"
+	}
+	return "Add image"
+}
+
 func uiChangelogActor(entry model.ProjectChangelogEntry) string {
 	if entry.Actor == nil {
 		return "System"
