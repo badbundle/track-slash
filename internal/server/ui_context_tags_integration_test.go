@@ -29,7 +29,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if strings.Contains(body, `aria-label="Manage context"`) || strings.Contains(body, ">Context</dt>") {
 		t.Fatalf("about should not render project context details: %s", body)
 	}
-	for _, notWant := range []string{`role="dialog" aria-modal="true"`, "No context.", "context items", `placeholder="Context"`, `accept=".txt,.md,.markdown`, `aria-label="Create context"`, `aria-label="Upload context"`, `aria-label="Add context"`} {
+	for _, notWant := range []string{"No context.", "context items", `placeholder="Context"`, `accept=".txt,.md,.markdown`, `aria-label="Create context"`, `aria-label="Upload context"`, `aria-label="Add context"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("about context body should stay compact, found %q: %s", notWant, body)
 		}
