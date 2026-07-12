@@ -604,6 +604,7 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
+		`<aside class="min-w-0 self-start overflow-hidden`,
 		`aria-current="page"`, `href="/bradley/projects/TRACK/context/context-1"`, "Architecture notes",
 		"<h1>Architecture</h1>", "Use transactions.", `aria-label="Move context page up"`,
 		`aria-label="Move context page down"`, `aria-label="Manage linked issues"`, `aria-label="Edit context page"`,
