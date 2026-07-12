@@ -41,6 +41,22 @@ func uiProjectDescriptionEditPath(project model.Project) string {
 	return uiProjectDescriptionPath(project) + "/edit"
 }
 
+func uiProjectImagePath(project model.Project) string {
+	return uiProjectPath(project) + "/image"
+}
+
+func uiProjectImageDeletePath(project model.Project) string {
+	return uiProjectImagePath(project) + "/delete"
+}
+
+func uiProjectImageContentPath(project model.Project) string {
+	return uiProjectImagePath(project) + "/content"
+}
+
+func uiProjectImageThumbnailContentPath(project model.Project) string {
+	return uiProjectImagePath(project) + "/thumbnail/content"
+}
+
 func uiProjectAttachmentsPath(project model.Project) string {
 	return uiProjectPath(project) + "/attachments"
 }

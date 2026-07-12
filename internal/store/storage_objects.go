@@ -178,6 +178,8 @@ func (s *Store) GetStorageObjectByProjectNumber(ctx context.Context, projectID u
 		FROM storage_objects so
 		JOIN projects p ON p.id = so.project_id
 		WHERE so.project_id = $1 AND so.number = $2 AND so.deleted_at IS NULL AND p.deleted_at IS NULL
+		  AND so.id IS DISTINCT FROM p.image_object_id
+		  AND so.id IS DISTINCT FROM p.image_thumbnail_object_id
 	`
 	out, err := scanStorageObject(s.db.QueryRow(ctx, q, projectID, number))
 	if err != nil {
@@ -201,6 +203,8 @@ func (s *Store) ListStorageObjects(ctx context.Context, p ListStorageObjectsPara
 		FROM storage_objects so
 		JOIN projects p ON p.id = so.project_id
 		WHERE so.project_id = $1 AND so.deleted_at IS NULL AND p.deleted_at IS NULL
+		  AND so.id IS DISTINCT FROM p.image_object_id
+		  AND so.id IS DISTINCT FROM p.image_thumbnail_object_id
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)

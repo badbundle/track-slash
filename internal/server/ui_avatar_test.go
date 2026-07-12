@@ -74,14 +74,20 @@ func TestUISettingsProfileImageControls(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
+		`data-modal-open="profile-image-picker"`,
+		`aria-haspopup="dialog"`,
+		`id="profile-image-picker" data-client-modal class="fixed inset-0 z-50 hidden`,
+		`role="dialog" aria-modal="true" aria-labelledby="profile-image-picker-title"`,
+		`Change image`,
 		`action="/settings/profile-image"`,
 		`enctype="multipart/form-data"`,
 		`name="file" type="file"`,
 		`accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"`,
 		`data-lucide="image-up"`,
 		`action="/settings/profile-image/delete"`,
-		`data-lucide="trash-2"`,
+		`Remove current image`,
 		`/users/` + userID.String() + `/profile-image/thumbnail/content?v=` + thumbID.String(),
+		`rounded-full`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings image state missing %q: %s", want, body)
@@ -94,7 +100,7 @@ func TestUISettingsProfileImageControls(t *testing.T) {
 		t.Fatalf("ExecuteTemplate settings without image: %v", err)
 	}
 	body = buf.String()
-	if !strings.Contains(body, "AL") || strings.Contains(body, `action="/settings/profile-image/delete"`) || strings.Contains(body, "<img") {
+	if !strings.Contains(body, "AL") || !strings.Contains(body, "Add image") || strings.Contains(body, `action="/settings/profile-image/delete"`) || strings.Contains(body, "<img") {
 		t.Fatalf("settings fallback state = %s", body)
 	}
 }

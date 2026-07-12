@@ -136,6 +136,14 @@ func (s *Server) getUserProfileImageContentVariant(w http.ResponseWriter, r *htt
 }
 
 func parseProfileImageUpload(w http.ResponseWriter, r *http.Request, maxUploadBytes int64) (profileImageUpload, bool) {
+	return parseSquareImageUpload(w, r, maxUploadBytes, "profile")
+}
+
+func parseProjectImageUpload(w http.ResponseWriter, r *http.Request, maxUploadBytes int64) (profileImageUpload, bool) {
+	return parseSquareImageUpload(w, r, maxUploadBytes, "project")
+}
+
+func parseSquareImageUpload(w http.ResponseWriter, r *http.Request, maxUploadBytes int64, imageKind string) (profileImageUpload, bool) {
 	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
 	if !strings.HasPrefix(contentType, "multipart/form-data") {
 		writeError(w, http.StatusBadRequest, "multipart file required")
@@ -184,11 +192,11 @@ func parseProfileImageUpload(w http.ResponseWriter, r *http.Request, maxUploadBy
 	}
 	mediaType := normalizeStorageObjectContentType(header.Header.Get("Content-Type"), head)
 	if !profileImageContentTypeAllowed(mediaType) {
-		writeError(w, http.StatusBadRequest, "unsupported profile image type")
+		writeError(w, http.StatusBadRequest, "unsupported "+imageKind+" image type")
 		return profileImageUpload{}, false
 	}
 
-	thumbnail, err := generateProfileImageThumbnail(data)
+	thumbnail, err := generateSquareImageThumbnail(data, imageKind)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return profileImageUpload{}, false
@@ -275,19 +283,23 @@ func profileImageContentTypeAllowed(contentType string) bool {
 }
 
 func generateProfileImageThumbnail(data []byte) ([]byte, error) {
+	return generateSquareImageThumbnail(data, "profile")
+}
+
+func generateSquareImageThumbnail(data []byte, imageKind string) ([]byte, error) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("profile image could not be decoded")
+		return nil, errors.New(imageKind + " image could not be decoded")
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 {
-		return nil, errors.New("profile image dimensions required")
+		return nil, errors.New(imageKind + " image dimensions required")
 	}
 	if cfg.Width > maxProfileImageDimension || cfg.Height > maxProfileImageDimension || int64(cfg.Width)*int64(cfg.Height) > maxProfileImagePixelCount {
-		return nil, errors.New("profile image dimensions too large")
+		return nil, errors.New(imageKind + " image dimensions too large")
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, errors.New("profile image could not be decoded")
+		return nil, errors.New(imageKind + " image could not be decoded")
 	}
 	bounds := img.Bounds()
 	width := bounds.Dx()
@@ -297,7 +309,7 @@ func generateProfileImageThumbnail(data []byte) ([]byte, error) {
 		side = height
 	}
 	if side <= 0 {
-		return nil, errors.New("profile image dimensions required")
+		return nil, errors.New(imageKind + " image dimensions required")
 	}
 	srcX := bounds.Min.X + (width-side)/2
 	srcY := bounds.Min.Y + (height-side)/2
@@ -306,7 +318,7 @@ func generateProfileImageThumbnail(data []byte) ([]byte, error) {
 	draw.CatmullRom.Scale(dst, dst.Bounds(), img, srcRect, draw.Over, nil)
 	var out bytes.Buffer
 	if err := png.Encode(&out, dst); err != nil {
-		return nil, errors.New("profile image thumbnail failed")
+		return nil, errors.New(imageKind + " image thumbnail failed")
 	}
 	return out.Bytes(), nil
 }

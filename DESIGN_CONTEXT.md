@@ -12,10 +12,12 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 ## User Identity
 
 - Render profile images and initials fallbacks as circles everywhere. The shared `user-avatar` component owns the crop shape so individual screens cannot diverge.
+- Keep profile and project image selection, upload, and removal in the shared image-picker modal. Owning panels show only the current image and a compact Add/Change action.
 - Identify the signed-in account as `@username` in the profile overlay instead of showing a generic role label such as `Member` or `Admin`.
 
 ## Project View
 
+- Render project images as squares with a small corner radius everywhere, using the shared project icon component and a project-initial fallback. Keep them visually distinct from circular user avatars.
 - Treat the project page as a focused planning console, not a place to introduce new workflow controls by default.
 - Prefer the stronger hierarchy of the issue detail page: clear title card, compact metadata, purposeful cards, and restrained section language.
 - Keep the project header cohesive. Project identity, actions, and tabs should feel like one unit, with the tab bar close to the project title and flush to the bottom of the header.
@@ -40,6 +42,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Use `/{owner}/projects/{key}/context` as an integrated project tab with the standard project header, a flat ordered page list, and one selected document.
 - Project pages use explicit Markdown edit/save/cancel behavior, support `.md`, `.markdown`, and `.txt` import, and use compact move-up/move-down controls rather than drag-and-drop.
 - Keep page rows compact and show body content only for the selected page. Page attachments use the shared description attachment behavior and resolve `object-N` only within that page.
+- Keep the project Context Pages sidebar content-height; it must not stretch to match the selected document pane.
 - Use an integrated issue Context manager rather than a modal. It should mirror the project Context list/document layout, keep the issue identity and a clear return action visible, and use addressable selected-page URLs.
 - Linked project pages render their Markdown and page attachments in the issue Context manager; issue-only context remains escaped pre-wrapped text.
 - Use user-facing titles for finding and attaching context. Do not expose refs such as `context-1` as visible row labels or search/link inputs; refs may remain in URLs/API mechanics.

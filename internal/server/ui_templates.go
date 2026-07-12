@@ -20,7 +20,10 @@ var errUIBadRequest = errors.New("bad request")
 
 var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":                       uiInitials,
+	"projectBreadcrumb":              uiProjectBreadcrumb,
+	"issueBreadcrumb":                uiIssueBreadcrumb,
 	"userAvatar":                     uiUserAvatar,
+	"profileImagePicker":             uiProfileImagePicker,
 	"byteSize":                       uiByteSize,
 	"issueAssignee":                  uiIssueAssigneePath,
 	"issueAssigneeEdit":              uiIssueAssigneeEditPath,
@@ -112,6 +115,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectNameEdit":                uiProjectNameEditPath,
 	"projectDescription":             uiProjectDescriptionPath,
 	"projectDescriptionEdit":         uiProjectDescriptionEditPath,
+	"projectImage":                   uiProjectImagePath,
+	"projectImageDelete":             uiProjectImageDeletePath,
 	"projectFavorite":                uiProjectFavoritePath,
 	"projectMembers":                 uiProjectMembersPath,
 	"projectMembersPanel":            uiProjectMembersPanelPath,
@@ -153,6 +158,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectTagDelete":               uiProjectTagDeletePath,
 	"projectView":                    uiProjectViewPath,
 	"projectIcon":                    uiProjectIcon,
+	"projectImagePicker":             uiProjectImagePicker,
 	"changelogActor":                 uiChangelogActor,
 	"changelogIcon":                  uiChangelogIcon,
 	"changelogTargetHref":            uiChangelogTargetHref,

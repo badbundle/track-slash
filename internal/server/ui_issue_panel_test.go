@@ -79,6 +79,12 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
+		`aria-label="Breadcrumb"`,
+		`href="/projects"`,
+		`hx-get="/projects/panel"`,
+		`href="/bradley/projects/TRACK/all"`,
+		`hx-get="/bradley/projects/TRACK/all/panel"`,
+		`aria-current="page"`,
 		"TRACK-7",
 		"text-3xl",
 		"Design issue detail",

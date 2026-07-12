@@ -10,19 +10,52 @@ import (
 	"time"
 )
 
+func TestUIProjectBreadcrumbIncludesCurrentView(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	for _, tt := range []struct {
+		view  string
+		label string
+	}{
+		{view: "sprint", label: "Sprint"},
+		{view: "planned", label: "Planned"},
+		{view: "all", label: "All"},
+		{view: "context", label: "Context"},
+		{view: "about", label: "About"},
+		{view: "members", label: "Members"},
+		{view: "changelog", label: "Changelog"},
+	} {
+		t.Run(tt.view, func(t *testing.T) {
+			items := uiProjectBreadcrumb(project, tt.view).Items
+			if len(items) != 3 {
+				t.Fatalf("breadcrumb item count = %d, want 3: %#v", len(items), items)
+			}
+			if items[1].Label != project.Name || items[1].Href != "/bradley/projects/TRACK/all" || items[1].HXGet != "/bradley/projects/TRACK/all/panel" || items[1].Current {
+				t.Fatalf("project breadcrumb = %#v, want linked project name", items[1])
+			}
+			if items[2].Label != tt.label || !items[2].Current {
+				t.Fatalf("view breadcrumb = %#v, want current %q", items[2], tt.label)
+			}
+		})
+	}
+}
+
 func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	selectedID := uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb")
+	projectThumbnailID := uuid.MustParse("6a0d51f8-4a4f-46d5-8de1-726a7823d8f4")
 	project := model.Project{
-		ID:            projectID,
-		OwnerUsername: "bradley",
-		Key:           "TRACK",
-		Name:          "Track Slash",
-		Description:   "Fast issue tracking.",
-		CreatedAt:     time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
-		UpdatedAt:     time.Date(2026, 6, 2, 10, 45, 0, 0, time.UTC),
+		ID:                     projectID,
+		OwnerUsername:          "bradley",
+		Key:                    "TRACK",
+		Name:                   "Track Slash",
+		Description:            "Fast issue tracking.",
+		ImageThumbnailObjectID: &projectThumbnailID,
+		CreatedAt:              time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC),
+		UpdatedAt:              time.Date(2026, 6, 2, 10, 45, 0, 0, time.UTC),
 	}
 	selected := []uuid.UUID{selectedID}
 	assignees := []model.ProjectAssignee{
@@ -85,8 +118,10 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	}
 	headerEnd += projectHeaderStart
 	header := body[projectHeaderStart:headerEnd]
-	if strings.Contains(body, `href="/projects"`) || strings.Contains(body, `hx-get="/projects/panel"`) {
-		t.Fatalf("project panel should not render projects back link: %s", body)
+	for _, want := range []string{`aria-label="Breadcrumb"`, `href="/projects"`, `hx-get="/projects/panel"`, `>Projects</a>`, `href="/bradley/projects/TRACK/all"`, `hx-get="/bradley/projects/TRACK/all/panel"`, `>Track Slash</a>`, `aria-current="page"`, `>About</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project panel missing breadcrumb markup %q: %s", want, body)
+		}
 	}
 	tabNav := strings.Index(body, `aria-label="Project views"`)
 	if tabNav < 0 {
@@ -103,7 +138,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
+	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Project image", `data-modal-open="project-image-picker"`, `id="project-image-picker" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="project-image-picker-title"`, "Change image", `action="/bradley/projects/TRACK/image"`, `hx-post="/bradley/projects/TRACK/image"`, `hx-encoding="multipart/form-data"`, `accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"`, `action="/bradley/projects/TRACK/image/delete"`, "Remove current image", `/bradley/projects/TRACK/image/thumbnail/content?v=` + projectThumbnailID.String(), `rounded-md object-cover`, "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about view missing markup %q: %s", want, body)
 		}
@@ -126,8 +161,8 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 			t.Fatalf("project about view rendered assignee filter state %q: %s", notWant, body)
 		}
 	}
-	if strings.Contains(body, "Back to projects") || strings.Contains(body, ">Projects</a>") {
-		t.Fatalf("project back link uses verbose label: %s", body)
+	if strings.Contains(body, "Back to projects") {
+		t.Fatalf("project breadcrumb uses verbose label: %s", body)
 	}
 	tabEnd := strings.Index(body[tabNav:], "</nav>")
 	if tabEnd < 0 {
@@ -569,6 +604,7 @@ func TestUIProjectContextRendersIntegratedMarkdownPages(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
+		`<aside class="min-w-0 self-start overflow-hidden`,
 		`aria-current="page"`, `href="/bradley/projects/TRACK/context/context-1"`, "Architecture notes",
 		"<h1>Architecture</h1>", "Use transactions.", `aria-label="Move context page up"`,
 		`aria-label="Move context page down"`, `aria-label="Manage linked issues"`, `aria-label="Edit context page"`,

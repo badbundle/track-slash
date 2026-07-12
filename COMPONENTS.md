@@ -4,6 +4,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Navigation
 
+- `breadcrumb`: subtle entity hierarchy navigation backed by `uiBreadcrumbData`. Project pages show `Projects / Project name / Current view`; issue pages append the current issue key to the project, with a parent issue key between them for sub-issues.
 - `tab-bar`: single-line sibling-view navigation with optional Lucide icons, backed by `uiTabBarData`. Set an item's `MobileOverflow` flag when its owning page provides an equivalent constrained-screen overflow-menu link; those tabs return at `lg`.
 - `sidebar-favorites`: shell sidebar favorite-project shortcuts backed by `uiSidebarFavoritesData`. Keep it directly below the `Projects` nav item with a subtle divider from standard navigation, and refresh it with OOB HTMX swaps when favorite state changes.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.
@@ -23,6 +24,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Avatars
 
 - `user-avatar`: circular user avatar with thumbnail-or-initials fallback. Pass `userAvatar <user-like value> <class>` where the value is `model.User`, `model.ProjectMember`, `model.ProjectAssignee`, `model.ProjectAssigneeIssueStats`, `model.ProjectChangelogActor`, or `uiIssueCommentItem`. The shared component owns the circular crop and clipping; callers own dimensions, colors, and borders through the class string. The helper adds cache-busting thumbnail URLs with `?v={thumbnail_object_id}` and falls back to initials from display name, username, or email.
+- `project-icon`: square project image with a small corner radius and project-initial fallback, backed by `uiProjectIconData`. Pass `projectIcon <project> <class>`; the helper adds a cache-busting thumbnail URL and the component owns the square crop and radius.
 
 ## Forms
 
@@ -33,6 +35,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Modals
 
 - `modal-open` and `modal-close`: reusable modal shell with title, optional description, badges, and cancel action. Wrap workflow-specific body content between the two templates.
+- `image-picker`: shared client-controlled profile/project image modal backed by `uiImagePickerData`. Keep only the current avatar/icon and its Add/Change trigger in the owning panel; file selection, upload, and removal live inside this modal. Profile previews remain circular and project previews remain square with a small corner radius.
 - Issue-scoped relationship edits should prefer modals when the user is making a small local change from issue detail. Issue Context is the deliberate exception because browsing and editing multiple documents benefits from its integrated manager. Other modal workflows should keep the surrounding issue visible, avoid URL pushes for open/submit/close, support repeated HTMX updates, and link out when the task expands.
 - Issue tag modal convention: show attached tags first, then a searchable list of available project tags. Attach/detach existing tags only; create/edit/delete project tags stays in the project tag manager.
 

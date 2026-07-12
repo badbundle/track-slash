@@ -26,6 +26,41 @@ func uiInitials(name, email string) string {
 	return strings.ToUpper(string(first[0]) + string(last[0]))
 }
 
+var uiProjectViewLabels = map[string]string{
+	"sprint":    "Sprint",
+	"planned":   "Planned",
+	"all":       "All",
+	"context":   "Context",
+	"about":     "About",
+	"members":   "Members",
+	"changelog": "Changelog",
+}
+
+func uiProjectBreadcrumb(project model.Project, view string) uiBreadcrumbData {
+	return uiBreadcrumbData{Items: []uiBreadcrumbItem{
+		{Label: "Projects", Href: "/projects", HXGet: "/projects/panel"},
+		{Label: project.Name, Href: uiProjectViewPath(project, "all"), HXGet: uiProjectPanelPath(project, "all")},
+		{Label: uiProjectViewLabels[view], Current: true},
+	}}
+}
+
+func uiIssueBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue) uiBreadcrumbData {
+	items := []uiBreadcrumbItem{
+		{Label: "Projects", Href: "/projects", HXGet: "/projects/panel"},
+		{Label: project.Name, Href: uiProjectViewPath(project, "all"), HXGet: uiProjectPanelPath(project, "all")},
+	}
+	if parentIssue != nil {
+		items = append(items, uiBreadcrumbItem{
+			Label:    parentIssue.Identifier,
+			Href:     uiIssuePath(*parentIssue),
+			HXGet:    uiIssuePanelPath(*parentIssue),
+			IssueKey: true,
+		})
+	}
+	items = append(items, uiBreadcrumbItem{Label: issue.Identifier, IssueKey: true, Current: true})
+	return uiBreadcrumbData{Items: items}
+}
+
 func uiUserAvatar(value any, class string) uiUserAvatarData {
 	switch v := value.(type) {
 	case model.User:
@@ -113,7 +148,26 @@ func uiUserProfileThumbnailPath(userID, thumbnailID uuid.UUID) string {
 	return fmt.Sprintf("/users/%s/profile-image/thumbnail/content?v=%s", userID, thumbnailID)
 }
 
-func uiProjectIcon(name, key string) string {
+func uiProjectIcon(project model.Project, class string) uiProjectIconData {
+	label := strings.TrimSpace(project.Name)
+	if label == "" {
+		label = strings.TrimSpace(project.Key)
+	}
+	if label == "" {
+		label = "Project"
+	}
+	out := uiProjectIconData{
+		Label:   label,
+		Initial: uiProjectInitial(project.Name, project.Key),
+		Class:   class,
+	}
+	if project.ImageThumbnailObjectID != nil {
+		out.ThumbnailURL = uiProjectImageThumbnailContentPath(project) + "?v=" + project.ImageThumbnailObjectID.String()
+	}
+	return out
+}
+
+func uiProjectInitial(name, key string) string {
 	source := strings.TrimSpace(name)
 	if source == "" {
 		source = strings.TrimSpace(key)
@@ -122,6 +176,59 @@ func uiProjectIcon(name, key string) string {
 		return "?"
 	}
 	return strings.ToUpper(string([]rune(source)[0]))
+}
+
+func uiProfileImagePicker(user model.User) uiImagePickerData {
+	avatar := uiUserAvatar(user, "")
+	hasImage := user.ProfileImageThumbnailObjectID != nil
+	return uiImagePickerData{
+		Modal: uiModalData{
+			ID:               "profile-image-picker",
+			Title:            "Profile image",
+			Description:      "Choose an image to represent your account.",
+			WidthClass:       "max-w-md",
+			CancelLabel:      "Close profile image picker",
+			ClientControlled: true,
+		},
+		Label:        avatar.Label,
+		ThumbnailURL: avatar.ThumbnailURL,
+		Fallback:     avatar.Initials,
+		Circular:     true,
+		TriggerLabel: uiImagePickerTriggerLabel(hasImage),
+		UploadAction: "/settings/profile-image",
+		DeleteAction: "/settings/profile-image/delete",
+		HasImage:     hasImage,
+	}
+}
+
+func uiProjectImagePicker(project model.Project) uiImagePickerData {
+	icon := uiProjectIcon(project, "")
+	hasImage := project.ImageThumbnailObjectID != nil
+	return uiImagePickerData{
+		Modal: uiModalData{
+			ID:               "project-image-picker",
+			Title:            "Project image",
+			Description:      "Choose an image to identify this project.",
+			WidthClass:       "max-w-md",
+			CancelLabel:      "Close project image picker",
+			ClientControlled: true,
+		},
+		Label:        icon.Label,
+		ThumbnailURL: icon.ThumbnailURL,
+		Fallback:     icon.Initial,
+		TriggerLabel: uiImagePickerTriggerLabel(hasImage),
+		UploadAction: uiProjectImagePath(project),
+		DeleteAction: uiProjectImageDeletePath(project),
+		HasImage:     hasImage,
+		HXTarget:     "#main",
+	}
+}
+
+func uiImagePickerTriggerLabel(hasImage bool) string {
+	if hasImage {
+		return "Change image"
+	}
+	return "Add image"
 }
 
 func uiChangelogActor(entry model.ProjectChangelogEntry) string {

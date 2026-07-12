@@ -434,11 +434,17 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`.markdown-body table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }`,
 		`.markdown-body table { display: block; max-width: 100%; overflow-x: auto; }`,
 		`.markdown-body th, .markdown-body td { border: 1px solid rgb(203 213 225); padding: 0.375rem 0.5rem; text-align: left; vertical-align: top; }`,
-		`.dark .markdown-body th, .dark .markdown-body td { border-color: rgb(51 65 85); }`,
+		`@media (prefers-color-scheme: dark) {`,
+		`.markdown-body { color: rgb(226 232 240); }`,
+		`.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { color: rgb(241 245 249); }`,
+		`.markdown-body th, .markdown-body td { border-color: rgb(51 65 85); }`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing markdown CSS %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, `.dark .markdown-body`) {
+		t.Fatalf("shell markdown dark-mode CSS should follow the system media query: %s", body)
 	}
 }
 
@@ -503,6 +509,27 @@ func TestUIModalAndSpecialRowsStayContainedOnNarrowScreens(t *testing.T) {
 		}
 	}
 
+	modal.Reset()
+	if err := uiTemplates.ExecuteTemplate(&modal, "modal-open", uiModalData{
+		ID:               "client-modal",
+		Title:            "Client modal",
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Close client modal",
+		ClientControlled: true,
+	}); err != nil {
+		t.Fatalf("render client modal: %v", err)
+	}
+	for _, want := range []string{
+		`id="client-modal" data-client-modal`,
+		`class="fixed inset-0 z-50 hidden`,
+		`data-modal-close`,
+		`aria-label="Close client modal"`,
+	} {
+		if !strings.Contains(modal.String(), want) {
+			t.Fatalf("client modal missing %q: %s", want, modal.String())
+		}
+	}
+
 	for _, tt := range []struct {
 		name string
 		path string
@@ -539,6 +566,28 @@ func TestUIModalAndSpecialRowsStayContainedOnNarrowScreens(t *testing.T) {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s row missing responsive marker %q: %s", tt.name, want, body)
 			}
+		}
+	}
+}
+
+func TestUIShellIncludesClientModalBehavior(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
+		t.Fatalf("render shell: %v", err)
+	}
+	for _, want := range []string{
+		`const setClientModalOpen = (modal, open, trigger = null) => {`,
+		`event.target.closest("[data-modal-open]")`,
+		`event.target.closest("[data-modal-close]")`,
+		`event.target.closest("[data-client-modal]")`,
+		`document.querySelector("[data-client-modal]:not(.hidden)")`,
+		`modal.querySelector("input[type='file']")?.focus()`,
+		`returnFocus.focus()`,
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("shell missing client modal behavior %q", want)
 		}
 	}
 }

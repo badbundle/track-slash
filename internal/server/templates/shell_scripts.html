@@ -67,6 +67,24 @@
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
         syncDisclosureIcon(toggle, open);
       };
+      let clientModalTrigger = null;
+      const setClientModalOpen = (modal, open, trigger = null) => {
+        if (!(modal instanceof HTMLElement)) return;
+        modal.classList.toggle("hidden", !open);
+        modal.classList.toggle("grid", open);
+        document.querySelectorAll(`[data-modal-open="${modal.id}"]`).forEach((button) => {
+          button.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+        if (open) {
+          clientModalTrigger = trigger;
+          window.setTimeout(() => modal.querySelector("input[type='file']")?.focus(), 0);
+          return;
+        }
+        modal.querySelectorAll("form").forEach((form) => form.reset());
+        const returnFocus = clientModalTrigger;
+        clientModalTrigger = null;
+        if (returnFocus instanceof HTMLElement) window.setTimeout(() => returnFocus.focus(), 0);
+      };
       const showAttachmentStatus = (textarea, message) => {
         const status = textarea && textarea.closest("section") && textarea.closest("section").querySelector("[data-attachment-status]");
         if (!status) return;
@@ -774,6 +792,23 @@
       });
       document.body.addEventListener("click", (event) => {
         if (!(event.target instanceof Element)) return;
+        const modalOpen = event.target.closest("[data-modal-open]");
+        if (modalOpen) {
+          event.preventDefault();
+          setClientModalOpen(document.getElementById(modalOpen.dataset.modalOpen || ""), true, modalOpen);
+          return;
+        }
+        const modalClose = event.target.closest("[data-modal-close]");
+        if (modalClose) {
+          event.preventDefault();
+          setClientModalOpen(modalClose.closest("[data-client-modal]"), false);
+          return;
+        }
+        const modalBackdrop = event.target.closest("[data-client-modal]");
+        if (modalBackdrop === event.target) {
+          setClientModalOpen(modalBackdrop, false);
+          return;
+        }
         const disclosureToggle = event.target.closest("[data-disclosure-toggle]");
         if (disclosureToggle) {
           event.preventDefault();
@@ -863,6 +898,12 @@
       document.body.addEventListener("keydown", (event) => {
         if (!(event.target instanceof Element)) return;
         if (event.key === "Escape") {
+          const modal = document.querySelector("[data-client-modal]:not(.hidden)");
+          if (modal) {
+            event.preventDefault();
+            setClientModalOpen(modal, false);
+            return;
+          }
           setSearchOptionsOpen(event.target.closest("[data-search]"), false);
         }
         const field = event.target.closest("[data-submit-shortcut='meta-enter']");

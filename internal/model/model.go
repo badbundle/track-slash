@@ -359,14 +359,16 @@ type ProjectChangelogEntry struct {
 }
 
 type Project struct {
-	ID            uuid.UUID `json:"id"`
-	OwnerID       uuid.UUID `json:"owner_id"`
-	OwnerUsername string    `json:"owner_username"`
-	Key           string    `json:"key"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID                     uuid.UUID  `json:"id"`
+	OwnerID                uuid.UUID  `json:"owner_id"`
+	OwnerUsername          string     `json:"owner_username"`
+	Key                    string     `json:"key"`
+	Name                   string     `json:"name"`
+	Description            string     `json:"description"`
+	ImageObjectID          *uuid.UUID `json:"image_object_id,omitempty"`
+	ImageThumbnailObjectID *uuid.UUID `json:"image_thumbnail_object_id,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
 }
 
 type StorageObject struct {
