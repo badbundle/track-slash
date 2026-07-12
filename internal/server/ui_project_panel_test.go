@@ -580,6 +580,15 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 	assigneeFilters := uiProjectSprintAssigneeFilters(project, assignees, sprintQuery)
 	clearAssigneeHref := uiProjectSprintViewPath(project, uiIssueListQuery{})
 	clearAssigneeHXGet := uiProjectSprintPanelPath(project, uiIssueListQuery{})
+	activeSprint := model.Sprint{
+		ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
+		ProjectID: projectID,
+		Ref:       "sprint-1",
+		Name:      "Current Sprint",
+		Goal:      "Ship filtering\nPolish sprint goals",
+		StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+		EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
+	}
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
@@ -592,13 +601,10 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		ClearAssigneeHXGet:   clearAssigneeHXGet,
 		ClearAssigneeHXPush:  clearAssigneeHref,
 		SprintControls:       uiProjectSprintIssueControls(project, sprintQuery, nil, assigneeFilters, true, clearAssigneeHref, clearAssigneeHXGet, clearAssigneeHref),
-		ActiveSprint: &model.Sprint{
-			ID:        uuid.MustParse("d7fc0dbf-845c-41b4-84ab-89f487cc4a08"),
-			ProjectID: projectID,
-			Name:      "Current Sprint",
-			Goal:      "Ship filtering\nPolish sprint goals",
-			StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
-			EndDate:   datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
+		ActiveSprint:         &activeSprint,
+		ActiveSprintDescription: uiSprintDescriptionData{
+			Project: project,
+			Sprint:  activeSprint,
 		},
 		SprintColumns: columns,
 	})
@@ -628,7 +634,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"#Sprint Visible",
 		"border-green-200 bg-green-50 text-green-700",
 		"Progress count issue",
-		"markdown-body",
+		"line-clamp-2",
+		"See more",
 		`href="/bradley/projects/TRACK/sprint?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
 		`hx-get="/bradley/projects/TRACK/planned/panel"`,
 		`hx-get="/bradley/projects/TRACK/all/panel"`,

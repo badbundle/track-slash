@@ -30,8 +30,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 ## Sprint Descriptions
 
-- Active sprints show the complete Markdown description and attachments at the top of the sprint view before issue controls and columns.
-- Planned sprint cards retain a compact two-line source preview. “See more” expands only the full Markdown description and attachments; scheduled issues remain an independent disclosure.
+- Active and planned sprints retain a compact two-line source preview. “See more” expands only the full Markdown description and attachments; scheduled issues remain an independent disclosure.
 - Sprint description editing uses the same attachment dropzone, preview rows, Markdown-copy, download, and removal behavior as issue descriptions.
 
 ## Context IA

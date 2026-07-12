@@ -28,36 +28,39 @@ func testSprintAttachment(sprintID uuid.UUID) model.SprintAttachment {
 	}
 }
 
-func TestUIActiveSprintRendersSharedMarkdownAndAttachmentsAtTop(t *testing.T) {
+func TestUIActiveSprintDescriptionPreview(t *testing.T) {
 	t.Parallel()
 	project := model.Project{OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
 	sprint := model.Sprint{ID: uuid.New(), Ref: "sprint-2", Name: "Active", Goal: "**Ship it**", Status: model.SprintStatusActive}
-	attachment := testSprintAttachment(sprint.ID)
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "project-panel-sprint", &uiProjectPanelData{
-		Project:                        project,
-		ActiveSprint:                   &sprint,
-		ActiveSprintDescriptionHTML:    template.HTML("<p><strong>Ship it</strong></p>"),
-		ActiveSprintAttachments:        []model.SprintAttachment{attachment},
-		ActiveSprintAttachmentsHasMore: false,
+		Project:      project,
+		ActiveSprint: &sprint,
+		ActiveSprintDescription: uiSprintDescriptionData{
+			Project:         project,
+			Sprint:          sprint,
+			AttachmentCount: 1,
+		},
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 	body := buf.String()
 	for _, want := range []string{
-		`<strong>Ship it</strong>`,
-		`id="sprint-attachments-sprint-2"`,
-		`data-attachment-ref="object-3"`,
-		`src="/bradley/projects/TRACK/sprints/sprint-2/attachments/object-3/content?inline=1"`,
-		`data-markdown="![roadmap.png](object-3)"`,
+		"line-clamp-2",
+		"**Ship it**",
+		"See more",
+		`hx-get="/bradley/projects/TRACK/sprints/sprint-2/description?expanded=1"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("active sprint missing %q: %s", want, body)
 		}
 	}
-	if strings.Index(body, "<strong>Ship it</strong>") > strings.Index(body, `aria-label="Issue controls"`) {
+	if strings.Contains(body, "roadmap.png") {
+		t.Fatalf("active sprint preview rendered attachments: %s", body)
+	}
+	if strings.Index(body, "See more") > strings.Index(body, `aria-label="Issue controls"`) {
 		t.Fatalf("active sprint description rendered below controls: %s", body)
 	}
 }
@@ -68,7 +71,7 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 	sprint := model.Sprint{ID: uuid.New(), Ref: "sprint-7", Goal: "Preview **markdown**", Status: model.SprintStatusPlanned}
 
 	var collapsed bytes.Buffer
-	err := uiTemplates.ExecuteTemplate(&collapsed, "planned-sprint-description", uiPlannedSprint{Project: project, Sprint: sprint, AttachmentCount: 1})
+	err := uiTemplates.ExecuteTemplate(&collapsed, "sprint-description", uiPlannedSprint{Project: project, Sprint: sprint, AttachmentCount: 1})
 	if err != nil {
 		t.Fatalf("collapsed template: %v", err)
 	}
@@ -84,7 +87,7 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 
 	attachment := testSprintAttachment(sprint.ID)
 	var expanded bytes.Buffer
-	err = uiTemplates.ExecuteTemplate(&expanded, "planned-sprint-description", uiPlannedSprint{
+	err = uiTemplates.ExecuteTemplate(&expanded, "sprint-description", uiPlannedSprint{
 		Project:             project,
 		Sprint:              sprint,
 		DescriptionExpanded: true,

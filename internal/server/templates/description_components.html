@@ -11,6 +11,21 @@
 {{end}}
 {{end}}
 
+{{define "sprint-description"}}
+<div id="sprint-{{.Sprint.Ref}}-description" class="mt-2 max-w-3xl">
+  {{if .DescriptionExpanded}}
+    {{template "description-body" (sprintDescriptionBody .Sprint .DescriptionHTML)}}
+    {{template "description-attachment-list" (sprintAttachmentListData .Project .Sprint .Attachments .AttachmentsHasMore false)}}
+    <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=0" hx-target="#sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See less</button>
+  {{else}}
+    {{if .Sprint.Goal}}<p class="line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{{.Sprint.Goal}}</p>{{end}}
+    {{if or .Sprint.Goal .AttachmentCount}}
+    <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=1" hx-target="#sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See more</button>
+    {{end}}
+  {{end}}
+</div>
+{{end}}
+
 {{define "description-attachment-list"}}
 {{if or .Items .Editing}}
 <div id="{{.ID}}" data-attachment-list {{if .Editing}}data-attachment-editing="true"{{end}} class="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800 {{if not .Items}}hidden{{end}}">

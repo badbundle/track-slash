@@ -493,16 +493,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return panel, nil
 		}
 		panel.ActiveSprint = &activeSprints[0]
-		activeAttachments, activeAttachmentsHasMore, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
-			SprintID: panel.ActiveSprint.ID,
-			Limit:    MaxLimit,
-		})
+		attachmentCounts, err := s.store.CountSprintAttachments(ctx, []uuid.UUID{panel.ActiveSprint.ID})
 		if err != nil {
 			return nil, err
 		}
-		panel.ActiveSprintAttachments = activeAttachments
-		panel.ActiveSprintAttachmentsHasMore = activeAttachmentsHasMore
-		panel.ActiveSprintDescriptionHTML = renderSprintDescriptionMarkdown(project, *panel.ActiveSprint, activeAttachments)
+		panel.ActiveSprintDescription = uiSprintDescriptionData{
+			Project:         project,
+			Sprint:          *panel.ActiveSprint,
+			AttachmentCount: attachmentCounts[panel.ActiveSprint.ID],
+		}
 		sprintIssues, sprintHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 			ProjectID:   projectID,
 			Statuses:    sprintQuery.Statuses,

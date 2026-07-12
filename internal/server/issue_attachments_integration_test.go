@@ -257,13 +257,28 @@ func TestHTTPSprintAttachmentCRUDAndUIRoutes(t *testing.T) {
 		t.Fatalf("activate sprint: %v", err)
 	}
 	activeBody := e.uiGet(t, e.projectPath()+"/sprint", e.authToken)
-	for _, want := range []string{"markdown-body", "plan.png", e.projectPath() + "/sprints/" + sprint.Ref + "/attachments/object-1/content?inline=1"} {
+	for _, want := range []string{"![Plan](object-1)", "See more", `hx-get="` + e.projectPath() + "/sprints/" + sprint.Ref + `/description?expanded=1"`} {
 		if !strings.Contains(activeBody, want) {
 			t.Fatalf("active sprint missing %q: %s", want, activeBody)
 		}
 	}
-	if strings.Index(activeBody, "plan.png") > strings.Index(activeBody, `aria-label="Issue controls"`) {
-		t.Fatalf("active sprint attachment rendered below issue controls: %s", activeBody)
+	if strings.Contains(activeBody, "plan.png") {
+		t.Fatalf("active sprint preview rendered attachments: %s", activeBody)
+	}
+	if strings.Index(activeBody, "See more") > strings.Index(activeBody, `aria-label="Issue controls"`) {
+		t.Fatalf("active sprint preview rendered below issue controls: %s", activeBody)
+	}
+	activeExpandedBody := e.uiGet(t, e.projectPath()+"/sprints/"+sprint.Ref+"/description?expanded=1", e.authToken)
+	for _, want := range []string{"markdown-body", "plan.png", e.projectPath() + "/sprints/" + sprint.Ref + "/attachments/object-1/content?inline=1"} {
+		if !strings.Contains(activeExpandedBody, want) {
+			t.Fatalf("expanded active sprint missing %q: %s", want, activeExpandedBody)
+		}
+	}
+	activeEditBody := e.uiGet(t, e.projectPath()+"/sprints/"+sprint.Ref+"/edit", e.authToken)
+	for _, want := range []string{"data-attachment-dropzone", `data-attachment-ref="object-1"`, "plan.png"} {
+		if !strings.Contains(activeEditBody, want) {
+			t.Fatalf("active sprint edit missing %q: %s", want, activeEditBody)
+		}
 	}
 
 	uiRes = e.uiDoMultipartContext(t, path, e.authToken, nil, "ui.txt", "ui sprint attachment")

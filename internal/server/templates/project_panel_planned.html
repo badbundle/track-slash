@@ -64,7 +64,7 @@
                 {{template "count-badge" (len $item.Issues)}}
               </div>
               {{with sprintDateRange $item.Sprint}}<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
-              {{template "planned-sprint-description" $item}}
+              {{template "sprint-description" $item}}
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
@@ -171,19 +171,4 @@
       {{end}}
     </div>
   </section>
-{{end}}
-
-{{define "planned-sprint-description"}}
-<div id="planned-sprint-{{.Sprint.Ref}}-description" class="mt-2 max-w-3xl">
-  {{if .DescriptionExpanded}}
-    {{template "description-body" (sprintDescriptionBody .Sprint .DescriptionHTML)}}
-    {{template "description-attachment-list" (sprintAttachmentListData .Project .Sprint .Attachments .AttachmentsHasMore false)}}
-    <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=0" hx-target="#planned-sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See less</button>
-  {{else}}
-    {{if .Sprint.Goal}}<p class="line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{{.Sprint.Goal}}</p>{{end}}
-    {{if or .Sprint.Goal .AttachmentCount}}
-    <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=1" hx-target="#planned-sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See more</button>
-    {{end}}
-  {{end}}
-</div>
 {{end}}

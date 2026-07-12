@@ -31,10 +31,9 @@
           {{end}}
         </div>
       </div>
-      {{if and .ActiveSprint (ne .ActiveSprintAction "edit") (or .ActiveSprint.Goal .ActiveSprintAttachments)}}
+      {{if and .ActiveSprint (ne .ActiveSprintAction "edit") (or .ActiveSprint.Goal .ActiveSprintDescription.AttachmentCount)}}
       <div class="mt-4 max-w-3xl border-t border-slate-100 pt-4 dark:border-slate-800">
-        {{template "description-body" (sprintDescriptionBody .ActiveSprint .ActiveSprintDescriptionHTML)}}
-        {{template "description-attachment-list" (sprintAttachmentListData .Project .ActiveSprint .ActiveSprintAttachments .ActiveSprintAttachmentsHasMore false)}}
+        {{template "sprint-description" .ActiveSprintDescription}}
       </div>
       {{end}}
       {{if and .ActiveSprint (eq .ActiveSprintAction "edit")}}
@@ -55,7 +54,7 @@
         <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
           {{template "description-editor" (sprintDescriptionEditor .Project .ActiveSprint .ActiveSprintForm.GoalInput false)}}
         </label>
-        {{template "description-attachment-list" (sprintAttachmentListData .Project .ActiveSprint .ActiveSprintAttachments .ActiveSprintAttachmentsHasMore true)}}
+        {{template "description-attachment-list" (sprintAttachmentListData .Project .ActiveSprint .ActiveSprintDescription.Attachments .ActiveSprintDescription.AttachmentsHasMore true)}}
         {{if .ActiveSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.ActiveSprintForm.Error}}</p>{{end}}
         <div class="flex flex-wrap items-center gap-2">
           <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">

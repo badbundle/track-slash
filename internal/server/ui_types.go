@@ -73,6 +73,16 @@ type uiIssueColumn struct {
 	Issues []uiIssueItem
 }
 
+type uiSprintDescriptionData struct {
+	Project             model.Project
+	Sprint              model.Sprint
+	AttachmentCount     int
+	DescriptionExpanded bool
+	DescriptionHTML     template.HTML
+	Attachments         []model.SprintAttachment
+	AttachmentsHasMore  bool
+}
+
 type uiPlannedSprint struct {
 	Project             model.Project
 	Sprint              model.Sprint
@@ -398,9 +408,7 @@ type uiProjectPanelData struct {
 	ClearAssigneeHXGet              string
 	ClearAssigneeHXPush             string
 	ActiveSprint                    *model.Sprint
-	ActiveSprintDescriptionHTML     template.HTML
-	ActiveSprintAttachments         []model.SprintAttachment
-	ActiveSprintAttachmentsHasMore  bool
+	ActiveSprintDescription         uiSprintDescriptionData
 	ActiveSprintAction              string
 	ActiveSprintForm                uiSprintFormData
 	ActiveSprintIssueForm           uiSprintIssueFormData
