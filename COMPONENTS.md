@@ -41,23 +41,24 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 - `issue-summary-row`: responsive issue list row content accepting an issue. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
-- Context detail row: parent project/issue pages should use a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open manage link. On issue detail this link opens the context modal with `hx-push-url="false"`; on Project About it opens the project context manager. Keep create/attach/edit/delete controls out of parent panels.
+- Context detail row: issue detail uses a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open action that opens the issue context modal with `hx-push-url="false"`. Project About does not render context; project context is a top-level tab.
 
 ## Feature Panels
 
 - `project-favorite-action`: project header star toggle backed by `uiProjectFavoriteData`/`uiProjectPanelData`. Keep it adjacent to the project title and update only the action wrapper plus `sidebar-favorites`.
-- `context-manager-panel`: project context manager page in `internal/server/templates/context_manager.html`; expects `uiContextManagerData`. Use this as the full project context workflow surface, not an inline parent-page form. Issue detail context management now renders as a modal inside `issue-panel`.
+- `project-panel-context`: integrated project Context tab in `internal/server/templates/project_panel_context.html`; expects `uiContextManagerData` through `uiProjectPanelData.ContextManager`. It owns the ordered page list and selected Markdown page.
+- `context-manager-panel`: issue-scoped context manager fallback in `internal/server/templates/context_manager.html`; issue detail normally renders context as a modal inside `issue-panel`.
 - `description-body`: shared safe Markdown display backed by `uiDescriptionBodyData`. Project, issue, and sprint adapters pass attachment-scoped rendered HTML.
 - `description-editor`: shared Markdown textarea backed by `uiDescriptionEditorData`, with optional upload and attachment-list URLs. Creation forms omit upload configuration until a parent ref exists.
 - `description-attachment-list`: shared project/issue/sprint attachment rows backed by `uiAttachmentListData`, including previews, metadata, Markdown copy, download, delete, pagination notice, and editing state.
 - `sprint-description`: shared active/planned sprint cropped-Markdown preview backed by `uiSprintDescriptionData` or the matching fields on `uiPlannedSprint`. It lazily swaps full Markdown and attachment rows through `See more` without affecting the scheduled-issues disclosure.
 
-### Context Manager Conventions
+### Context Page Conventions
 
-- Project manager route: `/{owner}/projects/{key}/context`. Issue modal route: `/{owner}/issues/{issueRef}/context`.
-- Project mode supports project-scoped create/upload/edit/delete and linked-issue management. Issue modal mode supports creating issue-scoped context, attaching existing project context, viewing/editing linked context, and removing links.
-- Rows stay compact by default: show title, metadata, scope/link counts, and icon actions. Do not show body previews in rows.
-- Body text appears only in explicit view/edit manager states, rendered as escaped pre-wrapped text.
+- Project tab route: `/{owner}/projects/{key}/context`; selected pages use `/context/{contextRef}`. Issue modal route: `/{owner}/issues/{issueRef}/context`.
+- Project pages support create/import/edit/delete, page-scoped attachments, ordering, and linked-issue management. The list stays compact; only the selected page renders content.
+- Markdown pages use the shared safe Markdown renderer and attachment components. Plain-text imports remain escaped and pre-wrapped.
+- Issue modal mode supports creating issue-scoped context, attaching existing project pages, viewing/editing linked content, and removing links.
 - User-facing attach/search controls use context titles. Do not present refs such as `context-1` as visible identifiers, badges, placeholders, or option labels.
 
 When adding a reusable component, document its template name, purpose, and expected data shape here.

@@ -160,6 +160,22 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 	}
 }
 
+func TestRenderProjectContextMarkdownScopesAttachments(t *testing.T) {
+	t.Parallel()
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK"}
+	contextItem := model.ProjectContext{Number: 2, Ref: "context-2", Body: "![diagram](object-4) [missing](object-5)"}
+	attachment := model.ContextAttachment{Object: model.StorageObject{Number: 4, Ref: "object-4", Filename: "diagram.png", ContentType: "image/png"}}
+	out := string(renderProjectContextMarkdown(project, contextItem, []model.ContextAttachment{attachment}))
+	for _, want := range []string{`src="/bradley/projects/TRACK/context/context-2/attachments/object-4/content?inline=1"`, `alt="diagram"`, `missing`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("context markdown missing %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, `href="object-5"`) {
+		t.Fatalf("unattached context object should remain inert: %s", out)
+	}
+}
+
 func TestRenderSprintDescriptionMarkdownResolvesOnlySprintAttachments(t *testing.T) {
 	t.Parallel()
 	project := model.Project{OwnerUsername: "bradley", Key: "TRACK"}

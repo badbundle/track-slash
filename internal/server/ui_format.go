@@ -136,7 +136,7 @@ func uiChangelogIcon(entry model.ProjectChangelogEntry) string {
 		return "message-square"
 	case "issue_link":
 		return "link"
-	case "issue_attachment", "sprint_attachment", "project_attachment":
+	case "issue_attachment", "sprint_attachment", "project_attachment", "context_attachment":
 		return "paperclip"
 	case "issue_tag", "issue_tag_link":
 		return "tag"

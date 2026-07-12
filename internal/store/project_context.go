@@ -37,11 +37,14 @@ type UpdateProjectContextParams struct {
 	ID          uuid.UUID
 	Title       *string
 	Body        *string
+	ContentType *string
+	Position    *int64
 	UpdatedByID uuid.UUID
 }
 
 type ProjectContextsCursor struct {
-	Number int `json:"n"`
+	Number   int   `json:"n,omitempty"`
+	Position int64 `json:"p,omitempty"`
 }
 
 type ListProjectContextsParams struct {
@@ -69,7 +72,7 @@ type projectContextScanner interface {
 func scanProjectContext(row projectContextScanner) (model.ProjectContext, error) {
 	var out model.ProjectContext
 	err := row.Scan(
-		&out.ID, &out.ProjectID, &out.Number, &out.Scope, &out.Title, &out.Kind, &out.ContentType, &out.Body,
+		&out.ID, &out.ProjectID, &out.Number, &out.Scope, &out.Position, &out.Title, &out.Kind, &out.ContentType, &out.Body,
 		&out.SourceFilename, &out.CreatedByID, &out.UpdatedByID, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
@@ -82,7 +85,7 @@ func scanProjectContext(row projectContextScanner) (model.ProjectContext, error)
 func scanProjectContextSummary(row projectContextScanner) (model.ProjectContextSummary, error) {
 	var out model.ProjectContextSummary
 	err := row.Scan(
-		&out.ID, &out.ProjectID, &out.Number, &out.Scope, &out.Title, &out.Kind, &out.ContentType,
+		&out.ID, &out.ProjectID, &out.Number, &out.Scope, &out.Position, &out.Title, &out.Kind, &out.ContentType,
 		&out.SourceFilename, &out.CreatedByID, &out.UpdatedByID, &out.LinkedIssueCount, &out.CreatedAt, &out.UpdatedAt,
 	)
 	if err != nil {
@@ -105,9 +108,9 @@ func projectContextKindOrDefault(kind model.ProjectContextKind) model.ProjectCon
 	return kind
 }
 
-func projectContextContentTypeOrDefault(contentType string) string {
+func projectContextContentTypeOrDefault(contentType, fallback string) string {
 	if contentType == "" {
-		return "text/plain; charset=utf-8"
+		return fallback
 	}
 	return contentType
 }
@@ -134,16 +137,24 @@ func (s *Store) CreateProjectContext(ctx context.Context, p CreateProjectContext
 			}
 			return err // defensive: DB outage past the no-rows branch
 		}
+		var position int64
+		if err := tx.QueryRow(ctx, `
+			SELECT COALESCE(MAX(position), 0) + 1
+			FROM project_context
+			WHERE project_id = $1 AND scope = 'project'
+		`, p.ProjectID).Scan(&position); err != nil {
+			return err
+		}
 
 		var err error
 		out, err = scanProjectContext(tx.QueryRow(ctx, `
 			INSERT INTO project_context (
-				project_id, number, scope, title, kind, content_type, body, source_filename, created_by_id, updated_by_id
+				project_id, number, scope, position, title, kind, content_type, body, source_filename, created_by_id, updated_by_id
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-			RETURNING id, project_id, number, scope, title, kind, content_type, body,
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+			RETURNING id, project_id, number, scope, position, title, kind, content_type, body,
 			          source_filename, created_by_id, updated_by_id, created_at, updated_at
-		`, p.ProjectID, number, string(projectContextScopeOrDefault(p.Scope)), p.Title, string(projectContextKindOrDefault(p.Kind)), projectContextContentTypeOrDefault(p.ContentType), p.Body, p.SourceFilename, p.CreatedByID))
+		`, p.ProjectID, number, string(projectContextScopeOrDefault(p.Scope)), position, p.Title, string(projectContextKindOrDefault(p.Kind)), projectContextContentTypeOrDefault(p.ContentType, "text/markdown; charset=utf-8"), p.Body, p.SourceFilename, p.CreatedByID))
 		if err != nil {
 			if mapped := mapProjectContextWriteError(err); mapped != nil {
 				return mapped
@@ -211,9 +222,9 @@ func (s *Store) CreateIssueContext(ctx context.Context, p CreateIssueContextPara
 				project_id, number, scope, title, kind, content_type, body, source_filename, created_by_id, updated_by_id
 			)
 			VALUES ($1, $2, 'issue', $3, $4, $5, $6, $7, $8, $8)
-			RETURNING id, project_id, number, scope, title, kind, content_type, body,
+			RETURNING id, project_id, number, scope, position, title, kind, content_type, body,
 			          source_filename, created_by_id, updated_by_id, created_at, updated_at
-		`, projectID, number, p.Title, string(projectContextKindOrDefault(p.Kind)), projectContextContentTypeOrDefault(p.ContentType), p.Body, p.SourceFilename, p.CreatedByID))
+		`, projectID, number, p.Title, string(projectContextKindOrDefault(p.Kind)), projectContextContentTypeOrDefault(p.ContentType, "text/plain; charset=utf-8"), p.Body, p.SourceFilename, p.CreatedByID))
 		if err != nil {
 			if mapped := mapProjectContextWriteError(err); mapped != nil {
 				return mapped
@@ -270,7 +281,7 @@ func (s *Store) CreateIssueContext(ctx context.Context, p CreateIssueContextPara
 
 func (s *Store) GetProjectContext(ctx context.Context, id uuid.UUID) (model.ProjectContext, error) {
 	const q = `
-		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 		       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 		FROM project_context pc
 		JOIN projects p ON p.id = pc.project_id
@@ -288,7 +299,7 @@ func (s *Store) GetProjectContext(ctx context.Context, id uuid.UUID) (model.Proj
 
 func (s *Store) GetProjectContextByProjectNumber(ctx context.Context, projectID uuid.UUID, number int) (model.ProjectContext, error) {
 	const q = `
-		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 		       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 		FROM project_context pc
 		JOIN projects p ON p.id = pc.project_id
@@ -310,7 +321,7 @@ func (s *Store) ListProjectContexts(ctx context.Context, p ListProjectContextsPa
 	}
 	args := []any{p.ProjectID}
 	q := `
-		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type,
+		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type,
 		       pc.source_filename, pc.created_by_id, pc.updated_by_id,
 		       COUNT(i.id)::INT AS linked_issue_count,
 		       pc.created_at, pc.updated_at
@@ -321,13 +332,13 @@ func (s *Store) ListProjectContexts(ctx context.Context, p ListProjectContextsPa
 		WHERE pc.project_id = $1 AND pc.scope = 'project' AND p.deleted_at IS NULL
 	`
 	if p.Cursor != nil {
-		args = append(args, p.Cursor.Number)
-		q += fmt.Sprintf(" AND pc.number > $%d", len(args))
+		args = append(args, p.Cursor.Position)
+		q += fmt.Sprintf(" AND pc.position > $%d", len(args))
 	}
 	args = append(args, p.Limit+1)
 	q += fmt.Sprintf(`
 		GROUP BY pc.id
-		ORDER BY pc.number ASC
+		ORDER BY pc.position ASC
 		LIMIT $%d
 	`, len(args))
 
@@ -359,7 +370,7 @@ func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContext
 	var out model.ProjectContext
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		before, err := scanProjectContext(tx.QueryRow(ctx, `
-			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 			FROM project_context pc
 			JOIN projects pr ON pr.id = pc.project_id
@@ -372,23 +383,88 @@ func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContext
 			}
 			return err
 		}
+		if p.Position != nil {
+			if before.Scope != model.ProjectContextScopeProject || before.Position == nil {
+				return fmt.Errorf("only project context can be positioned: %w", ErrConflict)
+			}
+			if _, err := tx.Exec(ctx, `SELECT id FROM projects WHERE id = $1 FOR UPDATE`, before.ProjectID); err != nil {
+				return err
+			}
+			var count int64
+			if err := tx.QueryRow(ctx, `
+				SELECT COUNT(*) FROM project_context WHERE project_id = $1 AND scope = 'project'
+			`, before.ProjectID).Scan(&count); err != nil {
+				return err
+			}
+			target := *p.Position
+			current := *before.Position
+			if target < 1 || target > count {
+				return fmt.Errorf("position must be between 1 and %d: %w", count, ErrConflict)
+			}
+			if target != current {
+				offset := count + 1
+				if _, err := tx.Exec(ctx, `UPDATE project_context SET position = $2 WHERE id = $1`, before.ID, count+offset+1); err != nil {
+					return err
+				}
+				if target < current {
+					if _, err := tx.Exec(ctx, `
+						UPDATE project_context SET position = position + $4
+						WHERE project_id = $1 AND scope = 'project' AND position >= $2 AND position < $3
+					`, before.ProjectID, target, current, offset); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, `
+						UPDATE project_context SET position = position - $4 + 1
+						WHERE project_id = $1 AND scope = 'project' AND position >= $2::bigint + $4::bigint AND position < $3::bigint + $4::bigint
+					`, before.ProjectID, target, current, offset); err != nil {
+						return err
+					}
+				} else {
+					if _, err := tx.Exec(ctx, `
+						UPDATE project_context SET position = position + $4
+						WHERE project_id = $1 AND scope = 'project' AND position > $2 AND position <= $3
+					`, before.ProjectID, current, target, offset); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, `
+						UPDATE project_context SET position = position - $4 - 1
+						WHERE project_id = $1 AND scope = 'project' AND position > $2::bigint + $4::bigint AND position <= $3::bigint + $4::bigint
+					`, before.ProjectID, current, target, offset); err != nil {
+						return err
+					}
+				}
+				if _, err := tx.Exec(ctx, `UPDATE project_context SET position = $2 WHERE id = $1`, before.ID, target); err != nil {
+					return err
+				}
+			}
+		}
 		out, err = scanProjectContext(tx.QueryRow(ctx, `
 			UPDATE project_context pc
 			SET title = COALESCE($2, title),
 			    body = COALESCE($3, body),
-			    updated_by_id = $4,
+			    content_type = COALESCE($4, content_type),
+			    updated_by_id = $5,
 			    updated_at = GREATEST(clock_timestamp(), pc.updated_at + interval '1 microsecond')
 			FROM projects pr
 			WHERE pc.id = $1 AND pr.id = pc.project_id AND pr.deleted_at IS NULL
-			RETURNING pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			RETURNING pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 			          pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
-		`, p.ID, p.Title, p.Body, p.UpdatedByID))
+		`, p.ID, p.Title, p.Body, p.ContentType, p.UpdatedByID))
 		if err != nil {
 			return err
 		}
 		changes := []model.ProjectChangelogChange{}
 		changes = changelogAppendChange(changes, "title", "Title", before.Title, out.Title)
 		changes = changelogAppendChange(changes, "body", "Body", changelogPreview(before.Body), changelogPreview(out.Body))
+		changes = changelogAppendChange(changes, "content_type", "Content type", before.ContentType, out.ContentType)
+		beforePosition, outPosition := "", ""
+		if before.Position != nil {
+			beforePosition = fmt.Sprint(*before.Position)
+		}
+		if out.Position != nil {
+			outPosition = fmt.Sprint(*out.Position)
+		}
+		changes = changelogAppendChange(changes, "position", "Position", beforePosition, outPosition)
 		if len(changes) == 0 {
 			return nil
 		}
@@ -418,7 +494,7 @@ func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContext
 func (s *Store) DeleteProjectContext(ctx context.Context, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		before, err := scanProjectContext(tx.QueryRow(ctx, `
-			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 			FROM project_context pc
 			JOIN projects pr ON pr.id = pc.project_id
@@ -431,12 +507,47 @@ func (s *Store) DeleteProjectContext(ctx context.Context, id uuid.UUID) error {
 			}
 			return err
 		}
+		var count int64
+		if before.Position != nil {
+			if _, err := tx.Exec(ctx, `SELECT id FROM projects WHERE id = $1 FOR UPDATE`, before.ProjectID); err != nil {
+				return err
+			}
+			if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM project_context WHERE project_id = $1 AND scope = 'project'`, before.ProjectID).Scan(&count); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE storage_objects so
+			SET deleted_at = now(),
+			    updated_at = GREATEST(clock_timestamp(), so.updated_at + interval '1 microsecond')
+			WHERE so.deleted_at IS NULL
+			  AND so.id IN (
+				SELECT ca.storage_object_id FROM context_attachments ca WHERE ca.context_id = $1
+			  )
+		`, id); err != nil {
+			return err
+		}
 		tag, err := tx.Exec(ctx, `DELETE FROM project_context WHERE id = $1`, id)
 		if err != nil {
 			return err // defensive: delete has no expected FK/check mapping
 		}
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
+		}
+		if before.Position != nil && *before.Position < count {
+			offset := count + 1
+			if _, err := tx.Exec(ctx, `
+				UPDATE project_context SET position = position + $3
+				WHERE project_id = $1 AND scope = 'project' AND position > $2
+			`, before.ProjectID, *before.Position, offset); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+				UPDATE project_context SET position = position - $3 - 1
+				WHERE project_id = $1 AND scope = 'project' AND position > $2::bigint + $3::bigint
+			`, before.ProjectID, *before.Position, offset); err != nil {
+				return err
+			}
 		}
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 			ProjectID:   before.ProjectID,
@@ -509,7 +620,7 @@ func (s *Store) CreateIssueContextLink(ctx context.Context, issueID, contextID u
 			return err
 		}
 		contextItem, err := scanProjectContext(tx.QueryRow(ctx, `
-			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 			FROM project_context pc
 			WHERE pc.id = $1
@@ -554,7 +665,7 @@ func (s *Store) DeleteIssueContextLink(ctx context.Context, issueID, contextID u
 			return err
 		}
 		contextItem, err := scanProjectContext(tx.QueryRow(ctx, `
-			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+			SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 			       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 			FROM project_context pc
 			WHERE pc.id = $1
@@ -592,7 +703,7 @@ func (s *Store) ListContextsForIssue(ctx context.Context, p ListContextsForIssue
 	}
 	args := []any{p.IssueID}
 	q := `
-		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.title, pc.kind, pc.content_type, pc.body,
+		SELECT pc.id, pc.project_id, pc.number, pc.scope, pc.position, pc.title, pc.kind, pc.content_type, pc.body,
 		       pc.source_filename, pc.created_by_id, pc.updated_by_id, pc.created_at, pc.updated_at
 		FROM issue_context_links icl
 		JOIN project_context pc ON pc.id = icl.context_id

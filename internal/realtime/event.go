@@ -31,6 +31,7 @@ const (
 	EntityAttachment        Entity = "issue_attachment"
 	EntitySprintAttachment  Entity = "sprint_attachment"
 	EntityProjectAttachment Entity = "project_attachment"
+	EntityContextAttachment Entity = "context_attachment"
 	EntityChangelog         Entity = "project_changelog"
 )
 
@@ -146,6 +147,15 @@ func (e Event) Topics() []string {
 			return []string{ProjectTopic(*e.ProjectID)}
 		}
 		return nil
+	case EntityContextAttachment:
+		topics := []string{}
+		if e.ContextID != nil {
+			topics = append(topics, ProjectContextTopic(*e.ContextID))
+		}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		return topics
 	case EntityChangelog:
 		topics := []string{ProjectChangelogTopic(e.ID)}
 		if e.ProjectID != nil {

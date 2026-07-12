@@ -234,14 +234,17 @@ type mcpContextInput struct {
 
 type mcpCreateProjectContextInput struct {
 	mcpProjectInput
-	Title string `json:"title"`
-	Body  string `json:"body"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	ContentType string `json:"content_type,omitempty"`
 }
 
 type mcpUpdateProjectContextInput struct {
 	mcpContextInput
-	Title *string `json:"title,omitempty"`
-	Body  *string `json:"body,omitempty"`
+	Title       *string `json:"title,omitempty"`
+	Body        *string `json:"body,omitempty"`
+	ContentType *string `json:"content_type,omitempty"`
+	Position    *int64  `json:"position,omitempty"`
 }
 
 type mcpCreateIssueContextInput struct {
@@ -255,6 +258,23 @@ type mcpCreateIssueContextInput struct {
 type mcpIssueContextInput struct {
 	mcpIssueInput
 	Context string `json:"context" jsonschema:"context ref, for example context-1"`
+}
+
+type mcpContextAttachmentInput struct {
+	mcpContextInput
+	Object string `json:"object" jsonschema:"object ref, for example object-1"`
+}
+
+type mcpCreateContextAttachmentInput struct {
+	mcpContextInput
+	Filename      string `json:"filename"`
+	ContentType   string `json:"content_type,omitempty"`
+	ContentBase64 string `json:"content_base64"`
+}
+
+type mcpContextAttachmentsPageInput struct {
+	mcpContextInput
+	mcpPageInput
 }
 
 type mcpObjectInput struct {
@@ -477,6 +497,10 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_get_project_context", "Get project context item.", readOnly, s.mcpGetProjectContext)
 	addMCPTool(srv, "track_update_project_context", "Update project context item.", write, s.mcpUpdateProjectContext)
 	addMCPTool(srv, "track_delete_project_context", "Delete project context item.", write, s.mcpDeleteProjectContext)
+	addMCPTool(srv, "track_create_project_context_attachment", "Upload and attach file to project context.", write, s.mcpCreateContextAttachment)
+	addMCPTool(srv, "track_list_project_context_attachments", "List files attached to project context.", readOnly, s.mcpListContextAttachments)
+	addMCPTool(srv, "track_read_project_context_attachment_content", "Read project context attachment content as base64.", readOnly, s.mcpReadContextAttachmentContent)
+	addMCPTool(srv, "track_delete_project_context_attachment", "Delete project context attachment and owned object.", write, s.mcpDeleteContextAttachment)
 	addMCPTool(srv, "track_create_issue_context", "Create issue-scoped context or link project context to issue.", write, s.mcpCreateIssueContext)
 	addMCPTool(srv, "track_list_issue_context", "List context items linked to issue.", readOnly, s.mcpListIssueContext)
 	addMCPTool(srv, "track_delete_issue_context", "Delete issue-context link.", write, s.mcpDeleteIssueContext)
@@ -2309,11 +2333,15 @@ func (s *Server) mcpCreateProjectContext(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, validationError(err.Error())
 	}
+	contentType, err := validateProjectContextContentType(input.ContentType, "text/markdown; charset=utf-8")
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
 	contextItem, err := s.store.CreateProjectContext(ctx, store.CreateProjectContextParams{
 		ProjectID:   project.ID,
 		Title:       title,
 		Kind:        model.ProjectContextKindText,
-		ContentType: "text/plain; charset=utf-8",
+		ContentType: contentType,
 		Body:        body,
 		CreatedByID: auth.User.ID,
 	})
@@ -2351,7 +2379,7 @@ func (s *Server) mcpListProjectContext(ctx context.Context, req *mcp.CallToolReq
 	var next *string
 	if hasMore {
 		last := contexts[len(contexts)-1]
-		enc := encodeCursor(store.ProjectContextsCursor{Number: last.Number})
+		enc := encodeCursor(store.ProjectContextsCursor{Position: *last.Position})
 		next = &enc
 	}
 	return mcpPageOut(contexts, next), nil
@@ -2394,10 +2422,23 @@ func (s *Server) mcpUpdateProjectContext(ctx context.Context, req *mcp.CallToolR
 		}
 		body = &b
 	}
+	var contentType *string
+	if input.ContentType != nil {
+		value, err := validateProjectContextContentType(*input.ContentType, "")
+		if err != nil {
+			return nil, validationError(err.Error())
+		}
+		contentType = &value
+	}
+	if input.Position != nil && *input.Position < 1 {
+		return nil, validationError("position must be at least 1")
+	}
 	updated, err := s.store.UpdateProjectContext(ctx, store.UpdateProjectContextParams{
 		ID:          contextItem.ID,
 		Title:       title,
 		Body:        body,
+		ContentType: contentType,
+		Position:    input.Position,
 		UpdatedByID: auth.User.ID,
 	})
 	if err != nil {
@@ -2415,7 +2456,110 @@ func (s *Server) mcpDeleteProjectContext(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, err
 	}
-	if err := s.store.DeleteProjectContext(ctx, contextItem.ID); err != nil {
+	if err := s.deleteProjectContextAndObjects(ctx, contextItem); err != nil {
+		return nil, err
+	}
+	return mcpOK(), nil
+}
+
+func (s *Server) mcpContextAttachment(ctx context.Context, auth authContext, input mcpContextAttachmentInput) (model.ProjectContext, model.ContextAttachment, error) {
+	_, contextItem, err := s.mcpContext(ctx, auth, input.mcpContextInput)
+	if err != nil {
+		return model.ProjectContext{}, model.ContextAttachment{}, err
+	}
+	number, err := mcpTypedRef(input.Object, "object")
+	if err != nil {
+		return model.ProjectContext{}, model.ContextAttachment{}, err
+	}
+	attachment, err := s.store.GetContextAttachmentByObjectNumber(ctx, contextItem.ID, number)
+	if err != nil {
+		return model.ProjectContext{}, model.ContextAttachment{}, err
+	}
+	return contextItem, attachment, nil
+}
+
+func (s *Server) mcpCreateContextAttachment(ctx context.Context, req *mcp.CallToolRequest, input mcpCreateContextAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, contextItem, err := s.mcpContext(ctx, auth, input.mcpContextInput)
+	if err != nil {
+		return nil, err
+	}
+	attachment, err := mcpCreateDescriptionAttachment(s, ctx, project.ID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.ContextAttachment, error) {
+		return s.store.CreateContextAttachment(ctx, store.CreateContextAttachmentParams{
+			ProjectID: project.ID, ContextID: contextItem.ID, StorageObjectID: object.ID, CreatedByID: auth.User.ID,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"attachment": attachment}, nil
+}
+
+func (s *Server) mcpListContextAttachments(ctx context.Context, req *mcp.CallToolRequest, input mcpContextAttachmentsPageInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	_, contextItem, err := s.mcpContext(ctx, auth, input.mcpContextInput)
+	if err != nil {
+		return nil, err
+	}
+	limit, err := mcpLimit(input.Limit)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	var cursor *store.ContextAttachmentsCursor
+	if input.Cursor != "" {
+		var value store.ContextAttachmentsCursor
+		if err := decodeCursor(input.Cursor, &value); err != nil {
+			return nil, validationError(err.Error())
+		}
+		cursor = &value
+	}
+	attachments, hasMore, err := s.store.ListContextAttachments(ctx, store.ListContextAttachmentsParams{ContextID: contextItem.ID, Cursor: cursor, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	var next *string
+	if hasMore {
+		last := attachments[len(attachments)-1]
+		encoded := encodeCursor(store.ContextAttachmentsCursor{Number: last.Object.Number})
+		next = &encoded
+	}
+	return mcpPageOut(attachments, next), nil
+}
+
+func (s *Server) mcpReadContextAttachmentContent(ctx context.Context, req *mcp.CallToolRequest, input mcpContextAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	_, attachment, err := s.mcpContextAttachment(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	data, err := s.mcpObjectContent(ctx, attachment.Object)
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"attachment": attachment, "content_base64": base64.StdEncoding.EncodeToString(data)}, nil
+}
+
+func (s *Server) mcpDeleteContextAttachment(ctx context.Context, req *mcp.CallToolRequest, input mcpContextAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	contextItem, attachment, err := s.mcpContextAttachment(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.ContextAttachment, error) {
+		return s.store.DeleteContextAttachment(ctx, contextItem.ID, attachment.StorageObjectID)
+	}, func(deleted model.ContextAttachment) string { return deleted.Object.ObjectKey }); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -2442,7 +2586,7 @@ func (s *Server) mcpCreateIssueContext(ctx context.Context, req *mcp.CallToolReq
 		if err != nil {
 			return nil, validationError(err.Error())
 		}
-		body, err := validateProjectContextBody(input.Body)
+		body, err := validateIssueContextBody(input.Body)
 		if err != nil {
 			return nil, validationError(err.Error())
 		}
@@ -2531,7 +2675,7 @@ func (s *Server) mcpDeleteIssueContext(ctx context.Context, req *mcp.CallToolReq
 		return nil, err
 	}
 	if contextItem.Scope == model.ProjectContextScopeIssue {
-		if err := s.store.DeleteProjectContext(ctx, contextItem.ID); err != nil {
+		if err := s.deleteProjectContextAndObjects(ctx, contextItem); err != nil {
 			return nil, err
 		}
 	}

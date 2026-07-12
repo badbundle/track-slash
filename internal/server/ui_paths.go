@@ -169,6 +169,10 @@ func uiProjectContextPath(project model.Project, contextItem any) string {
 	return uiProjectContextsPath(project) + "/" + uiProjectContextRef(contextItem)
 }
 
+func uiProjectContextPanelPath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/panel"
+}
+
 func uiProjectContextNewPath(project model.Project) string {
 	return uiProjectContextsPath(project) + "/new"
 }
@@ -179,6 +183,26 @@ func uiProjectContextEditPath(project model.Project, contextItem any) string {
 
 func uiProjectContextDeletePath(project model.Project, contextItem any) string {
 	return uiProjectContextPath(project, contextItem) + "/delete"
+}
+
+func uiProjectContextMoveUpPath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/move-up"
+}
+
+func uiProjectContextMoveDownPath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/move-down"
+}
+
+func uiProjectContextAttachmentsPath(project model.Project, contextItem any) string {
+	return uiProjectContextPath(project, contextItem) + "/attachments"
+}
+
+func uiProjectContextAttachmentContentPath(project model.Project, contextItem any, object any) string {
+	return uiProjectContextAttachmentsPath(project, contextItem) + "/" + uiStorageObjectRef(object) + "/content"
+}
+
+func uiProjectContextAttachmentDeletePath(project model.Project, contextItem any, object any) string {
+	return uiProjectContextAttachmentsPath(project, contextItem) + "/" + uiStorageObjectRef(object) + "/delete"
 }
 
 func uiProjectContextIssuesPath(project model.Project, contextItem any) string {

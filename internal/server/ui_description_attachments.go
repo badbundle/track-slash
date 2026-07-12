@@ -77,6 +77,66 @@ func uiProjectAttachmentListData(project model.Project, attachments []model.Proj
 	}
 }
 
+func uiContextAttachmentListData(panel *uiContextManagerData, editing bool) uiAttachmentListData {
+	items := make([]uiDescriptionAttachment, 0, len(panel.Attachments))
+	for _, attachment := range panel.Attachments {
+		base := uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext) + "/" + attachment.Object.Ref
+		items = append(items, uiDescriptionAttachmentForObject(
+			attachment.Object,
+			uiProjectContextAttachmentContentPath(panel.Project, panel.ActiveContext, attachment.Object),
+			uiProjectContextAttachmentDeletePath(panel.Project, panel.ActiveContext, attachment.Object),
+			base,
+		))
+	}
+	return uiAttachmentListData{
+		ID: "context-attachments-" + panel.ActiveContext.Ref, Items: items,
+		HasMore: panel.AttachmentsHasMore, Editing: editing,
+		UploadURL: uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext),
+	}
+}
+
+func uiContextEditor(panel *uiContextManagerData) uiDescriptionEditorData {
+	return uiDescriptionEditorData{
+		Name: "body", Source: panel.ContextEditBody, Rows: 12, Autofocus: false,
+		UploadURL:  uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext),
+		ListTarget: "#context-attachments-" + panel.ActiveContext.Ref, Placeholder: "Markdown",
+	}
+}
+
+func uiContextBody(panel *uiContextManagerData) uiDescriptionBodyData {
+	return uiDescriptionBodyData{Source: panel.ActiveContext.Body, HTML: panel.ActiveHTML, EmptyLabel: "No content yet."}
+}
+
+func uiIssueContextAttachmentListData(panel *uiIssuePanelData, editing bool) uiAttachmentListData {
+	items := make([]uiDescriptionAttachment, 0, len(panel.ContextAttachments))
+	for _, attachment := range panel.ContextAttachments {
+		base := uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext) + "/" + attachment.Object.Ref
+		items = append(items, uiDescriptionAttachmentForObject(
+			attachment.Object,
+			uiProjectContextAttachmentContentPath(panel.Project, panel.ActiveContext, attachment.Object),
+			uiProjectContextAttachmentDeletePath(panel.Project, panel.ActiveContext, attachment.Object),
+			base,
+		))
+	}
+	return uiAttachmentListData{
+		ID: "issue-context-attachments-" + panel.ActiveContext.Ref, Items: items,
+		HasMore: panel.ContextAttachmentsHasMore, Editing: editing,
+		UploadURL: uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext),
+	}
+}
+
+func uiIssueContextEditor(panel *uiIssuePanelData) uiDescriptionEditorData {
+	return uiDescriptionEditorData{
+		Name: "body", Source: panel.ContextEditBody, Rows: 7,
+		UploadURL:  uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext),
+		ListTarget: "#issue-context-attachments-" + panel.ActiveContext.Ref, Placeholder: "Markdown",
+	}
+}
+
+func uiIssueContextBody(panel *uiIssuePanelData) uiDescriptionBodyData {
+	return uiDescriptionBodyData{Source: panel.ActiveContext.Body, HTML: panel.ContextHTML, EmptyLabel: "No content yet."}
+}
+
 func uiIssueDescriptionEditor(panel *uiIssuePanelData) uiDescriptionEditorData {
 	return uiDescriptionEditorData{
 		Name:        "description",

@@ -19,6 +19,17 @@ func (s *Server) uiProjectContextPage(w http.ResponseWriter, r *http.Request) {
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
 }
 
+func (s *Server) uiViewProjectContext(w http.ResponseWriter, r *http.Request) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	s.renderUIProjectContextManager(w, r, project.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
+		panel.ActiveContextID = contextItem.ID
+	})
+}
+
 func (s *Server) uiNewProjectContext(w http.ResponseWriter, r *http.Request) {
 	project, ok := s.uiProjectFromRoute(w, r)
 	if !ok {
@@ -94,17 +105,21 @@ func (s *Server) uiCreateProjectContext(w http.ResponseWriter, r *http.Request) 
 			ProjectID:   project.ID,
 			Title:       title,
 			Kind:        model.ProjectContextKindText,
-			ContentType: "text/plain; charset=utf-8",
+			ContentType: "text/markdown; charset=utf-8",
 			Body:        body,
 		}
 	}
 	params.CreatedByID = currentUser(r).ID
-	if _, err := s.store.CreateProjectContext(r.Context(), params); err != nil {
+	created, err := s.store.CreateProjectContext(r.Context(), params)
+	if err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
-	s.renderUIProjectContextManager(w, r, project.ID, nil)
+	uiSetHXReplaceURL(w, r, uiProjectContextPath(project, created))
+	s.renderUIProjectContextManager(w, r, project.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
+		panel.ActiveContextID = created.ID
+	})
 }
 
 func (s *Server) uiEditProjectContext(w http.ResponseWriter, r *http.Request) {
@@ -159,8 +174,11 @@ func (s *Server) uiUpdateProjectContext(w http.ResponseWriter, r *http.Request) 
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
-	s.renderUIProjectContextManager(w, r, project.ID, nil)
+	uiSetHXReplaceURL(w, r, uiProjectContextPath(project, contextItem))
+	s.renderUIProjectContextManager(w, r, project.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
+		panel.ActiveContextID = contextItem.ID
+	})
 }
 
 func (s *Server) uiDeleteProjectContext(w http.ResponseWriter, r *http.Request) {
@@ -172,12 +190,54 @@ func (s *Server) uiDeleteProjectContext(w http.ResponseWriter, r *http.Request) 
 		writeUIStoreError(w, err)
 		return
 	}
-	if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+	if err := s.deleteProjectContextAndObjects(r.Context(), contextItem); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
 	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
 	s.renderUIProjectContextManager(w, r, project.ID, nil)
+}
+
+func (s *Server) uiMoveProjectContextUp(w http.ResponseWriter, r *http.Request) {
+	s.uiMoveProjectContext(w, r, -1)
+}
+
+func (s *Server) uiMoveProjectContextDown(w http.ResponseWriter, r *http.Request) {
+	s.uiMoveProjectContext(w, r, 1)
+}
+
+func (s *Server) uiMoveProjectContext(w http.ResponseWriter, r *http.Request, delta int64) {
+	project, contextItem, ok := s.uiProjectContextFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if contextItem.Position != nil {
+		target := *contextItem.Position + delta
+		if target >= 1 {
+			contexts, _, err := s.store.ListProjectContexts(r.Context(), store.ListProjectContextsParams{ProjectID: project.ID, Limit: MaxLimit})
+			if err != nil {
+				writeUIStoreError(w, err)
+				return
+			}
+			if target <= int64(len(contexts)) {
+				if _, err := s.store.UpdateProjectContext(r.Context(), store.UpdateProjectContextParams{
+					ID: contextItem.ID, Position: &target, UpdatedByID: currentUser(r).ID,
+				}); err != nil {
+					writeUIStoreError(w, err)
+					return
+				}
+			}
+		}
+	}
+	uiSetHXReplaceURL(w, r, uiProjectContextPath(project, contextItem))
+	s.renderUIProjectContextManager(w, r, project.ID, func(panel *uiContextManagerData) {
+		panel.Action = "view"
+		panel.ActiveContextID = contextItem.ID
+	})
 }
 
 func (s *Server) uiNewProjectContextIssueLink(w http.ResponseWriter, r *http.Request) {
@@ -227,8 +287,11 @@ func (s *Server) uiCreateProjectContextIssueLink(w http.ResponseWriter, r *http.
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
-	s.renderUIProjectContextManager(w, r, project.ID, nil)
+	uiSetHXReplaceURL(w, r, uiProjectContextPath(project, contextItem))
+	s.renderUIProjectContextManager(w, r, project.ID, func(panel *uiContextManagerData) {
+		panel.Action = "link"
+		panel.ActiveContextID = contextItem.ID
+	})
 }
 
 func (s *Server) uiDeleteProjectContextIssueLink(w http.ResponseWriter, r *http.Request) {
@@ -258,8 +321,11 @@ func (s *Server) uiDeleteProjectContextIssueLink(w http.ResponseWriter, r *http.
 		writeUIStoreError(w, err)
 		return
 	}
-	uiSetHXReplaceURL(w, r, uiProjectContextsPath(project))
-	s.renderUIProjectContextManager(w, r, project.ID, nil)
+	uiSetHXReplaceURL(w, r, uiProjectContextPath(project, contextItem))
+	s.renderUIProjectContextManager(w, r, project.ID, func(panel *uiContextManagerData) {
+		panel.Action = "link"
+		panel.ActiveContextID = contextItem.ID
+	})
 }
 
 func (s *Server) renderUIProjectContextManager(w http.ResponseWriter, r *http.Request, projectID uuid.UUID, mutate func(*uiContextManagerData)) {
@@ -271,7 +337,32 @@ func (s *Server) renderUIProjectContextManager(w http.ResponseWriter, r *http.Re
 	if mutate != nil {
 		mutate(panel)
 	}
-	s.renderUIContextManager(w, r, panel)
+	if err := s.uiHydrateProjectContextManager(r.Context(), panel); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	favorite, err := s.store.IsProjectFavorite(r.Context(), currentUser(r).ID, projectID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	projectPanel := &uiProjectPanelData{
+		Project: panel.Project, View: "context", Favorite: favorite,
+		ProjectTabs: uiProjectTabs(panel.Project, "context", nil), ContextManager: panel,
+	}
+	if isHTMXRequest(r) {
+		renderUITemplate(w, http.StatusOK, "project-panel", projectPanel)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		writeUIInternalError(w, "ui context visible projects", err)
+		return
+	}
+	s.renderUIShell(w, r, http.StatusOK, uiShellData{
+		User: currentUser(r), Projects: projects, CurrentProjectID: panel.Project.ID,
+		CurrentView: "projects", ProjectPanel: projectPanel,
+	})
 }
 
 func (s *Server) renderUIIssueContextManager(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, mutate func(*uiContextManagerData)) {
@@ -282,6 +373,26 @@ func (s *Server) renderUIIssueContextManager(w http.ResponseWriter, r *http.Requ
 	}
 	if mutate != nil {
 		mutate(panel)
+	}
+	if panel.ActiveContextID != uuid.Nil {
+		contextItem, err := s.store.GetProjectContext(r.Context(), panel.ActiveContextID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel.ActiveContext = contextItem
+		if contextItem.Scope == model.ProjectContextScopeProject {
+			attachments, hasMore, err := s.store.ListContextAttachments(r.Context(), store.ListContextAttachmentsParams{ContextID: contextItem.ID, Limit: MaxLimit})
+			if err != nil {
+				writeUIStoreError(w, err)
+				return
+			}
+			panel.Attachments = attachments
+			panel.AttachmentsHasMore = hasMore
+			if contextItem.ContentType == "text/markdown; charset=utf-8" {
+				panel.ActiveHTML = renderProjectContextMarkdown(panel.Project, contextItem, attachments)
+			}
+		}
 	}
 	s.renderUIContextManager(w, r, panel)
 }
@@ -337,12 +448,47 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 	return &uiContextManagerData{
 		Mode:      "project",
 		Project:   project,
-		BackHref:  uiProjectViewPath(project, "about"),
-		BackHXGet: uiProjectPanelPath(project, "about"),
-		BackLabel: "About",
+		BackHref:  uiProjectViewPath(project, "context"),
+		BackHXGet: uiProjectPanelPath(project, "context"),
+		BackLabel: "Context",
 		Items:     items,
 		HasMore:   hasMore,
 	}, nil
+}
+
+func (s *Server) uiHydrateProjectContextManager(ctx context.Context, panel *uiContextManagerData) error {
+	if panel.ActiveContextID == uuid.Nil && len(panel.Items) > 0 {
+		panel.ActiveContextID = panel.Items[0].ID
+		if panel.Action == "" {
+			panel.Action = "view"
+		}
+	}
+	if panel.ActiveContextID == uuid.Nil {
+		return nil
+	}
+	contextItem, err := s.store.GetProjectContext(ctx, panel.ActiveContextID)
+	if err != nil {
+		return err
+	}
+	if contextItem.ProjectID != panel.Project.ID || contextItem.Scope != model.ProjectContextScopeProject {
+		return store.ErrNotFound
+	}
+	attachments, hasMore, err := s.store.ListContextAttachments(ctx, store.ListContextAttachmentsParams{
+		ContextID: contextItem.ID, Limit: MaxLimit,
+	})
+	if err != nil {
+		return err
+	}
+	panel.ActiveContext = contextItem
+	panel.HasActiveContext = true
+	panel.Attachments = attachments
+	panel.AttachmentsHasMore = hasMore
+	if contextItem.ContentType == "text/markdown; charset=utf-8" {
+		panel.ActiveHTML = renderProjectContextMarkdown(panel.Project, contextItem, attachments)
+	} else {
+		panel.ActiveHTML = ""
+	}
+	return nil
 }
 
 func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request, issueID uuid.UUID) (*uiContextManagerData, error) {
@@ -406,6 +552,7 @@ func uiContextManagerItemFromSummary(contextItem model.ProjectContextSummary) ui
 		Ref:              contextItem.Ref,
 		Number:           contextItem.Number,
 		Scope:            contextItem.Scope,
+		Position:         contextItem.Position,
 		Title:            contextItem.Title,
 		ContentType:      contextItem.ContentType,
 		SourceFilename:   contextItem.SourceFilename,
@@ -420,6 +567,7 @@ func uiContextManagerItemFromContext(contextItem model.ProjectContext) uiContext
 		Ref:            contextItem.Ref,
 		Number:         contextItem.Number,
 		Scope:          contextItem.Scope,
+		Position:       contextItem.Position,
 		Title:          contextItem.Title,
 		ContentType:    contextItem.ContentType,
 		SourceFilename: contextItem.SourceFilename,

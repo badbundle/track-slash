@@ -253,6 +253,26 @@ func (s *Server) renderUIIssuePanelWithContextModal(w http.ResponseWriter, r *ht
 	if mutate != nil {
 		mutate(panel)
 	}
+	if panel.ActiveContextID != uuid.Nil {
+		contextItem, err := s.store.GetProjectContext(r.Context(), panel.ActiveContextID)
+		if err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		panel.ActiveContext = contextItem
+		if contextItem.Scope == model.ProjectContextScopeProject {
+			attachments, hasMore, err := s.store.ListContextAttachments(r.Context(), store.ListContextAttachmentsParams{ContextID: contextItem.ID, Limit: MaxLimit})
+			if err != nil {
+				writeUIStoreError(w, err)
+				return
+			}
+			panel.ContextAttachments = attachments
+			panel.ContextAttachmentsHasMore = hasMore
+			if contextItem.ContentType == "text/markdown; charset=utf-8" {
+				panel.ContextHTML = renderProjectContextMarkdown(panel.Project, contextItem, attachments)
+			}
+		}
+	}
 	s.renderUIIssuePanelResponse(w, r, panel)
 }
 

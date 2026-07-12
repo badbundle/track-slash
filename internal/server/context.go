@@ -21,13 +21,16 @@ const (
 )
 
 type createProjectContextReq struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	ContentType string `json:"content_type,omitempty"`
 }
 
 type updateProjectContextReq struct {
-	Title *string `json:"title,omitempty"`
-	Body  *string `json:"body,omitempty"`
+	Title       *string `json:"title,omitempty"`
+	Body        *string `json:"body,omitempty"`
+	ContentType *string `json:"content_type,omitempty"`
+	Position    *int64  `json:"position,omitempty"`
 }
 
 type createIssueContextReq struct {
@@ -99,7 +102,7 @@ func (s *Server) listProjectContexts(w http.ResponseWriter, r *http.Request) {
 	var next *string
 	if hasMore {
 		last := out[len(out)-1]
-		enc := encodeCursor(store.ProjectContextsCursor{Number: last.Number})
+		enc := encodeCursor(store.ProjectContextsCursor{Position: *last.Position})
 		next = &enc
 	}
 	writePage(w, out, next)
@@ -147,10 +150,25 @@ func (s *Server) updateProjectContext(w http.ResponseWriter, r *http.Request) {
 		}
 		body = &b
 	}
+	var contentType *string
+	if req.ContentType != nil {
+		value, err := validateProjectContextContentType(*req.ContentType, "")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		contentType = &value
+	}
+	if req.Position != nil && *req.Position < 1 {
+		writeError(w, http.StatusBadRequest, "position must be at least 1")
+		return
+	}
 	updated, err := s.store.UpdateProjectContext(r.Context(), store.UpdateProjectContextParams{
 		ID:          contextItem.ID,
 		Title:       title,
 		Body:        body,
+		ContentType: contentType,
+		Position:    req.Position,
 		UpdatedByID: currentUser(r).ID,
 	})
 	if err != nil {
@@ -168,7 +186,7 @@ func (s *Server) deleteProjectContext(w http.ResponseWriter, r *http.Request) {
 	if !s.requireProjectAccess(w, r, project.ID) {
 		return
 	}
-	if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+	if err := s.deleteProjectContextAndObjects(r.Context(), contextItem); err != nil {
 		writeStoreError(w, err)
 		return
 	}
@@ -231,6 +249,10 @@ func (s *Server) createIssueContext(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if _, err := validateIssueContextBody(upload.Body); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		created, err := s.store.CreateIssueContext(r.Context(), store.CreateIssueContextParams{
 			IssueID:        issue.ID,
 			Title:          upload.Title,
@@ -267,7 +289,7 @@ func (s *Server) createIssueContext(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		body, err := validateProjectContextBody(req.Body)
+		body, err := validateIssueContextBody(req.Body)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -330,7 +352,7 @@ func (s *Server) deleteIssueContextLink(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if contextItem.Scope == model.ProjectContextScopeIssue {
-		if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+		if err := s.deleteProjectContextAndObjects(r.Context(), contextItem); err != nil {
 			writeStoreError(w, err)
 			return
 		}
@@ -379,11 +401,16 @@ func (s *Server) projectContextCreateParams(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, err.Error())
 		return store.CreateProjectContextParams{}, false
 	}
+	contentTypeValue, err := validateProjectContextContentType(req.ContentType, "text/markdown; charset=utf-8")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return store.CreateProjectContextParams{}, false
+	}
 	return store.CreateProjectContextParams{
 		ProjectID:   projectID,
 		Title:       title,
 		Kind:        model.ProjectContextKindText,
-		ContentType: "text/plain; charset=utf-8",
+		ContentType: contentTypeValue,
 		Body:        body,
 	}, true
 }
@@ -468,8 +495,34 @@ func validateProjectContextBody(raw string) (string, error) {
 	if !utf8.ValidString(raw) {
 		return "", errors.New("body must be UTF-8 text")
 	}
-	if strings.TrimSpace(raw) == "" || len(raw) > maxProjectContextBodyLength {
-		return "", errors.New("body required, max 100000 chars")
+	if len(raw) > maxProjectContextBodyLength {
+		return "", errors.New("body max 100000 chars")
 	}
 	return raw, nil
+}
+
+func validateIssueContextBody(raw string) (string, error) {
+	body, err := validateProjectContextBody(raw)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(body) == "" {
+		return "", errors.New("body required, max 100000 chars")
+	}
+	return body, nil
+}
+
+func validateProjectContextContentType(raw, fallback string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		value = fallback
+	}
+	switch value {
+	case "text/plain", "text/plain; charset=utf-8":
+		return "text/plain; charset=utf-8", nil
+	case "text/markdown", "text/markdown; charset=utf-8":
+		return "text/markdown; charset=utf-8", nil
+	default:
+		return "", errors.New("content_type must be text/markdown or text/plain")
+	}
 }

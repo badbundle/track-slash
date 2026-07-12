@@ -731,4 +731,67 @@ func TestMCPAttachmentAndResourceRoundTrip(t *testing.T) {
 		"key":    e.projKey,
 		"object": projectAttachment.Object.Ref,
 	})
+
+	contextOut := mcpCall(t, e, session, "track_create_project_context", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "title": "Runbook", "body": "# Runbook",
+	})
+	contextItem := decodeMCPField[model.ProjectContext](t, contextOut, "context")
+	if contextItem.ContentType != "text/markdown; charset=utf-8" || contextItem.Position == nil || *contextItem.Position != 1 {
+		t.Fatalf("bad project context page: %+v", contextItem)
+	}
+	secondContextOut := mcpCall(t, e, session, "track_create_project_context", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "title": "Reference", "body": "",
+	})
+	secondContext := decodeMCPField[model.ProjectContext](t, secondContextOut, "context")
+	updatedContextOut := mcpCall(t, e, session, "track_update_project_context", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": contextItem.Ref,
+		"body": "Runbook text", "content_type": "text/plain", "position": 2,
+	})
+	contextItem = decodeMCPField[model.ProjectContext](t, updatedContextOut, "context")
+	if contextItem.Body != "Runbook text" || contextItem.ContentType != "text/plain; charset=utf-8" || contextItem.Position == nil || *contextItem.Position != 2 {
+		t.Fatalf("updated project context page: %+v", contextItem)
+	}
+	contextListPagesOut := mcpCall(t, e, session, "track_list_project_context", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey,
+	})
+	contextPages := decodeMCPField[[]model.ProjectContextSummary](t, contextListPagesOut, "items")
+	if len(contextPages) != 2 || contextPages[0].Ref != secondContext.Ref || contextPages[1].Ref != contextItem.Ref {
+		t.Fatalf("ordered MCP context pages = %+v", contextPages)
+	}
+	contextGetOut := mcpCall(t, e, session, "track_get_project_context", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": contextItem.Ref,
+	})
+	if got := decodeMCPField[model.ProjectContext](t, contextGetOut, "context"); got.ID != contextItem.ID || got.Body != "Runbook text" {
+		t.Fatalf("MCP project context get = %+v", got)
+	}
+	contextContent := []byte("context attachment")
+	contextAttachOut := mcpCall(t, e, session, "track_create_project_context_attachment", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": contextItem.Ref,
+		"filename": "runbook.txt", "content_type": "text/plain",
+		"content_base64": base64.StdEncoding.EncodeToString(contextContent),
+	})
+	contextAttachment := decodeMCPField[model.ContextAttachment](t, contextAttachOut, "attachment")
+	if contextAttachment.ContextID != contextItem.ID || contextAttachment.Object.Ref != "object-4" {
+		t.Fatalf("bad context attachment: %+v", contextAttachment)
+	}
+	contextListOut := mcpCall(t, e, session, "track_list_project_context_attachments", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": contextItem.Ref,
+	})
+	if items := decodeMCPField[[]model.ContextAttachment](t, contextListOut, "items"); len(items) != 1 || items[0].ID != contextAttachment.ID {
+		t.Fatalf("context attachment list = %+v", items)
+	}
+	readContextOut := mcpCall(t, e, session, "track_read_project_context_attachment_content", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": contextItem.Ref, "object": contextAttachment.Object.Ref,
+	})
+	encoded = decodeMCPField[string](t, readContextOut, "content_base64")
+	decoded, err = base64.StdEncoding.DecodeString(encoded)
+	if err != nil || string(decoded) != string(contextContent) {
+		t.Fatalf("context content = %q err=%v", decoded, err)
+	}
+	mcpCall(t, e, session, "track_delete_project_context_attachment", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": contextItem.Ref, "object": contextAttachment.Object.Ref,
+	})
+	mcpCall(t, e, session, "track_delete_project_context", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "context": secondContext.Ref,
+	})
 }

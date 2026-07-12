@@ -26,11 +26,8 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/about", token)
-	projectContextDetail := issueContextDetailBlock(t, body)
-	for _, want := range []string{`aria-label="Manage context"`, `href="` + e.projectPath() + `/context"`, ">0</span>"} {
-		if !strings.Contains(projectContextDetail, want) {
-			t.Fatalf("about context body missing %q: %s", want, body)
-		}
+	if strings.Contains(body, `aria-label="Manage context"`) || strings.Contains(body, ">Context</dt>") {
+		t.Fatalf("about should not render project context details: %s", body)
 	}
 	for _, notWant := range []string{`role="dialog" aria-modal="true"`, "No context.", "context items", `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`, `aria-label="Add context"`} {
 		if strings.Contains(body, notWant) {
@@ -39,14 +36,14 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 
 	body = e.uiGet(t, e.projectPath()+"/context", token)
-	for _, want := range []string{"Context", "No context.", `aria-label="Add context"`} {
+	for _, want := range []string{"Context", "No context pages yet.", `aria-label="New context page"`, "Create the first context page"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context manager missing %q: %s", want, body)
 		}
 	}
 
 	body = e.uiGet(t, e.projectPath()+"/context/new", token)
-	for _, want := range []string{"New context", "Upload text", `placeholder="Context"`, `name="file"`, `aria-label="Create context"`, `aria-label="Upload context"`} {
+	for _, want := range []string{"New Markdown page", "Import document", `placeholder="Markdown (optional)"`, `name="file"`, `aria-label="Create context page"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project context create manager missing %q: %s", want, body)
 		}
@@ -61,7 +58,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("bad upload code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"file must be .txt, .md, or .markdown", `aria-label="Upload context"`} {
+	for _, want := range []string{"file must be .txt, .md, or .markdown", "Import document"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("bad upload manager missing %q: %s", want, body)
 		}
@@ -80,19 +77,16 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("create context code = %d body = %s", res.StatusCode, body)
 	}
-	if replace := res.Header.Get("HX-Replace-Url"); replace != e.projectPath()+"/context" {
+	if replace := res.Header.Get("HX-Replace-Url"); replace != e.projectPath()+"/context/context-1" {
 		t.Fatalf("create context HX-Replace-Url = %q", replace)
 	}
 	if push := res.Header.Get("HX-Push-Url"); push != "" {
 		t.Fatalf("create context HX-Push-Url = %q, want empty", push)
 	}
-	for _, want := range []string{"Architecture", `aria-label="Link issue"`, `aria-label="Edit context"`, `aria-label="Delete context"`} {
+	for _, want := range []string{"Architecture", "Use the existing store path.", "text/markdown; charset=utf-8", `aria-label="Manage linked issues"`, `aria-label="Edit context page"`, `aria-label="Delete context page"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("created context body missing %q: %s", want, body)
 		}
-	}
-	if strings.Contains(body, "Use the existing store path.") || strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || strings.Contains(body, `font-mono`) {
-		t.Fatalf("created context row should stay compact: %s", body)
 	}
 	contextPath := e.projectPath() + "/context/context-1"
 
@@ -149,8 +143,8 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("project link context code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, `aria-label="Link issue"`) || strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || !strings.Contains(body, `>1</span>`) {
-		t.Fatalf("project link context response should return compact context row: %s", body)
+	if !strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || !strings.Contains(body, `>1</span>`) {
+		t.Fatalf("project link context response should keep the selected page and link manager: %s", body)
 	}
 	body = e.uiGet(t, contextPath+"/issues/new", token)
 	if !strings.Contains(body, issue.Identifier) || !strings.Contains(body, `aria-label="Unlink issue"`) {
@@ -177,7 +171,7 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("update context code = %d body = %s", res.StatusCode, body)
 	}
-	if replace := res.Header.Get("HX-Replace-Url"); replace != e.projectPath()+"/context" {
+	if replace := res.Header.Get("HX-Replace-Url"); replace != contextPath {
 		t.Fatalf("update context HX-Replace-Url = %q", replace)
 	}
 	if push := res.Header.Get("HX-Push-Url"); push != "" {
@@ -186,8 +180,8 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	if !strings.Contains(body, "Architecture v2") {
 		t.Fatalf("updated context body missing title: %s", body)
 	}
-	if strings.Contains(body, "Use the updated store path.") {
-		t.Fatalf("updated context row should not show body preview: %s", body)
+	if !strings.Contains(body, "Use the updated store path.") {
+		t.Fatalf("updated selected context should show the page body: %s", body)
 	}
 
 	issueBody := e.uiGet(t, e.issuePath(issue), token)

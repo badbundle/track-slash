@@ -66,7 +66,7 @@ func (s *Server) uiCreateIssueContextLink(w http.ResponseWriter, r *http.Request
 			})
 			return
 		}
-		body, err := validateProjectContextBody(bodyInput)
+		body, err := validateIssueContextBody(bodyInput)
 		if err != nil {
 			s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
 				panel.ContextAction = "create"
@@ -215,15 +215,21 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	body, err := validateProjectContextBody(bodyInput)
-	if err != nil {
+	var body string
+	var bodyErr error
+	if contextItem.Scope == model.ProjectContextScopeProject {
+		body, bodyErr = validateProjectContextBody(bodyInput)
+	} else {
+		body, bodyErr = validateIssueContextBody(bodyInput)
+	}
+	if bodyErr != nil {
 		s.renderUIIssuePanelWithContextModal(w, r, issue.ID, func(panel *uiIssuePanelData) {
 			panel.ContextAction = "edit"
 			panel.ActiveContextID = contextItem.ID
 			panel.ActiveContext = contextItem
 			panel.ContextEditTitle = titleInput
 			panel.ContextEditBody = bodyInput
-			panel.ContextEditError = err.Error()
+			panel.ContextEditError = bodyErr.Error()
 		})
 		return
 	}
@@ -287,7 +293,7 @@ func (s *Server) uiDeleteIssueContextLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if contextItem.Scope == model.ProjectContextScopeIssue {
-		if err := s.store.DeleteProjectContext(r.Context(), contextItem.ID); err != nil {
+		if err := s.deleteProjectContextAndObjects(r.Context(), contextItem); err != nil {
 			writeUIStoreError(w, err)
 			return
 		}
