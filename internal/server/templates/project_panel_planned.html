@@ -31,7 +31,7 @@
             </div>
           </div>
           <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
-            <textarea name="goal" rows="4" class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.NewSprintForm.GoalInput}}</textarea>
+            {{template "description-editor" (newSprintDescriptionEditor .NewSprintForm.GoalInput)}}
           </label>
           {{if .NewSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.NewSprintForm.Error}}</p>{{end}}
           <div class="flex flex-wrap items-center gap-2">
@@ -64,7 +64,7 @@
                 {{template "count-badge" (len $item.Issues)}}
               </div>
               {{with sprintDateRange $item.Sprint}}<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
-              {{if $item.Sprint.Goal}}<p class="mt-2 line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{{$item.Sprint.Goal}}</p>{{end}}
+              {{template "planned-sprint-description" $item}}
             </div>
             <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
@@ -113,8 +113,9 @@
               </div>
             </div>
             <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Description
-              <textarea name="goal" rows="4" class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{$.PlannedSprintForm.GoalInput}}</textarea>
+              {{template "description-editor" (sprintDescriptionEditor $.Project $item.Sprint $.PlannedSprintForm.GoalInput false)}}
             </label>
+            {{template "description-attachment-list" (sprintAttachmentListData $.Project $item.Sprint $.PlannedSprintAttachments $.PlannedSprintAttachmentsHasMore true)}}
             {{if $.PlannedSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{$.PlannedSprintForm.Error}}</p>{{end}}
             <div class="flex flex-wrap items-center gap-2">
               <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
@@ -170,4 +171,19 @@
       {{end}}
     </div>
   </section>
+{{end}}
+
+{{define "planned-sprint-description"}}
+<div id="planned-sprint-{{.Sprint.Ref}}-description" class="mt-2 max-w-3xl">
+  {{if .DescriptionExpanded}}
+    {{template "description-body" (sprintDescriptionBody .Sprint .DescriptionHTML)}}
+    {{template "description-attachment-list" (sprintAttachmentListData .Project .Sprint .Attachments .AttachmentsHasMore false)}}
+    <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=0" hx-target="#planned-sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-2 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See less</button>
+  {{else}}
+    {{if .Sprint.Goal}}<p class="line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-slate-600 dark:text-slate-300">{{.Sprint.Goal}}</p>{{end}}
+    {{if or .Sprint.Goal .AttachmentCount}}
+    <button type="button" hx-get="{{projectSprintDescription .Project .Sprint}}?expanded=1" hx-target="#planned-sprint-{{.Sprint.Ref}}-description" hx-swap="outerHTML" hx-push-url="false" class="mt-1 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-300 dark:hover:text-indigo-200">See more</button>
+    {{end}}
+  {{end}}
+</div>
 {{end}}

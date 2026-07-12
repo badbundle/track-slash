@@ -74,9 +74,15 @@ type uiIssueColumn struct {
 }
 
 type uiPlannedSprint struct {
-	Sprint  model.Sprint
-	Issues  []model.Issue
-	HasMore bool
+	Project             model.Project
+	Sprint              model.Sprint
+	Issues              []model.Issue
+	HasMore             bool
+	AttachmentCount     int
+	DescriptionExpanded bool
+	DescriptionHTML     template.HTML
+	Attachments         []model.SprintAttachment
+	AttachmentsHasMore  bool
 }
 
 type uiSprintFormData struct {
@@ -85,6 +91,40 @@ type uiSprintFormData struct {
 	StartDateInput string
 	EndDateInput   string
 	Error          string
+}
+
+type uiDescriptionAttachment struct {
+	Object         model.StorageObject
+	ContentHref    string
+	InlineHref     string
+	DeleteHref     string
+	DeleteJSONHref string
+	Markdown       string
+	InlineImage    bool
+}
+
+type uiAttachmentListData struct {
+	ID        string
+	Items     []uiDescriptionAttachment
+	HasMore   bool
+	Editing   bool
+	UploadURL string
+}
+
+type uiDescriptionEditorData struct {
+	Name        string
+	Source      string
+	Rows        int
+	Autofocus   bool
+	UploadURL   string
+	ListTarget  string
+	Placeholder string
+}
+
+type uiDescriptionBodyData struct {
+	Source     string
+	HTML       template.HTML
+	EmptyLabel string
 }
 
 type uiSprintIssueFormData struct {
@@ -341,46 +381,51 @@ type uiWorkPanelData struct {
 }
 
 type uiProjectPanelData struct {
-	Project                 model.Project
-	View                    string
-	Favorite                bool
-	ProjectTabs             uiTabBarData
-	EditProjectName         bool
-	ProjectNameInput        string
-	ProjectNameError        string
-	EditProjectDescription  bool
-	ProjectDescriptionInput string
-	ProjectDescriptionError string
-	ProjectDescriptionHTML  template.HTML
-	AssigneeFilters         []uiAssigneeFilterItem
-	AssigneeFilterActive    bool
-	ClearAssigneeHref       string
-	ClearAssigneeHXGet      string
-	ClearAssigneeHXPush     string
-	ActiveSprint            *model.Sprint
-	ActiveSprintAction      string
-	ActiveSprintForm        uiSprintFormData
-	ActiveSprintIssueForm   uiSprintIssueFormData
-	SprintColumns           []uiIssueColumn
-	SprintControls          uiIssueControlsData
-	PlannedSprints          []uiPlannedSprint
-	NewSprint               bool
-	NewSprintForm           uiSprintFormData
-	PlannedSprintActionID   uuid.UUID
-	PlannedSprintAction     string
-	PlannedSprintForm       uiSprintFormData
-	PlannedSprintIssueForm  uiSprintIssueFormData
-	AllIssues               []model.Issue
-	AllIssuePage            uiProjectAllIssuePageData
-	AllControls             uiIssueControlsData
-	ChangelogPage           uiProjectChangelogPageData
-	ProjectStats            model.ProjectStats
-	Tags                    []model.IssueTag
-	ContextItems            []uiProjectContextItem
-	ContextHasMore          bool
-	DeleteNotice            *uiIssueDeleteNotice
-	SprintIssuesHasMore     bool
-	PlannedHasMore          bool
+	Project                         model.Project
+	View                            string
+	Favorite                        bool
+	ProjectTabs                     uiTabBarData
+	EditProjectName                 bool
+	ProjectNameInput                string
+	ProjectNameError                string
+	EditProjectDescription          bool
+	ProjectDescriptionInput         string
+	ProjectDescriptionError         string
+	ProjectDescriptionHTML          template.HTML
+	AssigneeFilters                 []uiAssigneeFilterItem
+	AssigneeFilterActive            bool
+	ClearAssigneeHref               string
+	ClearAssigneeHXGet              string
+	ClearAssigneeHXPush             string
+	ActiveSprint                    *model.Sprint
+	ActiveSprintDescriptionHTML     template.HTML
+	ActiveSprintAttachments         []model.SprintAttachment
+	ActiveSprintAttachmentsHasMore  bool
+	ActiveSprintAction              string
+	ActiveSprintForm                uiSprintFormData
+	ActiveSprintIssueForm           uiSprintIssueFormData
+	SprintColumns                   []uiIssueColumn
+	SprintControls                  uiIssueControlsData
+	PlannedSprints                  []uiPlannedSprint
+	NewSprint                       bool
+	NewSprintForm                   uiSprintFormData
+	PlannedSprintActionID           uuid.UUID
+	PlannedSprintAction             string
+	PlannedSprintForm               uiSprintFormData
+	PlannedSprintIssueForm          uiSprintIssueFormData
+	PlannedSprintAttachments        []model.SprintAttachment
+	PlannedSprintAttachmentsHasMore bool
+	AllIssues                       []model.Issue
+	AllIssuePage                    uiProjectAllIssuePageData
+	AllControls                     uiIssueControlsData
+	ChangelogPage                   uiProjectChangelogPageData
+	ProjectStats                    model.ProjectStats
+	Tags                            []model.IssueTag
+	ContextItems                    []uiProjectContextItem
+	ContextHasMore                  bool
+	DeleteNotice                    *uiIssueDeleteNotice
+	SprintIssuesHasMore             bool
+	PlannedHasMore                  bool
 }
 
 const uiIssueListDefaultSort = store.ListIssuesSortUpdated

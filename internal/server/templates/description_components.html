@@ -1,0 +1,56 @@
+{{define "description-editor"}}
+<textarea name="{{.Name}}" rows="{{.Rows}}" {{if .Autofocus}}autofocus{{end}} data-submit-shortcut="meta-enter" {{if .UploadURL}}data-attachment-dropzone data-attachment-upload-url="{{.UploadURL}}" data-attachment-list="{{.ListTarget}}"{{end}} placeholder="{{.Placeholder}}" class="mt-3 min-h-40 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">{{.Source}}</textarea>
+{{if .UploadURL}}<div data-attachment-status class="mt-2 hidden rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200"></div>{{end}}
+{{end}}
+
+{{define "description-body"}}
+{{if .Source}}
+<div class="markdown-body mt-3 text-sm leading-6 text-slate-800 dark:text-slate-200">{{if .HTML}}{{.HTML}}{{else}}{{.Source}}{{end}}</div>
+{{else if .EmptyLabel}}
+<div class="mt-3 rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">{{.EmptyLabel}}</div>
+{{end}}
+{{end}}
+
+{{define "description-attachment-list"}}
+{{if or .Items .Editing}}
+<div id="{{.ID}}" data-attachment-list {{if .Editing}}data-attachment-editing="true"{{end}} class="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800 {{if not .Items}}hidden{{end}}">
+  <div class="flex min-w-0 flex-wrap items-center gap-2">
+    <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Attachments</h3>
+    <span data-attachment-count class="inline-flex shrink-0 items-center rounded-md border border-slate-200 px-2 py-0.5 text-xs font-medium leading-4 text-slate-500 dark:border-slate-700 dark:text-slate-400">{{len .Items}}</span>
+    {{if .HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
+  </div>
+  <div data-attachment-rows class="mt-2 grid gap-2">
+    {{range .Items}}
+    <div data-attachment-ref="{{.Object.Ref}}" class="flex min-w-0 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-800 dark:bg-slate-950/60">
+      {{if .InlineImage}}
+      <a href="{{.ContentHref}}" class="block h-12 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+        <img src="{{.InlineHref}}" alt="" loading="lazy" class="h-full w-full object-cover">
+      </a>
+      {{else}}
+      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+        <i data-lucide="paperclip" class="h-4 w-4" aria-hidden="true"></i>
+      </span>
+      {{end}}
+      <div class="min-w-0 flex-1">
+        <a href="{{.ContentHref}}" class="block truncate font-medium text-slate-700 hover:text-indigo-700 dark:text-slate-200 dark:hover:text-indigo-200">{{.Object.Filename}}</a>
+        <div class="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+          <span class="shrink-0 text-[11px] text-slate-500 dark:text-slate-400">{{byteSize .Object.ByteSize}}</span>
+          <code class="truncate rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-900 dark:text-slate-400">{{.Object.Ref}}</code>
+        </div>
+      </div>
+      <button type="button" data-attachment-copy-markdown data-markdown="{{.Markdown}}" aria-label="Copy attachment Markdown" class="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="copy" class="h-3.5 w-3.5" aria-hidden="true"></i>
+        <span data-copy-label class="hidden text-[11px] font-medium sm:inline">Markdown</span>
+      </button>
+      <a href="{{.ContentHref}}" aria-label="Download attachment" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
+      </a>
+      <button type="button" data-attachment-remove data-attachment-delete-url="{{.DeleteJSONHref}}" aria-label="Remove attachment" hx-post="{{.DeleteHref}}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+        <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+      </button>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}
+{{end}}

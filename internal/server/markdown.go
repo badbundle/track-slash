@@ -27,21 +27,41 @@ type markdownRenderer struct {
 }
 
 func renderIssueDescriptionMarkdown(issue model.Issue, attachments []model.IssueAttachment) template.HTML {
-	targets := make(map[string]markdownTarget, len(attachments))
+	objects := make([]model.StorageObject, 0, len(attachments))
 	for _, attachment := range attachments {
-		href := uiIssueAttachmentContentPath(issue, attachment.Object)
-		target := markdownTarget{downloadHref: href}
-		if storageObjectSafeInlineImage(attachment.Object) {
-			target.inlineHref = href + "?inline=1"
-			target.inlineImage = true
-		}
-		targets[attachment.Object.Ref] = target
+		objects = append(objects, attachment.Object)
 	}
-	return renderMarkdown(issue.Description, targets)
+	return renderDescriptionMarkdown(issue.Description, objects, func(object model.StorageObject) string {
+		return uiIssueAttachmentContentPath(issue, object)
+	})
+}
+
+func renderSprintDescriptionMarkdown(project model.Project, sprint model.Sprint, attachments []model.SprintAttachment) template.HTML {
+	objects := make([]model.StorageObject, 0, len(attachments))
+	for _, attachment := range attachments {
+		objects = append(objects, attachment.Object)
+	}
+	return renderDescriptionMarkdown(sprint.Goal, objects, func(object model.StorageObject) string {
+		return uiProjectSprintAttachmentContentPath(project, sprint, object)
+	})
 }
 
 func renderProjectDescriptionMarkdown(project model.Project) template.HTML {
 	return renderMarkdown(project.Description, nil)
+}
+
+func renderDescriptionMarkdown(source string, objects []model.StorageObject, contentHref func(model.StorageObject) string) template.HTML {
+	targets := make(map[string]markdownTarget, len(objects))
+	for _, object := range objects {
+		href := contentHref(object)
+		target := markdownTarget{downloadHref: href}
+		if storageObjectSafeInlineImage(object) {
+			target.inlineHref = href + "?inline=1"
+			target.inlineImage = true
+		}
+		targets[object.Ref] = target
+	}
+	return renderMarkdown(source, targets)
 }
 
 func renderMarkdown(source string, targets map[string]markdownTarget) template.HTML {

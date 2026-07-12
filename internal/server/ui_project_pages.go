@@ -493,6 +493,16 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return panel, nil
 		}
 		panel.ActiveSprint = &activeSprints[0]
+		activeAttachments, activeAttachmentsHasMore, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
+			SprintID: panel.ActiveSprint.ID,
+			Limit:    MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		panel.ActiveSprintAttachments = activeAttachments
+		panel.ActiveSprintAttachmentsHasMore = activeAttachmentsHasMore
+		panel.ActiveSprintDescriptionHTML = renderSprintDescriptionMarkdown(project, *panel.ActiveSprint, activeAttachments)
 		sprintIssues, sprintHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
 			ProjectID:   projectID,
 			Statuses:    sprintQuery.Statuses,
@@ -529,6 +539,14 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.PlannedHasMore = plannedHasMore
+		plannedIDs := make([]uuid.UUID, 0, len(planned))
+		for _, sprint := range planned {
+			plannedIDs = append(plannedIDs, sprint.ID)
+		}
+		attachmentCounts, err := s.store.CountSprintAttachments(ctx, plannedIDs)
+		if err != nil {
+			return nil, err
+		}
 		panel.PlannedSprints = make([]uiPlannedSprint, 0, len(planned))
 		for _, sprint := range planned {
 			issues, issuesHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
@@ -540,9 +558,11 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 				return nil, err
 			}
 			panel.PlannedSprints = append(panel.PlannedSprints, uiPlannedSprint{
-				Sprint:  sprint,
-				Issues:  issues,
-				HasMore: issuesHasMore,
+				Project:         project,
+				Sprint:          sprint,
+				Issues:          issues,
+				HasMore:         issuesHasMore,
+				AttachmentCount: attachmentCounts[sprint.ID],
 			})
 		}
 	case "all":

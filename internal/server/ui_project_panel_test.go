@@ -628,7 +628,7 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"#Sprint Visible",
 		"border-green-200 bg-green-50 text-green-700",
 		"Progress count issue",
-		"whitespace-pre-wrap",
+		"markdown-body",
 		`href="/bradley/projects/TRACK/sprint?assignee_id=23f14acb-6a57-4035-a046-33e93ffbd5bb"`,
 		`hx-get="/bradley/projects/TRACK/planned/panel"`,
 		`hx-get="/bradley/projects/TRACK/all/panel"`,

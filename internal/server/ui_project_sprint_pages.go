@@ -149,9 +149,46 @@ func (s *Server) uiEditProjectSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := uiProjectSprintView(sprint)
+	attachments, attachmentsHasMore, err := s.store.ListSprintAttachments(r.Context(), store.ListSprintAttachmentsParams{SprintID: sprint.ID, Limit: MaxLimit})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
 	s.renderUIProjectPanel(w, r, project.ID, view, func(panel *uiProjectPanelData) {
 		uiMarkSprintEdit(panel, sprint, uiSprintFormFor(sprint))
+		if sprint.Status == model.SprintStatusPlanned {
+			panel.PlannedSprintAttachments = attachments
+			panel.PlannedSprintAttachmentsHasMore = attachmentsHasMore
+		}
 	})
+}
+
+func (s *Server) uiProjectSprintDescription(w http.ResponseWriter, r *http.Request) {
+	project, sprint, ok := s.uiProjectSprintFromRoute(w, r)
+	if !ok {
+		return
+	}
+	attachments, hasMore, err := s.store.ListSprintAttachments(r.Context(), store.ListSprintAttachmentsParams{
+		SprintID: sprint.ID,
+		Limit:    MaxLimit,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	expanded := r.URL.Query().Get("expanded") != "0"
+	item := uiPlannedSprint{
+		Project:             project,
+		Sprint:              sprint,
+		AttachmentCount:     len(attachments),
+		DescriptionExpanded: expanded,
+	}
+	if expanded {
+		item.DescriptionHTML = renderSprintDescriptionMarkdown(project, sprint, attachments)
+		item.Attachments = attachments
+		item.AttachmentsHasMore = hasMore
+	}
+	renderUITemplate(w, http.StatusOK, "planned-sprint-description", item)
 }
 
 func (s *Server) uiUpdateProjectSprint(w http.ResponseWriter, r *http.Request) {

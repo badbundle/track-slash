@@ -640,4 +640,60 @@ func TestMCPAttachmentAndResourceRoundTrip(t *testing.T) {
 	if len(res.Contents) != 1 || string(res.Contents[0].Blob) != string(content) {
 		t.Fatalf("resource contents = %+v, want %q", res.Contents, content)
 	}
+
+	sprintOut := mcpCall(t, e, session, "track_create_sprint", map[string]any{
+		"owner": e.ownerUsername,
+		"key":   e.projKey,
+		"name":  "Attachment sprint",
+		"goal":  "Attach the plan",
+	})
+	sprint := decodeMCPField[model.Sprint](t, sprintOut, "sprint")
+	sprintContent := []byte("sprint attachment content")
+	sprintAttachOut := mcpCall(t, e, session, "track_create_sprint_attachment", map[string]any{
+		"owner":          e.ownerUsername,
+		"key":            e.projKey,
+		"sprint":         sprint.Ref,
+		"filename":       "plan.txt",
+		"content_type":   "text/plain",
+		"content_base64": base64.StdEncoding.EncodeToString(sprintContent),
+	})
+	sprintAttachment := decodeMCPField[model.SprintAttachment](t, sprintAttachOut, "attachment")
+	if sprintAttachment.SprintID != sprint.ID || sprintAttachment.Object.Ref != "object-2" {
+		t.Fatalf("bad sprint attachment: %+v", sprintAttachment)
+	}
+
+	listOut := mcpCall(t, e, session, "track_list_sprint_attachments", map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"sprint": sprint.Ref,
+	})
+	if items := decodeMCPField[[]model.SprintAttachment](t, listOut, "items"); len(items) != 1 || items[0].ID != sprintAttachment.ID {
+		t.Fatalf("sprint attachment list = %+v", items)
+	}
+
+	readSprintOut := mcpCall(t, e, session, "track_read_sprint_attachment_content", map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"sprint": sprint.Ref,
+		"object": sprintAttachment.Object.Ref,
+	})
+	encoded = decodeMCPField[string](t, readSprintOut, "content_base64")
+	decoded, err = base64.StdEncoding.DecodeString(encoded)
+	if err != nil || string(decoded) != string(sprintContent) {
+		t.Fatalf("sprint content = %q err=%v", decoded, err)
+	}
+
+	res, err = session.ReadResource(e.ctx, &mcp.ReadResourceParams{
+		URI: "track://sprint-attachment-content/" + e.ownerUsername + "/" + e.projKey + "/" + sprint.Ref + "/" + sprintAttachment.Object.Ref,
+	})
+	if err != nil || len(res.Contents) != 1 || string(res.Contents[0].Blob) != string(sprintContent) {
+		t.Fatalf("sprint resource contents = %+v err=%v", res, err)
+	}
+
+	mcpCall(t, e, session, "track_delete_sprint_attachment", map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"sprint": sprint.Ref,
+		"object": sprintAttachment.Object.Ref,
+	})
 }

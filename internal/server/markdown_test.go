@@ -154,6 +154,38 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 	}
 }
 
+func TestRenderSprintDescriptionMarkdownResolvesOnlySprintAttachments(t *testing.T) {
+	t.Parallel()
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK"}
+	sprintID := uuid.New()
+	sprint := model.Sprint{
+		ID:   sprintID,
+		Ref:  "sprint-4",
+		Goal: "![Sprint image](object-4)\n\n![Missing](object-5)",
+	}
+	objectID := uuid.New()
+	attachments := []model.SprintAttachment{{
+		ID:              uuid.New(),
+		SprintID:        sprintID,
+		StorageObjectID: objectID,
+		Object: model.StorageObject{
+			ID:          objectID,
+			Number:      4,
+			Ref:         "object-4",
+			Filename:    "sprint.png",
+			ContentType: "image/png",
+		},
+	}}
+
+	out := string(renderSprintDescriptionMarkdown(project, sprint, attachments))
+	if !strings.Contains(out, `<img src="/bradley/projects/TRACK/sprints/sprint-4/attachments/object-4/content?inline=1" alt="Sprint image">`) {
+		t.Fatalf("sprint markdown missing attached image: %s", out)
+	}
+	if strings.Contains(out, "object-5/content") || !strings.Contains(out, "Missing") {
+		t.Fatalf("sprint markdown resolved missing attachment: %s", out)
+	}
+}
+
 func testMarkdownAttachment(projectID, issueID uuid.UUID, number int, filename, contentType string) model.IssueAttachment {
 	now := time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC)
 	objectID := uuid.New()

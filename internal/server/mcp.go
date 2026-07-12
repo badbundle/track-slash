@@ -281,6 +281,23 @@ type mcpCreateAttachmentInput struct {
 	ContentBase64 string `json:"content_base64"`
 }
 
+type mcpSprintAttachmentInput struct {
+	mcpSprintInput
+	Object string `json:"object" jsonschema:"object ref, for example object-1"`
+}
+
+type mcpCreateSprintAttachmentInput struct {
+	mcpSprintInput
+	Filename      string `json:"filename"`
+	ContentType   string `json:"content_type,omitempty"`
+	ContentBase64 string `json:"content_base64"`
+}
+
+type mcpSprintAttachmentsPageInput struct {
+	mcpSprintInput
+	mcpPageInput
+}
+
 type mcpMemberInput struct {
 	mcpProjectInput
 	Username string `json:"username"`
@@ -466,6 +483,10 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_attachments", "List issue attachments.", readOnly, s.mcpListAttachments)
 	addMCPTool(srv, "track_read_attachment_content", "Read issue attachment content as base64.", readOnly, s.mcpReadAttachmentContent)
 	addMCPTool(srv, "track_delete_attachment", "Delete issue attachment and owned object.", write, s.mcpDeleteAttachment)
+	addMCPTool(srv, "track_create_sprint_attachment", "Upload and attach file to sprint from base64 content.", write, s.mcpCreateSprintAttachment)
+	addMCPTool(srv, "track_list_sprint_attachments", "List sprint attachments.", readOnly, s.mcpListSprintAttachments)
+	addMCPTool(srv, "track_read_sprint_attachment_content", "Read sprint attachment content as base64.", readOnly, s.mcpReadSprintAttachmentContent)
+	addMCPTool(srv, "track_delete_sprint_attachment", "Delete sprint attachment and owned object.", write, s.mcpDeleteSprintAttachment)
 
 	addMCPTool(srv, "track_create_user", "Create user profile. Admin only.", write, s.mcpCreateUser)
 	addMCPTool(srv, "track_list_users", "List users. Admin only.", readOnly, s.mcpListUsers)
@@ -2714,17 +2735,10 @@ func (s *Server) mcpCreateAttachment(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, err
 	}
-	object, err := s.mcpCreateStorageObjectRecord(ctx, issue.ProjectID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64)
-	if err != nil {
-		return nil, err
-	}
-	attachment, err := s.store.CreateIssueAttachment(ctx, store.CreateIssueAttachmentParams{
-		IssueID:         issue.ID,
-		StorageObjectID: object.ID,
-		CreatedByID:     auth.User.ID,
+	attachment, err := mcpCreateDescriptionAttachment(s, ctx, issue.ProjectID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.IssueAttachment, error) {
+		return s.store.CreateIssueAttachment(ctx, store.CreateIssueAttachmentParams{IssueID: issue.ID, StorageObjectID: object.ID, CreatedByID: auth.User.ID})
 	})
 	if err != nil {
-		s.cleanupStorageObject(ctx, object)
 		return nil, err
 	}
 	return mcpToolOutput{"attachment": attachment}, nil
@@ -2792,14 +2806,139 @@ func (s *Server) mcpDeleteAttachment(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPObjectStorage(); err != nil {
+	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.IssueAttachment, error) {
+		return s.store.DeleteIssueAttachment(ctx, issue.ID, attachment.StorageObjectID)
+	}, func(deleted model.IssueAttachment) string { return deleted.Object.ObjectKey }); err != nil {
 		return nil, err
 	}
-	deleted, err := s.store.DeleteIssueAttachment(ctx, issue.ID, attachment.StorageObjectID)
+	return mcpOK(), nil
+}
+
+func mcpCreateDescriptionAttachment[T any](s *Server, ctx context.Context, projectID, userID uuid.UUID, filename, contentType, contentBase64 string, link func(model.StorageObject) (T, error)) (T, error) {
+	var zero T
+	object, err := s.mcpCreateStorageObjectRecord(ctx, projectID, userID, filename, contentType, contentBase64)
+	if err != nil {
+		return zero, err
+	}
+	attachment, err := link(object)
+	if err != nil {
+		s.cleanupStorageObject(ctx, object)
+		return zero, err
+	}
+	return attachment, nil
+}
+
+func mcpDeleteDescriptionAttachment[T any](s *Server, ctx context.Context, unlink func() (T, error), objectKey func(T) string) (T, error) {
+	var zero T
+	if err := s.requireMCPObjectStorage(); err != nil {
+		return zero, err
+	}
+	deleted, err := unlink()
+	if err != nil {
+		return zero, err
+	}
+	if err := s.deleteStorageBackendObject(ctx, objectKey(deleted)); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+		return zero, err
+	}
+	return deleted, nil
+}
+
+func (s *Server) mcpSprintAttachment(ctx context.Context, auth authContext, input mcpSprintAttachmentInput) (model.Sprint, model.SprintAttachment, error) {
+	_, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
+	if err != nil {
+		return model.Sprint{}, model.SprintAttachment{}, err
+	}
+	number, err := mcpTypedRef(input.Object, "object")
+	if err != nil {
+		return model.Sprint{}, model.SprintAttachment{}, err
+	}
+	attachment, err := s.store.GetSprintAttachmentByObjectNumber(ctx, sprint.ID, number)
+	if err != nil {
+		return model.Sprint{}, model.SprintAttachment{}, err
+	}
+	return sprint, attachment, nil
+}
+
+func (s *Server) mcpCreateSprintAttachment(ctx context.Context, req *mcp.CallToolRequest, input mcpCreateSprintAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.deleteStorageBackendObject(ctx, deleted.Object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+	_, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
+	if err != nil {
+		return nil, err
+	}
+	attachment, err := mcpCreateDescriptionAttachment(s, ctx, sprint.ProjectID, auth.User.ID, input.Filename, input.ContentType, input.ContentBase64, func(object model.StorageObject) (model.SprintAttachment, error) {
+		return s.store.CreateSprintAttachment(ctx, store.CreateSprintAttachmentParams{SprintID: sprint.ID, StorageObjectID: object.ID, CreatedByID: auth.User.ID})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"attachment": attachment}, nil
+}
+
+func (s *Server) mcpListSprintAttachments(ctx context.Context, req *mcp.CallToolRequest, input mcpSprintAttachmentsPageInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	_, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
+	if err != nil {
+		return nil, err
+	}
+	limit, err := mcpLimit(input.Limit)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	var cursor *store.SprintAttachmentsCursor
+	if input.Cursor != "" {
+		var c store.SprintAttachmentsCursor
+		if err := decodeCursor(input.Cursor, &c); err != nil {
+			return nil, validationError(err.Error())
+		}
+		cursor = &c
+	}
+	attachments, hasMore, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{SprintID: sprint.ID, Cursor: cursor, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	var next *string
+	if hasMore {
+		last := attachments[len(attachments)-1]
+		enc := encodeCursor(store.SprintAttachmentsCursor{Number: last.Object.Number})
+		next = &enc
+	}
+	return mcpPageOut(attachments, next), nil
+}
+
+func (s *Server) mcpReadSprintAttachmentContent(ctx context.Context, req *mcp.CallToolRequest, input mcpSprintAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	_, attachment, err := s.mcpSprintAttachment(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	data, err := s.mcpObjectContent(ctx, attachment.Object)
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"attachment": attachment, "content_base64": base64.StdEncoding.EncodeToString(data)}, nil
+}
+
+func (s *Server) mcpDeleteSprintAttachment(ctx context.Context, req *mcp.CallToolRequest, input mcpSprintAttachmentInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	sprint, attachment, err := s.mcpSprintAttachment(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := mcpDeleteDescriptionAttachment(s, ctx, func() (model.SprintAttachment, error) {
+		return s.store.DeleteSprintAttachment(ctx, sprint.ID, attachment.StorageObjectID)
+	}, func(deleted model.SprintAttachment) string { return deleted.Object.ObjectKey }); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -3029,6 +3168,12 @@ func (s *Server) addMCPResources(srv *mcp.Server) {
 		Description: "Issue attachment bytes by owner, issue ref, and object ref.",
 		URITemplate: "track://attachment-content/{owner}/{issue}/{object}",
 	}, handler)
+	srv.AddResourceTemplate(&mcp.ResourceTemplate{
+		Name:        "track_sprint_attachment_content",
+		Title:       "track sprint attachment content",
+		Description: "Sprint attachment bytes by owner, project key, sprint ref, and object ref.",
+		URITemplate: "track://sprint-attachment-content/{owner}/{key}/{sprint}/{object}",
+	}, handler)
 }
 
 func (s *Server) readMCPResource(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
@@ -3104,6 +3249,26 @@ func (s *Server) readMCPResource(ctx context.Context, req *mcp.ReadResourceReque
 			return nil, mcp.ResourceNotFoundError(uri)
 		}
 		_, attachment, err := s.mcpAttachment(ctx, auth, mcpAttachmentInput{mcpIssueInput: mcpIssueInput{Owner: parts[0], Issue: parts[1]}, Object: parts[2]})
+		if err != nil {
+			return nil, mcpResourceError(uri, err)
+		}
+		data, err := s.mcpObjectContent(ctx, attachment.Object)
+		if err != nil {
+			return nil, mcpResourceError(uri, err)
+		}
+		return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{
+			URI:      uri,
+			MIMEType: attachment.Object.ContentType,
+			Blob:     data,
+		}}}, nil
+	case "sprint-attachment-content":
+		if len(parts) != 4 {
+			return nil, mcp.ResourceNotFoundError(uri)
+		}
+		_, attachment, err := s.mcpSprintAttachment(ctx, auth, mcpSprintAttachmentInput{
+			mcpSprintInput: mcpSprintInput{mcpProjectInput: mcpProjectInput{Owner: parts[0], Key: parts[1]}, Sprint: parts[2]},
+			Object:         parts[3],
+		})
 		if err != nil {
 			return nil, mcpResourceError(uri, err)
 		}

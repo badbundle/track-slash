@@ -19,17 +19,18 @@ const (
 type Entity string
 
 const (
-	EntityIssue        Entity = "issue"
-	EntityProject      Entity = "project"
-	EntitySprint       Entity = "sprint"
-	EntityIssueLink    Entity = "issue_link"
-	EntityComment      Entity = "comment"
-	EntityContext      Entity = "project_context"
-	EntityContextLink  Entity = "issue_context_link"
-	EntityIssueTag     Entity = "issue_tag"
-	EntityIssueTagLink Entity = "issue_tag_link"
-	EntityAttachment   Entity = "issue_attachment"
-	EntityChangelog    Entity = "project_changelog"
+	EntityIssue            Entity = "issue"
+	EntityProject          Entity = "project"
+	EntitySprint           Entity = "sprint"
+	EntityIssueLink        Entity = "issue_link"
+	EntityComment          Entity = "comment"
+	EntityContext          Entity = "project_context"
+	EntityContextLink      Entity = "issue_context_link"
+	EntityIssueTag         Entity = "issue_tag"
+	EntityIssueTagLink     Entity = "issue_tag_link"
+	EntityAttachment       Entity = "issue_attachment"
+	EntitySprintAttachment Entity = "sprint_attachment"
+	EntityChangelog        Entity = "project_changelog"
 )
 
 // Event is the wire envelope sent over both pg_notify and the WebSocket.
@@ -40,6 +41,7 @@ type Event struct {
 	Entity        Entity     `json:"entity"`
 	ID            uuid.UUID  `json:"id"`
 	IssueID       *uuid.UUID `json:"issue_id,omitempty"`
+	SprintID      *uuid.UUID `json:"sprint_id,omitempty"`
 	ContextID     *uuid.UUID `json:"context_id,omitempty"`
 	TagID         *uuid.UUID `json:"tag_id,omitempty"`
 	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
@@ -124,6 +126,15 @@ func (e Event) Topics() []string {
 		topics := []string{}
 		if e.IssueID != nil {
 			topics = append(topics, IssueTopic(*e.IssueID))
+		}
+		if e.ProjectID != nil {
+			topics = append(topics, ProjectTopic(*e.ProjectID))
+		}
+		return topics
+	case EntitySprintAttachment:
+		topics := []string{}
+		if e.SprintID != nil {
+			topics = append(topics, SprintTopic(*e.SprintID))
 		}
 		if e.ProjectID != nil {
 			topics = append(topics, ProjectTopic(*e.ProjectID))
