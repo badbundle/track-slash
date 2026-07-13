@@ -416,6 +416,9 @@ type uiTabItem struct {
 	HXGet          string
 	HXTarget       string
 	HXPushURL      string
+	HXSelect       string
+	HXSelectOOB    string
+	HXSwap         string
 	Active         bool
 	MobileOverflow bool
 }
