@@ -38,11 +38,10 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: project.ID,
-		CurrentView:      "projects",
-		ProjectPanel:     panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
+		ProjectPanel:  panel,
 	})
 }
 
@@ -101,9 +100,9 @@ func (s *Server) uiToggleProjectFavorite(w http.ResponseWriter, r *http.Request)
 		View:     view,
 		Favorite: !favorite,
 		Sidebar: uiSidebarFavoritesData{
-			Projects:         favorites,
-			CurrentProjectID: project.ID,
-			OOB:              true,
+			Projects:        favorites,
+			ActiveProjectID: project.ID,
+			OOB:             true,
 		},
 	})
 }
@@ -162,11 +161,10 @@ func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: project.ID,
-		CurrentView:      "projects",
-		DeletedPanel:     panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
+		DeletedPanel:  panel,
 	})
 }
 

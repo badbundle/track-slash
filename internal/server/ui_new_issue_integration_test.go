@@ -24,6 +24,7 @@ func TestUINewIssueCreatesIssueWithAllFieldsAndDefaultReporter(t *testing.T) {
 	for _, want := range []string{
 		"New issue",
 		"Choose a project",
+		`data-sidebar-view=""`,
 		`method="post" action="/issues"`,
 		`hx-post="/issues"`,
 		`id="new-issue-project-form" method="get" action="/issues/new/panel"`,
@@ -84,6 +85,8 @@ func TestUINewIssueCreatesIssueWithAllFieldsAndDefaultReporter(t *testing.T) {
 	for _, want := range []string{
 		"New issue",
 		"Create issue",
+		`data-sidebar-view="project" data-sidebar-project-id="` + e.projectID.String() + `"`,
+		`type="hidden" name="project_scoped" value="true"`,
 		`method="post" action="/issues"`,
 		`hx-post="/issues"`,
 		`hx-push-url="false"`,
@@ -107,6 +110,19 @@ func TestUINewIssueCreatesIssueWithAllFieldsAndDefaultReporter(t *testing.T) {
 			t.Fatalf("new issue page missing %q: %s", want, body)
 		}
 	}
+	if err := e.store.FavoriteProject(e.ctx, reporter.ID, e.projectID); err != nil {
+		t.Fatalf("FavoriteProject: %v", err)
+	}
+	validationRes := e.uiDoNoRedirect(t, http.MethodPost, "/issues", token, strings.NewReader(url.Values{
+		"project_id":     {e.projectID.String()},
+		"project_scoped": {"true"},
+	}.Encode()))
+	defer validationRes.Body.Close()
+	body = readBody(t, validationRes)
+	if validationRes.StatusCode != http.StatusOK || !strings.Contains(body, "Title required, max 200 chars.") || !strings.Contains(body, `name="project_scoped" value="true"`) {
+		t.Fatalf("project-scoped validation code = %d body = %s", validationRes.StatusCode, body)
+	}
+	requireActiveSidebarDestination(t, body, `data-sidebar-project-id="`+e.projectID.String()+`"`)
 
 	body = e.uiGet(t, "/issues/new/panel?project_id="+url.QueryEscape(e.projectID.String())+"&title=Kept", token)
 	for _, want := range []string{

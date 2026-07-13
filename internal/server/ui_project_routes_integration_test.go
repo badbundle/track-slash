@@ -49,10 +49,13 @@ func TestUIIssueListsLinkToIssueDetail(t *testing.T) {
 
 	for _, path := range []string{e.projectPath() + "/all", "/me", "/me/all"} {
 		body := e.uiGet(t, path, token)
-		for _, want := range []string{wantHref, wantHXGet, wantHXPush, `data-main-view="projects"`} {
+		for _, want := range []string{wantHref, wantHXGet, wantHXPush} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s missing issue link %q: %s", path, want, body)
 			}
+		}
+		if strings.Contains(body, `data-main-view`) {
+			t.Fatalf("%s contains legacy sidebar state marker: %s", path, body)
 		}
 		if !strings.Contains(body, "Jun 24") {
 			t.Fatalf("%s missing due date badge: %s", path, body)

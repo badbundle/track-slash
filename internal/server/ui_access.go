@@ -70,9 +70,13 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 		writeUIInternalError(w, "ui shell favorites", err)
 		return
 	}
+	activeProjectID := uuid.Nil
+	if data.SidebarActive.View == "project" {
+		activeProjectID = data.SidebarActive.ProjectID
+	}
 	data.SidebarFavorites = uiSidebarFavoritesData{
-		Projects:         favorites,
-		CurrentProjectID: data.CurrentProjectID,
+		Projects:        favorites,
+		ActiveProjectID: activeProjectID,
 	}
 	renderUITemplate(w, status, "shell", data)
 }

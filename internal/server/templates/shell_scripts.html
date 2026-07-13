@@ -515,8 +515,7 @@
       };
       const active = ["bg-indigo-50", "text-indigo-700", "ring-1", "ring-indigo-100", "dark:bg-indigo-950/50", "dark:text-indigo-200", "dark:ring-indigo-900"];
       const inactive = ["text-slate-600", "dark:text-slate-300"];
-      const links = () => document.querySelectorAll("[data-nav-link]");
-      const navForView = (view) => document.querySelector(`[data-nav-link][href="/${view}"]`);
+      const links = () => document.querySelectorAll("[data-sidebar-link]");
       const sidebarToggle = document.getElementById("sidebar-toggle");
       const sidebarStorageKey = "track-slash.sidebar.collapsed";
       const applySidebarCollapsed = (collapsed) => {
@@ -696,30 +695,39 @@
         links().forEach((link) => {
           link.classList.remove(...active);
           link.classList.add(...inactive);
+          link.removeAttribute("aria-current");
         });
+        if (!next) return;
         next.classList.remove(...inactive);
         next.classList.add(...active);
+        next.setAttribute("aria-current", "page");
+      };
+      const sidebarLinkForState = (state) => {
+        if (!state || !state.dataset.sidebarView) return null;
+        return Array.from(links()).find((link) => (
+          link.dataset.sidebarView === state.dataset.sidebarView
+          && link.dataset.sidebarProjectId === state.dataset.sidebarProjectId
+        )) || null;
+      };
+      const syncSidebarActive = () => {
+        const state = mainContent ? mainContent.querySelector("[data-sidebar-view]") : null;
+        setActiveNav(sidebarLinkForState(state));
       };
       document.body.addEventListener("htmx:beforeRequest", (event) => {
         rememberIssueListControls(event.target);
-        const link = event.target.closest("[data-nav-link]");
-        const viewLink = event.target.closest("[data-main-view]");
+        const link = event.target.closest("[data-sidebar-link]");
         if (link) {
           links().forEach((item) => setNavLoading(item, false));
           setActiveNav(link);
           setNavLoading(link, true);
-          return;
-        }
-        if (viewLink) {
-          const nav = navForView(viewLink.dataset.mainView);
-          if (nav) setActiveNav(nav);
         }
       });
       document.body.addEventListener("htmx:afterRequest", (event) => {
-        const link = event.target.closest("[data-nav-link]");
+        const link = event.target.closest("[data-sidebar-link]");
         if (link) {
           setNavLoading(link, false);
         }
+        if (event.detail && event.detail.successful === false) syncSidebarActive();
       });
       const resetSearchOptions = (search) => {
         search.querySelectorAll("[data-search-option]").forEach((option) => {
@@ -943,19 +951,23 @@
         resizeTextareas(event.target);
         syncCheckboxReveals(event.target);
         restoreIssueListControls(event.target);
+        syncSidebarActive();
         syncChangelogRealtime();
       });
+      document.body.addEventListener("htmx:historyRestore", syncSidebarActive);
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", () => {
           createIcons();
           resizeTextareas();
           syncCheckboxReveals();
+          syncSidebarActive();
           syncChangelogRealtime();
         });
       } else {
         createIcons();
         resizeTextareas();
         syncCheckboxReveals();
+        syncSidebarActive();
         syncChangelogRealtime();
       }
     })();

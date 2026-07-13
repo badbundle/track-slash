@@ -23,8 +23,7 @@ type uiShellData struct {
 	User              model.User
 	Projects          []model.Project
 	SidebarFavorites  uiSidebarFavoritesData
-	CurrentProjectID  uuid.UUID
-	CurrentView       string
+	SidebarActive     uiSidebarState
 	WorkPanel         *uiWorkPanelData
 	ProjectsPanel     *uiProjectsPanelData
 	NewProjectPanel   *uiNewProjectPanelData
@@ -39,10 +38,15 @@ type uiShellData struct {
 	SettingsPanel     *uiSettingsPanelData
 }
 
+type uiSidebarState struct {
+	View      string
+	ProjectID uuid.UUID
+}
+
 type uiSidebarFavoritesData struct {
-	Projects         []model.Project
-	CurrentProjectID uuid.UUID
-	OOB              bool
+	Projects        []model.Project
+	ActiveProjectID uuid.UUID
+	OOB             bool
 }
 
 type uiUserAvatarData struct {
@@ -628,6 +632,7 @@ type uiNewProjectPanelData struct {
 type uiNewIssuePanelData struct {
 	Project           model.Project
 	HasProject        bool
+	ProjectScoped     bool
 	ProjectID         string
 	ProjectInput      string
 	ProjectSearchOpen bool

@@ -1,5 +1,5 @@
 {{define "project-panel"}}
-<section class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+<section data-sidebar-view="project" data-sidebar-project-id="{{.Project.ID}}" class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
   {{template "breadcrumb" (projectBreadcrumb .Project .View)}}
   <header class="rounded-lg border border-slate-200 bg-white px-4 pt-4 dark:border-slate-800 dark:bg-slate-900 sm:px-5 sm:pt-5">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
@@ -35,7 +35,7 @@
         </div>
       </div>
       <div class="flex shrink-0 items-center gap-2 justify-self-end">
-        {{if .CanWrite}}<a data-main-view="projects" href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" aria-label="New issue" class="grid h-9 w-9 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+        {{if .CanWrite}}<a href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" aria-label="New issue" class="grid h-9 w-9 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
           <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
         </a>{{end}}
         <details data-close-on-outside class="relative">

@@ -289,8 +289,8 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
-		User:        model.User{Name: "Demo User", Username: "demo"},
-		CurrentView: "projects",
+		User:          model.User{Name: "Demo User", Username: "demo"},
+		SidebarActive: uiSidebarState{View: "projects"},
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -349,6 +349,13 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`data-member-label`,
 		`data-member-menu`,
 		`>@demo<`,
+		`data-sidebar-link data-sidebar-view="projects"`,
+		`const syncSidebarActive = () =>`,
+		`mainContent.querySelector("[data-sidebar-view]")`,
+		`event.detail.successful === false`,
+		`document.body.addEventListener("htmx:historyRestore", syncSidebarActive)`,
+		`link.removeAttribute("aria-current")`,
+		`next.setAttribute("aria-current", "page")`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing sidebar behavior %q: %s", want, body)
@@ -369,6 +376,9 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
 		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
+	}
+	if strings.Contains(body, "data-main-view") {
+		t.Fatalf("shell still contains legacy sidebar state markers: %s", body)
 	}
 	menuStart := strings.Index(body, `<div data-member-menu`)
 	if menuStart < 0 {
@@ -445,6 +455,70 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, `.dark .markdown-body`) {
 		t.Fatalf("shell markdown dark-mode CSS should follow the system media query: %s", body)
+	}
+}
+
+func TestUIShellRendersOneActiveSidebarDestination(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	tests := []struct {
+		name       string
+		active     uiSidebarState
+		favorites  uiSidebarFavoritesData
+		wantMarker string
+		wantCount  int
+	}{
+		{name: "me", active: uiSidebarState{View: "me"}, wantMarker: `data-sidebar-view="me"`, wantCount: 1},
+		{name: "projects", active: uiSidebarState{View: "projects"}, wantMarker: `data-sidebar-view="projects"`, wantCount: 1},
+		{
+			name:       "favorite project",
+			active:     uiSidebarState{View: "project", ProjectID: projectID},
+			favorites:  uiSidebarFavoritesData{Projects: []model.Project{project}, ActiveProjectID: projectID},
+			wantMarker: `data-sidebar-project-id="` + projectID.String() + `"`,
+			wantCount:  1,
+		},
+		{name: "project without favorite", active: uiSidebarState{View: "project", ProjectID: projectID}},
+		{name: "no active destination"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var buf bytes.Buffer
+			err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
+				User:             model.User{Name: "Demo User", Username: "demo"},
+				SidebarActive:    tt.active,
+				SidebarFavorites: tt.favorites,
+			})
+			if err != nil {
+				t.Fatalf("ExecuteTemplate: %v", err)
+			}
+			body := buf.String()
+			if got := strings.Count(body, `aria-current="page"`); got != tt.wantCount {
+				t.Fatalf("aria-current count = %d, want %d: %s", got, tt.wantCount, body)
+			}
+			if got := strings.Count(body, "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"); got != tt.wantCount {
+				t.Fatalf("active class count = %d, want %d: %s", got, tt.wantCount, body)
+			}
+			if tt.wantMarker == "" {
+				return
+			}
+			marker := strings.Index(body, tt.wantMarker)
+			if marker < 0 {
+				t.Fatalf("missing active sidebar marker %q: %s", tt.wantMarker, body)
+			}
+			start := strings.LastIndex(body[:marker], "<a ")
+			end := strings.Index(body[marker:], ">")
+			if start < 0 || end < 0 {
+				t.Fatalf("invalid active sidebar link markup: %s", body)
+			}
+			tag := body[start : marker+end]
+			if !strings.Contains(tag, `aria-current="page"`) {
+				t.Fatalf("active sidebar link missing aria-current: %s", tag)
+			}
+		})
 	}
 }
 

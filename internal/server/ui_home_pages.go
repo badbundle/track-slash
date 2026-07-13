@@ -34,10 +34,10 @@ func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:        currentUser(r),
-		Projects:    projects,
-		CurrentView: "me",
-		WorkPanel:   panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "me"},
+		WorkPanel:     panel,
 	})
 }
 
@@ -112,11 +112,9 @@ func (s *Server) uiNewIssuePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: panel.Project.ID,
-		CurrentView:      "issues/new",
-		NewIssuePanel:    panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		NewIssuePanel: panel,
 	})
 }
 
@@ -153,6 +151,7 @@ func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
 	input := uiNewIssueInputFromValues(r.URL.Query())
 	input.ProjectID = project.ID.String()
 	input.ProjectInput = ""
+	input.ProjectScoped = true
 	input.BackHref = uiProjectViewPath(project, "all")
 	input.BackHXGet = uiProjectPanelPath(project, "all")
 	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
@@ -166,11 +165,10 @@ func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: project.ID,
-		CurrentView:      "projects",
-		NewIssuePanel:    panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
+		NewIssuePanel: panel,
 	})
 }
 
@@ -182,6 +180,7 @@ func (s *Server) uiNewProjectIssuePanel(w http.ResponseWriter, r *http.Request) 
 	input := uiNewIssueInputFromValues(r.URL.Query())
 	input.ProjectID = project.ID.String()
 	input.ProjectInput = ""
+	input.ProjectScoped = true
 	input.BackHref = uiProjectViewPath(project, "all")
 	input.BackHXGet = uiProjectPanelPath(project, "all")
 	panel, err := s.uiBuildNewIssuePanel(r.Context(), r, input)
@@ -210,6 +209,7 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	input := uiNewIssueInputFromValues(r.Form)
+	input.ProjectScoped = input.ProjectScoped || routeProject != nil
 	if routeProject != nil && input.ProjectID == "" {
 		input.ProjectID = routeProject.ID.String()
 		input.BackHref = uiProjectViewPath(*routeProject, "all")
@@ -312,6 +312,7 @@ func uiNewIssueInputFromValues(values url.Values) uiNewIssuePanelData {
 	return uiNewIssuePanelData{
 		ProjectID:     strings.TrimSpace(values.Get("project_id")),
 		ProjectInput:  strings.TrimSpace(values.Get("project")),
+		ProjectScoped: values.Get("project_scoped") == "true",
 		Title:         values.Get("title"),
 		Description:   values.Get("description"),
 		Priority:      strings.TrimSpace(values.Get("priority")),
@@ -334,12 +335,15 @@ func (s *Server) renderUINewIssueWithError(w http.ResponseWriter, r *http.Reques
 			writeUIInternalError(w, "ui new issue error visible projects", err)
 			return
 		}
+		active := uiSidebarState{}
+		if panel.ProjectScoped {
+			active = uiSidebarState{View: "project", ProjectID: panel.Project.ID}
+		}
 		s.renderUIShell(w, r, http.StatusOK, uiShellData{
-			User:             currentUser(r),
-			Projects:         projects,
-			CurrentProjectID: panel.Project.ID,
-			CurrentView:      "issues/new",
-			NewIssuePanel:    panel,
+			User:          currentUser(r),
+			Projects:      projects,
+			SidebarActive: active,
+			NewIssuePanel: panel,
 		})
 		return
 	}
@@ -355,7 +359,7 @@ func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status
 	s.renderUIShell(w, r, status, uiShellData{
 		User:          currentUser(r),
 		Projects:      panel.Projects,
-		CurrentView:   "projects",
+		SidebarActive: uiSidebarState{View: "projects"},
 		ProjectsPanel: panel,
 	})
 }
@@ -367,9 +371,8 @@ func (s *Server) renderUINewProject(w http.ResponseWriter, r *http.Request, stat
 		return
 	}
 	s.renderUIShell(w, r, status, uiShellData{
-		User:        currentUser(r),
-		Projects:    projects,
-		CurrentView: "projects",
+		User:     currentUser(r),
+		Projects: projects,
 		NewProjectPanel: &uiNewProjectPanelData{
 			Error:       message,
 			Key:         key,
