@@ -168,6 +168,155 @@ func TestMCPToolErrorsAreStructured(t *testing.T) {
 	requireMCPErrorCode(t, out, "validation_error")
 }
 
+func TestMCPBulkIssueContextLinks(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	session := mcpConnect(t, e, e.authToken)
+	tools, err := session.ListTools(e.ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	found := false
+	for _, tool := range tools.Tools {
+		if tool.Name == "track_bulk_link_issue_contexts" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("track_bulk_link_issue_contexts not found")
+	}
+
+	createContext := func(title string) model.ProjectContext {
+		contextItem, err := e.store.CreateProjectContext(e.ctx, store.CreateProjectContextParams{
+			ProjectID:   e.projectID,
+			Title:       title,
+			Body:        title + " body",
+			CreatedByID: e.adminID,
+		})
+		if err != nil {
+			t.Fatalf("CreateProjectContext %q: %v", title, err)
+		}
+		return contextItem
+	}
+	firstContext := createContext("Architecture")
+	secondContext := createContext("Runbook")
+	issueA, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "MCP A"))
+	if err != nil {
+		t.Fatalf("CreateIssue A: %v", err)
+	}
+	issueB, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "MCP B"))
+	if err != nil {
+		t.Fatalf("CreateIssue B: %v", err)
+	}
+	if _, err := e.store.CreateIssueContextLink(e.ctx, issueA.ID, firstContext.ID); err != nil {
+		t.Fatalf("CreateIssueContextLink existing: %v", err)
+	}
+	links := []map[string]string{
+		{"issue": issueA.Identifier, "context": firstContext.Ref},
+		{"issue": issueA.Identifier, "context": secondContext.Ref},
+		{"issue": issueB.Identifier, "context": firstContext.Ref},
+		{"issue": issueB.Identifier, "context": firstContext.Ref},
+	}
+	args := map[string]any{"owner": e.ownerUsername, "key": e.projKey, "links": links}
+	out := mcpCall(t, e, session, "track_bulk_link_issue_contexts", args)
+	if requested, created, unchanged := decodeMCPField[int](t, out, "requested"), decodeMCPField[int](t, out, "created"), decodeMCPField[int](t, out, "unchanged"); requested != 4 || created != 2 || unchanged != 2 {
+		t.Fatalf("bulk counts = requested:%d created:%d unchanged:%d", requested, created, unchanged)
+	}
+	out = mcpCall(t, e, session, "track_bulk_link_issue_contexts", args)
+	if requested, created, unchanged := decodeMCPField[int](t, out, "requested"), decodeMCPField[int](t, out, "created"), decodeMCPField[int](t, out, "unchanged"); requested != 4 || created != 0 || unchanged != 4 {
+		t.Fatalf("repeat bulk counts = requested:%d created:%d unchanged:%d", requested, created, unchanged)
+	}
+
+	readonly, readonlyToken := e.mustUserToken(t, "mcp-bulk-context-readonly")
+	if _, err := e.store.SetProjectMemberRole(e.ctx, e.projectID, readonly.ID, model.ProjectMemberRoleReadonly); err != nil {
+		t.Fatalf("SetProjectMemberRole readonly: %v", err)
+	}
+	readonlySession := mcpConnect(t, e, readonlyToken)
+	errOut := mcpCallExpectError(t, e, readonlySession, "track_bulk_link_issue_contexts", args)
+	requireMCPErrorCode(t, errOut, "forbidden")
+}
+
+func TestMCPBulkIssueContextLinkValidationAndAtomicity(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	session := mcpConnect(t, e, e.authToken)
+	shared, err := e.store.CreateProjectContext(e.ctx, store.CreateProjectContextParams{
+		ProjectID: e.projectID, Title: "Shared", Body: "Shared body", CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectContext: %v", err)
+	}
+	target, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "MCP atomic target"))
+	if err != nil {
+		t.Fatalf("CreateIssue target: %v", err)
+	}
+	scopeOwner, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "MCP scope owner"))
+	if err != nil {
+		t.Fatalf("CreateIssue scope owner: %v", err)
+	}
+	issueScoped, err := e.store.CreateIssueContext(e.ctx, store.CreateIssueContextParams{
+		IssueID: scopeOwner.ID, Title: "Issue only", Body: "Issue scoped.", CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueContext: %v", err)
+	}
+
+	oversized := make([]map[string]string, 201)
+	for i := range oversized {
+		oversized[i] = map[string]string{"issue": target.Identifier, "context": shared.Ref}
+	}
+	base := map[string]any{"owner": e.ownerUsername, "key": e.projKey}
+	out := mcpCallExpectError(t, e, session, "track_bulk_link_issue_contexts", map[string]any{
+		"owner": e.ownerUsername,
+		"key":   "1",
+		"links": []map[string]string{{"issue": target.Identifier, "context": shared.Ref}},
+	})
+	requireMCPErrorCode(t, out, "validation_error")
+	for _, test := range []struct {
+		name  string
+		links any
+	}{
+		{name: "empty", links: []map[string]string{}},
+		{name: "too many", links: oversized},
+		{name: "malformed issue", links: []map[string]string{{"issue": "bad", "context": shared.Ref}}},
+		{name: "cross project", links: []map[string]string{{"issue": "OTHER-1", "context": shared.Ref}}},
+		{name: "malformed context", links: []map[string]string{{"issue": target.Identifier, "context": "bad"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			args := map[string]any{"owner": base["owner"], "key": base["key"], "links": test.links}
+			errOut := mcpCallExpectError(t, e, session, "track_bulk_link_issue_contexts", args)
+			requireMCPErrorCode(t, errOut, "validation_error")
+		})
+	}
+
+	valid := map[string]string{"issue": target.Identifier, "context": shared.Ref}
+	for _, test := range []struct {
+		name    string
+		invalid map[string]string
+	}{
+		{name: "missing issue", invalid: map[string]string{"issue": e.projKey + "-999999", "context": shared.Ref}},
+		{name: "missing context", invalid: map[string]string{"issue": target.Identifier, "context": "context-999999"}},
+		{name: "issue scoped context", invalid: map[string]string{"issue": target.Identifier, "context": issueScoped.Ref}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			errOut := mcpCallExpectError(t, e, session, "track_bulk_link_issue_contexts", map[string]any{
+				"owner": e.ownerUsername,
+				"key":   e.projKey,
+				"links": []map[string]string{valid, test.invalid},
+			})
+			requireMCPErrorCode(t, errOut, "not_found")
+			contexts, _, err := e.store.ListContextsForIssue(e.ctx, store.ListContextsForIssueParams{IssueID: target.ID, Limit: 10})
+			if err != nil {
+				t.Fatalf("ListContextsForIssue: %v", err)
+			}
+			if len(contexts) != 0 {
+				t.Fatalf("target contexts after rejected batch = %+v", contexts)
+			}
+		})
+	}
+}
+
 func TestMCPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
 	t.Parallel()
 	e := newMCPHTTPEnv(t, nil)

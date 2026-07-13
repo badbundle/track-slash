@@ -299,3 +299,151 @@ func TestProjectContextConflictAndValidation(t *testing.T) {
 		t.Fatalf("empty issue context body err = %v, want ErrConflict", err)
 	}
 }
+
+func TestBulkIssueContextLinksAreAtomicAndIdempotent(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	project, err := env.store.GetProject(env.ctx, env.projectID)
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	firstContext := mustCreateProjectContext(t, env, "Architecture", "Shared architecture notes.")
+	secondContext := mustCreateProjectContext(t, env, "Runbook", "Shared operational notes.")
+	issueA := mustCreateIssue(t, env, "A")
+	issueB := mustCreateIssue(t, env, "B")
+
+	if _, err := env.store.CreateIssueContextLink(env.ctx, issueA.ID, firstContext.ID); err != nil {
+		t.Fatalf("CreateIssueContextLink existing: %v", err)
+	}
+	links := []store.IssueContextLinkPair{
+		{IssueNumber: issueA.Number, ContextNumber: firstContext.Number},
+		{IssueNumber: issueA.Number, ContextNumber: secondContext.Number},
+		{IssueNumber: issueB.Number, ContextNumber: firstContext.Number},
+		{IssueNumber: issueB.Number, ContextNumber: firstContext.Number},
+	}
+	result, err := env.store.CreateIssueContextLinks(store.WithActor(env.ctx, project.OwnerID), store.CreateIssueContextLinksParams{
+		ProjectID: env.projectID,
+		Links:     links,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueContextLinks: %v", err)
+	}
+	if result != (store.CreateIssueContextLinksResult{Requested: 4, Created: 2, Unchanged: 2}) {
+		t.Fatalf("bulk result = %+v", result)
+	}
+
+	contextsA, _, err := env.store.ListContextsForIssue(env.ctx, store.ListContextsForIssueParams{IssueID: issueA.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListContextsForIssue A: %v", err)
+	}
+	contextsB, _, err := env.store.ListContextsForIssue(env.ctx, store.ListContextsForIssueParams{IssueID: issueB.ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListContextsForIssue B: %v", err)
+	}
+	if len(contextsA) != 2 || contextsA[0].ID != firstContext.ID || contextsA[1].ID != secondContext.ID {
+		t.Fatalf("issue A contexts = %+v", contextsA)
+	}
+	if len(contextsB) != 1 || contextsB[0].ID != firstContext.ID {
+		t.Fatalf("issue B contexts = %+v", contextsB)
+	}
+
+	entries, _, err := env.store.ListProjectChangelog(env.ctx, store.ListProjectChangelogParams{ProjectID: env.projectID, Limit: 100})
+	if err != nil {
+		t.Fatalf("ListProjectChangelog: %v", err)
+	}
+	bulkEntries := 0
+	for _, entry := range entries {
+		if entry.Entity != "issue_context_link" || entry.ActorID == nil || *entry.ActorID != project.OwnerID {
+			continue
+		}
+		bulkEntries++
+		if entry.IssueID == nil || (entry.Summary != "Attached context Runbook to "+issueA.Identifier && entry.Summary != "Attached context Architecture to "+issueB.Identifier) {
+			t.Fatalf("bulk changelog entry = %+v", entry)
+		}
+	}
+	if bulkEntries != 2 {
+		t.Fatalf("attributed bulk changelog entries = %d, want 2", bulkEntries)
+	}
+
+	result, err = env.store.CreateIssueContextLinks(store.WithActor(env.ctx, project.OwnerID), store.CreateIssueContextLinksParams{
+		ProjectID: env.projectID,
+		Links:     links,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueContextLinks repeat: %v", err)
+	}
+	if result != (store.CreateIssueContextLinksResult{Requested: 4, Created: 0, Unchanged: 4}) {
+		t.Fatalf("repeat bulk result = %+v", result)
+	}
+	entries, _, err = env.store.ListProjectChangelog(env.ctx, store.ListProjectChangelogParams{ProjectID: env.projectID, Limit: 100})
+	if err != nil {
+		t.Fatalf("ListProjectChangelog repeat: %v", err)
+	}
+	repeatedEntries := 0
+	for _, entry := range entries {
+		if entry.Entity == "issue_context_link" && entry.ActorID != nil && *entry.ActorID == project.OwnerID {
+			repeatedEntries++
+		}
+	}
+	if repeatedEntries != bulkEntries {
+		t.Fatalf("bulk changelog entries after repeat = %d, want %d", repeatedEntries, bulkEntries)
+	}
+
+	empty, err := env.store.CreateIssueContextLinks(env.ctx, store.CreateIssueContextLinksParams{ProjectID: env.projectID})
+	if err != nil || empty != (store.CreateIssueContextLinksResult{}) {
+		t.Fatalf("empty bulk result = %+v err=%v", empty, err)
+	}
+}
+
+func TestBulkIssueContextLinksRejectInvalidBatchAtomically(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	project, err := env.store.GetProject(env.ctx, env.projectID)
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	shared := mustCreateProjectContext(t, env, "Shared", "Shared context.")
+	target := mustCreateIssue(t, env, "Target")
+	deleted := mustCreateIssue(t, env, "Deleted")
+	if err := env.store.DeleteIssue(env.ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteIssue: %v", err)
+	}
+	scopeOwner := mustCreateIssue(t, env, "Issue scope owner")
+	issueScoped, err := env.store.CreateIssueContext(env.ctx, store.CreateIssueContextParams{
+		IssueID:     scopeOwner.ID,
+		Title:       "Issue only",
+		Body:        "Only this issue.",
+		CreatedByID: project.OwnerID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueContext: %v", err)
+	}
+
+	valid := store.IssueContextLinkPair{IssueNumber: target.Number, ContextNumber: shared.Number}
+	for _, test := range []struct {
+		name    string
+		invalid store.IssueContextLinkPair
+	}{
+		{name: "missing issue", invalid: store.IssueContextLinkPair{IssueNumber: 999999, ContextNumber: shared.Number}},
+		{name: "deleted issue", invalid: store.IssueContextLinkPair{IssueNumber: deleted.Number, ContextNumber: shared.Number}},
+		{name: "missing context", invalid: store.IssueContextLinkPair{IssueNumber: target.Number, ContextNumber: 999999}},
+		{name: "issue scoped context", invalid: store.IssueContextLinkPair{IssueNumber: target.Number, ContextNumber: issueScoped.Number}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := env.store.CreateIssueContextLinks(env.ctx, store.CreateIssueContextLinksParams{
+				ProjectID: env.projectID,
+				Links:     []store.IssueContextLinkPair{valid, test.invalid},
+			})
+			if !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("CreateIssueContextLinks err = %v, want ErrNotFound", err)
+			}
+			contexts, _, err := env.store.ListContextsForIssue(env.ctx, store.ListContextsForIssueParams{IssueID: target.ID, Limit: 10})
+			if err != nil {
+				t.Fatalf("ListContextsForIssue: %v", err)
+			}
+			if len(contexts) != 0 {
+				t.Fatalf("target contexts after rejected batch = %+v", contexts)
+			}
+		})
+	}
+}

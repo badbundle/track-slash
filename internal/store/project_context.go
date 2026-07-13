@@ -33,6 +33,22 @@ type CreateIssueContextParams struct {
 	CreatedByID    uuid.UUID
 }
 
+type IssueContextLinkPair struct {
+	IssueNumber   int
+	ContextNumber int
+}
+
+type CreateIssueContextLinksParams struct {
+	ProjectID uuid.UUID
+	Links     []IssueContextLinkPair
+}
+
+type CreateIssueContextLinksResult struct {
+	Requested int `json:"requested"`
+	Created   int `json:"created"`
+	Unchanged int `json:"unchanged"`
+}
+
 type UpdateProjectContextParams struct {
 	ID          uuid.UUID
 	Title       *string
@@ -644,6 +660,88 @@ func (s *Store) CreateIssueContextLink(ctx context.Context, issueID, contextID u
 		return model.IssueContextLink{}, err
 	}
 	return out, nil
+}
+
+func (s *Store) CreateIssueContextLinks(ctx context.Context, p CreateIssueContextLinksParams) (CreateIssueContextLinksResult, error) {
+	result := CreateIssueContextLinksResult{Requested: len(p.Links)}
+	if len(p.Links) == 0 {
+		return result, nil
+	}
+
+	issueNumbers := make([]int, len(p.Links))
+	contextNumbers := make([]int, len(p.Links))
+	for i, link := range p.Links {
+		issueNumbers[i] = link.IssueNumber
+		contextNumbers[i] = link.ContextNumber
+	}
+
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var resolved int
+		if err := tx.QueryRow(ctx, `
+			SELECT COUNT(*)
+			FROM (
+				SELECT 1
+				FROM unnest($2::int[], $3::int[])
+					AS requested(issue_number, context_number)
+				JOIN projects p ON p.id = $1 AND p.deleted_at IS NULL
+				JOIN issues i ON i.project_id = p.id
+					AND i.number = requested.issue_number
+					AND i.deleted_at IS NULL
+				JOIN project_context pc ON pc.project_id = p.id
+					AND pc.number = requested.context_number
+					AND pc.scope = 'project'
+				FOR SHARE OF p, i, pc
+			) AS locked_links
+		`, p.ProjectID, issueNumbers, contextNumbers).Scan(&resolved); err != nil {
+			return err // defensive: validation query has no expected domain error
+		}
+		if resolved != len(p.Links) {
+			return ErrNotFound
+		}
+
+		return tx.QueryRow(ctx, `
+			WITH requested AS (
+				SELECT issue_number, context_number
+				FROM unnest($2::int[], $3::int[])
+					AS input(issue_number, context_number)
+			), resolved AS (
+				SELECT DISTINCT i.id AS issue_id, pc.id AS context_id
+				FROM requested
+				JOIN issues i ON i.project_id = $1
+					AND i.number = requested.issue_number
+					AND i.deleted_at IS NULL
+				JOIN project_context pc ON pc.project_id = $1
+					AND pc.number = requested.context_number
+					AND pc.scope = 'project'
+			), inserted AS (
+				INSERT INTO issue_context_links (project_id, issue_id, context_id)
+				SELECT $1, resolved.issue_id, resolved.context_id
+				FROM resolved
+				ON CONFLICT (issue_id, context_id) DO NOTHING
+				RETURNING id, project_id, issue_id, context_id
+			), logged AS (
+				INSERT INTO project_changelog_entries (
+					project_id, actor_id, entity, op, entity_id, issue_id,
+					target_ref, target_title, summary, details
+				)
+				SELECT inserted.project_id, $4, 'issue_context_link', 'insert', inserted.id, inserted.issue_id,
+					p.key || '-' || i.number, i.title,
+					'Attached context ' || pc.title || ' to ' || p.key || '-' || i.number,
+					'{}'::jsonb
+				FROM inserted
+				JOIN projects p ON p.id = inserted.project_id
+				JOIN issues i ON i.id = inserted.issue_id
+				JOIN project_context pc ON pc.id = inserted.context_id
+				RETURNING entity_id
+			)
+			SELECT COUNT(*) FROM logged
+		`, p.ProjectID, issueNumbers, contextNumbers, actorFromContext(ctx)).Scan(&result.Created)
+	})
+	if err != nil {
+		return CreateIssueContextLinksResult{}, err
+	}
+	result.Unchanged = result.Requested - result.Created
+	return result, nil
 }
 
 func (s *Store) DeleteIssueContextLink(ctx context.Context, issueID, contextID uuid.UUID) error {
