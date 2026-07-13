@@ -118,7 +118,11 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	}
 	headerEnd += projectHeaderStart
 	header := body[projectHeaderStart:headerEnd]
-	for _, want := range []string{`aria-label="Breadcrumb"`, `href="/projects"`, `hx-get="/projects/panel"`, `>Projects</a>`, `href="/bradley/projects/TRACK/all"`, `hx-get="/bradley/projects/TRACK/all/panel"`, `>Track Slash</a>`, `aria-current="page"`, `>About</span>`} {
+	contentStart := strings.Index(body, `<div id="project-panel-tab-content">`)
+	if contentStart <= headerEnd {
+		t.Fatalf("project tab content should render after the persistent project header: %s", body)
+	}
+	for _, want := range []string{`id="project-breadcrumb"`, `aria-label="Breadcrumb"`, `href="/projects"`, `hx-get="/projects/panel"`, `>Projects</a>`, `href="/bradley/projects/TRACK/all"`, `hx-get="/bradley/projects/TRACK/all/panel"`, `>Track Slash</a>`, `aria-current="page"`, `>About</span>`, `id="project-panel-tab-content"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing breadcrumb markup %q: %s", want, body)
 		}
@@ -133,10 +137,13 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if strings.Contains(header, "Fast issue tracking.") {
 		t.Fatalf("project description should not render inside title card: %s", body)
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", "Changelog", `data-lucide="person-standing"`, `data-lucide="history"`, `data-lucide="info"`, `aria-current="page"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, "lg:mt-0 lg:border-t-0 lg:pt-0", `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", "Changelog", `data-lucide="person-standing"`, `data-lucide="history"`, `data-lucide="info"`, `aria-current="page"`, `/bradley/projects/TRACK/image/thumbnail/content?v=` + projectThumbnailID.String(), `id="project-tab-bar"`, `id="project-actions-menu"`, `hx-target="#project-panel-tab-content"`, `hx-select="#project-panel-tab-content"`, `hx-select-oob="#project-breadcrumb,#project-tab-bar,#project-actions-menu,#project-favorite-action"`, `hx-swap="outerHTML"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, "lg:mt-0 lg:border-t-0 lg:pt-0", `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
+	}
+	if strings.Contains(header, "hx-preserve") {
+		t.Fatalf("project header should stay mounted instead of moving its image through HTMX preservation: %s", header)
 	}
 	for _, want := range []string{"Description", "Fast issue tracking.", "Issue stats", "All time", "Last 7 days", "Top assignees", "Ada Lovelace", "@ada", "AL", "Details", "Project image", `data-modal-open="project-image-picker"`, `id="project-image-picker" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="project-image-picker-title"`, "Change image", `action="/bradley/projects/TRACK/image"`, `hx-post="/bradley/projects/TRACK/image"`, `hx-encoding="multipart/form-data"`, `accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"`, `action="/bradley/projects/TRACK/image/delete"`, "Remove current image", `/bradley/projects/TRACK/image/thumbnail/content?v=` + projectThumbnailID.String(), `rounded-md object-cover`, "Owner", "@bradley", "Tags", "#Customer Beta", `aria-label="Manage tags"`, `hx-get="/bradley/projects/TRACK/tags"`, "Created", "Jun 1, 2026 09:30", "Updated", "Jun 2, 2026 10:45"} {
 		if !strings.Contains(body, want) {

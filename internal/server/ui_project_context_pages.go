@@ -360,8 +360,8 @@ func (s *Server) renderUIProjectContextManager(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User: currentUser(r), Projects: projects, CurrentProjectID: panel.Project.ID,
-		CurrentView: "projects", ProjectPanel: projectPanel,
+		User: currentUser(r), Projects: projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID}, ProjectPanel: projectPanel,
 	})
 }
 
@@ -413,11 +413,10 @@ func (s *Server) renderUIContextManager(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: panel.Project.ID,
-		CurrentView:      "projects",
-		ContextManager:   panel,
+		User:           currentUser(r),
+		Projects:       projects,
+		SidebarActive:  uiSidebarState{View: "project", ProjectID: panel.Project.ID},
+		ContextManager: panel,
 	})
 }
 

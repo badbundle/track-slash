@@ -1,6 +1,6 @@
 {{define "project-panel"}}
-<section class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
-  {{template "breadcrumb" (projectBreadcrumb .Project .View)}}
+<section data-sidebar-view="project" data-sidebar-project-id="{{.Project.ID}}" class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+  <div id="project-breadcrumb">{{template "breadcrumb" (projectBreadcrumb .Project .View)}}</div>
   <header class="rounded-lg border border-slate-200 bg-white px-4 pt-4 dark:border-slate-800 dark:bg-slate-900 sm:px-5 sm:pt-5">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
       <div class="flex min-w-0 items-start gap-3">
@@ -35,28 +35,28 @@
         </div>
       </div>
       <div class="flex shrink-0 items-center gap-2 justify-self-end">
-        {{if .CanWrite}}<a data-main-view="projects" href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" aria-label="New issue" class="grid h-9 w-9 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+        {{if .CanWrite}}<a href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" aria-label="New issue" class="grid h-9 w-9 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
           <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
         </a>{{end}}
-        <details data-close-on-outside class="relative">
+        <details id="project-actions-menu" data-close-on-outside class="relative">
           <summary aria-label="Project actions" class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
           </summary>
           <div class="absolute right-0 top-11 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             {{range .ProjectTabs.Items}}
             {{if .MobileOverflow}}
-            <a href="{{.Href}}" {{if .HXGet}}hx-get="{{.HXGet}}"{{end}} {{if .HXTarget}}hx-target="{{.HXTarget}}"{{end}} {{if .HXPushURL}}hx-push-url="{{.HXPushURL}}"{{end}} {{if .Active}}aria-current="page"{{end}} class="flex items-center gap-2 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 lg:hidden {{if .Active}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}}">
+            <a href="{{.Href}}" {{if .HXGet}}hx-get="{{.HXGet}}"{{end}} {{if .HXTarget}}hx-target="{{.HXTarget}}"{{end}} {{if .HXPushURL}}hx-push-url="{{.HXPushURL}}"{{end}} {{if .HXSelect}}hx-select="{{.HXSelect}}"{{end}} {{if .HXSelectOOB}}hx-select-oob="{{.HXSelectOOB}}"{{end}} {{if .HXSwap}}hx-swap="{{.HXSwap}}"{{end}} {{if .Active}}aria-current="page"{{end}} class="flex items-center gap-2 rounded-md px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 lg:hidden {{if .Active}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}}">
               {{if .Icon}}<i data-lucide="{{.Icon}}" class="h-4 w-4" aria-hidden="true"></i>{{end}}
               <span>{{.Label}}</span>
             </a>
             {{end}}
             {{end}}
             <div class="mt-1 border-t border-slate-100 pt-1 dark:border-slate-800 lg:mt-0 lg:border-t-0 lg:pt-0">
-              {{if .CanManageMembers}}<a href="{{projectMembers .Project}}" hx-get="{{projectMembersPanel .Project}}" hx-target="#main" hx-push-url="{{projectMembers .Project}}" {{if eq .View "members"}}aria-current="page"{{end}} class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm {{if eq .View "members"}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
+              {{if .CanManageMembers}}<a href="{{projectMembers .Project}}" hx-get="{{projectMembersPanel .Project}}" hx-target="#project-panel-tab-content" hx-select="#project-panel-tab-content" hx-select-oob="#project-breadcrumb,#project-tab-bar,#project-actions-menu,#project-favorite-action" hx-swap="outerHTML" hx-push-url="{{projectMembers .Project}}" {{if eq .View "members"}}aria-current="page"{{end}} class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm {{if eq .View "members"}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
                 <i data-lucide="users" class="h-4 w-4" aria-hidden="true"></i>
                 <span>Members</span>
               </a>{{end}}
-              <a href="{{projectView .Project "changelog"}}" hx-get="{{projectPanel .Project "changelog"}}" hx-target="#main" hx-push-url="{{projectView .Project "changelog"}}" {{if eq .View "changelog"}}aria-current="page"{{end}} class="flex items-center gap-2 rounded-md px-2 py-2 text-sm {{if eq .View "changelog"}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
+              <a href="{{projectView .Project "changelog"}}" hx-get="{{projectPanel .Project "changelog"}}" hx-target="#project-panel-tab-content" hx-select="#project-panel-tab-content" hx-select-oob="#project-breadcrumb,#project-tab-bar,#project-actions-menu,#project-favorite-action" hx-swap="outerHTML" hx-push-url="{{projectView .Project "changelog"}}" {{if eq .View "changelog"}}aria-current="page"{{end}} class="flex items-center gap-2 rounded-md px-2 py-2 text-sm {{if eq .View "changelog"}}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200{{else}}text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800{{end}} focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500">
                 <i data-lucide="history" class="h-4 w-4" aria-hidden="true"></i>
                 <span>Changelog</span>
               </a>
@@ -70,28 +70,30 @@
       </div>
     </div>
 
-    <div class="-mt-1">
+    <div id="project-tab-bar" class="-mt-1">
       {{template "tab-bar" .ProjectTabs}}
     </div>
   </header>
 
-  {{template "issue-delete-notice" .DeleteNotice}}
+  <div id="project-panel-tab-content">
+    {{template "issue-delete-notice" .DeleteNotice}}
 
-  {{if eq .View "members"}}
-  {{template "project-member-page" .}}
-  {{else if eq .View "about"}}
-  {{template "project-panel-about" .}}
-  {{else if eq .View "sprint"}}
-  {{template "project-panel-sprint" .}}
-  {{else if eq .View "planned"}}
-  {{template "project-panel-planned" .}}
-  {{else if eq .View "all"}}
-  {{template "project-panel-all" .}}
-  {{else if eq .View "changelog"}}
-  {{template "project-panel-changelog" .}}
-  {{else if eq .View "context"}}
-  {{template "project-panel-context" .ContextManager}}
-  {{end}}
+    {{if eq .View "members"}}
+    {{template "project-member-page" .}}
+    {{else if eq .View "about"}}
+    {{template "project-panel-about" .}}
+    {{else if eq .View "sprint"}}
+    {{template "project-panel-sprint" .}}
+    {{else if eq .View "planned"}}
+    {{template "project-panel-planned" .}}
+    {{else if eq .View "all"}}
+    {{template "project-panel-all" .}}
+    {{else if eq .View "changelog"}}
+    {{template "project-panel-changelog" .}}
+    {{else if eq .View "context"}}
+    {{template "project-panel-context" .ContextManager}}
+    {{end}}
+  </div>
 </section>
 {{end}}
 

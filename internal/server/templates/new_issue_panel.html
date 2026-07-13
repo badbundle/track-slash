@@ -1,5 +1,5 @@
 {{define "new-issue-panel"}}
-<section data-new-issue-panel data-autocomplete-scope class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+<section data-new-issue-panel data-autocomplete-scope data-sidebar-view="{{if .ProjectScoped}}project{{end}}" {{if .ProjectScoped}}data-sidebar-project-id="{{.Project.ID}}"{{end}} class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
   <header class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
@@ -36,6 +36,7 @@
       </form>
 
       <form id="new-issue-form" method="post" action="{{issues}}" hx-post="{{issues}}" hx-target="#main" hx-push-url="false" class="mt-4">
+      {{if .ProjectScoped}}<input type="hidden" name="project_scoped" value="true">{{end}}
       <input type="hidden" name="project_id" value="{{.ProjectID}}">
       <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-title">Title</label>
       <input id="issue-title" name="title" value="{{.Title}}" autocomplete="off" {{if .HasProject}}autofocus{{end}} class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Issue title">

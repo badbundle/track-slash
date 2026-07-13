@@ -100,7 +100,7 @@
         <div class="space-y-2">
           {{range .Issues}}
           <article class="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800 {{statusRow .Issue.Status}}">
-            <a data-main-view="projects" href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="block">
+            <a href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="block">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex min-w-0 items-center gap-2">
                   {{template "issue-key" .Issue.Identifier}}

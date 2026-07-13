@@ -11,6 +11,75 @@ import (
 	"time"
 )
 
+func sidebarNavMarkup(t *testing.T, body string) string {
+	t.Helper()
+	start := strings.Index(body, `<nav class="scrollbar-none`)
+	if start < 0 {
+		t.Fatalf("missing sidebar navigation: %s", body)
+	}
+	end := strings.Index(body[start:], `</nav>`)
+	if end < 0 {
+		t.Fatalf("unterminated sidebar navigation: %s", body)
+	}
+	return body[start : start+end]
+}
+
+func requireActiveSidebarDestination(t *testing.T, body, marker string) {
+	t.Helper()
+	nav := sidebarNavMarkup(t, body)
+	wantCount := 0
+	if marker != "" {
+		wantCount = 1
+	}
+	if got := strings.Count(nav, `aria-current="page"`); got != wantCount {
+		t.Fatalf("active sidebar destination count = %d, want %d: %s", got, wantCount, nav)
+	}
+	if marker == "" {
+		return
+	}
+	markerIndex := strings.Index(nav, marker)
+	if markerIndex < 0 {
+		t.Fatalf("missing sidebar destination %q: %s", marker, nav)
+	}
+	start := strings.LastIndex(nav[:markerIndex], "<a ")
+	end := strings.Index(nav[markerIndex:], ">")
+	if start < 0 || end < 0 {
+		t.Fatalf("invalid sidebar destination markup for %q: %s", marker, nav)
+	}
+	if tag := nav[start : markerIndex+end]; !strings.Contains(tag, `aria-current="page"`) {
+		t.Fatalf("sidebar destination %q is not active: %s", marker, tag)
+	}
+}
+
+func TestUISidebarHighlightsOnlyActiveDestination(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-sidebar-active")
+
+	requireActiveSidebarDestination(t, e.uiGet(t, "/projects", token), `data-sidebar-view="projects"`)
+	for _, path := range []string{"/projects/new", "/issues/new", "/settings", "/tokens"} {
+		requireActiveSidebarDestination(t, e.uiGet(t, path, token), "")
+	}
+	requireActiveSidebarDestination(t, e.uiGet(t, e.projectPath()+"/sprint", token), "")
+
+	if err := e.store.FavoriteProject(e.ctx, user.ID, e.projectID); err != nil {
+		t.Fatalf("FavoriteProject: %v", err)
+	}
+	projectMarker := `data-sidebar-project-id="` + e.projectID.String() + `"`
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "Sidebar child issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	for _, path := range []string{
+		e.projectPath() + "/sprint",
+		e.issuePath(issue),
+		e.projectPath() + "/context",
+		e.projectPath() + "/issues/new",
+	} {
+		requireActiveSidebarDestination(t, e.uiGet(t, path, token), projectMarker)
+	}
+}
+
 func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
@@ -264,7 +333,7 @@ func TestUIProjectFavorites(t *testing.T) {
 	})
 	defer res.Body.Close()
 	body = readBody(t, res)
-	for _, want := range []string{`id="project-favorite-action"`, `aria-label="Unfavorite project"`, `aria-pressed="true"`, `fill-current`, `id="sidebar-favorites"`, `hx-swap-oob="true"`, `border-t border-slate-200`, e.projKey, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+	for _, want := range []string{`id="project-favorite-action"`, `aria-label="Unfavorite project"`, `aria-pressed="true"`, `fill-current`, `id="sidebar-favorites"`, `hx-swap-oob="true"`, `border-t border-slate-200`, e.projKey, `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`, `aria-current="page"`} {
 		if res.StatusCode != http.StatusOK || !strings.Contains(body, want) {
 			t.Fatalf("favorite response code = %d missing %q: %s", res.StatusCode, want, body)
 		}
@@ -288,7 +357,7 @@ func TestUIProjectFavorites(t *testing.T) {
 	})
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusOK || !strings.Contains(body, `aria-label="Favorite project"`) || !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, `class="hidden"`) {
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `aria-label="Favorite project"`) || !strings.Contains(body, `hx-swap-oob="true"`) || !strings.Contains(body, `class="hidden"`) || strings.Contains(body, `aria-current="page"`) {
 		t.Fatalf("unfavorite response code = %d body = %s", res.StatusCode, body)
 	}
 

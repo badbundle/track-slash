@@ -251,11 +251,10 @@ func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: panel.Project.ID,
-		CurrentView:      "projects",
-		IssuePanel:       panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID},
+		IssuePanel:    panel,
 	})
 }
 
@@ -270,11 +269,10 @@ func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, pane
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: panel.Project.ID,
-		CurrentView:      "projects",
-		TagManager:       panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID},
+		TagManager:    panel,
 	})
 }
 

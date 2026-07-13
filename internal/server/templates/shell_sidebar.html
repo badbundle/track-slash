@@ -19,7 +19,7 @@
             <span class="block truncate font-medium">Create issue</span>
           </span>
         </a>
-        <a data-nav-link href="/me" hx-get="/me/panel" hx-target="#main" hx-push-url="/me" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link data-sidebar-link data-sidebar-view="me" href="/me" hx-get="/me/panel" hx-target="#main" hx-push-url="/me" {{if eq .SidebarActive.View "me"}}aria-current="page"{{end}} class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .SidebarActive.View "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="user" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -28,7 +28,7 @@
             <span class="block truncate font-medium">Me</span>
           </span>
         </a>
-        <a data-nav-link href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .CurrentView "projects"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link data-sidebar-link data-sidebar-view="projects" href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" {{if eq .SidebarActive.View "projects"}}aria-current="page"{{end}} class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .SidebarActive.View "projects"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="folder" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -63,7 +63,7 @@
 {{define "sidebar-favorites"}}
 <div id="sidebar-favorites" {{if .OOB}}hx-swap-oob="true"{{end}} class="{{if .Projects}}mb-2 mt-2 space-y-1 border-t border-slate-200 pt-2 dark:border-slate-800{{else}}hidden{{end}}">
   {{range .Projects}}
-  <a data-sidebar-favorite data-main-view="projects" href="{{projectView . "sprint"}}" hx-get="{{projectPanel . "sprint"}}" hx-target="#main" hx-push-url="{{projectView . "sprint"}}" title="{{.Name}}" class="flex items-center gap-3 rounded-lg px-2 py-1.5 text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq $.CurrentProjectID .ID}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+  <a data-sidebar-favorite data-sidebar-link data-sidebar-view="project" data-sidebar-project-id="{{.ID}}" href="{{projectView . "sprint"}}" hx-get="{{projectPanel . "sprint"}}" hx-target="#main" hx-push-url="{{projectView . "sprint"}}" title="{{.Name}}" {{if eq $.ActiveProjectID .ID}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-2 py-1.5 text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq $.ActiveProjectID .ID}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
     {{template "project-icon" (projectIcon . "grid h-6 w-6 shrink-0 place-items-center border border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300")}}
     <span class="wide-only min-w-0">
       <span class="block truncate font-medium">{{.Name}}</span>

@@ -72,9 +72,8 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:        user,
-		Projects:    projects,
-		CurrentView: "settings",
+		User:     user,
+		Projects: projects,
 		SettingsPanel: &uiSettingsPanelData{
 			User:            user,
 			ProfileError:    profileError,
@@ -139,9 +138,8 @@ func (s *Server) renderUITokens(w http.ResponseWriter, r *http.Request, message,
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:        currentUser(r),
-		Projects:    projects,
-		CurrentView: "tokens",
-		TokenPanel:  &uiTokenPanelData{Tokens: tokens, Error: message, Created: created},
+		User:       currentUser(r),
+		Projects:   projects,
+		TokenPanel: &uiTokenPanelData{Tokens: tokens, Error: message, Created: created},
 	})
 }

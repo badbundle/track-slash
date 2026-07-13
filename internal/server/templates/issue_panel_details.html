@@ -139,7 +139,7 @@
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Parent</dt>
             <dd class="mt-1">
-              <a data-main-view="projects" href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="inline-flex max-w-full items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
+              <a href="{{issueHref .ParentIssue}}" hx-get="{{issuePanel .ParentIssue}}" hx-target="#main" hx-push-url="{{issueHref .ParentIssue}}" class="inline-flex max-w-full items-center gap-2 hover:text-indigo-700 dark:hover:text-indigo-200">
                 {{template "issue-key" .ParentIssue.Identifier}}
                 {{template "priority-badge" .ParentIssue.Priority}}
                 <span class="min-w-0 truncate text-slate-900 dark:text-slate-100">{{.ParentIssue.Title}}</span>

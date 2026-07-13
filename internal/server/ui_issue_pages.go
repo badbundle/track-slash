@@ -26,8 +26,7 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 		s.renderUIShell(w, r, http.StatusOK, uiShellData{
 			User:              currentUser(r),
 			Projects:          projects,
-			CurrentProjectID:  panel.Project.ID,
-			CurrentView:       "projects",
+			SidebarActive:     uiSidebarState{View: "project", ProjectID: panel.Project.ID},
 			DeletedIssuePanel: panel,
 		})
 		return
@@ -43,11 +42,10 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:             currentUser(r),
-		Projects:         projects,
-		CurrentProjectID: panel.Project.ID,
-		CurrentView:      "projects",
-		IssuePanel:       panel,
+		User:          currentUser(r),
+		Projects:      projects,
+		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID},
+		IssuePanel:    panel,
 	})
 }
 
