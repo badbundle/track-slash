@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -9,6 +10,14 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestMCPBulkLinkIssueContextsRequiresAuth(t *testing.T) {
+	server := &Server{}
+	out, err := server.mcpBulkLinkIssueContexts(context.Background(), nil, mcpBulkLinkIssueContextsInput{})
+	if out != nil || err != errMCPUnauthorized {
+		t.Fatalf("output = %v err = %v, want nil unauthorized", out, err)
+	}
+}
 
 func TestWriteStoreErrorLogsInternalDetails(t *testing.T) {
 	logBuffer := captureStandardLog(t)

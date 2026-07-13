@@ -160,6 +160,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/attachments", s.listProjectAttachments)
 					r.Get("/attachments/{objectRef}/content", s.getProjectAttachmentContent)
 					r.Delete("/attachments/{objectRef}", s.deleteProjectAttachment)
+					r.Post("/context-links", s.createIssueContextLinks)
 					r.Post("/context", s.createProjectContext)
 					r.Get("/context", s.listProjectContexts)
 					r.Post("/context/{contextRef}/attachments", s.createContextAttachment)

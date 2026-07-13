@@ -265,6 +265,166 @@ func TestHTTPProjectContextValidation(t *testing.T) {
 	}
 }
 
+func TestHTTPBulkIssueContextLinks(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	createContext := func(title string) model.ProjectContext {
+		code, body := e.do(t, http.MethodPost, e.projectPath()+"/context", map[string]any{"title": title, "body": title + " body"})
+		if code != http.StatusCreated {
+			t.Fatalf("create context %q code = %d body = %s", title, code, body)
+		}
+		return decode[model.ProjectContext](t, body)
+	}
+	firstContext := createContext("Architecture")
+	secondContext := createContext("Runbook")
+	issueA, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "A"))
+	if err != nil {
+		t.Fatalf("CreateIssue A: %v", err)
+	}
+	issueB, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "B"))
+	if err != nil {
+		t.Fatalf("CreateIssue B: %v", err)
+	}
+	if _, err := e.store.CreateIssueContextLink(e.ctx, issueA.ID, firstContext.ID); err != nil {
+		t.Fatalf("CreateIssueContextLink existing: %v", err)
+	}
+
+	path := e.projectPath() + "/context-links"
+	links := []map[string]string{
+		{"issue": issueA.Identifier, "context": firstContext.Ref},
+		{"issue": issueA.Identifier, "context": secondContext.Ref},
+		{"issue": issueB.Identifier, "context": firstContext.Ref},
+		{"issue": issueB.Identifier, "context": firstContext.Ref},
+	}
+	code, body := e.do(t, http.MethodPost, path, map[string]any{"links": links})
+	if code != http.StatusOK {
+		t.Fatalf("bulk link code = %d body = %s", code, body)
+	}
+	result := decode[store.CreateIssueContextLinksResult](t, body)
+	if result != (store.CreateIssueContextLinksResult{Requested: 4, Created: 2, Unchanged: 2}) {
+		t.Fatalf("bulk result = %+v", result)
+	}
+	code, body = e.do(t, http.MethodPost, path, map[string]any{"links": links})
+	if code != http.StatusOK {
+		t.Fatalf("repeat bulk link code = %d body = %s", code, body)
+	}
+	result = decode[store.CreateIssueContextLinksResult](t, body)
+	if result != (store.CreateIssueContextLinksResult{Requested: 4, Created: 0, Unchanged: 4}) {
+		t.Fatalf("repeat bulk result = %+v", result)
+	}
+	code, body = e.do(t, http.MethodGet, e.issueContextPath(issueB), nil)
+	if code != http.StatusOK {
+		t.Fatalf("list issue B context code = %d body = %s", code, body)
+	}
+	contextsB := decodePage[model.ProjectContext](t, body)
+	if len(contextsB.Items) != 1 || contextsB.Items[0].ID != firstContext.ID {
+		t.Fatalf("issue B contexts = %+v", contextsB.Items)
+	}
+
+	readonly, readonlyToken := e.mustUserToken(t, "bulk-context-readonly")
+	if _, err := e.store.SetProjectMemberRole(e.ctx, e.projectID, readonly.ID, model.ProjectMemberRoleReadonly); err != nil {
+		t.Fatalf("SetProjectMemberRole readonly: %v", err)
+	}
+	code, body = e.doWithToken(t, readonlyToken, http.MethodPost, path, map[string]any{"links": links[:1]})
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly bulk link code = %d body = %s", code, body)
+	}
+	code, body = e.doUnauth(t, http.MethodPost, path, map[string]any{"links": links[:1]})
+	if code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized bulk link code = %d body = %s", code, body)
+	}
+}
+
+func TestHTTPBulkIssueContextLinkValidationAndAtomicity(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	code, body := e.do(t, http.MethodPost, e.projectPath()+"/context", map[string]any{"title": "Shared", "body": "Shared body"})
+	if code != http.StatusCreated {
+		t.Fatalf("create shared context code = %d body = %s", code, body)
+	}
+	shared := decode[model.ProjectContext](t, body)
+	target, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "Atomic target"))
+	if err != nil {
+		t.Fatalf("CreateIssue target: %v", err)
+	}
+	scopeOwner, err := e.store.CreateIssue(e.ctx, storeCreateIssue(e.projectID, "Scope owner"))
+	if err != nil {
+		t.Fatalf("CreateIssue scope owner: %v", err)
+	}
+	issueScoped, err := e.store.CreateIssueContext(e.ctx, store.CreateIssueContextParams{
+		IssueID:     scopeOwner.ID,
+		Title:       "Issue only",
+		Body:        "Issue scoped body.",
+		CreatedByID: e.adminID,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssueContext: %v", err)
+	}
+	otherProject, err := e.store.CreateProject(e.ctx, uniqueProjectKey(t), "Other", "")
+	if err != nil {
+		t.Fatalf("CreateProject other: %v", err)
+	}
+	otherIssue, err := e.store.CreateIssue(e.ctx, storeCreateIssue(otherProject.ID, "Other issue"))
+	if err != nil {
+		t.Fatalf("CreateIssue other: %v", err)
+	}
+
+	oversized := make([]map[string]string, 201)
+	for i := range oversized {
+		oversized[i] = map[string]string{"issue": target.Identifier, "context": shared.Ref}
+	}
+	path := e.projectPath() + "/context-links"
+	code, body = e.do(t, http.MethodPost, "/"+e.ownerUsername+"/projects/"+uniqueProjectKey(t)+"/context-links", map[string]any{
+		"links": []map[string]string{{"issue": target.Identifier, "context": shared.Ref}},
+	})
+	if code != http.StatusNotFound {
+		t.Fatalf("unknown project bulk link code = %d body = %s", code, body)
+	}
+	for _, test := range []struct {
+		name string
+		body any
+	}{
+		{name: "empty body", body: nil},
+		{name: "missing links", body: map[string]any{}},
+		{name: "wrong links type", body: map[string]any{"links": "bad"}},
+		{name: "too many links", body: map[string]any{"links": oversized}},
+		{name: "malformed issue", body: map[string]any{"links": []map[string]string{{"issue": "bad", "context": shared.Ref}}}},
+		{name: "cross project issue", body: map[string]any{"links": []map[string]string{{"issue": otherIssue.Identifier, "context": shared.Ref}}}},
+		{name: "malformed context", body: map[string]any{"links": []map[string]string{{"issue": target.Identifier, "context": "bad"}}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			code, body := e.do(t, http.MethodPost, path, test.body)
+			if code != http.StatusBadRequest {
+				t.Fatalf("code = %d body = %s", code, body)
+			}
+		})
+	}
+
+	valid := map[string]string{"issue": target.Identifier, "context": shared.Ref}
+	for _, test := range []struct {
+		name    string
+		invalid map[string]string
+	}{
+		{name: "missing issue", invalid: map[string]string{"issue": e.projKey + "-999999", "context": shared.Ref}},
+		{name: "missing context", invalid: map[string]string{"issue": target.Identifier, "context": "context-999999"}},
+		{name: "issue scoped context", invalid: map[string]string{"issue": target.Identifier, "context": issueScoped.Ref}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			code, body := e.do(t, http.MethodPost, path, map[string]any{"links": []map[string]string{valid, test.invalid}})
+			if code != http.StatusNotFound {
+				t.Fatalf("code = %d body = %s", code, body)
+			}
+			contexts, _, err := e.store.ListContextsForIssue(e.ctx, store.ListContextsForIssueParams{IssueID: target.ID, Limit: 10})
+			if err != nil {
+				t.Fatalf("ListContextsForIssue: %v", err)
+			}
+			if len(contexts) != 0 {
+				t.Fatalf("target contexts after rejected batch = %+v", contexts)
+			}
+		})
+	}
+}
+
 func storeCreateIssue(projectID uuid.UUID, title string) store.CreateIssueParams {
 	return store.CreateIssueParams{ProjectID: projectID, Title: title}
 }

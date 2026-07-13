@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -18,6 +19,7 @@ const (
 	maxProjectContextTitleLength = 200
 	maxProjectContextBodyLength  = 100000
 	maxProjectContextUploadBytes = maxProjectContextBodyLength + 1
+	maxBulkIssueContextLinks     = 200
 )
 
 type createProjectContextReq struct {
@@ -38,6 +40,15 @@ type createIssueContextReq struct {
 	ContextRef string `json:"context_ref"`
 	Title      string `json:"title"`
 	Body       string `json:"body"`
+}
+
+type issueContextLinkReq struct {
+	Issue   string `json:"issue"`
+	Context string `json:"context"`
+}
+
+type createIssueContextLinksReq struct {
+	Links []issueContextLinkReq `json:"links"`
 }
 
 type projectContextUploadData struct {
@@ -328,6 +339,60 @@ func (s *Server) createIssueContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, contextItem)
+}
+
+func (s *Server) createIssueContextLinks(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
+		return
+	}
+	var req createIssueContextLinksReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	links, err := parseIssueContextLinkPairs(project.Key, req.Links)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := s.store.CreateIssueContextLinks(r.Context(), store.CreateIssueContextLinksParams{
+		ProjectID: project.ID,
+		Links:     links,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func parseIssueContextLinkPairs(projectKey string, links []issueContextLinkReq) ([]store.IssueContextLinkPair, error) {
+	if len(links) == 0 {
+		return nil, errors.New("links required")
+	}
+	if len(links) > maxBulkIssueContextLinks {
+		return nil, fmt.Errorf("too many links (max %d)", maxBulkIssueContextLinks)
+	}
+	out := make([]store.IssueContextLinkPair, len(links))
+	for i, link := range links {
+		issue, err := parseIssueRef(link.Issue)
+		if err != nil {
+			return nil, err
+		}
+		if issue.ProjectKey != projectKey {
+			return nil, fmt.Errorf("issue %s must belong to project %s", strings.TrimSpace(link.Issue), projectKey)
+		}
+		contextNumber, err := parseTypedRef(link.Context, "context")
+		if err != nil {
+			return nil, err
+		}
+		out[i] = store.IssueContextLinkPair{IssueNumber: issue.Number, ContextNumber: contextNumber}
+	}
+	return out, nil
 }
 
 func (s *Server) deleteIssueContextLink(w http.ResponseWriter, r *http.Request) {

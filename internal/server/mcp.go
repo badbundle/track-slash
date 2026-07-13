@@ -255,6 +255,11 @@ type mcpCreateIssueContextInput struct {
 	Body       string `json:"body,omitempty"`
 }
 
+type mcpBulkLinkIssueContextsInput struct {
+	mcpProjectInput
+	Links []issueContextLinkReq `json:"links"`
+}
+
 type mcpIssueContextInput struct {
 	mcpIssueInput
 	Context string `json:"context" jsonschema:"context ref, for example context-1"`
@@ -504,6 +509,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_read_project_context_attachment_content", "Read project context attachment content as base64.", readOnly, s.mcpReadContextAttachmentContent)
 	addMCPTool(srv, "track_delete_project_context_attachment", "Delete project context attachment and owned object.", write, s.mcpDeleteContextAttachment)
 	addMCPTool(srv, "track_create_issue_context", "Create issue-scoped context or link project context to issue.", write, s.mcpCreateIssueContext)
+	addMCPTool(srv, "track_bulk_link_issue_contexts", "Link up to 200 issue and project-context pairs atomically.", write, s.mcpBulkLinkIssueContexts)
 	addMCPTool(srv, "track_list_issue_context", "List context items linked to issue.", readOnly, s.mcpListIssueContext)
 	addMCPTool(srv, "track_delete_issue_context", "Delete issue-context link.", write, s.mcpDeleteIssueContext)
 
@@ -2748,6 +2754,36 @@ func (s *Server) mcpCreateIssueContext(ctx context.Context, req *mcp.CallToolReq
 		return nil, err
 	}
 	return mcpToolOutput{"context": contextItem}, nil
+}
+
+func (s *Server) mcpBulkLinkIssueContexts(ctx context.Context, req *mcp.CallToolRequest, input mcpBulkLinkIssueContextsInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
+	links, err := parseIssueContextLinkPairs(project.Key, input.Links)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	result, err := s.store.CreateIssueContextLinks(ctx, store.CreateIssueContextLinksParams{
+		ProjectID: project.ID,
+		Links:     links,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{
+		"requested": result.Requested,
+		"created":   result.Created,
+		"unchanged": result.Unchanged,
+	}, nil
 }
 
 func (s *Server) mcpListIssueContext(ctx context.Context, req *mcp.CallToolRequest, input mcpIssuePageInput) (mcpToolOutput, error) {
