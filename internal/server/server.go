@@ -182,6 +182,7 @@ func (s *Server) Router() http.Handler {
 					r.Post("/sprints", s.createSprint)
 					r.Get("/sprints", s.listProjectSprints)
 					r.Get("/sprints/{sprintRef}", s.getSprint)
+					r.Get("/sprints/{sprintRef}/history/issues", s.listSprintHistoryIssues)
 					r.Patch("/sprints/{sprintRef}", s.updateSprint)
 					r.Delete("/sprints/{sprintRef}", s.deleteSprint)
 					r.Post("/sprints/{sprintRef}/complete", s.completeSprint)

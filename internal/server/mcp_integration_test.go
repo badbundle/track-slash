@@ -484,6 +484,115 @@ func TestMCPSprintOptionalDates(t *testing.T) {
 	}
 }
 
+func TestMCPListSprintsCompletedSortAndCursor(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	session := mcpConnect(t, e, e.authToken)
+	olderAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	middleAt := olderAt.Add(24 * time.Hour)
+	newestAt := middleAt.Add(24 * time.Hour)
+	older := createCompletedSprintAtFor(t, e, e.projectID, "MCP older", sprintTestDate(2026, 9, 1), sprintTestDate(2026, 9, 14), &olderAt)
+	middle := createCompletedSprintAtFor(t, e, e.projectID, "MCP middle", sprintTestDate(2026, 8, 1), sprintTestDate(2026, 8, 14), &middleAt)
+	newest := createCompletedSprintAtFor(t, e, e.projectID, "MCP newest", sprintTestDate(2026, 6, 1), sprintTestDate(2026, 6, 14), &newestAt)
+
+	args := map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"status": string(model.SprintStatusCompleted),
+		"sort":   string(store.ListSprintsSortCompleted),
+		"limit":  2,
+	}
+	out := mcpCall(t, e, session, "track_list_sprints", args)
+	page1 := decodeMCPField[[]model.Sprint](t, out, "items")
+	if len(page1) != 2 || page1[0].ID != newest.ID || page1[1].ID != middle.ID {
+		t.Fatalf("page 1 sprints = %+v, want newest/middle", page1)
+	}
+	next := decodeMCPField[*string](t, out, "next_cursor")
+	if next == nil {
+		t.Fatal("page 1 next_cursor = nil, want cursor")
+	}
+
+	args["cursor"] = *next
+	out = mcpCall(t, e, session, "track_list_sprints", args)
+	page2 := decodeMCPField[[]model.Sprint](t, out, "items")
+	if len(page2) != 1 || page2[0].ID != older.ID {
+		t.Fatalf("page 2 sprints = %+v, want older", page2)
+	}
+	if next = decodeMCPField[*string](t, out, "next_cursor"); next != nil {
+		t.Fatalf("page 2 next_cursor = %q, want nil", *next)
+	}
+
+	for _, badArgs := range []map[string]any{
+		{"owner": e.ownerUsername, "key": e.projKey, "sort": "banana"},
+		{"owner": e.ownerUsername, "key": e.projKey, "sort": string(store.ListSprintsSortCompleted)},
+	} {
+		errOut := mcpCallExpectError(t, e, session, "track_list_sprints", badArgs)
+		requireMCPErrorCode(t, errOut, "validation_error")
+	}
+}
+
+func TestMCPListSprintHistoryIssues(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	session := mcpConnect(t, e, e.authToken)
+	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{ProjectID: e.projectID, Name: "MCP snapshot sprint"})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	planned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{ProjectID: e.projectID, Name: "MCP planned sprint"})
+	if err != nil {
+		t.Fatalf("CreateSprint planned: %v", err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, sprint.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("activate sprint: %v", err)
+	}
+	first := e.mustCreateIssue(t, "MCP first snapshot issue")
+	second := e.mustCreateIssue(t, "MCP second snapshot issue")
+	for _, issue := range []model.Issue{first, second} {
+		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &sprint.ID}); err != nil {
+			t.Fatalf("assign %s: %v", issue.Title, err)
+		}
+	}
+	completed, err := e.store.CompleteSprint(e.ctx, sprint.ID)
+	if err != nil {
+		t.Fatalf("CompleteSprint: %v", err)
+	}
+	args := map[string]any{
+		"owner":  e.ownerUsername,
+		"key":    e.projKey,
+		"sprint": completed.Ref,
+		"limit":  1,
+	}
+	out := mcpCall(t, e, session, "track_list_sprint_history_issues", args)
+	page1 := decodeMCPField[[]model.Issue](t, out, "items")
+	if len(page1) != 1 || page1[0].ID != first.ID {
+		t.Fatalf("page 1 issues = %+v, want first", page1)
+	}
+	next := decodeMCPField[*string](t, out, "next_cursor")
+	if next == nil {
+		t.Fatal("page 1 next_cursor = nil, want cursor")
+	}
+	args["cursor"] = *next
+	out = mcpCall(t, e, session, "track_list_sprint_history_issues", args)
+	page2 := decodeMCPField[[]model.Issue](t, out, "items")
+	if len(page2) != 1 || page2[0].ID != second.ID {
+		t.Fatalf("page 2 issues = %+v, want second", page2)
+	}
+	if next = decodeMCPField[*string](t, out, "next_cursor"); next != nil {
+		t.Fatalf("page 2 next_cursor = %q, want nil", *next)
+	}
+
+	for _, badArgs := range []map[string]any{
+		{"owner": e.ownerUsername, "key": e.projKey, "sprint": planned.Ref},
+		{"owner": e.ownerUsername, "key": e.projKey, "sprint": completed.Ref, "cursor": "bad"},
+		{"owner": e.ownerUsername, "key": e.projKey, "sprint": completed.Ref, "limit": -1},
+	} {
+		errOut := mcpCallExpectError(t, e, session, "track_list_sprint_history_issues", badArgs)
+		requireMCPErrorCode(t, errOut, "validation_error")
+	}
+}
+
 func TestMCPRequiresAPIToken(t *testing.T) {
 	t.Parallel()
 	storageSvc, _ := newLocalStorageService(t, 1024*1024)

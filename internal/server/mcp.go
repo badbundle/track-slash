@@ -163,7 +163,13 @@ type mcpCreateSprintInput struct {
 type mcpListSprintsInput struct {
 	mcpProjectInput
 	mcpPageInput
-	Status model.SprintStatus `json:"status,omitempty"`
+	Status model.SprintStatus    `json:"status,omitempty"`
+	Sort   store.ListSprintsSort `json:"sort,omitempty" jsonschema:"completed"`
+}
+
+type mcpListSprintHistoryIssuesInput struct {
+	mcpSprintInput
+	mcpPageInput
 }
 
 type mcpUpdateSprintInput struct {
@@ -478,6 +484,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 
 	addMCPTool(srv, "track_create_sprint", "Create project sprint.", write, s.mcpCreateSprint)
 	addMCPTool(srv, "track_list_sprints", "List project sprints.", readOnly, s.mcpListSprints)
+	addMCPTool(srv, "track_list_sprint_history_issues", "List issues captured when a completed sprint finished.", readOnly, s.mcpListSprintHistoryIssues)
 	addMCPTool(srv, "track_get_sprint", "Get project sprint.", readOnly, s.mcpGetSprint)
 	addMCPTool(srv, "track_update_sprint", "Update project sprint.", write, s.mcpUpdateSprint)
 	addMCPTool(srv, "track_delete_sprint", "Delete project sprint.", write, s.mcpDeleteSprint)
@@ -1832,6 +1839,10 @@ func (s *Server) mcpListSprints(ctx context.Context, req *mcp.CallToolRequest, i
 	if input.Status != "" && !input.Status.Valid() {
 		return nil, validationError("invalid status")
 	}
+	sortBy, err := parseSprintListSort(string(input.Sort), input.Status)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
 	limit, err := mcpLimit(input.Limit)
 	if err != nil {
 		return nil, validationError(err.Error())
@@ -1844,21 +1855,57 @@ func (s *Server) mcpListSprints(ctx context.Context, req *mcp.CallToolRequest, i
 		}
 		cursor = &c
 	}
-	sprints, hasMore, err := s.store.ListSprints(ctx, store.ListSprintsParams{ProjectID: project.ID, Status: input.Status, Cursor: cursor, Limit: limit})
+	sprints, hasMore, err := s.store.ListSprints(ctx, store.ListSprintsParams{ProjectID: project.ID, Status: input.Status, Sort: sortBy, Cursor: cursor, Limit: limit})
 	if err != nil {
 		return nil, err
 	}
 	var next *string
 	if hasMore {
-		last := sprints[len(sprints)-1]
-		c := store.SprintsCursor{StartDate: last.StartDate, CreatedAt: last.CreatedAt, ID: last.ID}
-		if input.Status == model.SprintStatusPlanned && last.PlannedOrder != nil {
-			c.PlannedOrder = *last.PlannedOrder
-		}
-		enc := encodeCursor(c)
+		enc := encodeCursor(sprintListCursor(sprints[len(sprints)-1], input.Status, sortBy))
 		next = &enc
 	}
 	return mcpPageOut(sprints, next), nil
+}
+
+func (s *Server) mcpListSprintHistoryIssues(ctx context.Context, req *mcp.CallToolRequest, input mcpListSprintHistoryIssuesInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, sprint, err := s.mcpSprint(ctx, auth, input.mcpSprintInput)
+	if err != nil {
+		return nil, err
+	}
+	if sprint.Status != model.SprintStatusCompleted {
+		return nil, validationError("sprint must be completed")
+	}
+	limit, err := mcpLimit(input.Limit)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	var cursor *store.IssuesCursor
+	if input.Cursor != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(input.Cursor, &c); err != nil {
+			return nil, validationError(err.Error())
+		}
+		cursor = &c
+	}
+	issues, hasMore, err := s.store.ListSprintSnapshotIssues(ctx, store.ListSprintSnapshotIssuesParams{
+		ProjectID: project.ID,
+		SprintID:  sprint.ID,
+		Cursor:    cursor,
+		Limit:     limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var next *string
+	if hasMore {
+		encoded := encodeCursor(sprintHistoryIssueCursor(issues[len(issues)-1]))
+		next = &encoded
+	}
+	return mcpPageOut(issues, next), nil
 }
 
 func (s *Server) mcpGetSprint(ctx context.Context, req *mcp.CallToolRequest, input mcpSprintInput) (mcpToolOutput, error) {

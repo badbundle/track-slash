@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -92,6 +93,11 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid status")
 		return
 	}
+	sortBy, err := parseSprintListSort(r.URL.Query().Get("sort"), statusFilter)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
 	if err != nil {
@@ -111,6 +117,7 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 	out, hasMore, err := s.store.ListSprints(r.Context(), store.ListSprintsParams{
 		ProjectID: project.ID,
 		Status:    statusFilter,
+		Sort:      sortBy,
 		Cursor:    cursor,
 		Limit:     limit,
 	})
@@ -120,19 +127,43 @@ func (s *Server) listProjectSprints(w http.ResponseWriter, r *http.Request) {
 	}
 	var next *string
 	if hasMore {
-		last := out[len(out)-1]
-		c := store.SprintsCursor{
-			StartDate: last.StartDate,
-			CreatedAt: last.CreatedAt,
-			ID:        last.ID,
-		}
-		if statusFilter == model.SprintStatusPlanned && last.PlannedOrder != nil {
-			c.PlannedOrder = *last.PlannedOrder
-		}
-		enc := encodeCursor(c)
+		enc := encodeCursor(sprintListCursor(out[len(out)-1], statusFilter, sortBy))
 		next = &enc
 	}
 	writePage(w, out, next)
+}
+
+func parseSprintListSort(raw string, status model.SprintStatus) (store.ListSprintsSort, error) {
+	sortBy := store.ListSprintsSort(strings.TrimSpace(raw))
+	switch sortBy {
+	case store.ListSprintsSortStartDate:
+		return sortBy, nil
+	case store.ListSprintsSortCompleted:
+		if status != model.SprintStatusCompleted {
+			return "", fmt.Errorf("sort=completed requires status=completed")
+		}
+		return sortBy, nil
+	default:
+		return "", fmt.Errorf("invalid sort")
+	}
+}
+
+func sprintListCursor(sprint model.Sprint, status model.SprintStatus, sortBy store.ListSprintsSort) store.SprintsCursor {
+	cursor := store.SprintsCursor{
+		StartDate: sprint.StartDate,
+		CreatedAt: sprint.CreatedAt,
+		ID:        sprint.ID,
+	}
+	if sortBy == store.ListSprintsSortCompleted {
+		cursor.CompletedAt = sprint.CompletedAt
+	} else if status == model.SprintStatusPlanned && sprint.PlannedOrder != nil {
+		cursor.PlannedOrder = *sprint.PlannedOrder
+	}
+	return cursor
+}
+
+func sprintHistoryIssueCursor(issue model.Issue) store.IssuesCursor {
+	return store.IssuesCursor{Number: issue.Number}
 }
 
 func (s *Server) reorderPlannedSprints(w http.ResponseWriter, r *http.Request) {
@@ -185,6 +216,50 @@ func (s *Server) getSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sprint)
+}
+
+func (s *Server) listSprintHistoryIssues(w http.ResponseWriter, r *http.Request) {
+	project, sprint, ok := s.sprintFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	if sprint.Status != model.SprintStatusCompleted {
+		writeError(w, http.StatusConflict, "sprint must be completed")
+		return
+	}
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+	issues, hasMore, err := s.store.ListSprintSnapshotIssues(r.Context(), store.ListSprintSnapshotIssuesParams{
+		ProjectID: project.ID,
+		SprintID:  sprint.ID,
+		Cursor:    cursor,
+		Limit:     limit,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	var next *string
+	if hasMore {
+		encoded := encodeCursor(sprintHistoryIssueCursor(issues[len(issues)-1]))
+		next = &encoded
+	}
+	writePage(w, issues, next)
 }
 
 func (s *Server) updateSprint(w http.ResponseWriter, r *http.Request) {

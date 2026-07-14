@@ -149,6 +149,10 @@ func uiProjectSprintIssuesPath(project model.Project, sprint any) string {
 	return uiProjectSprintPath(project, sprint) + "/issues"
 }
 
+func uiProjectSprintHistoryIssuesPath(project model.Project, sprint any) string {
+	return uiProjectSprintPath(project, sprint) + "/history/issues"
+}
+
 func uiProjectSprintIssueNewPath(project model.Project, sprint any) string {
 	return uiProjectSprintIssuesPath(project, sprint) + "/new"
 }

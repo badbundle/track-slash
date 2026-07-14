@@ -122,7 +122,7 @@ func (s *Server) uiProjectAllIssuePage(w http.ResponseWriter, r *http.Request) {
 
 func uiProjectFavoriteView(raw string) string {
 	switch raw {
-	case "about", "sprint", "planned", "all", "context", "changelog", "members":
+	case "about", "sprint", "planned", "all", "context", "sprints", "changelog", "members":
 		return raw
 	default:
 		return "sprint"
@@ -564,6 +564,12 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		panel.AllIssues = pageData.Issues
 		panel.AllIssuePage = pageData
 		panel.AllControls = uiProjectAllIssueControls(project, allQuery, tags, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
+	case "sprints":
+		pageData, err := s.uiBuildProjectSprintHistoryPage(ctx, r, project)
+		if err != nil {
+			return nil, err
+		}
+		panel.SprintHistoryPage = pageData
 	case "changelog":
 		pageData, err := s.uiBuildProjectChangelogPage(ctx, r, project)
 		if err != nil {
@@ -598,6 +604,104 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	return panel, nil
+}
+
+func (s *Server) uiProjectSprintHistoryPage(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	pageData, err := s.uiBuildProjectSprintHistoryPage(r.Context(), r, project)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-sprint-history-page", pageData)
+}
+
+func (s *Server) uiBuildProjectSprintHistoryPage(ctx context.Context, r *http.Request, project model.Project) (uiProjectSprintHistoryPageData, error) {
+	var cursor *store.SprintsCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.SprintsCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			return uiProjectSprintHistoryPageData{}, fmt.Errorf("invalid sprint history cursor: %w", errUIBadRequest)
+		}
+		cursor = &c
+	}
+	sprints, hasMore, err := s.store.ListSprints(ctx, store.ListSprintsParams{
+		ProjectID: project.ID,
+		Status:    model.SprintStatusCompleted,
+		Sort:      store.ListSprintsSortCompleted,
+		Cursor:    cursor,
+		Limit:     DefaultLimit,
+	})
+	if err != nil {
+		return uiProjectSprintHistoryPageData{}, err
+	}
+	pageData := uiProjectSprintHistoryPageData{
+		Project: project,
+		Sprints: sprints,
+		HasMore: hasMore,
+	}
+	if hasMore {
+		pageData.NextCursor = encodeCursor(sprintListCursor(sprints[len(sprints)-1], model.SprintStatusCompleted, store.ListSprintsSortCompleted))
+	}
+	return pageData, nil
+}
+
+func (s *Server) uiProjectSprintHistoryIssues(w http.ResponseWriter, r *http.Request) {
+	project, sprint, ok := s.uiProjectSprintFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if sprint.Status != model.SprintStatusCompleted {
+		writeUIStoreError(w, store.ErrNotFound)
+		return
+	}
+	pageData, err := s.uiBuildProjectSprintHistoryIssuePage(r.Context(), r, project, sprint)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	templateName := "project-sprint-history-issues"
+	if r.URL.Query().Get("cursor") != "" {
+		templateName = "project-sprint-history-issue-page"
+	}
+	renderUITemplate(w, http.StatusOK, templateName, pageData)
+}
+
+func (s *Server) uiBuildProjectSprintHistoryIssuePage(ctx context.Context, r *http.Request, project model.Project, sprint model.Sprint) (uiProjectSprintHistoryIssuePageData, error) {
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			return uiProjectSprintHistoryIssuePageData{}, fmt.Errorf("invalid sprint history issue cursor: %w", errUIBadRequest)
+		}
+		cursor = &c
+	}
+	issues, hasMore, err := s.store.ListSprintSnapshotIssues(ctx, store.ListSprintSnapshotIssuesParams{
+		ProjectID: project.ID,
+		SprintID:  sprint.ID,
+		Cursor:    cursor,
+		Limit:     DefaultLimit,
+	})
+	if err != nil {
+		return uiProjectSprintHistoryIssuePageData{}, err
+	}
+	pageData := uiProjectSprintHistoryIssuePageData{
+		Project: project,
+		Sprint:  sprint,
+		Issues:  issues,
+	}
+	if hasMore {
+		cursor := encodeCursor(sprintHistoryIssueCursor(issues[len(issues)-1]))
+		pageData.NextHXGet = uiProjectSprintHistoryIssuesPath(project, sprint) + "?cursor=" + cursor
+	}
+	return pageData, nil
 }
 
 func (s *Server) uiProjectChangelogPage(w http.ResponseWriter, r *http.Request) {

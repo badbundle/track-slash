@@ -33,6 +33,7 @@ var uiProjectViewLabels = map[string]string{
 	"context":   "Context",
 	"about":     "About",
 	"members":   "Members",
+	"sprints":   "Sprint history",
 	"changelog": "Changelog",
 }
 
@@ -286,6 +287,17 @@ func uiSprintDateRange(sprint model.Sprint) string {
 		return "Invalid dates"
 	}
 	return uiSprintDate(*sprint.StartDate) + "-" + uiSprintDate(*sprint.EndDate)
+}
+
+func uiSprintHistoryDateRange(sprint model.Sprint) string {
+	if sprint.StartDate == nil || sprint.EndDate == nil {
+		return "No scheduled dates"
+	}
+	start := sprint.StartDate.Format("Jan 2")
+	if sprint.StartDate.Year() != sprint.EndDate.Year() {
+		start = sprint.StartDate.Format("Jan 2, 2006")
+	}
+	return start + "-" + sprint.EndDate.Format("Jan 2, 2006")
 }
 
 func uiSprintLabel(sprint model.Sprint) string {

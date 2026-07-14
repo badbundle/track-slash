@@ -1,0 +1,76 @@
+{{define "project-panel-sprint-history"}}
+  <section class="py-6">
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Sprint history</h2>
+    </div>
+    {{if .Sprints}}
+    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      {{template "project-sprint-history-page" .}}
+    </div>
+    {{else}}
+    <div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No completed sprints yet.</div>
+    {{end}}
+  </section>
+{{end}}
+
+{{define "project-sprint-history-page"}}
+{{range .Sprints}}
+{{$panelID := printf "completed-sprint-%s-issues" .Ref}}
+<section class="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
+  <header class="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <div class="flex min-w-0 items-start gap-2">
+      <button type="button" data-disclosure-toggle aria-label="Toggle sprint issues" aria-controls="{{$panelID}}" aria-expanded="false" hx-get="{{projectSprintHistoryIssues $.Project .}}" hx-target="#{{$panelID}}" hx-trigger="click once" hx-swap="innerHTML" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+        <i data-disclosure-icon data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
+      </button>
+      <div class="min-w-0">
+        <h3 class="truncate font-medium text-slate-900 dark:text-slate-100">{{sprintLabel .}}</h3>
+        <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{sprintHistoryDateRange .}}</p>
+      </div>
+    </div>
+    {{if .CompletedAt}}
+    <time datetime="{{.CompletedAt.Format "2006-01-02T15:04:05Z07:00"}}" class="shrink-0 pl-9 text-xs text-slate-500 dark:text-slate-400 sm:pl-0">Completed {{tokenTime .CompletedAt}}</time>
+    {{else}}
+    <span class="shrink-0 pl-9 text-xs text-slate-500 dark:text-slate-400 sm:pl-0">Completion date unavailable</span>
+    {{end}}
+  </header>
+  <div id="{{$panelID}}" hidden aria-live="polite">
+    <div class="border-t border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">Loading sprint issues...</div>
+  </div>
+</section>
+{{end}}
+{{if .HasMore}}
+<div id="project-sprint-history-more" class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+  <button type="button" hx-get="{{projectView .Project "sprints"}}/page?cursor={{.NextCursor}}" hx-target="#project-sprint-history-more" hx-swap="outerHTML" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+    <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
+    Load more
+  </button>
+</div>
+{{end}}
+{{end}}
+
+{{define "project-sprint-history-issues"}}
+{{if .Issues}}
+<div class="border-t border-slate-100 dark:border-slate-800">
+  {{template "project-sprint-history-issue-page" .}}
+</div>
+{{else}}
+<div class="border-t border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">No issues were included in this sprint.</div>
+{{end}}
+{{end}}
+
+{{define "project-sprint-history-issue-page"}}
+{{range .Issues}}
+<a href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="block min-w-0 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
+  {{template "issue-summary-row" .}}
+</a>
+{{end}}
+{{if .NextHXGet}}
+{{$moreID := printf "completed-sprint-%s-issues-more" .Sprint.Ref}}
+<div id="{{$moreID}}" class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+  <button type="button" hx-get="{{.NextHXGet}}" hx-target="#{{$moreID}}" hx-swap="outerHTML" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+    <i data-lucide="chevron-down" class="h-4 w-4" aria-hidden="true"></i>
+    Load more issues
+  </button>
+</div>
+{{end}}
+{{end}}
