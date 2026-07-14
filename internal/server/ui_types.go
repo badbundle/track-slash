@@ -482,6 +482,7 @@ type uiProjectPanelData struct {
 	AllIssues                       []model.Issue
 	AllIssuePage                    uiProjectAllIssuePageData
 	AllControls                     uiIssueControlsData
+	SprintHistoryPage               uiProjectSprintHistoryPageData
 	ChangelogPage                   uiProjectChangelogPageData
 	ProjectStats                    model.ProjectStats
 	Tags                            []model.IssueTag
@@ -507,6 +508,21 @@ type uiIssueListQuery struct {
 }
 
 type uiProjectAllQuery = uiIssueListQuery
+
+type uiProjectSprintHistoryPageData struct {
+	Project    model.Project
+	Sprints    []model.Sprint
+	HasMore    bool
+	NextCursor string
+}
+
+type uiProjectSprintHistoryIssuePageData struct {
+	Project         model.Project
+	Sprint          model.Sprint
+	DescriptionHTML template.HTML
+	Issues          []model.Issue
+	NextHXGet       string
+}
 
 type uiProjectChangelogPageData struct {
 	Project    model.Project

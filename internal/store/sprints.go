@@ -161,16 +161,26 @@ func (s *Store) GetSprintByProjectNumber(ctx context.Context, projectID uuid.UUI
 type ListSprintsParams struct {
 	ProjectID uuid.UUID
 	Status    model.SprintStatus // empty = all
+	Sort      ListSprintsSort
 	Cursor    *SprintsCursor
 	Limit     int
 }
 
+type ListSprintsSort string
+
+const (
+	ListSprintsSortStartDate ListSprintsSort = ""
+	ListSprintsSortCompleted ListSprintsSort = "completed"
+)
+
 // SprintsCursor keys off the active ordering. Planned lists use
-// (planned_order, id); other lists use (start_date IS NULL, start_date,
+// (planned_order, id), completed lists use (completed_at IS NULL,
+// completed_at, id), and other lists use (start_date IS NULL, start_date,
 // created_at, id).
 type SprintsCursor struct {
 	PlannedOrder int64      `json:"p,omitempty"`
 	StartDate    *time.Time `json:"s,omitempty"`
+	CompletedAt  *time.Time `json:"x,omitempty"`
 	CreatedAt    time.Time  `json:"c"`
 	ID           uuid.UUID  `json:"i"`
 }
@@ -187,7 +197,16 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 		args = append(args, string(p.Status))
 		q += fmt.Sprintf(" AND status = $%d", len(args))
 	}
-	if p.Cursor != nil && p.Status == model.SprintStatusPlanned {
+	if p.Cursor != nil && p.Sort == ListSprintsSortCompleted {
+		if p.Cursor.CompletedAt == nil {
+			args = append(args, p.Cursor.ID)
+			q += fmt.Sprintf(" AND completed_at IS NULL AND id < $%d", len(args))
+		} else {
+			args = append(args, *p.Cursor.CompletedAt, p.Cursor.ID)
+			q += fmt.Sprintf(" AND (completed_at IS NULL OR completed_at < $%d OR (completed_at = $%d AND id < $%d))",
+				len(args)-1, len(args)-1, len(args))
+		}
+	} else if p.Cursor != nil && p.Status == model.SprintStatusPlanned {
 		args = append(args, p.Cursor.PlannedOrder, p.Cursor.ID)
 		q += fmt.Sprintf(" AND (planned_order, id) > ($%d, $%d)",
 			len(args)-1, len(args))
@@ -203,7 +222,9 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 		}
 	}
 	args = append(args, p.Limit+1)
-	if p.Status == model.SprintStatusPlanned {
+	if p.Sort == ListSprintsSortCompleted {
+		q += fmt.Sprintf(" ORDER BY completed_at DESC NULLS LAST, id DESC LIMIT $%d", len(args))
+	} else if p.Status == model.SprintStatusPlanned {
 		q += fmt.Sprintf(" ORDER BY planned_order ASC NULLS LAST, id ASC LIMIT $%d", len(args))
 	} else {
 		q += fmt.Sprintf(" ORDER BY start_date IS NULL ASC, start_date ASC, created_at ASC, id ASC LIMIT $%d", len(args))
@@ -229,6 +250,63 @@ func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.S
 	hasMore := len(out) > p.Limit
 	if hasMore {
 		out = out[:p.Limit]
+	}
+	return out, hasMore, nil
+}
+
+type ListSprintSnapshotIssuesParams struct {
+	ProjectID uuid.UUID
+	SprintID  uuid.UUID
+	Cursor    *IssuesCursor
+	Limit     int
+}
+
+// ListSprintSnapshotIssues returns the current issue records for the immutable
+// membership captured when a sprint completed. Soft-deleted issues remain in
+// the history because deleting an issue does not erase its sprint membership.
+func (s *Store) ListSprintSnapshotIssues(ctx context.Context, p ListSprintSnapshotIssuesParams) ([]model.Issue, bool, error) {
+	args := []any{p.ProjectID, p.SprintID}
+	q := `
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
+		FROM sprint_issue_snapshots sis
+		JOIN issues i ON i.id = sis.issue_id AND i.project_id = sis.project_id
+		JOIN projects pr ON pr.id = i.project_id
+		JOIN users u ON u.id = pr.owner_id
+		WHERE sis.project_id = $1 AND sis.sprint_id = $2
+		  AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
+	`
+	if p.Cursor != nil {
+		args = append(args, p.Cursor.Number)
+		q += fmt.Sprintf(" AND i.number > $%d", len(args))
+	}
+	args = append(args, p.Limit+1)
+	q += fmt.Sprintf(" ORDER BY i.number ASC LIMIT $%d", len(args))
+
+	rows, err := s.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	out := make([]model.Issue, 0, p.Limit)
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		out = append(out, issue)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(out) > p.Limit
+	if hasMore {
+		out = out[:p.Limit]
+	}
+	out, err = s.hydrateIssueTags(ctx, out)
+	if err != nil {
+		return nil, false, err
 	}
 	return out, hasMore, nil
 }
@@ -404,8 +482,9 @@ func validateSprintDateRange(startDate, endDate *time.Time) error {
 	}
 }
 
-// CompleteSprint marks the sprint completed. Non-terminal issues roll into the
-// next planned sprint when one exists, otherwise they fall back to the backlog;
+// CompleteSprint snapshots current issue membership and marks the sprint
+// completed atomically. Non-terminal issues then roll into the next planned
+// sprint when one exists, otherwise they fall back to the backlog;
 // done-equivalent issues stay attached so historical velocity is preserved.
 func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint, error) {
 	var out model.Sprint
@@ -423,6 +502,19 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		}
 		if status != model.SprintStatusActive {
 			return fmt.Errorf("can only complete an active sprint (current: %s): %w", status, ErrConflict)
+		}
+
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id)
+			SELECT $2, $1, sprint_issue.id
+			FROM (
+				SELECT id
+				FROM issues
+				WHERE sprint_id = $1 AND deleted_at IS NULL
+				FOR UPDATE
+			) AS sprint_issue
+		`, id, projectID); err != nil {
+			return err
 		}
 
 		var nextSprintID uuid.UUID

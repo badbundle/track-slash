@@ -37,6 +37,10 @@ func datePtr(t time.Time) *time.Time {
 	return &t
 }
 
+func sprintTestDate(year int, month time.Month, day int) time.Time {
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
 func newHTTPEnv(t *testing.T) *httpEnv {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -349,6 +353,46 @@ func TestHTTPListSprintsAndStatusFilter(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("code = %d", code)
 	}
+
+	code, body = e.do(t, http.MethodGet,
+		e.projectSprintsPath()+"?status=planned&limit=1", nil)
+	if code != http.StatusOK {
+		t.Fatalf("planned code = %d", code)
+	}
+	plannedPage := decodePage[model.Sprint](t, body)
+	if len(plannedPage.Items) != 1 || plannedPage.NextCursor == nil {
+		t.Fatalf("planned page = %+v", plannedPage)
+	}
+}
+
+func TestHTTPListSprintsCompletedSortAndCursor(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	olderAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	middleAt := olderAt.Add(24 * time.Hour)
+	newestAt := middleAt.Add(24 * time.Hour)
+	older := createCompletedSprintAtFor(t, e, e.projectID, "older", sprintTestDate(2026, 9, 1), sprintTestDate(2026, 9, 14), &olderAt)
+	middle := createCompletedSprintAtFor(t, e, e.projectID, "middle", sprintTestDate(2026, 8, 1), sprintTestDate(2026, 8, 14), &middleAt)
+	newest := createCompletedSprintAtFor(t, e, e.projectID, "newest", sprintTestDate(2026, 6, 1), sprintTestDate(2026, 6, 14), &newestAt)
+
+	path := e.projectSprintsPath() + "?status=completed&sort=completed&limit=2"
+	code, body := e.do(t, http.MethodGet, path, nil)
+	if code != http.StatusOK {
+		t.Fatalf("page 1 code = %d body = %s", code, body)
+	}
+	page1 := decodePage[model.Sprint](t, body)
+	if len(page1.Items) != 2 || page1.Items[0].ID != newest.ID || page1.Items[1].ID != middle.ID || page1.NextCursor == nil {
+		t.Fatalf("page 1 = %+v", page1)
+	}
+
+	code, body = e.do(t, http.MethodGet, path+"&cursor="+url.QueryEscape(*page1.NextCursor), nil)
+	if code != http.StatusOK {
+		t.Fatalf("page 2 code = %d body = %s", code, body)
+	}
+	page2 := decodePage[model.Sprint](t, body)
+	if len(page2.Items) != 1 || page2.Items[0].ID != older.ID || page2.NextCursor != nil {
+		t.Fatalf("page 2 = %+v", page2)
+	}
 }
 
 func TestHTTPListSprintsBadStatus(t *testing.T) {
@@ -361,12 +405,101 @@ func TestHTTPListSprintsBadStatus(t *testing.T) {
 	}
 }
 
+func TestHTTPListSprintsBadSort(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	for _, query := range []string{"sort=banana", "sort=completed", "status=active&sort=completed"} {
+		code, _ := e.do(t, http.MethodGet, e.projectSprintsPath()+"?"+query, nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("query %q code = %d, want 400", query, code)
+		}
+	}
+}
+
 func TestHTTPListSprintsBadProjectID(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	code, _ := e.do(t, http.MethodGet, "/bad!/projects/TRACK/sprints", nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("code = %d", code)
+	}
+}
+
+func TestHTTPListSprintHistoryIssues(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{ProjectID: e.projectID, Name: "API snapshot sprint"})
+	if err != nil {
+		t.Fatalf("CreateSprint: %v", err)
+	}
+	next, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{ProjectID: e.projectID, Name: "API next sprint"})
+	if err != nil {
+		t.Fatalf("CreateSprint next: %v", err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, sprint.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("activate sprint: %v", err)
+	}
+	todo := e.mustCreateIssue(t, "API unfinished snapshot issue")
+	done := e.mustCreateIssue(t, "API done snapshot issue")
+	for _, issue := range []model.Issue{todo, done} {
+		if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{SprintID: &sprint.ID}); err != nil {
+			t.Fatalf("assign %s: %v", issue.Title, err)
+		}
+	}
+	doneStatus := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, done.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
+		t.Fatalf("complete issue: %v", err)
+	}
+	completed, err := e.store.CompleteSprint(e.ctx, sprint.ID)
+	if err != nil {
+		t.Fatalf("CompleteSprint: %v", err)
+	}
+	moved, err := e.store.GetIssue(e.ctx, todo.ID)
+	if err != nil {
+		t.Fatalf("GetIssue moved: %v", err)
+	}
+	if moved.SprintID == nil || *moved.SprintID != next.ID {
+		t.Fatalf("unfinished issue sprint = %v, want %s", moved.SprintID, next.ID)
+	}
+
+	path := e.sprintPath(completed) + "/history/issues?limit=1"
+	code, body := e.do(t, http.MethodGet, path, nil)
+	if code != http.StatusOK {
+		t.Fatalf("page 1 code = %d body = %s", code, body)
+	}
+	page1 := decodePage[model.Issue](t, body)
+	if len(page1.Items) != 1 || page1.Items[0].ID != todo.ID || page1.NextCursor == nil {
+		t.Fatalf("page 1 = %+v", page1)
+	}
+	code, body = e.do(t, http.MethodGet, path+"&cursor="+url.QueryEscape(*page1.NextCursor), nil)
+	if code != http.StatusOK {
+		t.Fatalf("page 2 code = %d body = %s", code, body)
+	}
+	page2 := decodePage[model.Issue](t, body)
+	if len(page2.Items) != 1 || page2.Items[0].ID != done.ID || page2.NextCursor != nil {
+		t.Fatalf("page 2 = %+v", page2)
+	}
+
+	for _, request := range []struct {
+		path string
+		want int
+	}{
+		{path: e.sprintPath(next) + "/history/issues", want: http.StatusConflict},
+		{path: e.sprintPath(completed) + "/history/issues?cursor=bad", want: http.StatusBadRequest},
+		{path: e.sprintPath(completed) + "/history/issues?limit=0", want: http.StatusBadRequest},
+		{path: e.projectSprintsPath() + "/not-a-sprint/history/issues", want: http.StatusBadRequest},
+		{path: e.projectSprintsPath() + "/sprint-999999/history/issues", want: http.StatusNotFound},
+	} {
+		code, _ := e.do(t, http.MethodGet, request.path, nil)
+		if code != request.want {
+			t.Fatalf("%s code = %d, want %d", request.path, code, request.want)
+		}
+	}
+	_, outsiderToken := e.mustUserToken(t, "sprint-history-api-outsider")
+	code, _ = e.doWithToken(t, outsiderToken, http.MethodGet, e.sprintPath(completed)+"/history/issues", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("outsider code = %d, want 403", code)
 	}
 }
 
@@ -504,6 +637,34 @@ func createSprintFor(t *testing.T, e *httpEnv, name, start, end string) model.Sp
 	_, body := e.do(t, http.MethodPost, e.projectSprintsPath(),
 		map[string]any{"name": name, "start_date": start, "end_date": end})
 	return decode[model.Sprint](t, body)
+}
+
+func createCompletedSprintAtFor(t *testing.T, e *httpEnv, projectID uuid.UUID, name string, start, end time.Time, completedAt *time.Time) model.Sprint {
+	t.Helper()
+	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
+		ProjectID: projectID,
+		Name:      name,
+		StartDate: datePtr(start),
+		EndDate:   datePtr(end),
+	})
+	if err != nil {
+		t.Fatalf("CreateSprint %s: %v", name, err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, sprint.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("activate sprint %s: %v", name, err)
+	}
+	if _, err := e.store.CompleteSprint(e.ctx, sprint.ID); err != nil {
+		t.Fatalf("CompleteSprint %s: %v", name, err)
+	}
+	if _, err := e.pool.Exec(e.ctx, `UPDATE sprints SET completed_at = $1 WHERE id = $2`, completedAt, sprint.ID); err != nil {
+		t.Fatalf("set completed_at %s: %v", name, err)
+	}
+	sprint, err = e.store.GetSprint(e.ctx, sprint.ID)
+	if err != nil {
+		t.Fatalf("GetSprint %s: %v", name, err)
+	}
+	return sprint
 }
 
 func TestHTTPUpdateSprintAllFields(t *testing.T) {

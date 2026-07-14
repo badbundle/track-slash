@@ -285,6 +285,87 @@ func TestListSprintsOrdersUndatedAfterDatedWithCursor(t *testing.T) {
 	}
 }
 
+func TestListSprintsOrdersCompletedNewestFirstWithCursor(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	sprints := []model.Sprint{
+		mustCreateSprint(t, env, "older completion", date(2026, 8, 1), date(2026, 8, 14)),
+		mustCreateSprint(t, env, "tied completion A", date(2026, 6, 1), date(2026, 6, 14)),
+		mustCreateSprint(t, env, "tied completion B", date(2026, 7, 1), date(2026, 7, 14)),
+		mustCreateSprint(t, env, "newest completion", date(2026, 5, 1), date(2026, 5, 14)),
+		mustCreateSprint(t, env, "missing completion A", date(2026, 9, 1), date(2026, 9, 14)),
+		mustCreateSprint(t, env, "missing completion B", date(2026, 10, 1), date(2026, 10, 14)),
+	}
+	for _, sprint := range sprints {
+		mustActivate(t, env, sprint.ID)
+		if _, err := env.store.CompleteSprint(env.ctx, sprint.ID); err != nil {
+			t.Fatalf("CompleteSprint %s: %v", sprint.Name, err)
+		}
+	}
+	olderAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	tiedAt := olderAt.Add(24 * time.Hour)
+	newestAt := tiedAt.Add(24 * time.Hour)
+	completionTimes := []*time.Time{&olderAt, &tiedAt, &tiedAt, &newestAt, nil, nil}
+	for i, sprint := range sprints {
+		if _, err := env.pool.Exec(env.ctx, `UPDATE sprints SET completed_at = $1 WHERE id = $2`, completionTimes[i], sprint.ID); err != nil {
+			t.Fatalf("set completed_at %s: %v", sprint.Name, err)
+		}
+	}
+
+	tieHigh, tieLow := sprints[1], sprints[2]
+	if tieHigh.ID.String() < tieLow.ID.String() {
+		tieHigh, tieLow = tieLow, tieHigh
+	}
+	missingHigh, missingLow := sprints[4], sprints[5]
+	if missingHigh.ID.String() < missingLow.ID.String() {
+		missingHigh, missingLow = missingLow, missingHigh
+	}
+	want := []uuid.UUID{sprints[3].ID, tieHigh.ID, tieLow.ID, sprints[0].ID, missingHigh.ID, missingLow.ID}
+
+	var got []model.Sprint
+	var cursor *store.SprintsCursor
+	for {
+		page, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+			ProjectID: env.projectID,
+			Status:    model.SprintStatusCompleted,
+			Sort:      store.ListSprintsSortCompleted,
+			Cursor:    cursor,
+			Limit:     2,
+		})
+		if err != nil {
+			t.Fatalf("ListSprints completed: %v", err)
+		}
+		got = append(got, page...)
+		if !more {
+			break
+		}
+		last := page[len(page)-1]
+		cursor = &store.SprintsCursor{CompletedAt: last.CompletedAt, ID: last.ID}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("completed len = %d, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("completed position %d = %s, want %s", i, got[i].ID, id)
+		}
+	}
+
+	nullPage, more, err := env.store.ListSprints(env.ctx, store.ListSprintsParams{
+		ProjectID: env.projectID,
+		Status:    model.SprintStatusCompleted,
+		Sort:      store.ListSprintsSortCompleted,
+		Cursor:    &store.SprintsCursor{ID: missingHigh.ID},
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("ListSprints missing completion cursor: %v", err)
+	}
+	if more || len(nullPage) != 1 || nullPage[0].ID != missingLow.ID {
+		t.Fatalf("missing completion page = %+v more=%v, want %s", nullPage, more, missingLow.ID)
+	}
+}
+
 func TestCreateSprintAppendsPlannedOrder(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
@@ -492,12 +573,16 @@ func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	i3 := mustCreateIssue(t, env, "in-prog")
 	i4 := mustCreateIssue(t, env, "done")
 	i5 := mustCreateIssue(t, env, "closed")
-	for _, id := range []uuid.UUID{i1.ID, i2.ID, i3.ID, i4.ID, i5.ID} {
+	deletedBeforeCompletion := mustCreateIssue(t, env, "deleted before completion")
+	for _, id := range []uuid.UUID{i1.ID, i2.ID, i3.ID, i4.ID, i5.ID, deletedBeforeCompletion.ID} {
 		assignIssueToSprint(t, env, id, active.ID)
 	}
 	setIssueStatus(t, env, i3.ID, model.StatusInProgress)
 	setIssueStatus(t, env, i4.ID, model.StatusDone)
 	setIssueStatus(t, env, i5.ID, model.StatusClosed)
+	if err := env.store.DeleteIssue(env.ctx, deletedBeforeCompletion.ID); err != nil {
+		t.Fatalf("DeleteIssue before completion: %v", err)
+	}
 
 	out, err := env.store.CompleteSprint(env.ctx, active.ID)
 	if err != nil {
@@ -551,6 +636,77 @@ func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	}
 	if len(completed) != 1 || completed[0].ID != active.ID {
 		t.Fatalf("completed = %+v, want active sprint", completed)
+	}
+	if err := env.store.DeleteIssue(env.ctx, i5.ID); err != nil {
+		t.Fatalf("DeleteIssue after completion: %v", err)
+	}
+
+	firstPage, hasMore, err := env.store.ListSprintSnapshotIssues(env.ctx, store.ListSprintSnapshotIssuesParams{
+		ProjectID: env.projectID,
+		SprintID:  active.ID,
+		Limit:     3,
+	})
+	if err != nil {
+		t.Fatalf("ListSprintSnapshotIssues first page: %v", err)
+	}
+	if !hasMore || len(firstPage) != 3 || firstPage[0].ID != i1.ID || firstPage[1].ID != i2.ID || firstPage[2].ID != i3.ID {
+		t.Fatalf("snapshot first page = %+v, hasMore = %v", firstPage, hasMore)
+	}
+	secondPage, hasMore, err := env.store.ListSprintSnapshotIssues(env.ctx, store.ListSprintSnapshotIssuesParams{
+		ProjectID: env.projectID,
+		SprintID:  active.ID,
+		Cursor:    &store.IssuesCursor{Number: firstPage[len(firstPage)-1].Number},
+		Limit:     3,
+	})
+	if err != nil {
+		t.Fatalf("ListSprintSnapshotIssues second page: %v", err)
+	}
+	if hasMore || len(secondPage) != 2 || secondPage[0].ID != i4.ID || secondPage[1].ID != i5.ID {
+		t.Fatalf("snapshot second page = %+v, hasMore = %v", secondPage, hasMore)
+	}
+	wrongProject, hasMore, err := env.store.ListSprintSnapshotIssues(env.ctx, store.ListSprintSnapshotIssuesParams{
+		ProjectID: uuid.New(),
+		SprintID:  active.ID,
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListSprintSnapshotIssues wrong project: %v", err)
+	}
+	if hasMore || len(wrongProject) != 0 {
+		t.Fatalf("wrong-project snapshot = %+v, hasMore = %v", wrongProject, hasMore)
+	}
+}
+
+func TestCompleteSprintSnapshotFailureRollsBack(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	sprint := mustCreateSprint(t, env, "snapshot conflict", date(2026, 6, 1), date(2026, 6, 14))
+	mustActivate(t, env, sprint.ID)
+	issue := mustCreateIssue(t, env, "still active after rollback")
+	assignIssueToSprint(t, env, issue.ID, sprint.ID)
+	if _, err := env.pool.Exec(env.ctx, `
+		INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id)
+		VALUES ($1, $2, $3)
+	`, env.projectID, sprint.ID, issue.ID); err != nil {
+		t.Fatalf("seed conflicting snapshot: %v", err)
+	}
+
+	if _, err := env.store.CompleteSprint(env.ctx, sprint.ID); err == nil {
+		t.Fatal("CompleteSprint err = nil, want snapshot constraint error")
+	}
+	gotSprint, err := env.store.GetSprint(env.ctx, sprint.ID)
+	if err != nil {
+		t.Fatalf("GetSprint: %v", err)
+	}
+	if gotSprint.Status != model.SprintStatusActive || gotSprint.CompletedAt != nil {
+		t.Fatalf("sprint after rollback = %+v, want active and incomplete", gotSprint)
+	}
+	gotIssue, err := env.store.GetIssue(env.ctx, issue.ID)
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if gotIssue.SprintID == nil || *gotIssue.SprintID != sprint.ID {
+		t.Fatalf("issue sprint after rollback = %v, want %s", gotIssue.SprintID, sprint.ID)
 	}
 }
 

@@ -24,6 +24,7 @@ func TestUIProjectBreadcrumbIncludesCurrentView(t *testing.T) {
 		{view: "context", label: "Context"},
 		{view: "about", label: "About"},
 		{view: "members", label: "Members"},
+		{view: "sprints", label: "Sprint history"},
 		{view: "changelog", label: "Changelog"},
 	} {
 		t.Run(tt.view, func(t *testing.T) {
@@ -38,6 +39,16 @@ func TestUIProjectBreadcrumbIncludesCurrentView(t *testing.T) {
 				t.Fatalf("view breadcrumb = %#v, want current %q", items[2], tt.label)
 			}
 		})
+	}
+}
+
+func TestUIProjectFavoriteViewKeepsSprintHistory(t *testing.T) {
+	t.Parallel()
+	if got := uiProjectFavoriteView("sprints"); got != "sprints" {
+		t.Fatalf("uiProjectFavoriteView(sprints) = %q, want sprints", got)
+	}
+	if got := uiProjectFavoriteView("unknown"); got != "sprint" {
+		t.Fatalf("uiProjectFavoriteView(unknown) = %q, want sprint", got)
 	}
 }
 
@@ -137,7 +148,7 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if strings.Contains(header, "Fast issue tracking.") {
 		t.Fatalf("project description should not render inside title card: %s", body)
 	}
-	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", "Changelog", `data-lucide="person-standing"`, `data-lucide="history"`, `data-lucide="info"`, `aria-current="page"`, `/bradley/projects/TRACK/image/thumbnail/content?v=` + projectThumbnailID.String(), `id="project-tab-bar"`, `id="project-actions-menu"`, `hx-target="#project-panel-tab-content"`, `hx-select="#project-panel-tab-content"`, `hx-select-oob="#project-breadcrumb,#project-tab-bar,#project-actions-menu,#project-favorite-action"`, `hx-swap="outerHTML"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, "lg:mt-0 lg:border-t-0 lg:pt-0", `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
+	for _, want := range []string{"TRACK", "font-mono text-sm font-semibold uppercase", "Track Slash", "About", "Sprint", "Planned", "All", "Sprint history", "Changelog", `data-lucide="person-standing"`, `data-lucide="archive"`, `data-lucide="history"`, `data-lucide="info"`, `aria-current="page"`, `/bradley/projects/TRACK/image/thumbnail/content?v=` + projectThumbnailID.String(), `id="project-tab-bar"`, `id="project-actions-menu"`, `hx-target="#project-panel-tab-content"`, `hx-select="#project-panel-tab-content"`, `hx-select-oob="#project-breadcrumb,#project-tab-bar,#project-actions-menu,#project-favorite-action"`, `hx-swap="outerHTML"`, `aria-label="New issue"`, `href="/bradley/projects/TRACK/issues/new"`, `hx-get="/bradley/projects/TRACK/issues/new/panel"`, `aria-label="Project actions"`, `data-lucide="more-horizontal"`, "lg:mt-0 lg:border-t-0 lg:pt-0", `href="/bradley/projects/TRACK/sprints"`, `hx-get="/bradley/projects/TRACK/sprints/panel"`, `href="/bradley/projects/TRACK/deleted"`, `hx-get="/bradley/projects/TRACK/deleted/panel"`, `data-lucide="trash-2"`, "Deleted issues"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("project title card missing markup %q: %s", want, body)
 		}
@@ -187,8 +198,10 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if aboutIdx < 0 || sprintsIdx < 0 || plannedIdx < 0 || allIdx < 0 || contextIdx < 0 || sprintsIdx > plannedIdx || plannedIdx > allIdx || allIdx > contextIdx || contextIdx > aboutIdx {
 		t.Fatalf("project tabs not ordered sprint, planned, all, context, about: sprint=%d planned=%d all=%d context=%d about=%d body=%s", sprintsIdx, plannedIdx, allIdx, contextIdx, aboutIdx, body)
 	}
-	if strings.Contains(tabMarkup, `href="/bradley/projects/TRACK/changelog"`) {
-		t.Fatalf("changelog should not render in project tabs: %s", body)
+	for _, overflowOnly := range []string{`href="/bradley/projects/TRACK/sprints"`, `href="/bradley/projects/TRACK/changelog"`} {
+		if strings.Contains(tabMarkup, overflowOnly) {
+			t.Fatalf("overflow-only view rendered in project tabs %q: %s", overflowOnly, body)
+		}
 	}
 	for _, path := range []string{"context", "about"} {
 		href := `href="/bradley/projects/TRACK/` + path + `"`
@@ -199,6 +212,10 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 	if got := strings.Count(header, `href="/bradley/projects/TRACK/changelog"`); got != 1 {
 		t.Fatalf("changelog should render once in project overflow; got %d: %s", got, body)
 	}
+	if got := strings.Count(header, `href="/bradley/projects/TRACK/sprints"`); got != 1 {
+		t.Fatalf("sprint history should render once in project overflow; got %d: %s", got, body)
+	}
+	requireMarkupOrder(t, header, `href="/bradley/projects/TRACK/sprints"`, `href="/bradley/projects/TRACK/changelog"`)
 	for _, want := range []string{"flex flex-nowrap", "gap-4 sm:gap-6", "hidden lg:inline-flex", "lg:hidden"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("project header missing responsive tab overflow markup %q: %s", want, body)
@@ -208,6 +225,167 @@ func TestUIProjectPanelRendersCohesiveHeaderAndAboutDetails(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing tab markup %q: %s", want, body)
 		}
+	}
+}
+
+func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	completedAt := time.Date(2026, 7, 14, 16, 30, 0, 0, time.UTC)
+	var buf bytes.Buffer
+	panel := &uiProjectPanelData{
+		Project:     project,
+		View:        "sprints",
+		ProjectTabs: uiProjectTabs(project, "sprints", nil),
+		SprintHistoryPage: uiProjectSprintHistoryPageData{
+			Project: project,
+			Sprints: []model.Sprint{
+				{
+					ID:          uuid.New(),
+					ProjectID:   projectID,
+					Number:      7,
+					Ref:         "sprint-7",
+					Name:        "Completed release",
+					Goal:        "This goal must not render",
+					StartDate:   datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
+					EndDate:     datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
+					CompletedAt: &completedAt,
+				},
+				{ID: uuid.New(), ProjectID: projectID, Number: 8, Ref: "sprint-8", Name: "Undated legacy sprint"},
+			},
+			HasMore:    true,
+			NextCursor: "cursor123",
+		},
+	}
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", panel); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`href="/bradley/projects/TRACK/sprints"`,
+		`hx-get="/bradley/projects/TRACK/sprints/panel"`,
+		`data-lucide="archive"`,
+		`aria-current="page"`,
+		"Sprint history",
+		"Completed release",
+		"Jun 1-Jun 14, 2026",
+		"Completed Jul 14, 2026 16:30",
+		"Undated legacy sprint",
+		"No scheduled dates",
+		"Completion date unavailable",
+		`aria-label="Toggle sprint issues"`,
+		`aria-controls="completed-sprint-sprint-7-issues"`,
+		`hx-get="/bradley/projects/TRACK/sprints/sprint-7/history/issues"`,
+		`hx-trigger="click once"`,
+		"Loading sprint issues...",
+		`hx-get="/bradley/projects/TRACK/sprints/page?cursor=cursor123"`,
+		"Load more",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sprint history missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{"This goal must not render", `aria-label="Edit sprint"`, `aria-label="Add issue to sprint"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sprint history included %q: %s", notWant, body)
+		}
+	}
+	tabStart := strings.Index(body, `aria-label="Project views"`)
+	if tabStart < 0 {
+		t.Fatalf("project tabs missing: %s", body)
+	}
+	tabEnd := strings.Index(body[tabStart:], "</nav>")
+	if tabEnd < 0 {
+		t.Fatalf("project tabs missing: %s", body)
+	}
+	if strings.Contains(body[tabStart:tabStart+tabEnd], `href="/bradley/projects/TRACK/sprints"`) {
+		t.Fatalf("sprint history rendered as a primary tab: %s", body)
+	}
+
+	buf.Reset()
+	panel.SprintHistoryPage = uiProjectSprintHistoryPageData{Project: project}
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel", panel); err != nil {
+		t.Fatalf("ExecuteTemplate empty: %v", err)
+	}
+	if emptyBody := buf.String(); !strings.Contains(emptyBody, "No completed sprints yet.") || strings.Contains(emptyBody, "Load more") {
+		t.Fatalf("sprint history empty state = %s", emptyBody)
+	}
+}
+
+func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
+	t.Parallel()
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK"}
+	sprint := model.Sprint{Number: 7, Ref: "sprint-7", Goal: "Original **sprint direction**"}
+	issue := model.Issue{
+		OwnerUsername: "bradley",
+		ProjectKey:    "TRACK",
+		Number:        42,
+		Identifier:    "TRACK-42",
+		Title:         "Captured at completion",
+		Status:        model.StatusDone,
+		Priority:      model.PriorityP1,
+	}
+	data := uiProjectSprintHistoryIssuePageData{
+		Project:         project,
+		Sprint:          sprint,
+		DescriptionHTML: template.HTML("<p>Original <strong>sprint direction</strong></p>"),
+		Issues:          []model.Issue{issue},
+		NextHXGet:       "/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next",
+	}
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-sprint-history-issues", data); err != nil {
+		t.Fatalf("ExecuteTemplate issues: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"Description",
+		"<strong>sprint direction</strong>",
+		"Captured at completion",
+		"TRACK-42",
+		`href="/bradley/issues/TRACK-42"`,
+		`hx-get="/bradley/issues/TRACK-42/panel"`,
+		`hx-get="/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next"`,
+		`hx-target="#completed-sprint-sprint-7-issues-more"`,
+		"Load more issues",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sprint history issues missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Original **sprint direction**") {
+		t.Fatalf("sprint history rendered Markdown source: %s", body)
+	}
+
+	buf.Reset()
+	data.Issues = nil
+	data.NextHXGet = ""
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-sprint-history-issues", data); err != nil {
+		t.Fatalf("ExecuteTemplate empty issues: %v", err)
+	}
+	if emptyBody := buf.String(); !strings.Contains(emptyBody, "No issues were included in this sprint.") || strings.Contains(emptyBody, "Load more issues") {
+		t.Fatalf("empty sprint history issues = %s", emptyBody)
+	}
+}
+
+func TestUISprintHistoryDateRange(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		sprint model.Sprint
+		want   string
+	}{
+		{name: "undated", sprint: model.Sprint{}, want: "No scheduled dates"},
+		{name: "same year", sprint: model.Sprint{StartDate: datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)), EndDate: datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC))}, want: "Jun 1-Jun 14, 2026"},
+		{name: "cross year", sprint: model.Sprint{StartDate: datePtr(time.Date(2025, 12, 29, 0, 0, 0, 0, time.UTC)), EndDate: datePtr(time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC))}, want: "Dec 29, 2025-Jan 4, 2026"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := uiSprintHistoryDateRange(tc.sprint); got != tc.want {
+				t.Fatalf("uiSprintHistoryDateRange = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

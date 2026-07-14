@@ -941,7 +941,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		if p.SprintID != nil && !p.ClearSprint {
 			var sprintProject uuid.UUID
 			var sprintStatus model.SprintStatus
-			if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT project_id, status FROM sprints WHERE id = $1 AND deleted_at IS NULL FOR SHARE`, *p.SprintID).Scan(&sprintProject, &sprintStatus); err != nil {
 				if isNoRows(err) {
 					return fmt.Errorf("sprint not found: %w", ErrConflict)
 				}
