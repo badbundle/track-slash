@@ -317,7 +317,7 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 	t.Parallel()
 	project := model.Project{OwnerUsername: "bradley", Key: "TRACK"}
-	sprint := model.Sprint{Number: 7, Ref: "sprint-7"}
+	sprint := model.Sprint{Number: 7, Ref: "sprint-7", Goal: "Original **sprint direction**"}
 	issue := model.Issue{
 		OwnerUsername: "bradley",
 		ProjectKey:    "TRACK",
@@ -328,10 +328,11 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 		Priority:      model.PriorityP1,
 	}
 	data := uiProjectSprintHistoryIssuePageData{
-		Project:   project,
-		Sprint:    sprint,
-		Issues:    []model.Issue{issue},
-		NextHXGet: "/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next",
+		Project:         project,
+		Sprint:          sprint,
+		DescriptionHTML: template.HTML("<p>Original <strong>sprint direction</strong></p>"),
+		Issues:          []model.Issue{issue},
+		NextHXGet:       "/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next",
 	}
 	var buf bytes.Buffer
 	if err := uiTemplates.ExecuteTemplate(&buf, "project-sprint-history-issues", data); err != nil {
@@ -339,6 +340,8 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
+		"Description",
+		"<strong>sprint direction</strong>",
 		"Captured at completion",
 		"TRACK-42",
 		`href="/bradley/issues/TRACK-42"`,
@@ -350,6 +353,9 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint history issues missing %q: %s", want, body)
 		}
+	}
+	if strings.Contains(body, "Original **sprint direction**") {
+		t.Fatalf("sprint history rendered Markdown source: %s", body)
 	}
 
 	buf.Reset()

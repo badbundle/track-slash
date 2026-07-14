@@ -310,6 +310,7 @@ func TestUIProjectSprintHistoryExpandsSnapshotIssues(t *testing.T) {
 	sprint, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{
 		ProjectID: e.projectID,
 		Name:      "Completed with captured work",
+		Goal:      "Original **sprint direction**",
 	})
 	if err != nil {
 		t.Fatalf("CreateSprint: %v", err)
@@ -363,8 +364,19 @@ func TestUIProjectSprintHistoryExpandsSnapshotIssues(t *testing.T) {
 			t.Fatalf("sprint history eagerly rendered issue %q: %s", issue.Title, historyBody)
 		}
 	}
+	if strings.Contains(historyBody, "sprint direction") {
+		t.Fatalf("sprint history eagerly rendered description: %s", historyBody)
+	}
 
 	issuesBody := e.uiGet(t, issuesPath, token)
+	for _, want := range []string{"Description", "Original <strong>sprint direction</strong>"} {
+		if !strings.Contains(issuesBody, want) {
+			t.Fatalf("snapshot issue response missing description %q: %s", want, issuesBody)
+		}
+	}
+	if strings.Contains(issuesBody, "Original **sprint direction**") {
+		t.Fatalf("snapshot issue response rendered Markdown source: %s", issuesBody)
+	}
 	for _, issue := range []model.Issue{todo, done} {
 		for _, want := range []string{issue.Title, `href="` + e.issuePath(issue) + `"`, `hx-get="` + e.issuePath(issue) + `/panel"`} {
 			if !strings.Contains(issuesBody, want) {

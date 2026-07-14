@@ -49,6 +49,12 @@
 {{end}}
 
 {{define "project-sprint-history-issues"}}
+{{if .Sprint.Goal}}
+<section class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+  <h4 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h4>
+  {{template "description-body" (sprintDescriptionBody .Sprint .DescriptionHTML)}}
+</section>
+{{end}}
 {{if .Issues}}
 <div class="border-t border-slate-100 dark:border-slate-800">
   {{template "project-sprint-history-issue-page" .}}

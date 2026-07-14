@@ -697,6 +697,16 @@ func (s *Server) uiBuildProjectSprintHistoryIssuePage(ctx context.Context, r *ht
 		Sprint:  sprint,
 		Issues:  issues,
 	}
+	if cursor == nil && sprint.Goal != "" {
+		attachments, _, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
+			SprintID: sprint.ID,
+			Limit:    MaxLimit,
+		})
+		if err != nil {
+			return uiProjectSprintHistoryIssuePageData{}, err
+		}
+		pageData.DescriptionHTML = renderSprintDescriptionMarkdown(project, sprint, attachments)
+	}
 	if hasMore {
 		cursor := encodeCursor(sprintHistoryIssueCursor(issues[len(issues)-1]))
 		pageData.NextHXGet = uiProjectSprintHistoryIssuesPath(project, sprint) + "?cursor=" + cursor

@@ -517,10 +517,11 @@ type uiProjectSprintHistoryPageData struct {
 }
 
 type uiProjectSprintHistoryIssuePageData struct {
-	Project   model.Project
-	Sprint    model.Sprint
-	Issues    []model.Issue
-	NextHXGet string
+	Project         model.Project
+	Sprint          model.Sprint
+	DescriptionHTML template.HTML
+	Issues          []model.Issue
+	NextHXGet       string
 }
 
 type uiProjectChangelogPageData struct {
