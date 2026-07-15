@@ -261,6 +261,49 @@ type ListSprintSnapshotIssuesParams struct {
 	Limit     int
 }
 
+type CountSprintSnapshotIssuesByStatusParams struct {
+	ProjectID uuid.UUID
+	SprintIDs []uuid.UUID
+}
+
+func (s *Store) CountSprintSnapshotIssuesByStatus(ctx context.Context, p CountSprintSnapshotIssuesByStatusParams) (map[uuid.UUID]model.ProjectIssueStatusCounts, error) {
+	out := make(map[uuid.UUID]model.ProjectIssueStatusCounts, len(p.SprintIDs))
+	if len(p.SprintIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT
+			sis.sprint_id,
+			COUNT(*)::INT,
+			(COUNT(*) FILTER (WHERE sis.status = 'todo'))::INT,
+			(COUNT(*) FILTER (WHERE sis.status = 'in_progress'))::INT,
+			(COUNT(*) FILTER (WHERE sis.status = 'done'))::INT,
+			(COUNT(*) FILTER (WHERE sis.status = 'closed'))::INT
+		FROM sprint_issue_snapshots sis
+		JOIN sprints sp ON sp.id = sis.sprint_id AND sp.project_id = sis.project_id
+		JOIN projects p ON p.id = sis.project_id
+		WHERE sis.project_id = $1 AND sis.sprint_id = ANY($2)
+		  AND sp.deleted_at IS NULL AND p.deleted_at IS NULL
+		GROUP BY sis.sprint_id
+	`, p.ProjectID, p.SprintIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sprintID uuid.UUID
+		var counts model.ProjectIssueStatusCounts
+		if err := rows.Scan(&sprintID, &counts.Total, &counts.Todo, &counts.InProgress, &counts.Done, &counts.Closed); err != nil {
+			return nil, err
+		}
+		out[sprintID] = counts
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ListSprintSnapshotIssues returns the current issue records for the immutable
 // membership captured when a sprint completed. Soft-deleted issues remain in
 // the history because deleting an issue does not erase its sprint membership.
@@ -505,10 +548,10 @@ func (s *Store) CompleteSprint(ctx context.Context, id uuid.UUID) (model.Sprint,
 		}
 
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id)
-			SELECT $2, $1, sprint_issue.id
+			INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id, status)
+			SELECT $2, $1, sprint_issue.id, sprint_issue.status
 			FROM (
-				SELECT id
+				SELECT id, status
 				FROM issues
 				WHERE sprint_id = $1 AND deleted_at IS NULL
 				FOR UPDATE

@@ -36,6 +36,7 @@ func uiIssueAttachmentListData(panel *uiIssuePanelData) uiAttachmentListData {
 		Items:     items,
 		HasMore:   panel.AttachmentsHasMore,
 		Editing:   panel.EditDescription,
+		CanDelete: true,
 		UploadURL: uiIssueAttachmentsPath(panel.Issue),
 	}
 }
@@ -56,6 +57,7 @@ func uiSprintAttachmentListData(project model.Project, sprint model.Sprint, atta
 		Items:     items,
 		HasMore:   hasMore,
 		Editing:   editing,
+		CanDelete: sprint.Status != model.SprintStatusCompleted,
 		UploadURL: uiProjectSprintAttachmentsPath(project, sprint),
 	}
 }
@@ -72,7 +74,7 @@ func uiProjectAttachmentListData(project model.Project, attachments []model.Proj
 		))
 	}
 	return uiAttachmentListData{
-		ID: "project-attachments-list", Items: items, HasMore: hasMore, Editing: editing,
+		ID: "project-attachments-list", Items: items, HasMore: hasMore, Editing: editing, CanDelete: true,
 		UploadURL: uiProjectAttachmentsPath(project),
 	}
 }
@@ -90,7 +92,7 @@ func uiContextAttachmentListData(panel *uiContextManagerData, editing bool) uiAt
 	}
 	return uiAttachmentListData{
 		ID: "context-attachments-" + panel.ActiveContext.Ref, Items: items,
-		HasMore: panel.AttachmentsHasMore, Editing: editing,
+		HasMore: panel.AttachmentsHasMore, Editing: editing, CanDelete: true,
 		UploadURL: uiProjectContextAttachmentsPath(panel.Project, panel.ActiveContext),
 	}
 }

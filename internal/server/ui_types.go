@@ -154,6 +154,7 @@ type uiAttachmentListData struct {
 	Items     []uiDescriptionAttachment
 	HasMore   bool
 	Editing   bool
+	CanDelete bool
 	UploadURL string
 }
 
@@ -510,18 +511,19 @@ type uiIssueListQuery struct {
 type uiProjectAllQuery = uiIssueListQuery
 
 type uiProjectSprintHistoryPageData struct {
-	Project    model.Project
-	Sprints    []model.Sprint
-	HasMore    bool
-	NextCursor string
+	Project      model.Project
+	Sprints      []model.Sprint
+	Descriptions map[uuid.UUID]uiSprintDescriptionData
+	StatusCounts map[uuid.UUID]model.ProjectIssueStatusCounts
+	HasMore      bool
+	NextCursor   string
 }
 
 type uiProjectSprintHistoryIssuePageData struct {
-	Project         model.Project
-	Sprint          model.Sprint
-	DescriptionHTML template.HTML
-	Issues          []model.Issue
-	NextHXGet       string
+	Project   model.Project
+	Sprint    model.Sprint
+	Issues    []model.Issue
+	NextHXGet string
 }
 
 type uiProjectChangelogPageData struct {

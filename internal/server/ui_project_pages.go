@@ -642,10 +642,41 @@ func (s *Server) uiBuildProjectSprintHistoryPage(ctx context.Context, r *http.Re
 	if err != nil {
 		return uiProjectSprintHistoryPageData{}, err
 	}
+	sprintIDs := make([]uuid.UUID, 0, len(sprints))
+	for _, sprint := range sprints {
+		sprintIDs = append(sprintIDs, sprint.ID)
+	}
+	statusCounts, err := s.store.CountSprintSnapshotIssuesByStatus(ctx, store.CountSprintSnapshotIssuesByStatusParams{
+		ProjectID: project.ID,
+		SprintIDs: sprintIDs,
+	})
+	if err != nil {
+		return uiProjectSprintHistoryPageData{}, err
+	}
+	attachmentsBySprint, err := s.store.ListSprintAttachmentsForSprints(ctx, store.ListSprintAttachmentsForSprintsParams{
+		ProjectID: project.ID,
+		SprintIDs: sprintIDs,
+		Limit:     MaxLimit,
+	})
+	if err != nil {
+		return uiProjectSprintHistoryPageData{}, err
+	}
+	descriptions := make(map[uuid.UUID]uiSprintDescriptionData, len(sprints))
+	for _, sprint := range sprints {
+		attachments := attachmentsBySprint[sprint.ID]
+		descriptions[sprint.ID] = uiSprintDescriptionData{
+			Project:         project,
+			Sprint:          sprint,
+			AttachmentCount: len(attachments),
+			DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, attachments),
+		}
+	}
 	pageData := uiProjectSprintHistoryPageData{
-		Project: project,
-		Sprints: sprints,
-		HasMore: hasMore,
+		Project:      project,
+		Sprints:      sprints,
+		Descriptions: descriptions,
+		StatusCounts: statusCounts,
+		HasMore:      hasMore,
 	}
 	if hasMore {
 		pageData.NextCursor = encodeCursor(sprintListCursor(sprints[len(sprints)-1], model.SprintStatusCompleted, store.ListSprintsSortCompleted))
@@ -696,16 +727,6 @@ func (s *Server) uiBuildProjectSprintHistoryIssuePage(ctx context.Context, r *ht
 		Project: project,
 		Sprint:  sprint,
 		Issues:  issues,
-	}
-	if cursor == nil && sprint.Goal != "" {
-		attachments, _, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
-			SprintID: sprint.ID,
-			Limit:    MaxLimit,
-		})
-		if err != nil {
-			return uiProjectSprintHistoryIssuePageData{}, err
-		}
-		pageData.DescriptionHTML = renderSprintDescriptionMarkdown(project, sprint, attachments)
 	}
 	if hasMore {
 		cursor := encodeCursor(sprintHistoryIssueCursor(issues[len(issues)-1]))

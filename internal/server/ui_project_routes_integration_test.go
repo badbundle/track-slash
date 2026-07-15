@@ -346,14 +346,24 @@ func TestUIProjectSprintHistoryExpandsSnapshotIssues(t *testing.T) {
 	if moved.SprintID == nil || *moved.SprintID != next.ID {
 		t.Fatalf("unfinished issue sprint = %v, want next sprint %s", moved.SprintID, next.ID)
 	}
+	if _, err := e.store.UpdateIssue(e.ctx, todo.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
+		t.Fatalf("update issue after sprint completion: %v", err)
+	}
 
 	historyBody := e.uiGet(t, e.projectPath()+"/sprints", token)
 	issuesPath := e.projectPath() + "/sprints/" + completed.Ref + "/history/issues"
+	descriptionPath := e.projectPath() + "/sprints/" + completed.Ref + "/description"
 	for _, want := range []string{
 		`aria-label="Toggle sprint issues"`,
 		`aria-controls="completed-sprint-` + completed.Ref + `-issues"`,
 		`hx-get="` + issuesPath + `"`,
 		`hx-trigger="click once"`,
+		`aria-label="Done: 1"`,
+		`aria-label="Cancelled: 0"`,
+		"Original <strong>sprint direction</strong>",
+		`hx-get="` + descriptionPath + `?expanded=1"`,
+		`hx-target="#sprint-` + completed.Ref + `-description"`,
+		"See more",
 	} {
 		if !strings.Contains(historyBody, want) {
 			t.Fatalf("sprint history disclosure missing %q: %s", want, historyBody)
@@ -364,18 +374,24 @@ func TestUIProjectSprintHistoryExpandsSnapshotIssues(t *testing.T) {
 			t.Fatalf("sprint history eagerly rendered issue %q: %s", issue.Title, historyBody)
 		}
 	}
-	if strings.Contains(historyBody, "sprint direction") {
-		t.Fatalf("sprint history eagerly rendered description: %s", historyBody)
+	if strings.Contains(historyBody, "Original **sprint direction**") {
+		t.Fatalf("sprint history rendered Markdown source: %s", historyBody)
+	}
+	for _, notWant := range []string{`aria-label="To do:`, `aria-label="In progress:`, `aria-label="Closed:`} {
+		if strings.Contains(historyBody, notWant) {
+			t.Fatalf("sprint history included hidden outcome count %q: %s", notWant, historyBody)
+		}
+	}
+	expandedDescriptionBody := e.uiGet(t, descriptionPath+"?expanded=1", token)
+	for _, want := range []string{"Original <strong>sprint direction</strong>", "See less", `hx-target="#sprint-` + completed.Ref + `-description"`} {
+		if !strings.Contains(expandedDescriptionBody, want) {
+			t.Fatalf("expanded sprint history description missing %q: %s", want, expandedDescriptionBody)
+		}
 	}
 
 	issuesBody := e.uiGet(t, issuesPath, token)
-	for _, want := range []string{"Description", "Original <strong>sprint direction</strong>"} {
-		if !strings.Contains(issuesBody, want) {
-			t.Fatalf("snapshot issue response missing description %q: %s", want, issuesBody)
-		}
-	}
-	if strings.Contains(issuesBody, "Original **sprint direction**") {
-		t.Fatalf("snapshot issue response rendered Markdown source: %s", issuesBody)
+	if strings.Contains(issuesBody, "sprint direction") {
+		t.Fatalf("snapshot issue response included sprint description: %s", issuesBody)
 	}
 	for _, issue := range []model.Issue{todo, done} {
 		for _, want := range []string{issue.Title, `href="` + e.issuePath(issue) + `"`, `hx-get="` + e.issuePath(issue) + `/panel"`} {
@@ -413,8 +429,8 @@ func TestUIProjectSprintHistoryIssuePagination(t *testing.T) {
 			FROM generate_series(1, 51) AS n
 			RETURNING id, project_id
 		)
-		INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id)
-		SELECT project_id, $2, id FROM inserted
+		INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id, status)
+		SELECT project_id, $2, id, 'todo' FROM inserted
 	`, e.projectID, sprint.ID); err != nil {
 		t.Fatalf("insert sprint issue snapshots: %v", err)
 	}

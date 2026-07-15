@@ -22,7 +22,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Prefer the stronger hierarchy of the issue detail page: clear title card, compact metadata, purposeful cards, and restrained section language.
 - Keep the project header cohesive. Project identity, actions, and tabs should feel like one unit, with the tab bar close to the project title and flush to the bottom of the header.
 - Keep `Deleted issues` in the project actions menu, not in the primary tab bar.
-- Keep `Sprint history` in the project actions menu immediately above `Changelog`. It is a read-only, newest-first list of completed sprints with compact schedule/completion metadata and explicit pagination. Retain the sprint disclosure control; expanding a completed sprint shows its frozen Markdown description and lazy-loads the complete, paginated issue membership captured atomically when that sprint completed.
+- Keep `Sprint history` in the project actions menu immediately above `Changelog`. It is a read-only, newest-first list of completed sprints with compact schedule/completion metadata and explicit pagination. Each row shows frozen `Done` and `Cancelled` issue counts plus a compact Markdown description preview with its own `See more` expansion. Retain a separate sprint disclosure control that lazy-loads the complete, paginated issue membership captured atomically when that sprint completed.
 - Open project member management from the project actions menu as a full project page with its own URL, not as a modal.
 - Use the wide-layout project tabs `Sprint`, `Planned`, `All`, `Context`, and `About`. `Sprint` is singular; use a human/running-style Lucide icon when available. Below `lg`, show only the first three as tabs and expose `Context` and `About` from project actions. Keep `Changelog` in project overflow at every breakpoint.
 - Show assignee filters only where they apply. Do not preserve or display assignee filters on `About`.
@@ -34,7 +34,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 ## Sprint Descriptions
 
-- Active and planned sprints retain a compact, vertically cropped Markdown preview. “See more” expands the full Markdown description and attachment rows; scheduled issues remain an independent disclosure.
+- Active, planned, and completed sprint-history rows retain a compact, vertically cropped Markdown preview. “See more” expands the full Markdown description and attachment rows; sprint issues remain an independent disclosure.
 - Sprint description editing uses the same attachment dropzone, preview rows, Markdown-copy, download, and removal behavior as issue descriptions.
 
 ## Context IA
