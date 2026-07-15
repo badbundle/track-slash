@@ -287,6 +287,13 @@ func TestUIProjectSprintHistoryPagination(t *testing.T) {
 	if !strings.Contains(body, "History page 01") || !strings.Contains(body, "History page 50") || strings.Contains(body, "History page 51") {
 		t.Fatalf("sprint history first page = %s", body)
 	}
+	historyCard := `<section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">`
+	if got := strings.Count(body, historyCard); got != 50 {
+		t.Fatalf("sprint history first-page card count = %d, want 50: %s", got, body)
+	}
+	if !strings.Contains(body, `hx-target="#project-sprint-history-more"`) || !strings.Contains(body, `hx-swap="outerHTML"`) {
+		t.Fatalf("sprint history load-more replacement target missing: %s", body)
+	}
 	marker := `hx-get="` + e.projectPath() + `/sprints/page?cursor=`
 	start := strings.Index(body, marker)
 	if start < 0 {
@@ -298,7 +305,7 @@ func TestUIProjectSprintHistoryPagination(t *testing.T) {
 		t.Fatalf("sprint history load-more cursor malformed: %s", body)
 	}
 	pageBody := e.uiGet(t, e.projectPath()+"/sprints/page?cursor="+rest[:end], token)
-	if !strings.Contains(pageBody, "History page 51") || strings.Contains(pageBody, "project-sprint-history-more") {
+	if !strings.Contains(pageBody, "History page 51") || strings.Contains(pageBody, "project-sprint-history-more") || strings.Count(pageBody, historyCard) != 1 {
 		t.Fatalf("sprint history second page = %s", pageBody)
 	}
 }
