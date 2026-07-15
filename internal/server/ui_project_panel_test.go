@@ -307,6 +307,19 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 			t.Fatalf("sprint history missing %q: %s", want, body)
 		}
 	}
+	historyCard := `<section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">`
+	if got := strings.Count(body, historyCard); got != 2 {
+		t.Fatalf("sprint history card count = %d, want 2: %s", got, body)
+	}
+	if !strings.Contains(body, `<div class="space-y-4">`) {
+		t.Fatalf("sprint history cards should render with standalone spacing: %s", body)
+	}
+	firstCard := strings.Index(body, historyCard)
+	firstHeaderEnd := strings.Index(body[firstCard:], "</header>")
+	description := strings.Index(body[firstCard:], `id="sprint-sprint-7-description"`)
+	if firstCard < 0 || firstHeaderEnd < 0 || description < 0 || description > firstHeaderEnd {
+		t.Fatalf("sprint description should render in the card header: card=%d header=%d description=%d body=%s", firstCard, firstHeaderEnd, description, body)
+	}
 	for _, notWant := range []string{"Visible **sprint direction**", `aria-label="Edit sprint"`, `aria-label="Add issue to sprint"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("sprint history included %q: %s", notWant, body)
