@@ -86,7 +86,7 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 		t.Fatalf("collapsed template: %v", err)
 	}
 	body := collapsed.String()
-	for _, want := range []string{"-mt-3 max-h-20 overflow-hidden", `<strong>markdown</strong>`, "See more", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`} {
+	for _, want := range []string{`id="sprint-sprint-7-description" class="max-w-3xl"`, "-mt-3 max-h-20 overflow-hidden", `<strong>markdown</strong>`, "See more", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("collapsed planned description missing %q: %s", want, body)
 		}
@@ -111,7 +111,7 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 		t.Fatalf("expanded template: %v", err)
 	}
 	body = expanded.String()
-	for _, want := range []string{"Expanded markdown", "roadmap.png", "See less", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=0"`} {
+	for _, want := range []string{`id="sprint-sprint-7-description" class="max-w-3xl"`, `<div class="-mt-3">`, "Expanded markdown", "roadmap.png", "See less", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=0"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expanded planned description missing %q: %s", want, body)
 		}
