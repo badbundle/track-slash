@@ -24,6 +24,12 @@ type ListSprintAttachmentsParams struct {
 	Limit    int
 }
 
+type ListSprintAttachmentsForSprintsParams struct {
+	ProjectID uuid.UUID
+	SprintIDs []uuid.UUID
+	Limit     int
+}
+
 func (s *Store) CountSprintAttachments(ctx context.Context, sprintIDs []uuid.UUID) (map[uuid.UUID]int, error) {
 	out := make(map[uuid.UUID]int, len(sprintIDs))
 	if len(sprintIDs) == 0 {
@@ -50,6 +56,71 @@ func (s *Store) CountSprintAttachments(ctx context.Context, sprintIDs []uuid.UUI
 			return nil, err
 		}
 		out[sprintID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Store) ListSprintAttachmentsForSprints(ctx context.Context, p ListSprintAttachmentsForSprintsParams) (map[uuid.UUID][]model.SprintAttachment, error) {
+	out := make(map[uuid.UUID][]model.SprintAttachment, len(p.SprintIDs))
+	if len(p.SprintIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(ctx, `
+		WITH ranked AS (
+			SELECT
+				sa.id AS attachment_id,
+				sa.project_id AS attachment_project_id,
+				sa.sprint_id,
+				sa.storage_object_id,
+				sa.created_by_id AS attachment_created_by_id,
+				sa.created_at AS attachment_created_at,
+				sa.updated_at AS attachment_updated_at,
+				so.id AS object_id,
+				so.project_id AS object_project_id,
+				so.number AS object_number,
+				so.owner_user_id,
+				so.backend,
+				so.bucket,
+				so.object_key,
+				so.filename,
+				so.content_type,
+				so.byte_size,
+				so.sha256,
+				so.created_by_id AS object_created_by_id,
+				so.created_at AS object_created_at,
+				so.updated_at AS object_updated_at,
+				so.deleted_at AS object_deleted_at,
+				ROW_NUMBER() OVER (PARTITION BY sa.sprint_id ORDER BY so.number ASC) AS attachment_rank
+			FROM sprint_attachments sa
+			JOIN sprints sp ON sp.id = sa.sprint_id
+			JOIN projects p ON p.id = sa.project_id
+			JOIN storage_objects so ON so.id = sa.storage_object_id
+			WHERE sa.project_id = $1 AND sa.sprint_id = ANY($2)
+			  AND sp.deleted_at IS NULL AND p.deleted_at IS NULL AND so.deleted_at IS NULL
+		)
+		SELECT
+			attachment_id, attachment_project_id, sprint_id, storage_object_id,
+			attachment_created_by_id, attachment_created_at, attachment_updated_at,
+			object_id, object_project_id, object_number, owner_user_id, backend, bucket, object_key,
+			filename, content_type, byte_size, sha256, object_created_by_id,
+			object_created_at, object_updated_at, object_deleted_at
+		FROM ranked
+		WHERE attachment_rank <= $3
+		ORDER BY sprint_id ASC, object_number ASC
+	`, p.ProjectID, p.SprintIDs, p.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		attachment, err := scanSprintAttachment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[attachment.SprintID] = append(out[attachment.SprintID], attachment)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

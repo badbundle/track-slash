@@ -28,6 +28,12 @@ func TestSprintAttachmentCRUDPaginationAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSprintAttachment second: %v", err)
 	}
+	otherSprint := mustCreateSprint(t, env, "Other attachment sprint", date(2026, 7, 15), date(2026, 7, 28))
+	thirdObject := mustCreateStorageObject(t, env, "projects/a/objects/sprint-attachment-3")
+	third, err := env.store.CreateSprintAttachment(env.ctx, store.CreateSprintAttachmentParams{SprintID: otherSprint.ID, StorageObjectID: thirdObject.ID, CreatedByID: project.OwnerID})
+	if err != nil {
+		t.Fatalf("CreateSprintAttachment third: %v", err)
+	}
 	if first.ProjectID != env.projectID || first.SprintID != sprint.ID || first.Object.Ref != "object-1" {
 		t.Fatalf("first attachment = %+v", first)
 	}
@@ -44,6 +50,26 @@ func TestSprintAttachmentCRUDPaginationAndCounts(t *testing.T) {
 	counts, err := env.store.CountSprintAttachments(env.ctx, []uuid.UUID{sprint.ID, uuid.New()})
 	if err != nil || counts[sprint.ID] != 2 {
 		t.Fatalf("counts = %+v err=%v", counts, err)
+	}
+	grouped, err := env.store.ListSprintAttachmentsForSprints(env.ctx, store.ListSprintAttachmentsForSprintsParams{
+		ProjectID: env.projectID,
+		SprintIDs: []uuid.UUID{sprint.ID, otherSprint.ID, uuid.New()},
+		Limit:     1,
+	})
+	if err != nil || len(grouped[sprint.ID]) != 1 || grouped[sprint.ID][0].ID != first.ID || len(grouped[otherSprint.ID]) != 1 || grouped[otherSprint.ID][0].ID != third.ID {
+		t.Fatalf("grouped attachments = %+v err=%v", grouped, err)
+	}
+	emptyGrouped, err := env.store.ListSprintAttachmentsForSprints(env.ctx, store.ListSprintAttachmentsForSprintsParams{ProjectID: env.projectID, Limit: 1})
+	if err != nil || len(emptyGrouped) != 0 {
+		t.Fatalf("empty grouped attachments = %+v err=%v", emptyGrouped, err)
+	}
+	wrongProjectGrouped, err := env.store.ListSprintAttachmentsForSprints(env.ctx, store.ListSprintAttachmentsForSprintsParams{
+		ProjectID: uuid.New(),
+		SprintIDs: []uuid.UUID{sprint.ID},
+		Limit:     1,
+	})
+	if err != nil || len(wrongProjectGrouped) != 0 {
+		t.Fatalf("wrong-project grouped attachments = %+v err=%v", wrongProjectGrouped, err)
 	}
 	emptyCounts, err := env.store.CountSprintAttachments(env.ctx, nil)
 	if err != nil || len(emptyCounts) != 0 {

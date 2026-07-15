@@ -86,7 +86,7 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 		t.Fatalf("collapsed template: %v", err)
 	}
 	body := collapsed.String()
-	for _, want := range []string{"-mt-3 max-h-20 overflow-hidden", `<strong>markdown</strong>`, "See more", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`} {
+	for _, want := range []string{`id="sprint-sprint-7-description" class="flow-root max-w-3xl"`, "-mt-3 max-h-20 overflow-hidden", `<strong>markdown</strong>`, "See more", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("collapsed planned description missing %q: %s", want, body)
 		}
@@ -111,10 +111,28 @@ func TestUIPlannedSprintDescriptionPreviewAndExpansion(t *testing.T) {
 		t.Fatalf("expanded template: %v", err)
 	}
 	body = expanded.String()
-	for _, want := range []string{"Expanded markdown", "roadmap.png", "See less", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=0"`} {
+	for _, want := range []string{`id="sprint-sprint-7-description" class="flow-root max-w-3xl"`, `<div class="-mt-3">`, "Expanded markdown", "roadmap.png", "Remove attachment", "See less", `hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=0"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expanded planned description missing %q: %s", want, body)
 		}
+	}
+
+	completedSprint := sprint
+	completedSprint.Status = model.SprintStatusCompleted
+	var completed bytes.Buffer
+	err = uiTemplates.ExecuteTemplate(&completed, "sprint-description", uiSprintDescriptionData{
+		Project:             project,
+		Sprint:              completedSprint,
+		DescriptionExpanded: true,
+		DescriptionHTML:     template.HTML("<p>Completed markdown</p>"),
+		Attachments:         []model.SprintAttachment{attachment},
+	})
+	if err != nil {
+		t.Fatalf("completed template: %v", err)
+	}
+	completedBody := completed.String()
+	if !strings.Contains(completedBody, "roadmap.png") || !strings.Contains(completedBody, "Download attachment") || strings.Contains(completedBody, "Remove attachment") {
+		t.Fatalf("completed sprint attachments should be visible and read-only: %s", completedBody)
 	}
 }
 

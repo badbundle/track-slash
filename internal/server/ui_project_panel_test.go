@@ -234,6 +234,8 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 	projectID := uuid.New()
 	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
 	completedAt := time.Date(2026, 7, 14, 16, 30, 0, 0, time.UTC)
+	completedSprintID := uuid.New()
+	legacySprintID := uuid.New()
 	var buf bytes.Buffer
 	panel := &uiProjectPanelData{
 		Project:     project,
@@ -243,17 +245,27 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 			Project: project,
 			Sprints: []model.Sprint{
 				{
-					ID:          uuid.New(),
+					ID:          completedSprintID,
 					ProjectID:   projectID,
 					Number:      7,
 					Ref:         "sprint-7",
 					Name:        "Completed release",
-					Goal:        "This goal must not render",
+					Goal:        "Visible **sprint direction**",
 					StartDate:   datePtr(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)),
 					EndDate:     datePtr(time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)),
 					CompletedAt: &completedAt,
 				},
-				{ID: uuid.New(), ProjectID: projectID, Number: 8, Ref: "sprint-8", Name: "Undated legacy sprint"},
+				{ID: legacySprintID, ProjectID: projectID, Number: 8, Ref: "sprint-8", Name: "Undated legacy sprint"},
+			},
+			Descriptions: map[uuid.UUID]uiSprintDescriptionData{
+				completedSprintID: {
+					Project:         project,
+					Sprint:          model.Sprint{ID: completedSprintID, ProjectID: projectID, Number: 7, Ref: "sprint-7", Goal: "Visible **sprint direction**"},
+					DescriptionHTML: template.HTML("<p>Visible <strong>sprint direction</strong></p>"),
+				},
+			},
+			StatusCounts: map[uuid.UUID]model.ProjectIssueStatusCounts{
+				completedSprintID: {Total: 7, Todo: 2, InProgress: 1, Done: 3, Closed: 1},
 			},
 			HasMore:    true,
 			NextCursor: "cursor123",
@@ -279,6 +291,14 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 		`aria-controls="completed-sprint-sprint-7-issues"`,
 		`hx-get="/bradley/projects/TRACK/sprints/sprint-7/history/issues"`,
 		`hx-trigger="click once"`,
+		`aria-label="Sprint issue outcome counts"`,
+		`aria-label="Done: 3"`,
+		`aria-label="Cancelled: 1"`,
+		"<strong>sprint direction</strong>",
+		`id="sprint-sprint-7-description"`,
+		`hx-get="/bradley/projects/TRACK/sprints/sprint-7/description?expanded=1"`,
+		`hx-target="#sprint-sprint-7-description"`,
+		"See more",
 		"Loading sprint issues...",
 		`hx-get="/bradley/projects/TRACK/sprints/page?cursor=cursor123"`,
 		"Load more",
@@ -287,10 +307,20 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 			t.Fatalf("sprint history missing %q: %s", want, body)
 		}
 	}
-	for _, notWant := range []string{"This goal must not render", `aria-label="Edit sprint"`, `aria-label="Add issue to sprint"`} {
+	for _, notWant := range []string{"Visible **sprint direction**", `aria-label="Edit sprint"`, `aria-label="Add issue to sprint"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("sprint history included %q: %s", notWant, body)
 		}
+	}
+	for _, notWant := range []string{`aria-label="To do:`, `aria-label="In progress:`, `aria-label="Closed:`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sprint history included hidden outcome count %q: %s", notWant, body)
+		}
+	}
+	completedTimeIndex := strings.Index(body, "Completed Jul 14, 2026 16:30")
+	outcomeCountsIndex := strings.Index(body, `aria-label="Sprint issue outcome counts"`)
+	if completedTimeIndex < 0 || outcomeCountsIndex < completedTimeIndex {
+		t.Fatalf("sprint outcome counts should render below completion time: time=%d counts=%d body=%s", completedTimeIndex, outcomeCountsIndex, body)
 	}
 	tabStart := strings.Index(body, `aria-label="Project views"`)
 	if tabStart < 0 {
@@ -328,11 +358,10 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 		Priority:      model.PriorityP1,
 	}
 	data := uiProjectSprintHistoryIssuePageData{
-		Project:         project,
-		Sprint:          sprint,
-		DescriptionHTML: template.HTML("<p>Original <strong>sprint direction</strong></p>"),
-		Issues:          []model.Issue{issue},
-		NextHXGet:       "/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next",
+		Project:   project,
+		Sprint:    sprint,
+		Issues:    []model.Issue{issue},
+		NextHXGet: "/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next",
 	}
 	var buf bytes.Buffer
 	if err := uiTemplates.ExecuteTemplate(&buf, "project-sprint-history-issues", data); err != nil {
@@ -340,8 +369,6 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
-		"Description",
-		"<strong>sprint direction</strong>",
 		"Captured at completion",
 		"TRACK-42",
 		`href="/bradley/issues/TRACK-42"`,
@@ -354,8 +381,8 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 			t.Fatalf("sprint history issues missing %q: %s", want, body)
 		}
 	}
-	if strings.Contains(body, "Original **sprint direction**") {
-		t.Fatalf("sprint history rendered Markdown source: %s", body)
+	if strings.Contains(body, "sprint direction") {
+		t.Fatalf("sprint history issue response included description: %s", body)
 	}
 
 	buf.Reset()

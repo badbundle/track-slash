@@ -47,7 +47,7 @@ External Markdown image URLs render inline when they use `http` or `https`, for 
 ![](https://news.ycombinator.com/y18.svg)
 ```
 
-The shared project/issue/sprint UI shows attachments below the description editor or expanded view. Safe images include a compact preview, and every row has a copy action for the Markdown snippet. Active and planned sprint views start with a vertically cropped, attachment-scoped Markdown preview and load full Markdown plus attachment rows through “See more”.
+The shared project/issue/sprint UI shows attachments below the description editor or expanded view. Safe images include a compact preview, and every row has a copy action for the Markdown snippet. Active, planned, and completed sprint-history views start with a vertically cropped, attachment-scoped Markdown preview and load full Markdown plus attachment rows through “See more”. Completed sprint-history attachment rows remain read-only.
 
 Safe image content types render inline through the issue attachment content route:
 

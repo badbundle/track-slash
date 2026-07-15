@@ -139,10 +139,15 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	}
 
 	emptyBody := renderManager(base())
-	for _, want := range []string{"Context", "No context attached.", "Add context to this issue", `aria-label="Add issue context"`, `aria-label="Attach project context"`, `aria-label="Back to issue"`, `hx-push-url="/bradley/issues/TRACK-7/context/new"`, `hx-push-url="/bradley/issues/TRACK-7/context/link"`} {
+	for _, want := range []string{"Context", "No context attached.", "Add context to this issue", `aria-label="Breadcrumb"`, `href="/projects"`, `href="/bradley/projects/TRACK/all"`, `aria-current="page"`, `aria-label="Add issue context"`, `aria-label="Attach project context"`, `aria-label="Back to issue"`, `hx-push-url="/bradley/issues/TRACK-7/context/new"`, `hx-push-url="/bradley/issues/TRACK-7/context/link"`} {
 		if !strings.Contains(emptyBody, want) {
 			t.Fatalf("empty issue context manager missing %q: %s", want, emptyBody)
 		}
+	}
+	breadcrumbIndex := strings.Index(emptyBody, `aria-label="Breadcrumb"`)
+	headerIndex := strings.Index(emptyBody, `<header class="rounded-lg`)
+	if breadcrumbIndex == -1 || headerIndex == -1 || breadcrumbIndex > headerIndex {
+		t.Fatalf("issue context breadcrumb should render before the page header: %s", emptyBody)
 	}
 	if strings.Contains(emptyBody, `role="dialog" aria-modal="true"`) {
 		t.Fatalf("context manager should not render as a modal: %s", emptyBody)

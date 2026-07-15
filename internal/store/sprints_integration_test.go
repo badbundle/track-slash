@@ -640,6 +640,29 @@ func TestCompleteSprintMovesUnfinishedToNextPlannedSprint(t *testing.T) {
 	if err := env.store.DeleteIssue(env.ctx, i5.ID); err != nil {
 		t.Fatalf("DeleteIssue after completion: %v", err)
 	}
+	setIssueStatus(t, env, i1.ID, model.StatusDone)
+	statusCounts, err := env.store.CountSprintSnapshotIssuesByStatus(env.ctx, store.CountSprintSnapshotIssuesByStatusParams{
+		ProjectID: env.projectID,
+		SprintIDs: []uuid.UUID{active.ID, uuid.New()},
+	})
+	if err != nil {
+		t.Fatalf("CountSprintSnapshotIssuesByStatus: %v", err)
+	}
+	wantStatusCounts := model.ProjectIssueStatusCounts{Total: 5, Todo: 2, InProgress: 1, Done: 1, Closed: 1}
+	if got := statusCounts[active.ID]; got != wantStatusCounts {
+		t.Fatalf("snapshot status counts = %+v, want %+v", got, wantStatusCounts)
+	}
+	emptyStatusCounts, err := env.store.CountSprintSnapshotIssuesByStatus(env.ctx, store.CountSprintSnapshotIssuesByStatusParams{ProjectID: env.projectID})
+	if err != nil || len(emptyStatusCounts) != 0 {
+		t.Fatalf("empty snapshot status counts = %+v err=%v", emptyStatusCounts, err)
+	}
+	wrongProjectStatusCounts, err := env.store.CountSprintSnapshotIssuesByStatus(env.ctx, store.CountSprintSnapshotIssuesByStatusParams{
+		ProjectID: uuid.New(),
+		SprintIDs: []uuid.UUID{active.ID},
+	})
+	if err != nil || len(wrongProjectStatusCounts) != 0 {
+		t.Fatalf("wrong-project snapshot status counts = %+v err=%v", wrongProjectStatusCounts, err)
+	}
 
 	firstPage, hasMore, err := env.store.ListSprintSnapshotIssues(env.ctx, store.ListSprintSnapshotIssuesParams{
 		ProjectID: env.projectID,
@@ -685,8 +708,8 @@ func TestCompleteSprintSnapshotFailureRollsBack(t *testing.T) {
 	issue := mustCreateIssue(t, env, "still active after rollback")
 	assignIssueToSprint(t, env, issue.ID, sprint.ID)
 	if _, err := env.pool.Exec(env.ctx, `
-		INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id)
-		VALUES ($1, $2, $3)
+		INSERT INTO sprint_issue_snapshots (project_id, sprint_id, issue_id, status)
+		VALUES ($1, $2, $3, 'todo')
 	`, env.projectID, sprint.ID, issue.ID); err != nil {
 		t.Fatalf("seed conflicting snapshot: %v", err)
 	}
