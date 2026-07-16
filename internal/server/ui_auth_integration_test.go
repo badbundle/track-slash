@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
@@ -111,6 +112,19 @@ func TestUILoginSetsCookie(t *testing.T) {
 	if cookie.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("cookie SameSite = %v", cookie.SameSite)
 	}
+	if cookie.Expires.IsZero() || cookie.MaxAge <= 0 {
+		t.Fatalf("session cookie expiry = %v MaxAge = %d", cookie.Expires, cookie.MaxAge)
+	}
+	auth, err := e.store.AuthenticateToken(e.ctx, cookie.Value)
+	if err != nil {
+		t.Fatalf("AuthenticateToken cookie: %v", err)
+	}
+	if auth.Token.ExpiresAt == nil || auth.Token.ExpiresAt.Sub(cookie.Expires) > time.Second || cookie.Expires.Sub(*auth.Token.ExpiresAt) > time.Second {
+		t.Fatalf("database expiry = %v, cookie expiry = %v", auth.Token.ExpiresAt, cookie.Expires)
+	}
+	if remaining := time.Until(*auth.Token.ExpiresAt); remaining < 7*24*time.Hour-time.Minute || remaining > 7*24*time.Hour+time.Minute {
+		t.Fatalf("session expiry remaining = %v, want about 168h", remaining)
+	}
 }
 
 func TestUISignupCreatesAccountAndSetsCookie(t *testing.T) {
@@ -128,7 +142,7 @@ func TestUISignupCreatesAccountAndSetsCookie(t *testing.T) {
 		t.Fatalf("Location = %q", loc)
 	}
 	cookie := findUICookie(t, res.Cookies())
-	if cookie.Value == "" || !cookie.HttpOnly {
+	if cookie.Value == "" || !cookie.HttpOnly || cookie.Expires.IsZero() || cookie.MaxAge <= 0 {
 		t.Fatalf("cookie = %+v", cookie)
 	}
 	if _, err := e.store.AuthenticatePassword(e.ctx, username, "correct-horse-battery"); err != nil {

@@ -7,11 +7,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	DefaultLocalStorageRoot = "data/storage"
 	LegacyLocalStorageRoot  = "tmp/storage"
+	DefaultSessionTTL       = 7 * 24 * time.Hour
 )
 
 type Config struct {
@@ -19,6 +21,7 @@ type Config struct {
 	DatabaseURL        string
 	CORSAllowedOrigins []string
 	PublicOrigin       string
+	SessionTTL         time.Duration
 	DevReload          bool
 	AutoMigrate        bool
 	Storage            StorageConfig
@@ -55,11 +58,16 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	sessionTTL, err := envPositiveDuration("TRACK_SLASH_SESSION_TTL", DefaultSessionTTL)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		Port:               envOr("PORT", "8080"),
 		DatabaseURL:        db.DatabaseURL,
 		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		PublicOrigin:       publicOrigin,
+		SessionTTL:         sessionTTL,
 		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
 		AutoMigrate:        autoMigrate,
 		Storage:            storage,
@@ -217,6 +225,18 @@ func envPositiveInt64(key string, fallback int64) (int64, error) {
 		return 0, errors.New(key + " must be a positive integer")
 	}
 	return n, nil
+}
+
+func envPositiveDuration(key string, fallback time.Duration) (time.Duration, error) {
+	raw, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	duration, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || duration <= 0 {
+		return 0, errors.New(key + " must be a positive duration such as 168h")
+	}
+	return duration, nil
 }
 
 func envBoolOr(key string, fallback bool) (bool, error) {

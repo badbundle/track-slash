@@ -133,11 +133,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
-		UserID: u.ID,
-		Kind:   model.AuthTokenKindSession,
-		Name:   "session",
-	})
+	created, err := s.createSessionToken(r, u, "session")
 	if err != nil {
 		writeStoreError(w, err)
 		return
@@ -188,7 +184,7 @@ func (s *Server) createUserToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
-		UserID: userID, Kind: kind, Name: req.Name, ExpiresAt: req.ExpiresAt,
+		UserID: userID, Kind: kind, Name: req.Name, ExpiresAt: s.authTokenExpiry(kind, req.ExpiresAt),
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -221,13 +217,37 @@ func (s *Server) createMyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
-		UserID: currentUser(r).ID, Kind: kind, Name: req.Name, ExpiresAt: req.ExpiresAt,
+		UserID: currentUser(r).ID, Kind: kind, Name: req.Name, ExpiresAt: s.authTokenExpiry(kind, req.ExpiresAt),
 	})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, createTokenResp{AuthToken: created.Token, Token: created.RawToken})
+}
+
+func (s *Server) createSessionToken(r *http.Request, user model.User, name string) (store.CreatedAuthToken, error) {
+	return s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
+		UserID:    user.ID,
+		Kind:      model.AuthTokenKindSession,
+		Name:      name,
+		ExpiresAt: s.authTokenExpiry(model.AuthTokenKindSession, nil),
+	})
+}
+
+func (s *Server) authTokenExpiry(kind model.AuthTokenKind, requested *time.Time) *time.Time {
+	absolute := time.Now().Add(s.sessionTTL)
+	return boundedSessionExpiry(kind, requested, &absolute)
+}
+
+func boundedSessionExpiry(kind model.AuthTokenKind, requested, absolute *time.Time) *time.Time {
+	if kind != model.AuthTokenKindSession {
+		return requested
+	}
+	if requested == nil || requested.After(*absolute) {
+		return absolute
+	}
+	return requested
 }
 
 func (s *Server) listUserTokens(w http.ResponseWriter, r *http.Request) {

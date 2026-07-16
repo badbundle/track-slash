@@ -3544,7 +3544,7 @@ func (s *Server) mcpCreateMyToken(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	created, err := s.store.CreateAuthToken(ctx, store.CreateAuthTokenParams{UserID: auth.User.ID, Kind: kind, Name: name, ExpiresAt: input.ExpiresAt})
+	created, err := s.store.CreateAuthToken(ctx, store.CreateAuthTokenParams{UserID: auth.User.ID, Kind: kind, Name: name, ExpiresAt: s.authTokenExpiry(kind, input.ExpiresAt)})
 	if err != nil {
 		return nil, err
 	}
@@ -3586,7 +3586,7 @@ func (s *Server) mcpCreateUserToken(ctx context.Context, req *mcp.CallToolReques
 	if err != nil {
 		return nil, err
 	}
-	created, err := s.store.CreateAuthToken(ctx, store.CreateAuthTokenParams{UserID: input.UserID, Kind: kind, Name: name, ExpiresAt: input.ExpiresAt})
+	created, err := s.store.CreateAuthToken(ctx, store.CreateAuthTokenParams{UserID: input.UserID, Kind: kind, Name: name, ExpiresAt: s.authTokenExpiry(kind, input.ExpiresAt)})
 	if err != nil {
 		return nil, err
 	}

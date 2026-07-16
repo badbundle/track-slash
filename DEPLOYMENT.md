@@ -64,6 +64,14 @@ TRACK_SLASH_PUBLIC_ORIGIN=https://track.example.com
 
 The value must be an origin only: scheme, host, and optional port. Production passkeys require HTTPS; localhost development can omit this and use the request-derived local origin.
 
+Login sessions have a configurable seven-day absolute lifetime by default:
+
+```bash
+TRACK_SLASH_SESSION_TTL=168h
+```
+
+The value uses Go duration syntax and must be positive. Session activity does not extend the deadline; idle expiry is not currently applied. API tokens remain distinct and do not expire unless an expiry is explicitly supplied when they are created.
+
 ## Object Storage
 
 Production object storage is configured on the frontend app, not on the `-migrate-only` job. The migration job only needs `DATABASE_URL`.

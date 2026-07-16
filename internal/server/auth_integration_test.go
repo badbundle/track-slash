@@ -367,7 +367,7 @@ func TestHTTPTokenAdminEndpoints(t *testing.T) {
 		model.AuthToken
 		Token string `json:"token"`
 	}](t, body)
-	if created.Token == "" || created.Kind != model.AuthTokenKindSession {
+	if created.Token == "" || created.Kind != model.AuthTokenKindSession || created.ExpiresAt == nil {
 		t.Fatalf("created token = %+v", created)
 	}
 
@@ -439,8 +439,11 @@ func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
 		model.AuthToken
 		Token string `json:"token"`
 	}](t, body)
-	if session.Token == "" || session.Kind != model.AuthTokenKindSession || session.UserID != u.ID {
+	if session.Token == "" || session.Kind != model.AuthTokenKindSession || session.UserID != u.ID || session.ExpiresAt == nil {
 		t.Fatalf("session = %+v", session)
+	}
+	if remaining := time.Until(*session.ExpiresAt); remaining < 7*24*time.Hour-time.Minute || remaining > 7*24*time.Hour+time.Minute {
+		t.Fatalf("session expiry remaining = %v, want about 168h", remaining)
 	}
 	code, body = e.doWithToken(t, session.Token, http.MethodGet, "/me", nil)
 	if code != http.StatusOK {
@@ -458,7 +461,7 @@ func TestHTTPAccountsSessionsAndSelfTokens(t *testing.T) {
 		model.AuthToken
 		Token string `json:"token"`
 	}](t, body)
-	if apiToken.Token == "" || apiToken.Kind != model.AuthTokenKindAPI || apiToken.UserID != u.ID {
+	if apiToken.Token == "" || apiToken.Kind != model.AuthTokenKindAPI || apiToken.UserID != u.ID || apiToken.ExpiresAt != nil {
 		t.Fatalf("api token = %+v", apiToken)
 	}
 	code, body = e.doWithToken(t, session.Token, http.MethodGet, "/me/tokens", nil)
@@ -885,6 +888,70 @@ func TestHTTPHealthzIsUnderAPINamespace(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("/api/v1/healthz code = %d", res.StatusCode)
+	}
+}
+
+func TestExpiredSessionsRejectedAcrossHTTPAndWebSockets(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	hub := realtime.NewHub()
+	srv := server.NewWithOptions(e.store, hub, server.Options{SessionTTL: time.Hour})
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+
+	past := time.Now().Add(-time.Minute)
+	expired, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID:    e.adminID,
+		Kind:      model.AuthTokenKindSession,
+		Name:      "expired session",
+		ExpiresAt: &past,
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken expired session: %v", err)
+	}
+
+	tests := []struct {
+		name            string
+		path            string
+		useCookie       bool
+		wantStatus      int
+		wantClearCookie bool
+	}{
+		{name: "API bearer", path: apiPath("/me"), wantStatus: http.StatusUnauthorized},
+		{name: "UI cookie", path: "/projects", useCookie: true, wantStatus: http.StatusSeeOther, wantClearCookie: true},
+		{name: "API websocket", path: apiPath("/ws"), wantStatus: http.StatusUnauthorized},
+		{name: "UI websocket", path: "/realtime", useCookie: true, wantStatus: http.StatusSeeOther, wantClearCookie: true},
+	}
+
+	client := *ts.Client()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequestWithContext(e.ctx, http.MethodGet, ts.URL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			if tt.useCookie {
+				req.AddCookie(&http.Cookie{Name: uiCookieNameForTest, Value: expired.RawToken, Path: "/"})
+			} else {
+				req.Header.Set("Authorization", "Bearer "+expired.RawToken)
+			}
+			res, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("GET %s: %v", tt.path, err)
+			}
+			defer res.Body.Close()
+			if res.StatusCode != tt.wantStatus {
+				t.Fatalf("GET %s code = %d, want %d", tt.path, res.StatusCode, tt.wantStatus)
+			}
+			setCookie := res.Header.Get("Set-Cookie")
+			if tt.wantClearCookie && (!strings.Contains(setCookie, uiCookieNameForTest+"=") || !strings.Contains(setCookie, "Max-Age=0")) {
+				t.Fatalf("GET %s Set-Cookie = %q, want cleared session", tt.path, setCookie)
+			}
+			if !tt.wantClearCookie && setCookie != "" {
+				t.Fatalf("GET %s Set-Cookie = %q, want none", tt.path, setCookie)
+			}
+		})
 	}
 }
 

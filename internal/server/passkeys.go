@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/passkeys"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
@@ -326,14 +325,6 @@ func (s *Server) writeReauthToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, passkeyReauthResp{ReauthToken: token})
-}
-
-func (s *Server) createSessionToken(r *http.Request, user model.User, name string) (store.CreatedAuthToken, error) {
-	return s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
-		UserID: user.ID,
-		Kind:   model.AuthTokenKindSession,
-		Name:   name,
-	})
 }
 
 func (s *Server) passkeyOptions() *passkeys.Service {
