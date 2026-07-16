@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +22,7 @@ type Server struct {
 	devReload          bool
 	objectStorage      *objectstorage.Service
 	passkeys           *passkeys.Service
+	secureCookies      bool
 }
 
 type Options struct {
@@ -42,6 +44,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 	if s != nil {
 		passkeyService = passkeys.New(s, opts.PublicOrigin)
 	}
+	publicOrigin, _ := url.Parse(opts.PublicOrigin)
 	return &Server{
 		store:              s,
 		hub:                hub,
@@ -49,6 +52,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		devReload:          opts.DevReload,
 		objectStorage:      opts.ObjectStorage,
 		passkeys:           passkeyService,
+		secureCookies:      publicOrigin != nil && publicOrigin.Scheme == "https",
 	}
 }
 

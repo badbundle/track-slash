@@ -46,7 +46,7 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		writeUIInternalError(w, "ui login create session token", err)
 		return
 	}
-	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
+	s.setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
@@ -84,7 +84,7 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 		writeUIInternalError(w, "ui signup create session token", err)
 		return
 	}
-	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
+	s.setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
@@ -93,7 +93,7 @@ func (s *Server) uiLogout(w http.ResponseWriter, r *http.Request) {
 		writeUIInternalError(w, "ui logout revoke session", err)
 		return
 	}
-	clearUISessionCookie(w, r)
+	s.clearUISessionCookie(w, r)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -118,14 +118,14 @@ func (s *Server) revokeUISessionCookie(ctx context.Context, r *http.Request) err
 	return nil
 }
 
-func setUISessionCookie(w http.ResponseWriter, r *http.Request, raw string, expiresAt *time.Time) {
+func (s *Server) setUISessionCookie(w http.ResponseWriter, r *http.Request, raw string, expiresAt *time.Time) {
 	cookie := &http.Cookie{
 		Name:     uiAuthCookieName,
 		Value:    raw,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   s.secureCookies || r.TLS != nil,
 	}
 	if expiresAt != nil {
 		cookie.Expires = *expiresAt
@@ -133,7 +133,7 @@ func setUISessionCookie(w http.ResponseWriter, r *http.Request, raw string, expi
 	http.SetCookie(w, cookie)
 }
 
-func clearUISessionCookie(w http.ResponseWriter, r *http.Request) {
+func (s *Server) clearUISessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     uiAuthCookieName,
 		Value:    "",
@@ -142,7 +142,7 @@ func clearUISessionCookie(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   r.TLS != nil,
+		Secure:   s.secureCookies || r.TLS != nil,
 	})
 }
 
@@ -156,16 +156,7 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 		auth, err := s.store.AuthenticateToken(r.Context(), cookie.Value)
 		if err != nil {
 			if errors.Is(err, store.ErrUnauthorized) {
-				http.SetCookie(w, &http.Cookie{
-					Name:     uiAuthCookieName,
-					Value:    "",
-					Path:     "/",
-					MaxAge:   -1,
-					Expires:  time.Unix(0, 0),
-					HttpOnly: true,
-					SameSite: http.SameSiteLaxMode,
-					Secure:   r.TLS != nil,
-				})
+				s.clearUISessionCookie(w, r)
 				redirectUILogin(w, r)
 				return
 			}
