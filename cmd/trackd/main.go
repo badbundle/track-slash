@@ -90,6 +90,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("storage: %v", err)
 	}
+	deletionWorker := objectstorage.NewDeletionWorker(st, storageSvc, objectstorage.DeletionWorkerOptions{})
+	go deletionWorker.Run(ctx)
 
 	srv := server.NewWithOptions(st, hub, server.Options{
 		CORSAllowedOrigins: cfg.CORSAllowedOrigins,

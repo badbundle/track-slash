@@ -100,7 +100,7 @@ func (s *Server) removeProjectImageFromRoute(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return model.Project{}, false
 	}
-	if !s.requireProjectWriteAccess(w, r, project.ID) || !s.requireObjectStorage(w) {
+	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return model.Project{}, false
 	}
 	removed, err := s.store.RemoveProjectImage(r.Context(), project.ID)

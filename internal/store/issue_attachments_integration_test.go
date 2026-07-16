@@ -82,6 +82,7 @@ func TestIssueAttachmentCRUDAndPagination(t *testing.T) {
 	if deleted.ID != first.ID || deleted.Object.DeletedAt == nil {
 		t.Fatalf("deleted = %+v", deleted)
 	}
+	assertStorageObjectDeletion(t, env.store, env.ctx, deleted.Object)
 	if _, err := env.store.GetIssueAttachmentByObjectNumber(env.ctx, issue.ID, firstObject.Number); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetIssueAttachmentByObjectNumber deleted err = %v, want ErrNotFound", err)
 	}

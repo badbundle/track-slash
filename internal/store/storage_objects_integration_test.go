@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -37,6 +38,18 @@ func mustCreateStorageObject(t *testing.T, env *sprintsTestEnv, key string) mode
 		t.Fatalf("CreateStorageObject: %v", err)
 	}
 	return object
+}
+
+func assertStorageObjectDeletion(t *testing.T, st *store.Store, ctx context.Context, object model.StorageObject) store.StorageObjectDeletion {
+	t.Helper()
+	job, err := st.GetStorageObjectDeletion(ctx, object.ID)
+	if err != nil {
+		t.Fatalf("GetStorageObjectDeletion(%s): %v", object.ID, err)
+	}
+	if job.StorageObjectID != object.ID || job.Backend != object.Backend || job.Bucket != object.Bucket || job.ObjectKey != object.ObjectKey {
+		t.Fatalf("deletion job = %+v, want locator from %+v", job, object)
+	}
+	return job
 }
 
 func TestStorageObjectsCRUDAndPagination(t *testing.T) {
@@ -95,6 +108,10 @@ func TestStorageObjectsCRUDAndPagination(t *testing.T) {
 	}
 	if deleted.ID != first.ID || deleted.DeletedAt == nil {
 		t.Fatalf("deleted = %+v", deleted)
+	}
+	job := assertStorageObjectDeletion(t, env.store, env.ctx, deleted)
+	if job.Status != store.StorageObjectDeletionPending || job.AttemptCount != 0 || job.NextAttemptAt == nil {
+		t.Fatalf("new deletion job = %+v, want pending attempt 0", job)
 	}
 	if _, err := env.store.GetStorageObjectByProjectNumber(env.ctx, env.projectID, first.Number); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetStorageObjectByProjectNumber deleted err = %v, want ErrNotFound", err)

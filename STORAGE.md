@@ -71,6 +71,8 @@ Important fields:
 - `filename`, `content_type`, `byte_size`, `sha256`: download metadata and integrity metadata.
 - `created_by_id`, timestamps, `deleted_at`: audit and soft-delete state.
 
+The storage_object_deletions table is the durable backend-deletion queue. A Postgres trigger inserts a pending job in the same transaction whenever a live storage_objects row becomes soft-deleted. Jobs copy the backend, bucket, and object key needed after the object disappears from normal reads. The migration also backfills jobs for objects that were already soft-deleted.
+
 Project object rows are listed and fetched only when both the project and object are live. Project soft-delete makes objects inaccessible but does not physically remove backend bytes. User-owned rows are fetched only through feature-specific routes, not project object routes.
 
 Profile images are account-wide user-owned objects. Each user can reference one original image row in `users.profile_image_object_id` and one generated thumbnail row in `users.profile_image_thumbnail_object_id`. Both rows must be live `storage_objects` rows owned by the same user.
@@ -107,13 +109,29 @@ Any authenticated user may read any live user's profile image content. Profile i
 
 ## Write And Delete Flow
 
-Uploads write bytes to the backend first, then insert metadata in Postgres. If the metadata insert fails, the server deletes the just-written backend object.
+Uploads write bytes to the backend first, then insert metadata in Postgres. If the metadata insert fails, the server deletes the just-written backend object. When metadata exists but a later attachment-link transaction fails, cleanup soft-deletes the object, transactionally queues backend deletion, and also attempts immediate removal.
 
-Deletes soft-delete the Postgres row first, then remove backend bytes. This avoids live metadata pointing at a missing file. A crash between those steps can leave orphaned backend bytes, which are inaccessible through the API and should be handled by a future cleanup task.
+Deletes soft-delete the Postgres row and enqueue storage_object_deletions work in the same transaction. This avoids live metadata pointing at missing bytes and preserves a retry path across request failures, process crashes, and restarts. HTTP and MCP delete responses describe the committed logical deletion; they do not fail merely because the immediate best-effort backend removal failed.
 
-Profile image replacement writes the original and generated thumbnail to the backend first, creates user-owned metadata rows, then updates the user profile pointers in one transaction. Previous profile image rows are soft-deleted and their backend bytes are deleted best-effort. Removing a profile image clears both user pointers, soft-deletes the old rows, and also deletes backend bytes best-effort.
+Every running trackd binary processes due jobs. Workers use leased FOR UPDATE SKIP LOCKED claims, so multiple replicas can cooperate without intentionally processing the same live lease. Missing backend bytes count as success. Transient failures retry up to eight attempts with exponential backoff starting at five seconds and capped at five minutes. A processing lease becomes reclaimable after one minute, and each backend delete has a ten-second timeout.
 
-Project image replacement follows the same lifecycle with project-owned metadata rows and transactional project pointers. Project image keys use `projects/{project_id}/images/{object_id}/{variant}`. Replacement and removal soft-delete the previous pair before deleting backend bytes best-effort.
+After the final attempt, the job remains queryable with status failed, its bounded error text and failure timestamp are persisted, and trackd logs a terminal failure. Operators can inspect failures with:
+
+    SELECT storage_object_id, backend, bucket, object_key, attempt_count, last_error, failed_at
+    FROM storage_object_deletions
+    WHERE status = 'failed'
+    ORDER BY failed_at;
+
+After correcting the backend or configuration problem, requeue selected failures with:
+
+    UPDATE storage_object_deletions
+    SET status = 'pending', next_attempt_at = now(), locked_at = NULL, failed_at = NULL, updated_at = now()
+    WHERE status = 'failed'
+      AND storage_object_id = '<object UUID>';
+
+Profile image replacement writes the original and generated thumbnail to the backend first, creates user-owned metadata rows, then updates the user profile pointers in one transaction. Previous profile image rows are soft-deleted and queued in that transaction. Removing a profile image clears both user pointers and queues both old objects the same way.
+
+Project image replacement follows the same lifecycle with project-owned metadata rows and transactional project pointers. Project image keys use `projects/{project_id}/images/{object_id}/{variant}`. Replacement and removal soft-delete and queue the previous pair transactionally.
 
 The server accepts decodable PNG, JPEG, GIF, WebP, and BMP profile and project-image uploads. SVG, AVIF, non-images, corrupt images, oversized files, and unreasonable dimensions are rejected before image metadata is linked. The generated thumbnail is a centered square `128x128` PNG; animated formats use the decoded first frame. User images render as circles; project images retain the square crop with a small corner radius.
 

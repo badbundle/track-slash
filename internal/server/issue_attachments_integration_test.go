@@ -742,8 +742,11 @@ func TestHTTPIssueAttachmentAccessAndValidation(t *testing.T) {
 		t.Fatalf("disabled content code = %d body = %s", code, body)
 	}
 	code, body = disabled.do(t, http.MethodDelete, disabled.issueAttachmentPath(disabledIssue, disabledAttachment.Object), nil)
-	if code != http.StatusServiceUnavailable {
+	if code != http.StatusNoContent {
 		t.Fatalf("disabled delete code = %d body = %s", code, body)
+	}
+	if job, err := disabled.store.GetStorageObjectDeletion(disabled.ctx, disabledObject.ID); err != nil || job.Status != store.StorageObjectDeletionPending {
+		t.Fatalf("disabled attachment deletion job = %+v, %v", job, err)
 	}
 }
 

@@ -50,6 +50,7 @@ func TestContextAttachmentCRUD(t *testing.T) {
 	if err != nil || deleted.Object.DeletedAt == nil {
 		t.Fatalf("DeleteContextAttachment = %+v err=%v", deleted, err)
 	}
+	assertStorageObjectDeletion(t, env.store, env.ctx, deleted.Object)
 	if _, err := env.store.GetContextAttachmentByObjectNumber(env.ctx, contextItem.ID, object.Number); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("attachment after delete err = %v", err)
 	}

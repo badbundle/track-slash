@@ -75,6 +75,14 @@ func (s *Service) MaxUploadBytes() int64 {
 	return s.maxUploadBytes
 }
 
+func (s *Service) BackendName() string {
+	return s.backendName
+}
+
+func (s *Service) Bucket() string {
+	return s.bucket
+}
+
 func (s *Service) ObjectKey(projectID, objectID uuid.UUID) string {
 	return fmt.Sprintf("projects/%s/objects/%s", projectID, objectID)
 }

@@ -3074,15 +3074,12 @@ func (s *Server) mcpDeleteObject(ctx context.Context, req *mcp.CallToolRequest, 
 	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPObjectStorage(); err != nil {
-		return nil, err
-	}
 	deleted, err := s.store.DeleteStorageObject(ctx, object.ID)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.deleteStorageBackendObject(ctx, deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
-		return nil, err
+	if s.objectStorage != nil {
+		_ = s.deleteStorageBackendObject(ctx, deleted.ObjectKey)
 	}
 	return mcpOK(), nil
 }
@@ -3213,15 +3210,12 @@ func mcpCreateDescriptionAttachment[T any](s *Server, ctx context.Context, proje
 
 func mcpDeleteDescriptionAttachment[T any](s *Server, ctx context.Context, unlink func() (T, error), objectKey func(T) string) (T, error) {
 	var zero T
-	if err := s.requireMCPObjectStorage(); err != nil {
-		return zero, err
-	}
 	deleted, err := unlink()
 	if err != nil {
 		return zero, err
 	}
-	if err := s.deleteStorageBackendObject(ctx, objectKey(deleted)); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
-		return zero, err
+	if s.objectStorage != nil {
+		_ = s.deleteStorageBackendObject(ctx, objectKey(deleted))
 	}
 	return deleted, nil
 }
