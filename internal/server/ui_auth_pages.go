@@ -26,6 +26,9 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.Form.Get("username"))
 	password := r.Form.Get("password")
 	next := safeUINext(r.Form.Get("next"))
+	if !s.allowAuthIdentifier(w, username) {
+		return
+	}
 	if username == "" || password == "" {
 		renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Username and password required.", Next: next})
 		return
@@ -60,6 +63,9 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := safeUINext(r.Form.Get("next"))
+	if !s.allowAuthIdentifier(w, r.Form.Get("username")) {
+		return
+	}
 	u, err := s.store.CreateAccount(r.Context(), store.CreateAccountParams{
 		Username: r.Form.Get("username"),
 		Password: r.Form.Get("password"),

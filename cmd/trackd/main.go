@@ -94,6 +94,7 @@ func main() {
 	srv := server.NewWithOptions(st, hub, server.Options{
 		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
 		PublicOrigin:       cfg.PublicOrigin,
+		TrustedProxyCIDRs:  cfg.TrustedProxyCIDRs,
 		SessionTTL:         cfg.SessionTTL,
 		DevReload:          cfg.DevReload,
 		ObjectStorage:      storageSvc,
@@ -103,6 +104,7 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           srv.Router(),
 		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	errCh := make(chan error, 1)
