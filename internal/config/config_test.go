@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net"
 	"os"
 	"reflect"
 	"testing"
@@ -223,6 +224,48 @@ func TestLoadPublicOriginRejectsInvalidOrigins(t *testing.T) {
 				t.Fatal("loadPublicOrigin err = nil, want error")
 			}
 		})
+	}
+}
+
+func TestLoadTrustedProxyCIDRs(t *testing.T) {
+	unsetenv(t, "TRACK_SLASH_TRUSTED_PROXY_CIDRS")
+	got, err := loadTrustedProxyCIDRs()
+	if err != nil || got != nil {
+		t.Fatalf("unset trusted proxies = %v, %v, want nil/nil", got, err)
+	}
+
+	t.Setenv("TRACK_SLASH_TRUSTED_PROXY_CIDRS", " 192.0.2.25/24, 2001:db8:1::1/48 ")
+	got, err = loadTrustedProxyCIDRs()
+	if err != nil {
+		t.Fatalf("loadTrustedProxyCIDRs: %v", err)
+	}
+	want := []string{"192.0.2.0/24", "2001:db8:1::/48"}
+	if len(got) != len(want) {
+		t.Fatalf("trusted proxy count = %d, want %d", len(got), len(want))
+	}
+	for i := range got {
+		if got[i].String() != want[i] {
+			t.Fatalf("trusted proxy %d = %q, want %q", i, got[i].String(), want[i])
+		}
+	}
+
+	t.Setenv("TRACK_SLASH_TRUSTED_PROXY_CIDRS", "192.0.2.1")
+	if _, err := loadTrustedProxyCIDRs(); err == nil {
+		t.Fatal("invalid trusted proxy err = nil, want error")
+	}
+}
+
+func TestLoadIncludesTrustedProxyCIDRs(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	t.Setenv("TRACK_SLASH_TRUSTED_PROXY_CIDRS", "192.0.2.0/24")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := net.IPNet{IP: net.IPv4(192, 0, 2, 0), Mask: net.CIDRMask(24, 32)}
+	if len(cfg.TrustedProxyCIDRs) != 1 || cfg.TrustedProxyCIDRs[0].String() != want.String() {
+		t.Fatalf("TrustedProxyCIDRs = %v, want [%s]", cfg.TrustedProxyCIDRs, want.String())
 	}
 }
 

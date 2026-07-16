@@ -72,6 +72,26 @@ TRACK_SLASH_SESSION_TTL=168h
 
 The value uses Go duration syntax and must be positive. Session activity does not extend the deadline; idle expiry is not currently applied. API tokens remain distinct and do not expire unless an expiry is explicitly supplied when they are created.
 
+## Authentication and request limits
+
+Password, passkey, signup, and reauthentication endpoints are limited to 30 requests per resolved client IP per minute and 10 requests per normalized username or account identifier per five minutes. Exhausted limits return `429 Too Many Requests` with `Retry-After`.
+
+Forwarded client IPs are ignored by default, so an unconfigured deployment behind a reverse proxy shares one application-level IP bucket. Configure the exact internal source ranges used by trusted proxies when requests normally arrive through a proxy:
+
+```bash
+TRACK_SLASH_TRUSTED_PROXY_CIDRS=10.0.0.0/8,172.16.0.0/12
+```
+
+Only an immediate peer inside one of these CIDR ranges may supply `X-Forwarded-For`. The application walks that chain from right to left, skips trusted proxy hops, and uses the first untrusted IP as the client. Invalid chains fall back to the immediate peer. Configure the proxy to replace or safely append `X-Forwarded-For`, use the narrowest practical CIDRs, and prevent clients from reaching track-slash directly. `X-Real-IP` and other forwarding headers are not trusted.
+
+Request contexts and body reads use these deadlines:
+
+- 15 seconds for ordinary form and JSON requests;
+- 30 seconds for passkey/WebAuthn requests;
+- 2 minutes for multipart uploads.
+
+HTTP headers retain a separate five-second read deadline. WebSocket, MCP, and development reload streams are explicitly excluded from request deadlines; idle keep-alive HTTP connections are closed after 60 seconds.
+
 ## Object Storage
 
 Production object storage is configured on the frontend app, not on the `-migrate-only` job. The migration job only needs `DATABASE_URL`.

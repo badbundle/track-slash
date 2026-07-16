@@ -55,6 +55,9 @@ func (s *Server) createPasskeyAccountOptions(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !s.allowAuthIdentifier(w, req.Username) {
+		return
+	}
 	options, err := s.passkeyOptions().BeginSignup(r.Context(), r, passkeys.SignupOptionsParams{
 		Username: req.Username,
 		Name:     req.Name,
@@ -98,6 +101,9 @@ func (s *Server) createPasskeySession(w http.ResponseWriter, r *http.Request) {
 	u, err := s.passkeyOptions().FinishLogin(r.Context(), r, req.CeremonyID, req.Credential)
 	if err != nil {
 		writePasskeyError(w, err)
+		return
+	}
+	if !s.allowAuthIdentifier(w, u.ID.String()) {
 		return
 	}
 	created, err := s.createSessionToken(r, u, "session")
@@ -279,6 +285,9 @@ func (s *Server) uiPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 	u, err := s.passkeyOptions().FinishLogin(r.Context(), r, req.CeremonyID, req.Credential)
 	if err != nil {
 		writePasskeyError(w, err)
+		return
+	}
+	if !s.allowAuthIdentifier(w, u.ID.String()) {
 		return
 	}
 	created, err := s.createSessionToken(r, u, "web session")

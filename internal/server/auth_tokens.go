@@ -97,6 +97,9 @@ func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if !s.allowAuthIdentifier(w, req.Username) {
+		return
+	}
 	if _, err := store.NormalizeUsername(req.Username); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -126,6 +129,9 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	var req createSessionReq
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !s.allowAuthIdentifier(w, req.Username) {
 		return
 	}
 	u, err := s.store.AuthenticatePassword(r.Context(), req.Username, req.Password)

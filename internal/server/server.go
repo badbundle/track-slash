@@ -1,6 +1,7 @@
 package server
 
 import (
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -24,12 +25,22 @@ type Server struct {
 	passkeys           *passkeys.Service
 	secureCookies      bool
 	sessionTTL         time.Duration
+	authLimiter        *authRateLimiter
+	trustedProxyCIDRs  []net.IPNet
+	requestTimeout     time.Duration
+	authRequestTimeout time.Duration
+	uploadTimeout      time.Duration
 }
 
 type Options struct {
 	CORSAllowedOrigins []string
 	PublicOrigin       string
 	SessionTTL         time.Duration
+	AuthRateLimit      AuthRateLimitOptions
+	TrustedProxyCIDRs  []net.IPNet
+	RequestTimeout     time.Duration
+	AuthRequestTimeout time.Duration
+	UploadTimeout      time.Duration
 	DevReload          bool
 	ObjectStorage      *objectstorage.Service
 }
@@ -51,6 +62,18 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 	if sessionTTL <= 0 {
 		sessionTTL = 7 * 24 * time.Hour
 	}
+	requestTimeout := opts.RequestTimeout
+	if requestTimeout <= 0 {
+		requestTimeout = 15 * time.Second
+	}
+	authRequestTimeout := opts.AuthRequestTimeout
+	if authRequestTimeout <= 0 {
+		authRequestTimeout = 30 * time.Second
+	}
+	uploadTimeout := opts.UploadTimeout
+	if uploadTimeout <= 0 {
+		uploadTimeout = 2 * time.Minute
+	}
 	return &Server{
 		store:              s,
 		hub:                hub,
@@ -60,6 +83,11 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		passkeys:           passkeyService,
 		secureCookies:      publicOrigin != nil && publicOrigin.Scheme == "https",
 		sessionTTL:         sessionTTL,
+		authLimiter:        newAuthRateLimiter(opts.AuthRateLimit),
+		trustedProxyCIDRs:  opts.TrustedProxyCIDRs,
+		requestTimeout:     requestTimeout,
+		authRequestTimeout: authRequestTimeout,
+		uploadTimeout:      uploadTimeout,
 	}
 }
 
@@ -70,6 +98,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(exposeRequestID)
+	r.Use(s.requestDeadline)
 	if s.devReload {
 		r.Use(s.devReloadMiddleware)
 	}
@@ -92,22 +121,20 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/healthz", s.healthz)
-		r.Post("/accounts", s.createAccount)
-		r.Post("/accounts/passkey/options", s.createPasskeyAccountOptions)
-		r.Post("/accounts/passkey", s.createPasskeyAccount)
-		r.Post("/session", s.createSession)
-		r.Post("/session/passkey/options", s.createPasskeySessionOptions)
-		r.Post("/session/passkey", s.createPasskeySession)
+		r.Post("/accounts", s.authIPRateLimited(s.createAccount))
+		r.Post("/accounts/passkey/options", s.authIPRateLimited(s.createPasskeyAccountOptions))
+		r.Post("/accounts/passkey", s.authIPRateLimited(s.createPasskeyAccount))
+		r.Post("/session", s.authIPRateLimited(s.createSession))
+		r.Post("/session/passkey/options", s.authIPRateLimited(s.createPasskeySessionOptions))
+		r.Post("/session/passkey", s.authIPRateLimited(s.createPasskeySession))
 
-		// WebSocket endpoint sits outside the request-timeout group: the
-		// connection is long-lived and would otherwise be killed mid-stream.
+		// The request-deadline middleware exempts this long-lived connection.
 		if s.hub != nil {
 			r.Method(http.MethodGet, "/ws", s.authMiddleware(s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic)))
 		}
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.authMiddleware)
-			r.Use(middleware.Timeout(15 * time.Second))
 
 			r.Get("/me", s.getMe)
 			r.Post("/me/profile-image", s.createMyProfileImage)
@@ -116,9 +143,9 @@ func (s *Server) Router() http.Handler {
 			r.Get("/me/password-login", s.getMyPasswordLogin)
 			r.Patch("/me/password-login", s.updateMyPasswordLogin)
 			r.Get("/me/passkeys", s.listMyPasskeys)
-			r.Post("/me/reauth/password", s.createPasswordReauth)
-			r.Post("/me/reauth/passkey/options", s.createPasskeyReauthOptions)
-			r.Post("/me/reauth/passkey", s.createPasskeyReauth)
+			r.Post("/me/reauth/password", s.authIPRateLimited(s.authAccountRateLimited(s.createPasswordReauth)))
+			r.Post("/me/reauth/passkey/options", s.authIPRateLimited(s.authAccountRateLimited(s.createPasskeyReauthOptions)))
+			r.Post("/me/reauth/passkey", s.authIPRateLimited(s.authAccountRateLimited(s.createPasskeyReauth)))
 			r.Post("/me/passkeys/options", s.createMyPasskeyOptions)
 			r.Post("/me/passkeys", s.createMyPasskey)
 			r.Delete("/me/passkeys/{id}", s.revokeMyPasskey)

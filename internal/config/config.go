@@ -21,6 +21,7 @@ type Config struct {
 	DatabaseURL        string
 	CORSAllowedOrigins []string
 	PublicOrigin       string
+	TrustedProxyCIDRs  []net.IPNet
 	SessionTTL         time.Duration
 	DevReload          bool
 	AutoMigrate        bool
@@ -58,6 +59,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	trustedProxyCIDRs, err := loadTrustedProxyCIDRs()
+	if err != nil {
+		return Config{}, err
+	}
 	sessionTTL, err := envPositiveDuration("TRACK_SLASH_SESSION_TTL", DefaultSessionTTL)
 	if err != nil {
 		return Config{}, err
@@ -67,6 +72,7 @@ func Load() (Config, error) {
 		DatabaseURL:        db.DatabaseURL,
 		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		PublicOrigin:       publicOrigin,
+		TrustedProxyCIDRs:  trustedProxyCIDRs,
 		SessionTTL:         sessionTTL,
 		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
 		AutoMigrate:        autoMigrate,
@@ -145,6 +151,22 @@ func isLocalWebHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func loadTrustedProxyCIDRs() ([]net.IPNet, error) {
+	raw := parseList(os.Getenv("TRACK_SLASH_TRUSTED_PROXY_CIDRS"))
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	networks := make([]net.IPNet, 0, len(raw))
+	for _, candidate := range raw {
+		_, network, err := net.ParseCIDR(candidate)
+		if err != nil {
+			return nil, errors.New("TRACK_SLASH_TRUSTED_PROXY_CIDRS must contain valid CIDR ranges")
+		}
+		networks = append(networks, *network)
+	}
+	return networks, nil
 }
 
 func loadStorageConfig() (StorageConfig, error) {
