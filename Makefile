@@ -12,7 +12,15 @@ SEED_PASSWORD ?= correct-horse-battery
 SEED_NAME ?= Demo User
 SEED_PROJECT_PREFIX ?= DEMO
 
-.PHONY: run run-once migrate docker-migrate seed up down db-logs test tidy build vet
+.PHONY: run run-once migrate docker-migrate seed up down db-logs test tidy build vet assets assets-check
+
+assets:
+	npm ci
+	npm run assets
+
+assets-check:
+	npm ci
+	npm run assets:check
 
 run:
 	DATABASE_URL='$(DATABASE_URL)' PORT='$(PORT)' TRACK_SLASH_DEV_RELOAD=1 go tool air -c .air.toml

@@ -6,6 +6,8 @@ import (
 )
 
 func (s *Server) mountUIRoutes(r chi.Router) {
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServerFS(uiStaticFS)))
+
 	r.Get("/login", s.uiLoginPage)
 	r.Post("/login", s.uiLogin)
 	r.Post("/login/passkey/options", s.uiPasskeyLoginOptions)

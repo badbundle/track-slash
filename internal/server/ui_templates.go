@@ -5,13 +5,22 @@ import (
 	"embed"
 	"errors"
 	"html/template"
+	"io/fs"
 	"net/http"
 
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
-//go:embed templates/*.html
+//go:embed templates/*.html static/*
 var uiTemplateFS embed.FS
+
+var uiStaticFS = func() fs.FS {
+	staticFS, err := fs.Sub(uiTemplateFS, "static")
+	if err != nil {
+		panic(err)
+	}
+	return staticFS
+}()
 
 const uiAuthCookieName = "track_slash_ui_token"
 
