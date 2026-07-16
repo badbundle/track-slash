@@ -5,6 +5,7 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/google/uuid"
+	"os"
 	"strings"
 	"testing"
 )
@@ -296,7 +297,19 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		t.Fatalf("ExecuteTemplate: %v", err)
 	}
 
-	body := buf.String()
+	css, err := os.ReadFile("../../frontend/tailwind.css")
+	if err != nil {
+		t.Fatalf("read Tailwind source: %v", err)
+	}
+	appJS, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
+	}
+	preloadJS, err := uiTemplateFS.ReadFile("static/preload.js")
+	if err != nil {
+		t.Fatalf("read preload asset: %v", err)
+	}
+	body := strings.Join([]string{buf.String(), string(css), string(appJS), string(preloadJS)}, "\n")
 	for _, want := range []string{
 		`data-mobile-app-bar class="flex h-14`,
 		`data-mobile-sidebar-toggle`,
@@ -647,9 +660,9 @@ func TestUIModalAndSpecialRowsStayContainedOnNarrowScreens(t *testing.T) {
 func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 	t.Parallel()
 
-	var buf bytes.Buffer
-	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
-		t.Fatalf("render shell: %v", err)
+	body, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
 	}
 	for _, want := range []string{
 		`const setClientModalOpen = (modal, open, trigger = null) => {`,
@@ -660,9 +673,42 @@ func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 		`modal.querySelector("input[type='file']")?.focus()`,
 		`returnFocus.focus()`,
 	} {
-		if !strings.Contains(buf.String(), want) {
+		if !strings.Contains(string(body), want) {
 			t.Fatalf("shell missing client modal behavior %q", want)
 		}
+	}
+}
+
+func TestUIRenderedPagesUseOnlySelfHostedExecutableAssets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		data any
+		want []string
+	}{
+		{name: "login", data: uiLoginData{}, want: []string{"/static/app.css", "/static/lucide.min.js", "/static/auth.js"}},
+		{name: "signup", data: uiSignupData{}, want: []string{"/static/app.css", "/static/lucide.min.js", "/static/auth.js"}},
+		{name: "shell", data: uiShellData{User: model.User{Username: "demo"}}, want: []string{"/static/app.css", "/static/preload.js", "/static/htmx.min.js", "/static/lucide.min.js", "/static/app.js"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := uiTemplates.ExecuteTemplate(&buf, tt.name, tt.data); err != nil {
+				t.Fatalf("render %s: %v", tt.name, err)
+			}
+			body := buf.String()
+			for _, want := range tt.want {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s missing local asset %q", tt.name, want)
+				}
+			}
+			for _, forbidden := range []string{"https://cdn.tailwindcss.com", "https://unpkg.com", "<script>", "<style>"} {
+				if strings.Contains(body, forbidden) {
+					t.Fatalf("%s contains forbidden executable asset %q", tt.name, forbidden)
+				}
+			}
+		})
 	}
 }
 

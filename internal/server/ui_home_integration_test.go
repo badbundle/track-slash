@@ -33,20 +33,14 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 		`aria-controls="app-sidebar"`,
 		`data-mobile-sidebar-backdrop`,
 		`id="app-sidebar" data-mobile-sidebar`,
-		`[data-mobile-sidebar] { visibility: hidden; transform: translateX(-100%); }`,
 		`data-mobile-sidebar-close`,
-		`syncMobileSidebar`,
-		`openMobileSidebar`,
-		`closeMobileSidebar`,
-		`mobileSidebar.inert = !visible`,
-		`@media (min-width: 768px)`,
-		"#sidebar-toggle:checked ~ .app-shell > aside",
-		`track-slash.sidebar.collapsed`,
 		`data-member-menu`,
 		`data-close-on-outside`,
-		`closeOpenDropdowns`,
 		`overflow-visible border-r`,
 		`overflow-x-hidden overflow-y-auto`,
+		`/static/app.css`,
+		`/static/app.js`,
+		`/static/preload.js`,
 		`>@` + user.Username + `<`,
 	} {
 		if !strings.Contains(body, want) {
@@ -58,13 +52,38 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	if toolbarStart < 0 || mainStart < 0 || toolbarStart > mainStart {
 		t.Fatalf("mobile app bar must remain outside and before the HTMX main target: %s", body)
 	}
-	mediaStart := strings.Index(body, `@media (min-width: 768px)`)
-	desktopCollapseStart := strings.Index(body, `html[data-sidebar-collapsed] .app-shell > aside`)
-	if mediaStart < 0 || desktopCollapseStart < mediaStart {
-		t.Fatalf("desktop sidebar collapse CSS must be scoped to the md breakpoint: %s", body)
+
+	css := e.uiGet(t, "/static/app.css", token)
+	for _, want := range []string{
+		`[data-mobile-sidebar]{visibility:hidden;transform:translateX(-100%)}`,
+		`@media (min-width:768px)`,
+		"#sidebar-toggle:checked~.app-shell>aside",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("app stylesheet missing %q: %s", want, css)
+		}
 	}
-	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
-		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
+	mediaStart := strings.Index(css, `@media (min-width:768px)`)
+	desktopCollapseStart := strings.Index(css, `html[data-sidebar-collapsed] .app-shell>aside`)
+	if mediaStart < 0 || desktopCollapseStart < mediaStart {
+		t.Fatalf("desktop sidebar collapse CSS must be scoped to the md breakpoint: %s", css)
+	}
+	if strings.Contains(css, "#sidebar-toggle:checked~.app-shell aside{width") {
+		t.Fatalf("sidebar collapse selector targets nested asides: %s", css)
+	}
+
+	scripts := e.uiGet(t, "/static/app.js", token) + e.uiGet(t, "/static/preload.js", token)
+	for _, want := range []string{
+		`syncMobileSidebar`,
+		`openMobileSidebar`,
+		`closeMobileSidebar`,
+		`mobileSidebar.inert = !visible`,
+		`track-slash.sidebar.collapsed`,
+		`closeOpenDropdowns`,
+	} {
+		if !strings.Contains(scripts, want) {
+			t.Fatalf("app scripts missing %q: %s", want, scripts)
+		}
 	}
 	if strings.Contains(body, `data-lucide="key-round"`) {
 		t.Fatalf("body still has tokens sidebar icon: %s", body)
@@ -85,8 +104,10 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	if strings.Contains(body, ">Member<") {
 		t.Fatalf("account overlay should show @username instead of member role: %s", body)
 	}
-	if strings.Contains(body, "/app") {
-		t.Fatalf("body contains legacy /app path: %s", body)
+	for _, legacy := range []string{`href="/app`, `action="/app`, `hx-get="/app`, `hx-push-url="/app`} {
+		if strings.Contains(body, legacy) {
+			t.Fatalf("body contains legacy /app path %q: %s", legacy, body)
+		}
 	}
 }
 

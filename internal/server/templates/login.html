@@ -5,8 +5,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>track-slash</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/lucide.min.js"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
   <main class="flex min-h-screen items-center justify-center px-4">
@@ -37,7 +37,7 @@
       <a href="/signup{{if .Next}}?next={{urlquery .Next}}{{end}}" class="block rounded-md px-3 py-2 text-center text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Create account</a>
     </form>
   </main>
-  {{template "auth-passkey-scripts" .}}
+  <script src="/static/auth.js"></script>
 </body>
 </html>
 {{end}}
@@ -49,8 +49,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>track-slash</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/lucide.min.js"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
   <main class="flex min-h-screen items-center justify-center px-4">
@@ -83,7 +83,7 @@
       <a href="/login{{if .Next}}?next={{urlquery .Next}}{{end}}" class="block rounded-md px-3 py-2 text-center text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Sign in</a>
     </form>
   </main>
-  {{template "auth-passkey-scripts" .}}
+  <script src="/static/auth.js"></script>
 </body>
 </html>
 {{end}}
