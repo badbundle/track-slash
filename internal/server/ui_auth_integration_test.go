@@ -53,7 +53,7 @@ func TestUIAuthPagesRenderPasskeyControls(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("login code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"Sign in with passkey", `data-passkey-login`, "This browser does not support passkeys."} {
+	for _, want := range []string{"Sign in with passkey", `data-passkey-login`, `/static/auth.js`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("login body missing %q: %s", want, body)
 		}
@@ -65,10 +65,20 @@ func TestUIAuthPagesRenderPasskeyControls(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("signup code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"Create with passkey", `data-passkey-signup`, "This browser does not support passkeys."} {
+	for _, want := range []string{"Create with passkey", `data-passkey-signup`, `/static/auth.js`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("signup body missing %q: %s", want, body)
 		}
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, "/static/auth.js", "", nil)
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("auth asset code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, "This browser does not support passkeys.") {
+		t.Fatalf("auth asset missing passkey fallback: %s", body)
 	}
 }
 
