@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/bradleymackey/track-slash/internal/model"
-	"github.com/bradleymackey/track-slash/internal/store"
+	"math"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/store"
 )
 
 func (s *Server) uiLoginPage(w http.ResponseWriter, r *http.Request) {
@@ -37,11 +39,7 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		writeUIInternalError(w, "ui login authenticate password", err)
 		return
 	}
-	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
-		UserID: u.ID,
-		Kind:   model.AuthTokenKindSession,
-		Name:   "web session",
-	})
+	created, err := s.createSessionToken(r, u, "web session")
 	if err != nil {
 		writeUIInternalError(w, "ui login create session token", err)
 		return
@@ -75,11 +73,7 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 		renderUITemplate(w, http.StatusBadRequest, "signup", uiSignupData{Error: err.Error(), Next: next})
 		return
 	}
-	created, err := s.store.CreateAuthToken(r.Context(), store.CreateAuthTokenParams{
-		UserID: u.ID,
-		Kind:   model.AuthTokenKindSession,
-		Name:   "web session",
-	})
+	created, err := s.createSessionToken(r, u, "web session")
 	if err != nil {
 		writeUIInternalError(w, "ui signup create session token", err)
 		return
@@ -129,6 +123,12 @@ func (s *Server) setUISessionCookie(w http.ResponseWriter, r *http.Request, raw 
 	}
 	if expiresAt != nil {
 		cookie.Expires = *expiresAt
+		remaining := time.Until(*expiresAt)
+		if remaining > 0 {
+			cookie.MaxAge = int(math.Ceil(remaining.Seconds()))
+		} else {
+			cookie.MaxAge = -1
+		}
 	}
 	http.SetCookie(w, cookie)
 }

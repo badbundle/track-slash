@@ -4,6 +4,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestParseList(t *testing.T) {
@@ -124,6 +125,53 @@ func TestLoadAutoMigrateValidation(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load err = nil, want error")
+	}
+}
+
+func TestEnvPositiveDuration(t *testing.T) {
+	const key = "X_TEST_POSITIVE_DURATION"
+	unsetenv(t, key)
+	if got, err := envPositiveDuration(key, time.Hour); err != nil || got != time.Hour {
+		t.Fatalf("unset duration = %v, %v, want 1h", got, err)
+	}
+
+	t.Setenv(key, " 90m ")
+	if got, err := envPositiveDuration(key, time.Hour); err != nil || got != 90*time.Minute {
+		t.Fatalf("configured duration = %v, %v, want 90m", got, err)
+	}
+
+	for _, value := range []string{"", "not-a-duration", "0", "-1h"} {
+		t.Setenv(key, value)
+		if _, err := envPositiveDuration(key, time.Hour); err == nil {
+			t.Fatalf("envPositiveDuration(%q) err = nil, want error", value)
+		}
+	}
+}
+
+func TestLoadSessionTTL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	unsetenv(t, "TRACK_SLASH_SESSION_TTL")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load default session TTL: %v", err)
+	}
+	if cfg.SessionTTL != DefaultSessionTTL {
+		t.Fatalf("default SessionTTL = %v, want %v", cfg.SessionTTL, DefaultSessionTTL)
+	}
+
+	t.Setenv("TRACK_SLASH_SESSION_TTL", "2h")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load configured session TTL: %v", err)
+	}
+	if cfg.SessionTTL != 2*time.Hour {
+		t.Fatalf("configured SessionTTL = %v, want 2h", cfg.SessionTTL)
+	}
+
+	t.Setenv("TRACK_SLASH_SESSION_TTL", "forever")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load invalid session TTL err = nil, want error")
 	}
 }
 

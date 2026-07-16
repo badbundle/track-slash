@@ -23,11 +23,13 @@ type Server struct {
 	objectStorage      *objectstorage.Service
 	passkeys           *passkeys.Service
 	secureCookies      bool
+	sessionTTL         time.Duration
 }
 
 type Options struct {
 	CORSAllowedOrigins []string
 	PublicOrigin       string
+	SessionTTL         time.Duration
 	DevReload          bool
 	ObjectStorage      *objectstorage.Service
 }
@@ -45,6 +47,10 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		passkeyService = passkeys.New(s, opts.PublicOrigin)
 	}
 	publicOrigin, _ := url.Parse(opts.PublicOrigin)
+	sessionTTL := opts.SessionTTL
+	if sessionTTL <= 0 {
+		sessionTTL = 7 * 24 * time.Hour
+	}
 	return &Server{
 		store:              s,
 		hub:                hub,
@@ -53,6 +59,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		objectStorage:      opts.ObjectStorage,
 		passkeys:           passkeyService,
 		secureCookies:      publicOrigin != nil && publicOrigin.Scheme == "https",
+		sessionTTL:         sessionTTL,
 	}
 }
 

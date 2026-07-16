@@ -16,13 +16,14 @@ func TestUISessionCookieSecurityPolicy(t *testing.T) {
 		publicOrigin   string
 		directTLS      bool
 		forwardedProto string
-		expires        bool
+		expiresOffset  time.Duration
 		wantSecure     bool
 	}{
 		{name: "localhost http", publicOrigin: "http://localhost:8080"},
-		{name: "direct tls", directTLS: true, expires: true, wantSecure: true},
+		{name: "direct tls", directTLS: true, expiresOffset: time.Hour, wantSecure: true},
 		{name: "tls terminated proxy", publicOrigin: "https://track.example.com", wantSecure: true},
 		{name: "untrusted forwarded proto", forwardedProto: "https"},
+		{name: "expired session", expiresOffset: -time.Hour},
 	}
 
 	for _, tt := range tests {
@@ -39,8 +40,8 @@ func TestUISessionCookieSecurityPolicy(t *testing.T) {
 
 			setRecorder := httptest.NewRecorder()
 			var expiresAt *time.Time
-			if tt.expires {
-				expires := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+			if tt.expiresOffset != 0 {
+				expires := time.Now().Add(tt.expiresOffset).UTC().Truncate(time.Second)
 				expiresAt = &expires
 			}
 			srv.setUISessionCookie(setRecorder, req, "raw-token", expiresAt)
@@ -48,6 +49,14 @@ func TestUISessionCookieSecurityPolicy(t *testing.T) {
 			assertCookieSecure(t, setCookies, tt.wantSecure)
 			if expiresAt != nil && !setCookies[0].Expires.Equal(*expiresAt) {
 				t.Fatalf("cookie Expires = %v, want %v", setCookies[0].Expires, *expiresAt)
+			}
+			switch {
+			case tt.expiresOffset > 0 && (setCookies[0].MaxAge < 3599 || setCookies[0].MaxAge > 3600):
+				t.Fatalf("future cookie MaxAge = %d, want 3599-3600", setCookies[0].MaxAge)
+			case tt.expiresOffset < 0 && setCookies[0].MaxAge != -1:
+				t.Fatalf("expired cookie MaxAge = %d, want -1", setCookies[0].MaxAge)
+			case tt.expiresOffset == 0 && setCookies[0].MaxAge != 0:
+				t.Fatalf("session cookie MaxAge = %d, want 0", setCookies[0].MaxAge)
 			}
 
 			clearRecorder := httptest.NewRecorder()
