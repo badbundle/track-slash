@@ -17,7 +17,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.52.0
-	golang.org/x/image v0.30.0
+	golang.org/x/image v0.43.0
 	golang.org/x/oauth2 v0.35.0
 )
 
@@ -71,9 +71,9 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
