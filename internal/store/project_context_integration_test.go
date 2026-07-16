@@ -222,10 +222,17 @@ func TestProjectContextCRUDAndSharedIssueLinks(t *testing.T) {
 	if _, err := env.store.CreateIssueContextLink(env.ctx, issueA.ID, first.ID); err != nil {
 		t.Fatalf("CreateIssueContextLink relink A: %v", err)
 	}
+	contextObject := mustCreateStorageObject(t, env, "projects/context/objects/delete-with-parent")
+	if _, err := env.store.CreateContextAttachment(env.ctx, store.CreateContextAttachmentParams{
+		ProjectID: env.projectID, ContextID: first.ID, StorageObjectID: contextObject.ID, CreatedByID: project.OwnerID,
+	}); err != nil {
+		t.Fatalf("CreateContextAttachment before context delete: %v", err)
+	}
 
 	if err := env.store.DeleteProjectContext(env.ctx, first.ID); err != nil {
 		t.Fatalf("DeleteProjectContext: %v", err)
 	}
+	assertStorageObjectDeletion(t, env.store, env.ctx, contextObject)
 	if _, err := env.store.GetProjectContext(env.ctx, first.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetProjectContext deleted err = %v, want ErrNotFound", err)
 	}

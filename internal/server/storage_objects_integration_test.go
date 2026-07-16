@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -391,37 +392,158 @@ func TestHTTPStorageObjectAccessAndValidation(t *testing.T) {
 		t.Fatalf("disabled storage content code = %d body = %s", code, body)
 	}
 	code, body = disabled.do(t, http.MethodDelete, disabled.storageObjectPath(disabledObject), nil)
-	if code != http.StatusServiceUnavailable {
+	if code != http.StatusNoContent {
 		t.Fatalf("disabled storage delete code = %d body = %s", code, body)
+	}
+	if job, err := disabled.store.GetStorageObjectDeletion(disabled.ctx, disabledObject.ID); err != nil || job.Status != store.StorageObjectDeletionPending {
+		t.Fatalf("disabled storage deletion job = %+v, %v", job, err)
 	}
 }
 
-func TestHTTPStorageObjectDeleteBackendFailure(t *testing.T) {
+func TestHTTPStorageObjectDeleteBackendFailureIsEventuallyReconciled(t *testing.T) {
 	t.Parallel()
-	backend := &deleteErrorBackend{}
+	backend := &flakyDeleteBackend{objects: make(map[string][]byte), deleteFailures: 1}
 	storageSvc, err := objectstorage.NewService("local", "local", 1024, backend)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
 	e := newStorageHTTPEnvWithService(t, storageSvc)
-	object, err := e.store.CreateStorageObject(e.ctx, store.CreateStorageObjectParams{
-		ID:          uuid.New(),
-		ProjectID:   e.projectID,
-		Backend:     "local",
-		Bucket:      "local",
-		ObjectKey:   "projects/delete-error/objects/1",
-		Filename:    "delete-error.bin",
-		ContentType: "application/octet-stream",
-		ByteSize:    1,
-		SHA256:      strings.Repeat("d", 64),
-		CreatedByID: e.adminID,
+	code, body := e.doMultipartObject(t, e.authToken, "delete-error.bin", []byte("eventually deleted"))
+	if code != http.StatusCreated {
+		t.Fatalf("upload code = %d body = %s", code, body)
+	}
+	object := decode[model.StorageObject](t, body)
+
+	code, body = e.do(t, http.MethodDelete, e.storageObjectPath(object), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("logical delete code = %d body = %s", code, body)
+	}
+	if _, err := e.store.GetStorageObjectByProjectNumber(e.ctx, e.projectID, object.Number); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("logically deleted metadata err = %v, want ErrNotFound", err)
+	}
+	if _, err := backend.Open(e.ctx, object.ObjectKey); err != nil {
+		t.Fatalf("backend bytes after transient failure: %v", err)
+	}
+	job, err := e.store.GetStorageObjectDeletion(e.ctx, object.ID)
+	if err != nil || job.Status != store.StorageObjectDeletionPending || job.AttemptCount != 0 {
+		t.Fatalf("pending deletion job = %+v, %v", job, err)
+	}
+
+	worker := objectstorage.NewDeletionWorker(e.store, storageSvc, objectstorage.DeletionWorkerOptions{})
+	result, err := worker.RunOnce(e.ctx)
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.Claimed != 1 || result.Deleted != 1 || result.Retried != 0 || result.Failed != 0 {
+		t.Fatalf("worker result = %+v", result)
+	}
+	if _, err := backend.Open(e.ctx, object.ObjectKey); !errors.Is(err, objectstorage.ErrNotFound) {
+		t.Fatalf("backend bytes after reconciliation err = %v, want ErrNotFound", err)
+	}
+	if _, err := e.store.GetStorageObjectDeletion(e.ctx, object.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("completed deletion job err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestStorageDeletionWorkerRetriesAndSurfacesTerminalFailure(t *testing.T) {
+	t.Parallel()
+	backend := &flakyDeleteBackend{objects: make(map[string][]byte), deleteFailures: 10}
+	storageSvc, err := objectstorage.NewService("local", "local", 1024, backend)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	e := newStorageHTTPEnvWithService(t, storageSvc)
+	code, body := e.doMultipartObject(t, e.authToken, "terminal.bin", []byte("retained after terminal failure"))
+	if code != http.StatusCreated {
+		t.Fatalf("upload code = %d body = %s", code, body)
+	}
+	object := decode[model.StorageObject](t, body)
+	code, body = e.do(t, http.MethodDelete, e.storageObjectPath(object), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("logical delete code = %d body = %s", code, body)
+	}
+
+	var logs bytes.Buffer
+	worker := objectstorage.NewDeletionWorker(e.store, storageSvc, objectstorage.DeletionWorkerOptions{
+		MaxAttempts: 2,
+		Logger:      log.New(&logs, "", 0),
+	})
+	first, err := worker.RunOnce(e.ctx)
+	if err != nil || first.Retried != 1 || first.Failed != 0 {
+		t.Fatalf("first RunOnce = %+v, %v", first, err)
+	}
+	retried, err := e.store.GetStorageObjectDeletion(e.ctx, object.ID)
+	if err != nil || retried.Status != store.StorageObjectDeletionPending || retried.AttemptCount != 1 ||
+		retried.LastError != "delete failed" || retried.NextAttemptAt == nil {
+		t.Fatalf("retried job = %+v, %v", retried, err)
+	}
+	if _, err := e.pool.Exec(e.ctx, "UPDATE storage_object_deletions SET next_attempt_at = now() WHERE storage_object_id = $1", object.ID); err != nil {
+		t.Fatalf("make retry due: %v", err)
+	}
+	second, err := worker.RunOnce(e.ctx)
+	if err != nil || second.Failed != 1 || second.Retried != 0 {
+		t.Fatalf("second RunOnce = %+v, %v", second, err)
+	}
+	failed, err := e.store.GetStorageObjectDeletion(e.ctx, object.ID)
+	if err != nil || failed.Status != store.StorageObjectDeletionFailed || failed.AttemptCount != 2 ||
+		failed.FailedAt == nil || failed.LastError != "delete failed" {
+		t.Fatalf("failed job = %+v, %v", failed, err)
+	}
+	if !strings.Contains(logs.String(), "storage deletion terminal failure") || !strings.Contains(logs.String(), object.ID.String()) {
+		t.Fatalf("terminal log = %q", logs.String())
+	}
+	if _, err := backend.Open(e.ctx, object.ObjectKey); err != nil {
+		t.Fatalf("terminal failure should retain backend bytes for operator retry: %v", err)
+	}
+}
+
+func TestStorageDeletionWorkerCompletesMissingBytesAndRejectsWrongBackend(t *testing.T) {
+	t.Parallel()
+	storageSvc, _ := newLocalStorageService(t, 1024)
+	e := newStorageHTTPEnvWithService(t, storageSvc)
+
+	code, body := e.doMultipartObject(t, e.authToken, "already-gone.bin", []byte("delete immediately"))
+	if code != http.StatusCreated {
+		t.Fatalf("upload code = %d body = %s", code, body)
+	}
+	gone := decode[model.StorageObject](t, body)
+	code, body = e.do(t, http.MethodDelete, e.storageObjectPath(gone), nil)
+	if code != http.StatusNoContent {
+		t.Fatalf("logical delete code = %d body = %s", code, body)
+	}
+	worker := objectstorage.NewDeletionWorker(e.store, storageSvc, objectstorage.DeletionWorkerOptions{})
+	result, err := worker.RunOnce(e.ctx)
+	if err != nil || result.Deleted != 1 {
+		t.Fatalf("missing-byte RunOnce = %+v, %v", result, err)
+	}
+	if _, err := e.store.GetStorageObjectDeletion(e.ctx, gone.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing-byte completed job err = %v", err)
+	}
+
+	wrongBackend, err := e.store.CreateStorageObject(e.ctx, store.CreateStorageObjectParams{
+		ID: uuid.New(), ProjectID: e.projectID, Backend: "retired", Bucket: "old-bucket",
+		ObjectKey: "projects/retired/objects/1", Filename: "retired.bin", ContentType: "application/octet-stream",
+		ByteSize: 1, SHA256: strings.Repeat("f", 64), CreatedByID: e.adminID,
 	})
 	if err != nil {
-		t.Fatalf("CreateStorageObject: %v", err)
+		t.Fatalf("CreateStorageObject wrong backend: %v", err)
 	}
-	code, body := e.do(t, http.MethodDelete, e.storageObjectPath(object), nil)
-	if code != http.StatusInternalServerError {
-		t.Fatalf("delete backend failure code = %d body = %s", code, body)
+	if _, err := e.store.DeleteStorageObject(e.ctx, wrongBackend.ID); err != nil {
+		t.Fatalf("DeleteStorageObject wrong backend: %v", err)
+	}
+	var logs bytes.Buffer
+	worker = objectstorage.NewDeletionWorker(e.store, storageSvc, objectstorage.DeletionWorkerOptions{Logger: log.New(&logs, "", 0)})
+	result, err = worker.RunOnce(e.ctx)
+	if err != nil || result.Failed != 1 {
+		t.Fatalf("wrong-backend RunOnce = %+v, %v", result, err)
+	}
+	failed, err := e.store.GetStorageObjectDeletion(e.ctx, wrongBackend.ID)
+	if err != nil || failed.Status != store.StorageObjectDeletionFailed ||
+		!strings.Contains(failed.LastError, "job requires retired/old-bucket") {
+		t.Fatalf("wrong-backend job = %+v, %v", failed, err)
+	}
+	if !strings.Contains(logs.String(), "terminal failure") {
+		t.Fatalf("wrong-backend log = %q", logs.String())
 	}
 }
 
@@ -472,16 +594,47 @@ func (b *invalidHashBackend) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-type deleteErrorBackend struct{}
-
-func (deleteErrorBackend) Put(ctx context.Context, key string, r io.Reader, maxBytes int64) (objectstorage.WrittenObject, error) {
-	return objectstorage.WrittenObject{Size: 1, SHA256: strings.Repeat("e", 64)}, nil
+type flakyDeleteBackend struct {
+	mu             sync.Mutex
+	objects        map[string][]byte
+	deleteFailures int
 }
 
-func (deleteErrorBackend) Open(ctx context.Context, key string) (io.ReadCloser, error) {
-	return nil, objectstorage.ErrNotFound
+func (b *flakyDeleteBackend) Put(ctx context.Context, key string, r io.Reader, maxBytes int64) (objectstorage.WrittenObject, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxBytes+1))
+	if err != nil {
+		return objectstorage.WrittenObject{}, err
+	}
+	if int64(len(data)) > maxBytes {
+		return objectstorage.WrittenObject{}, objectstorage.ErrTooLarge
+	}
+	sum := sha256.Sum256(data)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.objects[key] = append([]byte(nil), data...)
+	return objectstorage.WrittenObject{Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:])}, nil
 }
 
-func (deleteErrorBackend) Delete(ctx context.Context, key string) error {
-	return errors.New("delete failed")
+func (b *flakyDeleteBackend) Open(ctx context.Context, key string) (io.ReadCloser, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	data, ok := b.objects[key]
+	if !ok {
+		return nil, objectstorage.ErrNotFound
+	}
+	return io.NopCloser(bytes.NewReader(append([]byte(nil), data...))), nil
+}
+
+func (b *flakyDeleteBackend) Delete(ctx context.Context, key string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.deleteFailures > 0 {
+		b.deleteFailures--
+		return errors.New("delete failed")
+	}
+	if _, ok := b.objects[key]; !ok {
+		return objectstorage.ErrNotFound
+	}
+	delete(b.objects, key)
+	return nil
 }

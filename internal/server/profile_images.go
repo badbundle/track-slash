@@ -109,9 +109,6 @@ func (s *Server) replaceProfileImageForCurrentUser(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) removeProfileImageForCurrentUser(w http.ResponseWriter, r *http.Request) (model.User, bool) {
-	if !s.requireObjectStorage(w) {
-		return model.User{}, false
-	}
 	removed, err := s.store.RemoveUserProfileImage(r.Context(), currentUser(r).ID)
 	if err != nil {
 		writeStoreError(w, err)
@@ -263,6 +260,9 @@ func (s *Server) createProfileImageStorageObjects(w http.ResponseWriter, r *http
 }
 
 func (s *Server) deleteBackendObjectsBestEffort(r *http.Request, objects []model.StorageObject) {
+	if s.objectStorage == nil {
+		return
+	}
 	for _, object := range objects {
 		if object.ObjectKey == "" {
 			continue

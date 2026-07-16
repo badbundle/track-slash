@@ -84,6 +84,7 @@ func TestSprintAttachmentCRUDPaginationAndCounts(t *testing.T) {
 	if err != nil || deleted.Object.DeletedAt == nil {
 		t.Fatalf("DeleteSprintAttachment = %+v err=%v", deleted, err)
 	}
+	assertStorageObjectDeletion(t, env.store, env.ctx, deleted.Object)
 	if _, err := env.store.GetSprintAttachmentByObjectNumber(env.ctx, sprint.ID, firstObject.Number); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("deleted lookup err = %v, want ErrNotFound", err)
 	}

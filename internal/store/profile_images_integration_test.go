@@ -98,6 +98,7 @@ func TestProfileImageStoreReplaceRemoveAndProjectIsolation(t *testing.T) {
 		if object.DeletedAt == nil {
 			t.Fatalf("deleted object missing DeletedAt: %+v", object)
 		}
+		assertStorageObjectDeletion(t, env.store, env.ctx, object)
 		deleted[object.ID] = true
 	}
 	if !deleted[original.ID] || !deleted[thumbnail.ID] {
@@ -116,6 +117,9 @@ func TestProfileImageStoreReplaceRemoveAndProjectIsolation(t *testing.T) {
 	}
 	if len(removed.DeletedObjects) != 2 {
 		t.Fatalf("remove deleted objects = %+v, want current pair", removed.DeletedObjects)
+	}
+	for _, object := range removed.DeletedObjects {
+		assertStorageObjectDeletion(t, env.store, env.ctx, object)
 	}
 	if _, err := env.store.GetUserProfileImageObject(env.ctx, ownerID, false); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("GetUserProfileImageObject removed err = %v, want ErrNotFound", err)

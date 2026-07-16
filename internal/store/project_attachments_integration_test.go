@@ -74,6 +74,7 @@ func TestProjectAttachmentCRUDPaginationAndIsolation(t *testing.T) {
 	if err != nil || deleted.Object.DeletedAt == nil {
 		t.Fatalf("DeleteProjectAttachment = %+v err=%v", deleted, err)
 	}
+	assertStorageObjectDeletion(t, env.store, env.ctx, deleted.Object)
 	if _, err := env.store.GetProjectAttachmentByObjectNumber(env.ctx, project.ID, first.Object.Number); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("deleted lookup err = %v, want ErrNotFound", err)
 	}

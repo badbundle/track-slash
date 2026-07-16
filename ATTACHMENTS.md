@@ -26,9 +26,9 @@ Project, issue, and sprint attachment uploads use multipart field `file`.
 1. Server writes bytes to configured object storage backend.
 2. Server inserts one `storage_objects` metadata row.
 3. Server inserts one parent-specific attachment link to that object.
-4. If link creation fails, server soft-deletes the metadata row and deletes backend bytes on a best-effort cleanup path.
+4. If link creation fails, the server soft-deletes the metadata row, transactionally queues backend deletion, and attempts immediate backend cleanup.
 
-Objects attached through a description upload path are owned by that attachment flow. Removing the attachment removes the link, soft-deletes the object metadata row, and then deletes backend bytes.
+Objects attached through a description upload path are owned by that attachment flow. Removing the attachment removes the link, soft-deletes the object metadata row, and queues backend deletion in the same transaction. A background worker retries backend failures; the delete response reflects the committed logical removal.
 
 ## Markdown Resolution
 

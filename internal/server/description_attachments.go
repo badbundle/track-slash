@@ -1,13 +1,11 @@
 package server
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
 
 	"github.com/bradleymackey/track-slash/internal/model"
-	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
 )
 
 func createDescriptionAttachment[T any](s *Server, w http.ResponseWriter, r *http.Request, projectID uuid.UUID, link func(model.StorageObject) (T, error)) (T, bool) {
@@ -30,17 +28,13 @@ func createDescriptionAttachment[T any](s *Server, w http.ResponseWriter, r *htt
 
 func deleteDescriptionAttachment[T any](s *Server, w http.ResponseWriter, r *http.Request, unlink func() (T, error), objectKey func(T) string) (T, bool) {
 	var zero T
-	if !s.requireObjectStorage(w) {
-		return zero, false
-	}
 	deleted, err := unlink()
 	if err != nil {
 		writeStoreError(w, err)
 		return zero, false
 	}
-	if err := s.deleteStorageBackendObject(r.Context(), objectKey(deleted)); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
-		writeStorageError(w, err)
-		return zero, false
+	if s.objectStorage != nil {
+		_ = s.deleteStorageBackendObject(r.Context(), objectKey(deleted))
 	}
 	return deleted, true
 }

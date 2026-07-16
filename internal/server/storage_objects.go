@@ -217,17 +217,13 @@ func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
 	if !s.requireProjectWriteAccess(w, r, project.ID) {
 		return
 	}
-	if !s.requireObjectStorage(w) {
-		return
-	}
 	deleted, err := s.store.DeleteStorageObject(r.Context(), object.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	if err := s.deleteStorageBackendObject(r.Context(), deleted.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
-		writeStorageError(w, err)
-		return
+	if s.objectStorage != nil {
+		_ = s.deleteStorageBackendObject(r.Context(), deleted.ObjectKey)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
