@@ -263,7 +263,7 @@ func (s *Server) uiPasskeySignup(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
+	s.setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
 	writeJSON(w, http.StatusCreated, uiPasskeyRedirectResp{Next: safeUINext(req.Next)})
 }
 
@@ -287,7 +287,7 @@ func (s *Server) uiPasskeyLogin(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
+	s.setUISessionCookie(w, r, created.RawToken, created.Token.ExpiresAt)
 	writeJSON(w, http.StatusCreated, uiPasskeyRedirectResp{Next: safeUINext(req.Next)})
 }
 

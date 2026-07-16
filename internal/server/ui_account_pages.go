@@ -119,7 +119,7 @@ func (s *Server) uiRevokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if currentAuth(r).Token.ID == id {
-		clearUISessionCookie(w, r)
+		s.clearUISessionCookie(w, r)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
