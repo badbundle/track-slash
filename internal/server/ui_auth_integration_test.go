@@ -26,6 +26,20 @@ func TestUIRedirectsUnauthenticatedApp(t *testing.T) {
 	}
 }
 
+func TestUISecurityHeadersOnAuthenticatedHTML(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	res := e.uiDoNoRedirect(t, http.MethodGet, "/projects", e.authToken, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	requireSecurityHeadersForTest(t, res.Header)
+	if got := res.Header.Get("Strict-Transport-Security"); got != "" {
+		t.Fatalf("localhost Strict-Transport-Security = %q, want absent", got)
+	}
+}
+
 func TestUILoginRejectsBadCredentials(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

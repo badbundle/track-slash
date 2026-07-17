@@ -134,9 +134,10 @@
     });
   };
   const resizeTextarea = (textarea) => {
-    textarea.style.height = "auto";
-    const borderHeight = textarea.offsetHeight - textarea.clientHeight;
-    textarea.style.height = `${textarea.scrollHeight + borderHeight}px`;
+    const minRows = Number.parseInt(textarea.dataset.autogrowMinRows || textarea.getAttribute("rows") || "2", 10);
+    textarea.dataset.autogrowMinRows = String(minRows);
+    textarea.rows = minRows;
+    while (textarea.scrollHeight > textarea.clientHeight && textarea.rows < 100) textarea.rows += 1;
   };
   const resizeTextareas = (root = document) => {
     root.querySelectorAll("[data-autogrow-textarea]").forEach(resizeTextarea);
@@ -304,8 +305,7 @@
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
+    textarea.className = "clipboard-fallback";
     document.body.appendChild(textarea);
     textarea.select();
     try {

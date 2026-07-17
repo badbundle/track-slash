@@ -581,7 +581,6 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`id="issue-description" name="description"`,
 		"Draft body",
 		`id="issue-priority-label">Priority</span>`,
-		`@keyframes priority-picker-item-enter`,
 		`role="listbox" aria-labelledby="issue-priority-label" data-priority-picker`,
 		`type="radio" name="priority" value="P0"`,
 		`type="radio" name="priority" value="P1" checked`,
@@ -604,6 +603,19 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("new issue panel missing %q: %s", want, body)
+		}
+	}
+	css, err := uiTemplateFS.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("read app.css: %v", err)
+	}
+	for _, want := range []string{
+		"@keyframes priority-picker-item-enter",
+		"@media (prefers-reduced-motion:no-preference)",
+		"[data-priority-picker]>:is(label,button):nth-child(5){animation-delay:80ms}",
+	} {
+		if !strings.Contains(string(css), want) {
+			t.Fatalf("new issue priority picker stylesheet missing %q", want)
 		}
 	}
 }

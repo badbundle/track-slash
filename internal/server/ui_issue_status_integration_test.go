@@ -29,7 +29,6 @@ func TestUIEditStatusUpdatesIssuePanel(t *testing.T) {
 		`aria-expanded="true"`,
 		`data-option-dropdown-toggle`,
 		`data-option-dropdown-list`,
-		`option-dropdown-enter`,
 		`role="listbox" aria-label="Issue status"`,
 		`method="post" action="` + e.issuePath(issue) + `/status"`,
 		`hx-post="` + e.issuePath(issue) + `/status"`,

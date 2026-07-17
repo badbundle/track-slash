@@ -66,6 +66,10 @@ The value must be an origin only: scheme, host, and optional port. Production pa
 
 When `TRACK_SLASH_PUBLIC_ORIGIN` is omitted for local development, browser WebSockets accept only `localhost` and loopback origins. Other non-empty browser origins fail closed.
 
+The same setting gates HTTP Strict Transport Security. track-slash emits `Strict-Transport-Security: max-age=31536000` only when `TRACK_SLASH_PUBLIC_ORIGIN` explicitly uses HTTPS; direct TLS and forwarded-protocol headers do not opt a deployment into HSTS. Validate HTTPS redirects, certificates, and rollback procedures on staging before enabling the HTTPS origin in production because browsers retain the policy for one year. The header deliberately omits `includeSubDomains` and `preload`, so sibling services keep independent rollout and recovery paths.
+
+All responses also receive a self-only Content Security Policy, clickjacking protection, `nosniff`, `Referrer-Policy: no-referrer`, and a minimal Permissions Policy. UI scripts, styles, images, forms, and realtime connections are expected to stay on the configured application origin.
+
 Login sessions have a configurable seven-day absolute lifetime by default:
 
 ```bash

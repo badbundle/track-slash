@@ -27,10 +27,10 @@
             </div>{{end}}
           </div>
           {{$subIssueProgress := subIssueProgress .SubIssues}}
-          <div role="img" aria-label="{{$subIssueProgress.Label}}" class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-            {{if gt $subIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$subIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
-            {{if gt $subIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-blue-400 dark:bg-blue-500" style="width: {{$subIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
-          </div>
+          <svg role="img" aria-label="{{$subIssueProgress.Label}}" viewBox="0 0 {{if gt $subIssueProgress.Total 0}}{{$subIssueProgress.Total}}{{else}}1{{end}} 1" preserveAspectRatio="none" class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            {{if gt $subIssueProgress.Done 0}}<rect x="0" width="{{$subIssueProgress.Done}}" height="1" class="fill-emerald-500 dark:fill-emerald-400" aria-hidden="true"></rect>{{end}}
+            {{if gt $subIssueProgress.InProgress 0}}<rect x="{{$subIssueProgress.Done}}" width="{{$subIssueProgress.InProgress}}" height="1" class="fill-blue-400 dark:fill-blue-500" aria-hidden="true"></rect>{{end}}
+          </svg>
         </header>
         {{if .AddSubIssue}}
         <form method="post" action="{{issueSubIssues .Issue}}" hx-post="{{issueSubIssues .Issue}}" hx-target="#main" hx-push-url="false" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">
@@ -80,10 +80,10 @@
             {{end}}{{end}}
           </div>
           {{$linkedIssueProgress := linkedIssueProgress .Links}}
-          <div role="img" aria-label="{{$linkedIssueProgress.Label}}" class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-            {{if gt $linkedIssueProgress.Done 0}}<span class="h-full shrink-0 bg-emerald-500 dark:bg-emerald-400" style="width: {{$linkedIssueProgress.DonePercent}};" aria-hidden="true"></span>{{end}}
-            {{if gt $linkedIssueProgress.InProgress 0}}<span class="h-full shrink-0 bg-blue-400 dark:bg-blue-500" style="width: {{$linkedIssueProgress.InProgressPercent}};" aria-hidden="true"></span>{{end}}
-          </div>
+          <svg role="img" aria-label="{{$linkedIssueProgress.Label}}" viewBox="0 0 {{if gt $linkedIssueProgress.Total 0}}{{$linkedIssueProgress.Total}}{{else}}1{{end}} 1" preserveAspectRatio="none" class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            {{if gt $linkedIssueProgress.Done 0}}<rect x="0" width="{{$linkedIssueProgress.Done}}" height="1" class="fill-emerald-500 dark:fill-emerald-400" aria-hidden="true"></rect>{{end}}
+            {{if gt $linkedIssueProgress.InProgress 0}}<rect x="{{$linkedIssueProgress.Done}}" width="{{$linkedIssueProgress.InProgress}}" height="1" class="fill-blue-400 dark:fill-blue-500" aria-hidden="true"></rect>{{end}}
+          </svg>
         </header>
         {{if .AddLink}}
         <form method="post" action="{{issueLinks .Issue}}" hx-post="{{issueLinks .Issue}}" hx-target="#main" hx-push-url="false" class="border-t border-slate-100 px-4 py-3.5 dark:border-slate-800">

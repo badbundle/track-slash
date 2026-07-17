@@ -143,6 +143,7 @@ func TestHTTPIssueAttachmentCRUD(t *testing.T) {
 	}
 
 	res, body := e.doRaw(t, e.authToken, http.MethodGet, e.issueAttachmentPath(issue, attachment.Object)+"/content", nil, "")
+	requireSecurityHeadersForTest(t, res.Header)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("content code = %d body = %s", res.StatusCode, body)
 	}

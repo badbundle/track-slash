@@ -172,6 +172,29 @@ func readBody(t *testing.T, res *http.Response) string {
 	return string(data)
 }
 
+func requireSecurityHeadersForTest(t *testing.T, headers http.Header) {
+	t.Helper()
+	csp := headers.Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'", "script-src 'self'", "style-src 'self'"} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("Content-Security-Policy missing %q: %q", want, csp)
+		}
+	}
+	if strings.Contains(csp, "unsafe-inline") || strings.Contains(csp, "unsafe-eval") {
+		t.Fatalf("Content-Security-Policy permits unsafe execution: %q", csp)
+	}
+	for name, want := range map[string]string{
+		"Permissions-Policy":     "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+		"Referrer-Policy":        "no-referrer",
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+	} {
+		if got := headers.Get(name); got != want {
+			t.Fatalf("%s = %q, want %q", name, got, want)
+		}
+	}
+}
+
 func issueContextDetailBlock(t *testing.T, body string) string {
 	t.Helper()
 	contextLabel := strings.Index(body, ">Context</dt>")
