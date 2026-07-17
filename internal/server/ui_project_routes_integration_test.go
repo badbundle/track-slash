@@ -367,7 +367,8 @@ func TestUIProjectSprintHistoryExpandsSnapshotIssues(t *testing.T) {
 	issuesPath := e.projectPath() + "/sprints/" + completed.Ref + "/history/issues"
 	descriptionPath := e.projectPath() + "/sprints/" + completed.Ref + "/description"
 	for _, want := range []string{
-		`aria-label="Toggle sprint issues"`,
+		`aria-label="Show issues"`,
+		`data-disclosure-label>Show issues</span>`,
 		`aria-controls="completed-sprint-` + completed.Ref + `-issues"`,
 		`hx-get="` + issuesPath + `"`,
 		`hx-trigger="click once"`,

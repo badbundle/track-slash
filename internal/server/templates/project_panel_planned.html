@@ -54,20 +54,16 @@
         {{$actionOpen := and (eq $.PlannedSprintActionID $item.Sprint.ID) $.PlannedSprintAction}}
         {{$panelID := printf "planned-sprint-%s-issues" $item.Sprint.Ref}}
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <header class="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+          <header class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3">
             <div class="min-w-0">
-              <div class="flex min-w-0 items-center gap-2">
-                <button type="button" data-disclosure-toggle aria-label="Toggle sprint issues" aria-controls="{{$panelID}}" aria-expanded="{{if $actionOpen}}true{{else}}false{{end}}" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                  <i data-disclosure-icon data-lucide="{{if $actionOpen}}chevron-up{{else}}chevron-down{{end}}" class="h-4 w-4" aria-hidden="true"></i>
-                </button>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
                 <h3 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{sprintLabel $item.Sprint}}</h3>
                 {{template "sprint-ref" $item.Sprint.Ref}}
                 {{template "count-badge" (len $item.Issues)}}
               </div>
               {{with sprintDateRange $item.Sprint}}<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
-              <div class="mt-2">{{template "sprint-description" $item}}</div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
+            <div class="flex max-w-[9rem] shrink-0 flex-wrap items-center justify-end gap-2 justify-self-end sm:max-w-none">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
               {{if $.CanWrite}}<form method="post" action="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-post="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">
                 <button type="submit" aria-label="Move sprint up" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
@@ -97,6 +93,9 @@
               </form>{{end}}
             </div>
           </header>
+          {{if or $item.Sprint.Goal $item.AttachmentCount}}
+          <div class="px-4 pb-3">{{template "sprint-description" $item}}</div>
+          {{end}}
 
           {{if and (eq $.PlannedSprintActionID $item.Sprint.ID) (eq $.PlannedSprintAction "edit")}}
           <form method="post" action="{{projectSprint $.Project $item.Sprint}}" hx-post="{{projectSprint $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid gap-3 border-t border-slate-100 px-4 py-4 dark:border-slate-800">
@@ -149,6 +148,12 @@
           {{if $.PlannedSprintForm.Error}}<p class="border-t border-slate-100 px-4 py-3 text-xs text-rose-600 dark:border-slate-800 dark:text-rose-300">{{$.PlannedSprintForm.Error}}</p>{{end}}
           {{end}}
 
+          <footer class="flex justify-end border-t border-slate-100 px-4 py-2.5 dark:border-slate-800">
+            <button type="button" data-disclosure-toggle aria-label="{{if $actionOpen}}Hide issues{{else}}Show issues{{end}}" aria-controls="{{$panelID}}" aria-expanded="{{if $actionOpen}}true{{else}}false{{end}}" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-disclosure-icon data-lucide="{{if $actionOpen}}chevron-up{{else}}chevron-down{{end}}" class="h-4 w-4" aria-hidden="true"></i>
+              <span data-disclosure-label>{{if $actionOpen}}Hide issues{{else}}Show issues{{end}}</span>
+            </button>
+          </footer>
           <div id="{{$panelID}}" data-disclosure-panel {{if not $actionOpen}}hidden{{end}}>
           {{if $item.Issues}}
           <div class="border-t border-slate-100 dark:border-slate-800">

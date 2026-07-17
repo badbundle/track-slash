@@ -464,7 +464,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 			t.Fatalf("shell missing issue control reopen behavior %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{`data-disclosure-toggle`, `setDisclosureOpen`, `aria-controls`, `panel.hidden = !open`, `aria-expanded`, `data-disclosure-icon`, `chevron-up`, `chevron-down`} {
+	for _, want := range []string{`data-disclosure-toggle`, `setDisclosureOpen`, `aria-controls`, `panel.hidden = !open`, `aria-expanded`, `data-disclosure-icon`, `data-disclosure-label`, `label.textContent = text`, `toggle.setAttribute("aria-label", text)`, `Hide issues`, `Show issues`, `chevron-up`, `chevron-down`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing disclosure behavior %q: %s", want, body)
 		}

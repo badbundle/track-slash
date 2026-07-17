@@ -39,6 +39,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 ## Sprint Descriptions
 
 - Active, planned, and completed sprint-history rows retain a compact, vertically cropped Markdown preview. “See more” expands the full Markdown description and attachment rows; sprint issues remain an independent disclosure.
+- Planned and completed sprint cards keep identity and metadata in a stable header, render the description at full card width, and place the issue disclosure in the bottom-right footer with explicit `Show issues` / `Hide issues` text.
 - Sprint description editing uses the same attachment dropzone, preview rows, Markdown-copy, download, and removal behavior as issue descriptions.
 
 ## Context IA

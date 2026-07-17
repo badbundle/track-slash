@@ -173,6 +173,12 @@
         if (!panel) return;
         panel.hidden = !open;
         toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        const label = toggle.querySelector("[data-disclosure-label]");
+        if (label) {
+          const text = open ? "Hide issues" : "Show issues";
+          label.textContent = text;
+          toggle.setAttribute("aria-label", text);
+        }
         syncDisclosureIcon(toggle, open);
       };
       let clientModalTrigger = null;
