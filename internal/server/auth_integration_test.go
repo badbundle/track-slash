@@ -1066,7 +1066,10 @@ func TestUIWebSocketUsesSessionCookieAndAPIWebSocketRequiresBearer(t *testing.T)
 	ctx, cancel := context.WithTimeout(e.ctx, 5*time.Second)
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http")+"/realtime", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Cookie": []string{uiCookieNameForTest + "=" + session.RawToken}},
+		HTTPHeader: http.Header{
+			"Cookie": []string{uiCookieNameForTest + "=" + session.RawToken},
+			"Origin": []string{ts.URL},
+		},
 	})
 	if err != nil {
 		t.Fatalf("ui websocket dial: %v", err)

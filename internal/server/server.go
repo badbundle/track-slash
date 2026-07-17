@@ -19,21 +19,23 @@ import (
 )
 
 type Server struct {
-	store              *store.Store
-	hub                *realtime.Hub
-	corsAllowedOrigins []string
-	devReload          bool
-	objectStorage      *objectstorage.Service
-	passkeys           *passkeys.Service
-	publicOrigin       string
-	csrfRandom         io.Reader
-	secureCookies      bool
-	sessionTTL         time.Duration
-	authLimiter        *authRateLimiter
-	trustedProxyCIDRs  []net.IPNet
-	requestTimeout     time.Duration
-	authRequestTimeout time.Duration
-	uploadTimeout      time.Duration
+	store               *store.Store
+	hub                 *realtime.Hub
+	corsAllowedOrigins  []string
+	apiWebSocketOrigins realtime.OriginPolicy
+	uiWebSocketOrigins  realtime.OriginPolicy
+	devReload           bool
+	objectStorage       *objectstorage.Service
+	passkeys            *passkeys.Service
+	publicOrigin        string
+	csrfRandom          io.Reader
+	secureCookies       bool
+	sessionTTL          time.Duration
+	authLimiter         *authRateLimiter
+	trustedProxyCIDRs   []net.IPNet
+	requestTimeout      time.Duration
+	authRequestTimeout  time.Duration
+	uploadTimeout       time.Duration
 }
 
 type Options struct {
@@ -49,9 +51,9 @@ type Options struct {
 	ObjectStorage      *objectstorage.Service
 }
 
-// New constructs a Server. corsAllowedOrigins is a list of exact origins
-// (scheme + host + port) allowed by CORS and by the WebSocket origin check;
-// a nil/empty slice disables CORS entirely and leaves the WS open (dev mode).
+// New constructs a Server. corsAllowedOrigins is a list of exact browser
+// origins allowed to use the cross-origin API. WebSocket browser origins are
+// also constrained by PublicOrigin when using NewWithOptions.
 func New(s *store.Store, hub *realtime.Hub, corsAllowedOrigins []string) *Server {
 	return NewWithOptions(s, hub, Options{CORSAllowedOrigins: corsAllowedOrigins})
 }
@@ -62,6 +64,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		passkeyService = passkeys.New(s, opts.PublicOrigin)
 	}
 	publicOrigin, _ := url.Parse(opts.PublicOrigin)
+	apiWebSocketOrigins, uiWebSocketOrigins := webSocketOriginPolicies(opts.PublicOrigin, opts.CORSAllowedOrigins)
 	sessionTTL := opts.SessionTTL
 	if sessionTTL <= 0 {
 		sessionTTL = 7 * 24 * time.Hour
@@ -79,21 +82,23 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		uploadTimeout = 2 * time.Minute
 	}
 	return &Server{
-		store:              s,
-		hub:                hub,
-		corsAllowedOrigins: opts.CORSAllowedOrigins,
-		devReload:          opts.DevReload,
-		objectStorage:      opts.ObjectStorage,
-		passkeys:           passkeyService,
-		publicOrigin:       opts.PublicOrigin,
-		csrfRandom:         rand.Reader,
-		secureCookies:      publicOrigin != nil && publicOrigin.Scheme == "https",
-		sessionTTL:         sessionTTL,
-		authLimiter:        newAuthRateLimiter(opts.AuthRateLimit),
-		trustedProxyCIDRs:  opts.TrustedProxyCIDRs,
-		requestTimeout:     requestTimeout,
-		authRequestTimeout: authRequestTimeout,
-		uploadTimeout:      uploadTimeout,
+		store:               s,
+		hub:                 hub,
+		corsAllowedOrigins:  opts.CORSAllowedOrigins,
+		apiWebSocketOrigins: apiWebSocketOrigins,
+		uiWebSocketOrigins:  uiWebSocketOrigins,
+		devReload:           opts.DevReload,
+		objectStorage:       opts.ObjectStorage,
+		passkeys:            passkeyService,
+		publicOrigin:        opts.PublicOrigin,
+		csrfRandom:          rand.Reader,
+		secureCookies:       publicOrigin != nil && publicOrigin.Scheme == "https",
+		sessionTTL:          sessionTTL,
+		authLimiter:         newAuthRateLimiter(opts.AuthRateLimit),
+		trustedProxyCIDRs:   opts.TrustedProxyCIDRs,
+		requestTimeout:      requestTimeout,
+		authRequestTimeout:  authRequestTimeout,
+		uploadTimeout:       uploadTimeout,
 	}
 }
 
@@ -136,7 +141,7 @@ func (s *Server) Router() http.Handler {
 
 		// The request-deadline middleware exempts this long-lived connection.
 		if s.hub != nil {
-			r.Method(http.MethodGet, "/ws", s.authMiddleware(s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic)))
+			r.Method(http.MethodGet, "/ws", s.authMiddleware(s.hub.Handler(s.apiWebSocketOrigins, s.authorizeTopic)))
 		}
 
 		r.Group(func(r chi.Router) {
@@ -269,6 +274,33 @@ func (s *Server) Router() http.Handler {
 	})
 
 	return r
+}
+
+func webSocketOriginPolicies(publicOrigin string, corsAllowedOrigins []string) (realtime.OriginPolicy, realtime.OriginPolicy) {
+	apiPolicy := realtime.OriginPolicy{AllowMissingOrigin: true}
+	uiPolicy := realtime.OriginPolicy{}
+	if publicOrigin == "" {
+		apiPolicy.AllowLocalhostOrigins = true
+		uiPolicy.AllowLocalhostOrigins = true
+	} else {
+		apiPolicy.AllowedOrigins = append(apiPolicy.AllowedOrigins, publicOrigin)
+		uiPolicy.AllowedOrigins = append(uiPolicy.AllowedOrigins, publicOrigin)
+	}
+	for _, origin := range corsAllowedOrigins {
+		if !containsOrigin(apiPolicy.AllowedOrigins, origin) {
+			apiPolicy.AllowedOrigins = append(apiPolicy.AllowedOrigins, origin)
+		}
+	}
+	return apiPolicy, uiPolicy
+}
+
+func containsOrigin(origins []string, candidate string) bool {
+	for _, origin := range origins {
+		if origin == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {

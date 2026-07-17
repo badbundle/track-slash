@@ -15,23 +15,35 @@ import (
 
 func TestOriginAllowed(t *testing.T) {
 	cases := []struct {
-		name    string
-		origin  string
-		allowed []string
-		want    bool
+		name   string
+		origin string
+		policy OriginPolicy
+		want   bool
 	}{
-		{"empty allow-list allows any origin", "https://x.com", nil, true},
-		{"empty allow-list allows empty origin", "", nil, true},
-		{"non-empty allow-list allows empty origin (non-browser client)", "", []string{"https://app.example.com"}, true},
-		{"exact match", "https://app.example.com", []string{"https://app.example.com"}, true},
-		{"second entry matches", "http://localhost:3000", []string{"https://app.example.com", "http://localhost:3000"}, true},
-		{"mismatch rejected", "https://evil.com", []string{"https://app.example.com"}, false},
-		{"port mismatch rejected", "http://localhost:3001", []string{"http://localhost:3000"}, false},
-		{"scheme mismatch rejected", "http://app.example.com", []string{"https://app.example.com"}, false},
+		{"empty policy rejects browser origin", "https://x.com", OriginPolicy{}, false},
+		{"empty policy rejects missing origin", "", OriginPolicy{}, false},
+		{"non-browser policy allows missing origin", "", OriginPolicy{AllowMissingOrigin: true}, true},
+		{"exact match", "https://app.example.com", OriginPolicy{AllowedOrigins: []string{"https://app.example.com"}}, true},
+		{"second entry matches", "http://localhost:3000", OriginPolicy{AllowedOrigins: []string{"https://app.example.com", "http://localhost:3000"}}, true},
+		{"mismatch rejected", "https://evil.com", OriginPolicy{AllowedOrigins: []string{"https://app.example.com"}}, false},
+		{"port mismatch rejected", "http://localhost:3001", OriginPolicy{AllowedOrigins: []string{"http://localhost:3000"}}, false},
+		{"scheme mismatch rejected", "http://app.example.com", OriginPolicy{AllowedOrigins: []string{"https://app.example.com"}}, false},
+		{"localhost development", "http://localhost:5173", OriginPolicy{AllowLocalhostOrigins: true}, true},
+		{"loopback development", "http://127.0.0.1:5173", OriginPolicy{AllowLocalhostOrigins: true}, true},
+		{"localhost trailing slash", "http://localhost:5173/", OriginPolicy{AllowLocalhostOrigins: true}, true},
+		{"malformed development origin", "http://[::1", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"development origin requires HTTP", "ftp://localhost:5173", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"development origin requires host", "http:", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"development origin rejects userinfo", "http://user@localhost:5173", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"development origin rejects query", "http://localhost:5173?x=1", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"development origin rejects fragment", "http://localhost:5173#x", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"localhost path rejected", "http://localhost:5173/app", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"non-loopback IP rejected", "http://192.0.2.1:5173", OriginPolicy{AllowLocalhostOrigins: true}, false},
+		{"non-local development origin rejected", "https://track.example.com", OriginPolicy{AllowLocalhostOrigins: true}, false},
 	}
 	for _, c := range cases {
-		if got := originAllowed(c.origin, c.allowed); got != c.want {
-			t.Errorf("%s: originAllowed(%q, %v) = %v, want %v", c.name, c.origin, c.allowed, got, c.want)
+		if got := c.policy.Allows(c.origin); got != c.want {
+			t.Errorf("%s: Allows(%q) = %v, want %v", c.name, c.origin, got, c.want)
 		}
 	}
 }
@@ -41,7 +53,7 @@ func TestOriginAllowed(t *testing.T) {
 // Accept.
 func TestHandlerRejectsDisallowedOrigin(t *testing.T) {
 	hub := NewHub()
-	h := hub.Handler([]string{"https://app.example.com"}, nil)
+	h := hub.Handler(OriginPolicy{AllowedOrigins: []string{"https://app.example.com"}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.Header.Set("Origin", "https://evil.com")
@@ -59,7 +71,7 @@ func TestHandlerAcceptsAllowedOriginPreUpgrade(t *testing.T) {
 	// downstream Accept will fail to upgrade, which is fine: nothing
 	// writes a body and the handler returns.
 	hub := NewHub()
-	h := hub.Handler([]string{"https://app.example.com"}, nil)
+	h := hub.Handler(OriginPolicy{AllowedOrigins: []string{"https://app.example.com"}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	req.Header.Set("Origin", "https://app.example.com")
@@ -73,7 +85,7 @@ func TestHandlerAcceptsAllowedOriginPreUpgrade(t *testing.T) {
 
 func TestHandlerSendsResyncControlToSubscribedClient(t *testing.T) {
 	hub := NewHub()
-	ts := httptest.NewServer(hub.Handler(nil, nil))
+	ts := httptest.NewServer(hub.Handler(OriginPolicy{AllowMissingOrigin: true}, nil))
 	defer ts.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
