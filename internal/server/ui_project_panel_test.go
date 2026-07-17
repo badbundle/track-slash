@@ -986,6 +986,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"AL",
 		"GH",
 		"Ship filtering",
+		`data-sprint-ref`,
+		`>sprint-1</span>`,
 		"Todo count issue",
 		"#Sprint Visible",
 		"border-green-200 bg-green-50 text-green-700",
@@ -1000,6 +1002,9 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing %q: %s", want, body)
 		}
+	}
+	if got := strings.Count(body, `data-sprint-ref`); got != 1 {
+		t.Fatalf("active sprint ref badges = %d, want 1: %s", got, body)
 	}
 	filterIdx := strings.Index(body, `aria-label="Issue controls"`)
 	tabIdx := strings.Index(body, `aria-label="Project views"`)
