@@ -56,13 +56,15 @@ TRACK_SLASH_AUTO_MIGRATE=false
 
 Keep `TRACK_SLASH_AUTO_MIGRATE=true` or unset it for local development and single-container deployments.
 
-Set the public browser origin for passkeys in deployed environments:
+Set the public browser origin for passkeys and browser WebSocket checks in deployed environments:
 
 ```bash
 TRACK_SLASH_PUBLIC_ORIGIN=https://track.example.com
 ```
 
-The value must be an origin only: scheme, host, and optional port. Production passkeys require HTTPS; localhost development can omit this and use the request-derived local origin.
+The value must be an origin only: scheme, host, and optional port. Production passkeys require HTTPS. The cookie-authenticated UI WebSocket accepts this origin only; it does not depend on `CORS_ALLOWED_ORIGINS`. Browser connections to the bearer-authenticated API WebSocket may also use an explicitly configured CORS origin. Non-browser API WebSocket clients must omit `Origin` and authenticate with a bearer token.
+
+When `TRACK_SLASH_PUBLIC_ORIGIN` is omitted for local development, browser WebSockets accept only `localhost` and loopback origins. Other non-empty browser origins fail closed.
 
 Login sessions have a configurable seven-day absolute lifetime by default:
 
@@ -71,6 +73,8 @@ TRACK_SLASH_SESSION_TTL=168h
 ```
 
 The value uses Go duration syntax and must be positive. Session activity does not extend the deadline; idle expiry is not currently applied. API tokens remain distinct and do not expire unless an expiry is explicitly supplied when they are created.
+
+Browser mutations use CSRF tokens bound to either the pre-login flow or the authenticated session, plus exact-origin checks when browsers send `Origin`, `Referer`, or Fetch Metadata. Treat sibling subdomains as untrusted: `same-site` requests are rejected unless they are also `same-origin`. Keep `TRACK_SLASH_PUBLIC_ORIGIN` set to the single canonical browser origin in production, and do not route alternate sibling origins to the UI. Bearer-authenticated API and MCP requests do not use browser CSRF tokens.
 
 ## Authentication and request limits
 

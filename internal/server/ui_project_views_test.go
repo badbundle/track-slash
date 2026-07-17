@@ -52,7 +52,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	}
 
 	body := buf.String()
-	for _, want := range []string{"First planned issue", "Second planned issue"} {
+	for _, want := range []string{"First planned issue", "Second planned issue", `data-sprint-ref`, `>sprint-1</span>`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project planned panel missing %q: %s", want, body)
 		}
@@ -72,6 +72,9 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	}
 	requireInlineCount(t, body, "Planned", 1)
 	requireInlineCount(t, body, "First Planned Sprint", 2)
+	if got := strings.Count(body, `data-sprint-ref`); got != 1 {
+		t.Fatalf("planned sprint ref badges = %d, want 1: %s", got, body)
+	}
 
 	buf.Reset()
 	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{

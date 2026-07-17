@@ -2,7 +2,10 @@ package realtime
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
@@ -10,15 +13,20 @@ import (
 
 type TopicAuthorizer func(context.Context, string, uuid.UUID) error
 
+type OriginPolicy struct {
+	AllowedOrigins        []string
+	AllowMissingOrigin    bool
+	AllowLocalhostOrigins bool
+}
+
 // Handler returns an http.Handler that upgrades incoming requests to a
 // WebSocket and binds them to the hub.
 //
-// allowedOrigins is matched exactly against the request's Origin header.
-// An empty slice disables the origin check entirely — appropriate for dev
-// but not for public deployments.
-func (h *Hub) Handler(allowedOrigins []string, authorize TopicAuthorizer) http.Handler {
+// Browser origins are checked against policy before the upgrade. A missing
+// Origin is only accepted when the caller explicitly enables non-browser use.
+func (h *Hub) Handler(policy OriginPolicy, authorize TopicAuthorizer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !originAllowed(r.Header.Get("Origin"), allowedOrigins) {
+		if !policy.Allows(r.Header.Get("Origin")) {
 			http.Error(w, "origin not allowed", http.StatusForbidden)
 			return
 		}
@@ -37,21 +45,31 @@ func (h *Hub) Handler(allowedOrigins []string, authorize TopicAuthorizer) http.H
 	})
 }
 
-// originAllowed reports whether origin is permitted by the allow-list.
-// An empty allow-list permits any origin (dev default). An empty origin
-// header (non-browser clients) is also allowed since there's nothing to
-// spoof — browser CORS / origin checks are about cross-site abuse.
-func originAllowed(origin string, allowed []string) bool {
-	if len(allowed) == 0 {
-		return true
-	}
+func (p OriginPolicy) Allows(origin string) bool {
+	origin = strings.TrimSpace(origin)
 	if origin == "" {
-		return true
+		return p.AllowMissingOrigin
 	}
-	for _, a := range allowed {
+	for _, a := range p.AllowedOrigins {
 		if a == origin {
 			return true
 		}
 	}
-	return false
+	return p.AllowLocalhostOrigins && localhostOrigin(origin)
+}
+
+func localhostOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	if path := strings.TrimRight(u.EscapedPath(), "/"); path != "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

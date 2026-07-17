@@ -15,6 +15,10 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Keep profile and project image selection, upload, and removal in the shared image-picker modal. Owning panels show only the current image and a compact Add/Change action.
 - Identify the signed-in account as `@username` in the profile overlay instead of showing a generic role label such as `Member` or `Admin`.
 
+## Controls
+
+- Every icon-only action needs a concise, action-oriented `aria-label` and the shared app tooltip on pointer hover and keyboard focus. Do not show redundant tooltips while equivalent text is visibly rendered, and do not rely on native `title` tooltips for interactive controls.
+
 ## Project View
 
 - Render project images as squares with a small corner radius everywhere, using the shared project icon component and a project-initial fallback. Keep them visually distinct from circular user avatars.
@@ -46,8 +50,9 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Keep page rows compact and show body content only for the selected page. Page attachments use the shared description attachment behavior and resolve `object-N` only within that page.
 - Keep linked-issue counts out of project context page rows. Show the complete linked-issue list in its own section below, but visually separate from, the selected document card, with the count beside the section title.
 - Keep the project Context Pages sidebar content-height; it must not stretch to match the selected document pane.
-- Use an integrated issue Context manager rather than a modal. It should mirror the project Context list/document layout, keep the issue identity and a clear return action visible, and use addressable selected-page URLs.
+- Use an integrated issue Context manager rather than a modal. It should mirror the project Context list/document layout, keep the issue identity and breadcrumb return path visible, and use addressable selected-page URLs.
 - Linked project pages render their Markdown and page attachments in the issue Context manager; issue-only context remains escaped pre-wrapped text.
+- Linked project pages are read-only in the issue Context manager; edit them from the project Context tab so their project-wide scope stays explicit.
 - Use user-facing titles for finding and attaching context. Do not expose refs such as `context-1` as visible row labels or search/link inputs; refs may remain in URLs/API mechanics.
 - Keep issue Context actions explicit: one action creates issue-scoped context and one attaches existing project context. Project page creation, ordering, deletion, attachments, and linked-issue management stay in the project Context tab.
 

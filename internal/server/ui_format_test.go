@@ -53,6 +53,30 @@ func TestUIProjectIcon(t *testing.T) {
 	}
 }
 
+func TestUIIssueContextBreadcrumbLinksIssueAndPreservesParent(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	parent := model.Issue{OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-7"}
+	issue := model.Issue{OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-8"}
+	breadcrumb := uiIssueContextBreadcrumb(project, issue, &parent)
+	if len(breadcrumb.Items) != 5 {
+		t.Fatalf("breadcrumb items = %#v, want project, parent, issue, and context hierarchy", breadcrumb.Items)
+	}
+	parentItem := breadcrumb.Items[2]
+	if parentItem.Label != parent.Identifier || parentItem.Href != uiIssuePath(parent) || parentItem.Current {
+		t.Fatalf("parent breadcrumb = %#v", parentItem)
+	}
+	issueItem := breadcrumb.Items[3]
+	if issueItem.Label != issue.Identifier || issueItem.Href != uiIssuePath(issue) || issueItem.HXGet != uiIssuePanelPath(issue) || issueItem.Current || !issueItem.IssueKey {
+		t.Fatalf("issue breadcrumb = %#v", issueItem)
+	}
+	contextItem := breadcrumb.Items[4]
+	if contextItem.Label != "Context" || !contextItem.Current || contextItem.Href != "" {
+		t.Fatalf("context breadcrumb = %#v", contextItem)
+	}
+}
+
 func TestUIStatusClass(t *testing.T) {
 	t.Parallel()
 

@@ -62,6 +62,9 @@ func (s *Server) uiFavoriteProjects(ctx context.Context, user model.User) ([]mod
 }
 
 func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status int, data uiShellData) {
+	if data.CSRFToken == "" {
+		data.CSRFToken = uiSessionCSRFToken(r)
+	}
 	if data.User.ID == uuid.Nil {
 		data.User = currentUser(r)
 	}
