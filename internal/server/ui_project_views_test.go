@@ -49,7 +49,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	}
 
 	body := buf.String()
-	for _, want := range []string{"First planned issue", "Second planned issue"} {
+	for _, want := range []string{"First planned issue", "Second planned issue", ">sprint-1</span>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project planned panel missing %q: %s", want, body)
 		}
