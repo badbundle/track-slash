@@ -19,7 +19,7 @@ func (s *Server) uiRealtime(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.hub.Handler(s.corsAllowedOrigins, s.authorizeTopic).ServeHTTP(w, r)
+	s.hub.Handler(s.uiWebSocketOrigins, s.authorizeTopic).ServeHTTP(w, r)
 }
 
 func (s *Server) uiSettingsPage(w http.ResponseWriter, r *http.Request) {

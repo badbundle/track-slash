@@ -56,13 +56,15 @@ TRACK_SLASH_AUTO_MIGRATE=false
 
 Keep `TRACK_SLASH_AUTO_MIGRATE=true` or unset it for local development and single-container deployments.
 
-Set the public browser origin for passkeys in deployed environments:
+Set the public browser origin for passkeys and browser WebSocket checks in deployed environments:
 
 ```bash
 TRACK_SLASH_PUBLIC_ORIGIN=https://track.example.com
 ```
 
-The value must be an origin only: scheme, host, and optional port. Production passkeys require HTTPS; localhost development can omit this and use the request-derived local origin.
+The value must be an origin only: scheme, host, and optional port. Production passkeys require HTTPS. The cookie-authenticated UI WebSocket accepts this origin only; it does not depend on `CORS_ALLOWED_ORIGINS`. Browser connections to the bearer-authenticated API WebSocket may also use an explicitly configured CORS origin. Non-browser API WebSocket clients must omit `Origin` and authenticate with a bearer token.
+
+When `TRACK_SLASH_PUBLIC_ORIGIN` is omitted for local development, browser WebSockets accept only `localhost` and loopback origins. Other non-empty browser origins fail closed.
 
 Login sessions have a configurable seven-day absolute lifetime by default:
 
