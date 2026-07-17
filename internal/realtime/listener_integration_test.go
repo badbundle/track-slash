@@ -22,7 +22,11 @@ func newRealtimeDB(t *testing.T) (context.Context, *pgxpool.Pool, string) {
 
 func runRealtimeListener(t *testing.T, ctx context.Context, dbURL string, hub *Hub) {
 	t.Helper()
-	listener := NewListener(dbURL, hub)
+	runListener(t, ctx, NewListener(dbURL, hub))
+}
+
+func runListener(t *testing.T, ctx context.Context, listener *Listener) {
+	t.Helper()
 	listenerCtx, stopListener := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
@@ -37,6 +41,70 @@ func runRealtimeListener(t *testing.T, ctx context.Context, dbURL string, hub *H
 			t.Errorf("realtime listener did not stop within 2s")
 		}
 	})
+}
+
+func requireListenerResync(t *testing.T, c *Client) {
+	t.Helper()
+	select {
+	case msg := <-c.control:
+		if msg.Type != resyncMessageType || msg.Reason != resyncListener {
+			t.Fatalf("listener control = %#v, want reconnect resync", msg)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("listener did not request resync within 3s")
+	}
+}
+
+func TestListenerReconnectSignalsResyncAndResumesEvents(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+	hub := NewHub()
+	client := newTestClient(sendBuffer)
+	hub.Subscribe(client, "project:00000000-0000-0000-0000-000000000001")
+
+	listener := NewListener(dbURL, hub)
+	runListener(t, ctx, listener)
+	requireListenerResync(t, client)
+
+	var terminated bool
+	if err := pool.QueryRow(ctx, `
+		SELECT COALESCE(bool_or(pg_terminate_backend(pid)), false)
+		FROM pg_stat_activity
+		WHERE application_name = $1
+		  AND datname = current_database()
+		  AND pid <> pg_backend_pid()
+	`, listener.applicationName).Scan(&terminated); err != nil {
+		t.Fatalf("terminate listener connection: %v", err)
+	}
+	if !terminated {
+		t.Fatal("listener connection was not found for forced outage")
+	}
+
+	requireListenerResync(t, client)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-reconnect")
+	hub.Subscribe(client, "project:"+projectID)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'after reconnect')
+	`, projectID); err != nil {
+		t.Fatalf("insert issue after reconnect: %v", err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-client.send:
+			if ev.Entity != EntityIssue {
+				continue
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Fatalf("issue event after reconnect = %#v", ev)
+			}
+			return
+		case <-deadline:
+			t.Fatal("listener did not resume events after reconnect")
+		}
+	}
 }
 
 // TestListenerReceivesEventFromIssueInsert exercises the full pipeline:
