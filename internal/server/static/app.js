@@ -685,12 +685,17 @@
     changelogSocket = socket;
     socket.addEventListener("open", () => {
       socket.send(JSON.stringify({ action: "subscribe", topic: activeTopic }));
+      scheduleChangelogRefresh(panel);
     });
     socket.addEventListener("message", (event) => {
       let msg;
       try {
         msg = JSON.parse(event.data);
       } catch (_) {
+        return;
+      }
+      if (msg && msg.type === "resync") {
+        scheduleChangelogRefresh(panel);
         return;
       }
       if (msg && msg.entity === "project_changelog" && msg.project_id === panel.dataset.projectId) {

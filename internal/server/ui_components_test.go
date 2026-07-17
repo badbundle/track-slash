@@ -679,6 +679,29 @@ func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 	}
 }
 
+func TestUIChangelogRealtimeRefetchesOnOpenAndResync(t *testing.T) {
+	t.Parallel()
+
+	body, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
+	}
+	for _, want := range []string{
+		`socket.addEventListener("open", () => {`,
+		`socket.send(JSON.stringify({ action: "subscribe", topic: activeTopic }));
+      scheduleChangelogRefresh(panel);`,
+		`if (msg && msg.type === "resync") {
+        scheduleChangelogRefresh(panel);
+        return;
+      }`,
+		`changelogReconnect = window.setTimeout(syncChangelogRealtime, 1000)`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("changelog recovery behavior missing %q", want)
+		}
+	}
+}
+
 func TestUIRenderedPagesUseOnlySelfHostedExecutableAssets(t *testing.T) {
 	t.Parallel()
 
