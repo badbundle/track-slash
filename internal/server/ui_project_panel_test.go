@@ -287,7 +287,10 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 		"Undated legacy sprint",
 		"No scheduled dates",
 		"Completion date unavailable",
-		`aria-label="Toggle sprint issues"`,
+		`aria-label="Show issues"`,
+		`data-disclosure-label>Show issues</span>`,
+		`class="grid grid-cols-[minmax(0,1fr)_auto] items-start`,
+		`class="flex justify-end border-t`,
 		`aria-controls="completed-sprint-sprint-7-issues"`,
 		`hx-get="/bradley/projects/TRACK/sprints/sprint-7/history/issues"`,
 		`hx-trigger="click once"`,
@@ -317,8 +320,9 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 	firstCard := strings.Index(body, historyCard)
 	firstHeaderEnd := strings.Index(body[firstCard:], "</header>")
 	description := strings.Index(body[firstCard:], `id="sprint-sprint-7-description"`)
-	if firstCard < 0 || firstHeaderEnd < 0 || description < 0 || description > firstHeaderEnd {
-		t.Fatalf("sprint description should render in the card header: card=%d header=%d description=%d body=%s", firstCard, firstHeaderEnd, description, body)
+	footer := strings.Index(body[firstCard:], "<footer")
+	if firstCard < 0 || firstHeaderEnd < 0 || description < 0 || footer < 0 || description < firstHeaderEnd || description > footer {
+		t.Fatalf("sprint description should render full-width between the card header and footer: card=%d header=%d description=%d footer=%d body=%s", firstCard, firstHeaderEnd, description, footer, body)
 	}
 	for _, notWant := range []string{"Visible **sprint direction**", `aria-label="Edit sprint"`, `aria-label="Add issue to sprint"`} {
 		if strings.Contains(body, notWant) {

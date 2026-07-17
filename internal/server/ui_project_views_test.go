@@ -26,6 +26,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		Number:    1,
 		Ref:       "sprint-1",
 		Name:      "First Planned Sprint",
+		Goal:      "Plan **work**",
 		StartDate: datePtr(time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)),
 		EndDate:   datePtr(time.Date(2026, 6, 28, 0, 0, 0, 0, time.UTC)),
 	}
@@ -37,7 +38,9 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		View:        "planned",
 		ProjectTabs: uiProjectTabs(project, "planned", nil),
 		PlannedSprints: []uiPlannedSprint{{
-			Sprint: sprint,
+			Project:         project,
+			Sprint:          sprint,
+			DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, nil),
 			Issues: []model.Issue{
 				{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo},
 				{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Second planned issue", Status: model.StatusDone},
@@ -57,7 +60,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	if strings.Contains(body, "All issues") || strings.Contains(body, "Backlog") {
 		t.Fatalf("planned panel included all/backlog content: %s", body)
 	}
-	for _, want := range []string{`flex flex-wrap items-start justify-between`, `data-disclosure-toggle`, `aria-controls="planned-sprint-sprint-1-issues"`, `aria-expanded="false"`, "class=\"mt-2\">\n<div id=\"sprint-sprint-1-description\" class=\"flow-root max-w-3xl\"", `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`} {
+	for _, want := range []string{`grid grid-cols-[minmax(0,1fr)_auto] items-start`, `max-w-[9rem]`, `sm:max-w-none`, `class="px-4 pb-3"`, `id="sprint-sprint-1-description"`, `<strong>work</strong>`, `data-disclosure-toggle`, `aria-label="Show issues"`, `aria-controls="planned-sprint-sprint-1-issues"`, `aria-expanded="false"`, `data-disclosure-label>Show issues</span>`, `class="flex justify-end border-t`, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project planned panel missing collapsed markup %q: %s", want, body)
 		}
@@ -80,7 +83,9 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		PlannedSprintAction:    "add-issue",
 		PlannedSprintIssueForm: uiSprintIssueFormData{IssueInput: "TRACK-99"},
 		PlannedSprints: []uiPlannedSprint{{
-			Sprint: sprint,
+			Project:         project,
+			Sprint:          sprint,
+			DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, nil),
 			Issues: []model.Issue{
 				{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo},
 			},
@@ -90,7 +95,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		t.Fatalf("ExecuteTemplate action open: %v", err)
 	}
 	body = buf.String()
-	if !strings.Contains(body, `aria-controls="planned-sprint-sprint-1-issues" aria-expanded="true"`) || strings.Contains(body, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`) {
+	if !strings.Contains(body, `aria-label="Hide issues" aria-controls="planned-sprint-sprint-1-issues" aria-expanded="true"`) || !strings.Contains(body, `data-disclosure-label>Hide issues</span>`) || strings.Contains(body, `id="planned-sprint-sprint-1-issues" data-disclosure-panel hidden`) {
 		t.Fatalf("planned sprint action should open disclosure panel: %s", body)
 	}
 
