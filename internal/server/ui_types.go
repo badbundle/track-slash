@@ -10,16 +10,19 @@ import (
 )
 
 type uiLoginData struct {
-	Error string
-	Next  string
+	Error     string
+	Next      string
+	CSRFToken string
 }
 
 type uiSignupData struct {
-	Error string
-	Next  string
+	Error     string
+	Next      string
+	CSRFToken string
 }
 
 type uiShellData struct {
+	CSRFToken         string
 	User              model.User
 	Projects          []model.Project
 	SidebarFavorites  uiSidebarFavoritesData

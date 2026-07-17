@@ -13,14 +13,26 @@ import (
 )
 
 func (s *Server) uiLoginPage(w http.ResponseWriter, r *http.Request) {
-	renderUITemplate(w, http.StatusOK, "login", uiLoginData{
+	s.renderUILogin(w, r, http.StatusOK, uiLoginData{
 		Next: safeUINext(r.URL.Query().Get("next")),
 	})
 }
 
+func (s *Server) renderUILogin(w http.ResponseWriter, r *http.Request, status int, data uiLoginData) {
+	if data.CSRFToken == "" {
+		var err error
+		data.CSRFToken, err = s.ensureUIPreAuthCSRFToken(w, r)
+		if err != nil {
+			writeUIInternalError(w, "ui login csrf token", err)
+			return
+		}
+	}
+	renderUITemplate(w, status, "login", data)
+}
+
 func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		renderUITemplate(w, http.StatusBadRequest, "login", uiLoginData{Error: "Unable to read form."})
+		s.renderUILogin(w, r, http.StatusBadRequest, uiLoginData{Error: "Unable to read form."})
 		return
 	}
 	username := strings.TrimSpace(r.Form.Get("username"))
@@ -30,13 +42,13 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if username == "" || password == "" {
-		renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Username and password required.", Next: next})
+		s.renderUILogin(w, r, http.StatusUnauthorized, uiLoginData{Error: "Username and password required.", Next: next})
 		return
 	}
 	u, err := s.store.AuthenticatePassword(r.Context(), username, password)
 	if err != nil {
 		if errors.Is(err, store.ErrUnauthorized) {
-			renderUITemplate(w, http.StatusUnauthorized, "login", uiLoginData{Error: "Username or password not accepted.", Next: next})
+			s.renderUILogin(w, r, http.StatusUnauthorized, uiLoginData{Error: "Username or password not accepted.", Next: next})
 			return
 		}
 		writeUIInternalError(w, "ui login authenticate password", err)
@@ -52,14 +64,26 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiSignupPage(w http.ResponseWriter, r *http.Request) {
-	renderUITemplate(w, http.StatusOK, "signup", uiSignupData{
+	s.renderUISignup(w, r, http.StatusOK, uiSignupData{
 		Next: safeUINext(r.URL.Query().Get("next")),
 	})
 }
 
+func (s *Server) renderUISignup(w http.ResponseWriter, r *http.Request, status int, data uiSignupData) {
+	if data.CSRFToken == "" {
+		var err error
+		data.CSRFToken, err = s.ensureUIPreAuthCSRFToken(w, r)
+		if err != nil {
+			writeUIInternalError(w, "ui signup csrf token", err)
+			return
+		}
+	}
+	renderUITemplate(w, status, "signup", data)
+}
+
 func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		renderUITemplate(w, http.StatusBadRequest, "signup", uiSignupData{Error: "Unable to read form."})
+		s.renderUISignup(w, r, http.StatusBadRequest, uiSignupData{Error: "Unable to read form."})
 		return
 	}
 	next := safeUINext(r.Form.Get("next"))
@@ -73,10 +97,10 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
-			renderUITemplate(w, http.StatusConflict, "signup", uiSignupData{Error: "Username already exists.", Next: next})
+			s.renderUISignup(w, r, http.StatusConflict, uiSignupData{Error: "Username already exists.", Next: next})
 			return
 		}
-		renderUITemplate(w, http.StatusBadRequest, "signup", uiSignupData{Error: err.Error(), Next: next})
+		s.renderUISignup(w, r, http.StatusBadRequest, uiSignupData{Error: err.Error(), Next: next})
 		return
 	}
 	created, err := s.createSessionToken(r, u, "web session")
@@ -137,6 +161,8 @@ func (s *Server) setUISessionCookie(w http.ResponseWriter, r *http.Request, raw 
 		}
 	}
 	http.SetCookie(w, cookie)
+	// A successful browser login rotates away the pre-auth CSRF state.
+	s.clearUIPreAuthCSRFCookie(w, r)
 }
 
 func (s *Server) clearUISessionCookie(w http.ResponseWriter, r *http.Request) {

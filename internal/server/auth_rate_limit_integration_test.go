@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"bytes"
+	"encoding/base64"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -146,10 +148,16 @@ func TestAuthenticationRateLimits(t *testing.T) {
 }
 
 func serveUILogin(handler http.Handler, remote, forwarded, username string) *httptest.ResponseRecorder {
-	form := url.Values{"username": {username}, "password": {"wrong-password"}}
+	secret := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	form := url.Values{
+		"username":   {username},
+		"password":   {"wrong-password"},
+		"csrf_token": {uiCSRFTokenForTest("pre-auth", secret)},
+	}
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.RemoteAddr = remote
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: uiPreAuthCookieNameForTest, Value: secret, Path: "/"})
 	if forwarded != "" {
 		req.Header.Set("X-Forwarded-For", forwarded)
 	}

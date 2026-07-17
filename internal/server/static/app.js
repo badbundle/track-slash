@@ -1,5 +1,18 @@
 (() => {
   const createIcons = () => window.lucide && window.lucide.createIcons();
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
+  const csrfHeaders = (headers = {}) => csrfToken ? { ...headers, "X-CSRF-Token": csrfToken } : headers;
+  const ensureCSRFFormToken = (form) => {
+    if (!(form instanceof HTMLFormElement) || !csrfToken || ["get", "dialog"].includes((form.method || "get").toLowerCase())) return;
+    let input = form.querySelector('input[name="csrf_token"]');
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "csrf_token";
+      form.appendChild(input);
+    }
+    input.value = csrfToken;
+  };
   const escapeHTML = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
@@ -166,7 +179,7 @@
         method: "POST",
         body: data,
         credentials: "same-origin",
-        headers: { "Accept": "application/json" },
+        headers: csrfHeaders({ "Accept": "application/json" }),
       });
       if (!res.ok) {
         let message = "Attachment upload failed.";
@@ -329,7 +342,7 @@
     const res = await fetch(url, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      headers: csrfHeaders({ "Accept": "application/json", "Content-Type": "application/json" }),
       body: JSON.stringify(payload || {}),
     });
     let body = null;
@@ -711,6 +724,10 @@
     const state = mainContent ? mainContent.querySelector("[data-sidebar-view]") : null;
     setActiveNav(sidebarLinkForState(state));
   };
+  document.body.addEventListener("htmx:configRequest", (event) => {
+    if (csrfToken) event.detail.headers["X-CSRF-Token"] = csrfToken;
+  });
+  document.body.addEventListener("submit", (event) => ensureCSRFFormToken(event.target), true);
   document.body.addEventListener("htmx:beforeRequest", (event) => {
     rememberIssueListControls(event.target);
     const link = event.target.closest("[data-sidebar-link]");
@@ -832,7 +849,7 @@
       const list = removeAttachment.closest("[data-attachment-list][data-attachment-editing]");
       if (list && removeAttachment.dataset.attachmentDeleteUrl) {
         event.preventDefault();
-        fetch(removeAttachment.dataset.attachmentDeleteUrl, { method: "DELETE", credentials: "same-origin" }).then((res) => {
+        fetch(removeAttachment.dataset.attachmentDeleteUrl, { method: "DELETE", credentials: "same-origin", headers: csrfHeaders() }).then((res) => {
           if (!res.ok) return;
           const row = removeAttachment.closest("[data-attachment-ref]");
           if (row) row.remove();
@@ -898,6 +915,7 @@
     if (form.requestSubmit) {
       form.requestSubmit();
     } else {
+      ensureCSRFFormToken(form);
       form.submit();
     }
   });
@@ -920,6 +938,7 @@
     if (form.requestSubmit) {
       form.requestSubmit();
     } else {
+      ensureCSRFFormToken(form);
       form.submit();
     }
   });

@@ -1,5 +1,6 @@
 (() => {
   const createIcons = () => window.lucide && window.lucide.createIcons();
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
   const status = document.querySelector("[data-passkey-status]");
   const showStatus = (message, kind = "error") => {
     if (!status) return;
@@ -100,7 +101,7 @@
     const res = await fetch(url, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      headers: { "Accept": "application/json", "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
       body: JSON.stringify(payload || {}),
     });
     let body = null;
