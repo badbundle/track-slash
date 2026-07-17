@@ -68,6 +68,56 @@ func TestAuthTokenLifecycle(t *testing.T) {
 	}
 }
 
+func TestAuthTokenLastUsedWritesAreThrottled(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	u, err := env.store.CreateUser(env.ctx, "usage-"+uniqueProjectKey(t)+"@example.com", "Usage")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	created, err := env.store.CreateAuthToken(env.ctx, store.CreateAuthTokenParams{
+		UserID: u.ID,
+		Kind:   model.AuthTokenKindAPI,
+		Name:   "throttled usage",
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+
+	if _, err := env.store.AuthenticateToken(env.ctx, created.RawToken); err != nil {
+		t.Fatalf("first AuthenticateToken: %v", err)
+	}
+	var firstUsedAt time.Time
+	if err := env.pool.QueryRow(env.ctx, `SELECT last_used_at FROM auth_tokens WHERE id = $1`, created.Token.ID).Scan(&firstUsedAt); err != nil {
+		t.Fatalf("query first last_used_at: %v", err)
+	}
+	if _, err := env.store.AuthenticateToken(env.ctx, created.RawToken); err != nil {
+		t.Fatalf("second AuthenticateToken: %v", err)
+	}
+	var secondUsedAt time.Time
+	if err := env.pool.QueryRow(env.ctx, `SELECT last_used_at FROM auth_tokens WHERE id = $1`, created.Token.ID).Scan(&secondUsedAt); err != nil {
+		t.Fatalf("query second last_used_at: %v", err)
+	}
+	if !secondUsedAt.Equal(firstUsedAt) {
+		t.Fatalf("last_used_at changed inside throttle window: first=%s second=%s", firstUsedAt, secondUsedAt)
+	}
+
+	staleUsedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)
+	if _, err := env.pool.Exec(env.ctx, `UPDATE auth_tokens SET last_used_at = $2 WHERE id = $1`, created.Token.ID, staleUsedAt); err != nil {
+		t.Fatalf("age last_used_at: %v", err)
+	}
+	if _, err := env.store.AuthenticateToken(env.ctx, created.RawToken); err != nil {
+		t.Fatalf("AuthenticateToken after throttle window: %v", err)
+	}
+	var advancedUsedAt time.Time
+	if err := env.pool.QueryRow(env.ctx, `SELECT last_used_at FROM auth_tokens WHERE id = $1`, created.Token.ID).Scan(&advancedUsedAt); err != nil {
+		t.Fatalf("query advanced last_used_at: %v", err)
+	}
+	if !advancedUsedAt.After(staleUsedAt) {
+		t.Fatalf("last_used_at did not advance after throttle window: stale=%s advanced=%s", staleUsedAt, advancedUsedAt)
+	}
+}
+
 func TestAuthTokenExpiryAndKind(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
