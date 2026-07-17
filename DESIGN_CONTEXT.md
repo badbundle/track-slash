@@ -15,6 +15,10 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Keep profile and project image selection, upload, and removal in the shared image-picker modal. Owning panels show only the current image and a compact Add/Change action.
 - Identify the signed-in account as `@username` in the profile overlay instead of showing a generic role label such as `Member` or `Admin`.
 
+## Controls
+
+- Every icon-only action needs a concise, action-oriented `aria-label` and the shared app tooltip on pointer hover and keyboard focus. Do not show redundant tooltips while equivalent text is visibly rendered, and do not rely on native `title` tooltips for interactive controls.
+
 ## Project View
 
 - Render project images as squares with a small corner radius everywhere, using the shared project icon component and a project-initial fallback. Keep them visually distinct from circular user avatars.

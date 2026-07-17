@@ -471,6 +471,87 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 }
 
+func TestUIShellProvidesAccessibleIconTooltips(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
+		User: model.User{Name: "Demo User", Username: "demo"},
+		SidebarFavorites: uiSidebarFavoritesData{Projects: []model.Project{{
+			ID:            projectID,
+			OwnerUsername: "bradley",
+			Key:           "TRACK",
+			Name:          "Track Slash",
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	css, err := os.ReadFile("../../frontend/tailwind.css")
+	if err != nil {
+		t.Fatalf("read Tailwind source: %v", err)
+	}
+	appJS, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
+	}
+	projectPanel, err := uiTemplateFS.ReadFile("templates/project_panel.html")
+	if err != nil {
+		t.Fatalf("read project panel template: %v", err)
+	}
+	projectsPanel, err := uiTemplateFS.ReadFile("templates/projects_panel.html")
+	if err != nil {
+		t.Fatalf("read projects panel template: %v", err)
+	}
+	body := strings.Join([]string{buf.String(), string(css), string(appJS), string(projectPanel), string(projectsPanel)}, "\n")
+	for _, want := range []string{
+		`aria-label="Toggle sidebar"`,
+		`aria-label="Me"`,
+		`aria-label="Projects"`,
+		`aria-label="Account menu"`,
+		`aria-label="Track Slash"`,
+		`const tooltipSelector = "[data-tooltip], button[aria-label], a[aria-label], summary[aria-label], label[aria-label]`,
+		`appTooltip.setAttribute("role", "tooltip")`,
+		`appTooltip.setAttribute("data-app-tooltip", "")`,
+		`const hasVisibleControlText = (control) =>`,
+		`element.getAttribute("aria-hidden") === "true"`,
+		`target.getAttribute("aria-label")`,
+		`target.setAttribute("aria-describedby"`,
+		`match.target.setAttribute("data-app-tooltip-target", "")`,
+		`document.body.addEventListener("pointerover"`,
+		`document.body.addEventListener("pointerout"`,
+		`document.body.addEventListener("focusin"`,
+		`document.body.addEventListener("focusout"`,
+		`event.pointerType === "touch"`,
+		`window.queueMicrotask`,
+		`[data-app-tooltip-target] { anchor-name: --app-tooltip-target; }`,
+		`position-anchor: --app-tooltip-target;`,
+		`position-area: bottom center;`,
+		`position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;`,
+		`width: max-content;`,
+		`max-width: min(18rem, calc(100vw - 1rem));`,
+		`pointer-events: none;`,
+		`@media (prefers-color-scheme: dark) {`,
+		`@media (prefers-reduced-motion: reduce) {`,
+		`[data-app-tooltip] { transform: none; transition: none; }`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("shell missing tooltip behavior %q: %s", want, body)
+		}
+	}
+	for _, forbidden := range []string{
+		`title="Toggle sidebar"`,
+		`title="Account menu"`,
+		`title="New project"`,
+		`title="{{if .Favorite}}Unfavorite project`,
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("shell retained duplicate native tooltip %q: %s", forbidden, body)
+		}
+	}
+}
+
 func TestUIShellRendersOneActiveSidebarDestination(t *testing.T) {
 	t.Parallel()
 

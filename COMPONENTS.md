@@ -9,6 +9,10 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 - `sidebar-favorites`: shell sidebar favorite-project shortcuts backed by `uiSidebarFavoritesData`. Keep it directly below the `Projects` nav item with a subtle divider from standard navigation, and refresh it with OOB HTMX swaps when favorite state changes.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.
 
+## Controls
+
+- App tooltip: one body-level tooltip in `shell_scripts.html` automatically labels interactive controls that have an `aria-label` but no visible text. It appears on pointer hover and keyboard focus, follows the control through the shared CSS anchor in `frontend/tailwind.css`, and stays outside card overflow. Keep labels concise and action-oriented; do not add a tooltip to controls whose text is already visible.
+
 ## Badges
 
 - `issue-key`: compact monospace issue identifier badge. Use it for ticket numbers wherever possible; if a generic data-driven badge must show an issue identifier, mirror this component's monospace, uppercase, compact bordered treatment.
