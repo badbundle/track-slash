@@ -30,7 +30,7 @@ func TestUILoginRejectsBadCredentials(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	form := url.Values{"username": {"not-a-user"}, "password": {"not-a-password"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
+	res := e.uiDoPreAuthForm(t, "/login", form)
 	defer res.Body.Close()
 
 	body := readBody(t, res)
@@ -54,10 +54,14 @@ func TestUIAuthPagesRenderPasskeyControls(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("login code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"Sign in with passkey", `data-passkey-login`, `/static/auth.js`} {
+	for _, want := range []string{"Sign in with passkey", `data-passkey-login`, `/static/auth.js`, `meta name="csrf-token"`, `name="csrf_token"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("login body missing %q: %s", want, body)
 		}
+	}
+	loginCSRFCookie := findUICookieNamed(t, res.Cookies(), uiPreAuthCookieNameForTest)
+	if !loginCSRFCookie.HttpOnly || loginCSRFCookie.SameSite != http.SameSiteStrictMode || loginCSRFCookie.MaxAge <= 0 {
+		t.Fatalf("login CSRF cookie = %+v", loginCSRFCookie)
 	}
 
 	res = e.uiDoNoRedirect(t, http.MethodGet, "/signup?next=%2Ftokens", "", nil)
@@ -66,7 +70,7 @@ func TestUIAuthPagesRenderPasskeyControls(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("signup code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"Create with passkey", `data-passkey-signup`, `/static/auth.js`} {
+	for _, want := range []string{"Create with passkey", `data-passkey-signup`, `/static/auth.js`, `meta name="csrf-token"`, `name="csrf_token"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("signup body missing %q: %s", want, body)
 		}
@@ -78,8 +82,10 @@ func TestUIAuthPagesRenderPasskeyControls(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("auth asset code = %d body = %s", res.StatusCode, body)
 	}
-	if !strings.Contains(body, "This browser does not support passkeys.") {
-		t.Fatalf("auth asset missing passkey fallback: %s", body)
+	for _, want := range []string{"This browser does not support passkeys.", `"X-CSRF-Token": csrfToken`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("auth asset missing %q: %s", want, body)
+		}
 	}
 }
 
@@ -93,7 +99,7 @@ func TestUILoginSetsCookie(t *testing.T) {
 	}
 	next := e.projectPath() + "/about"
 	form := url.Values{"username": {username}, "password": {password}, "next": {next}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/login", "", strings.NewReader(form.Encode()))
+	res := e.uiDoPreAuthForm(t, "/login", form)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
@@ -132,7 +138,7 @@ func TestUISignupCreatesAccountAndSetsCookie(t *testing.T) {
 	e := newHTTPEnv(t)
 	username := "uisignup" + strings.ToLower(uniqueProjectKey(t))
 	form := url.Values{"username": {username}, "password": {"correct-horse-battery"}, "next": {"/tokens"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/signup", "", strings.NewReader(form.Encode()))
+	res := e.uiDoPreAuthForm(t, "/signup", form)
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusSeeOther {
@@ -173,11 +179,8 @@ func TestUILogoutClearsCookie(t *testing.T) {
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, "/logout", "", nil)
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusSeeOther {
+	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("no-cookie logout code = %d", res.StatusCode)
-	}
-	if loc := res.Header.Get("Location"); loc != "/login" {
-		t.Fatalf("no-cookie logout Location = %q", loc)
 	}
 }
 

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/rand"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,6 +25,8 @@ type Server struct {
 	devReload          bool
 	objectStorage      *objectstorage.Service
 	passkeys           *passkeys.Service
+	publicOrigin       string
+	csrfRandom         io.Reader
 	secureCookies      bool
 	sessionTTL         time.Duration
 	authLimiter        *authRateLimiter
@@ -81,6 +85,8 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		devReload:          opts.DevReload,
 		objectStorage:      opts.ObjectStorage,
 		passkeys:           passkeyService,
+		publicOrigin:       opts.PublicOrigin,
+		csrfRandom:         rand.Reader,
 		secureCookies:      publicOrigin != nil && publicOrigin.Scheme == "https",
 		sessionTTL:         sessionTTL,
 		authLimiter:        newAuthRateLimiter(opts.AuthRateLimit),
