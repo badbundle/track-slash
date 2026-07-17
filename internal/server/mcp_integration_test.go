@@ -640,6 +640,7 @@ func TestMCPAcceptsStaleSessionID(t *testing.T) {
 		t.Fatalf("POST stale session: %v", err)
 	}
 	defer resp.Body.Close()
+	requireSecurityHeadersForTest(t, resp.Header)
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("ReadAll: %v", err)

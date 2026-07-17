@@ -24,6 +24,7 @@ type Server struct {
 	objectStorage      *objectstorage.Service
 	passkeys           *passkeys.Service
 	secureCookies      bool
+	httpsDeployment    bool
 	sessionTTL         time.Duration
 	authLimiter        *authRateLimiter
 	trustedProxyCIDRs  []net.IPNet
@@ -82,6 +83,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		objectStorage:      opts.ObjectStorage,
 		passkeys:           passkeyService,
 		secureCookies:      publicOrigin != nil && publicOrigin.Scheme == "https",
+		httpsDeployment:    publicOrigin != nil && publicOrigin.Scheme == "https",
 		sessionTTL:         sessionTTL,
 		authLimiter:        newAuthRateLimiter(opts.AuthRateLimit),
 		trustedProxyCIDRs:  opts.TrustedProxyCIDRs,
@@ -98,6 +100,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(exposeRequestID)
+	r.Use(s.securityHeaders)
 	r.Use(s.requestDeadline)
 	if s.devReload {
 		r.Use(s.devReloadMiddleware)

@@ -4,25 +4,6 @@
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Details</h2>
         <dl class="mt-4 space-y-4 text-sm">
           <div>
-            <style>
-              @keyframes option-dropdown-enter {
-                from { opacity: 0; transform: translateY(-0.25rem); }
-                to { opacity: 1; transform: translateY(0); }
-              }
-              @keyframes option-dropdown-settle {
-                from { opacity: 0.85; transform: translateY(-0.125rem); }
-                to { opacity: 1; transform: translateY(0); }
-              }
-              @media (prefers-reduced-motion: no-preference) {
-                [data-option-dropdown-toggle] {
-                  animation: option-dropdown-settle 120ms ease-out both;
-                }
-                [data-option-dropdown-list] {
-                  animation: option-dropdown-enter 140ms ease-out both;
-                  transform-origin: top;
-                }
-              }
-            </style>
             {{if .EditStatus}}
             {{template "option-dropdown" (issueStatusDropdown .)}}
             {{else}}
@@ -55,22 +36,6 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Priority</dt>
             <dd class="mt-1">
               {{if .EditPriority}}
-              <style>
-                @keyframes priority-picker-item-enter {
-                  from { opacity: 0; transform: translateY(-0.25rem) scale(0.88); }
-                  to { opacity: 1; transform: translateY(0) scale(1); }
-                }
-                @media (prefers-reduced-motion: no-preference) {
-                  [data-priority-picker] > button {
-                    animation: priority-picker-item-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-                    transform-origin: center;
-                  }
-                  [data-priority-picker] > button:nth-child(2) { animation-delay: 20ms; }
-                  [data-priority-picker] > button:nth-child(3) { animation-delay: 40ms; }
-                  [data-priority-picker] > button:nth-child(4) { animation-delay: 60ms; }
-                  [data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }
-                }
-              </style>
               <form method="post" action="{{issuePriority .Issue}}" hx-post="{{issuePriority .Issue}}" hx-target="#main" hx-push-url="false" role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1">
                 {{range priorityOptions}}
                 {{if eq $.Issue.Priority .Priority}}

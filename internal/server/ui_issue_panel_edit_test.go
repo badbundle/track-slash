@@ -58,8 +58,6 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 		`aria-expanded="true"`,
 		`data-option-dropdown-toggle`,
 		`data-option-dropdown-list`,
-		`option-dropdown-enter`,
-		`option-dropdown-settle`,
 		`data-lucide="chevron-up"`,
 		`hx-get="/bradley/issues/TRACK-7/panel"`,
 		`method="post" action="/bradley/issues/TRACK-7/status"`,
@@ -80,6 +78,20 @@ func TestUIIssuePanelRendersStatusDropdown(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("status dropdown missing %q: %s", want, body)
+		}
+	}
+	css, err := uiTemplateFS.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("read app.css: %v", err)
+	}
+	for _, want := range []string{
+		"@keyframes option-dropdown-enter",
+		"@keyframes option-dropdown-settle",
+		"[data-option-dropdown-toggle]{animation:option-dropdown-settle .12s ease-out both}",
+		"[data-option-dropdown-list]{animation:option-dropdown-enter .14s ease-out both;transform-origin:top}",
+	} {
+		if !strings.Contains(string(css), want) {
+			t.Fatalf("status dropdown stylesheet missing %q", want)
 		}
 	}
 	for _, notWant := range []string{
@@ -133,9 +145,6 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`hx-post="/bradley/issues/TRACK-7/priority"`,
 		`hx-target="#main"`,
 		`hx-push-url="false"`,
-		`@keyframes priority-picker-item-enter`,
-		`@media (prefers-reduced-motion: no-preference)`,
-		`[data-priority-picker] > button:nth-child(5) { animation-delay: 80ms; }`,
 		`role="listbox" aria-label="Issue priority" data-priority-picker class="flex flex-wrap items-center gap-1"`,
 		`name="priority" value="P0"`,
 		`name="priority" value="P1"`,
@@ -156,6 +165,15 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("priority picker missing %q: %s", want, body)
+		}
+	}
+	css, err := uiTemplateFS.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("read app.css: %v", err)
+	}
+	for _, want := range []string{"@keyframes priority-picker-item-enter", "@media (prefers-reduced-motion:no-preference)", "[data-priority-picker]>:is(label,button):nth-child(5){animation-delay:80ms}"} {
+		if !strings.Contains(string(css), want) {
+			t.Fatalf("priority picker stylesheet missing %q", want)
 		}
 	}
 	for _, notWant := range []string{
@@ -483,11 +501,12 @@ func TestUIIssuePanelRendersSubIssueProgressBar(t *testing.T) {
 	body := buf.String()
 	for _, want := range []string{
 		`role="img" aria-label="Sub-issue progress: 2 done, 1 in progress, 1 to do"`,
-		`class="mt-1.5 flex h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
+		`viewBox="0 0 4 1"`,
+		`class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"`,
 		`data-issue-summary-row`,
 		`sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto]`,
-		`bg-emerald-500 dark:bg-emerald-400" style="width: 50.00%;"`,
-		`bg-blue-400 dark:bg-blue-500" style="width: 25.00%;"`,
+		`<rect x="0" width="2" height="1" class="fill-emerald-500 dark:fill-emerald-400"`,
+		`<rect x="2" width="1" height="1" class="fill-blue-400 dark:fill-blue-500"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sub-issue progress bar missing %q: %s", want, body)
@@ -568,8 +587,9 @@ func TestUIIssuePanelRendersLinkedIssueProgressBar(t *testing.T) {
 	body := buf.String()
 	for _, want := range []string{
 		`role="img" aria-label="Linked issue progress: 2 done, 1 in progress, 1 to do"`,
-		`bg-emerald-500 dark:bg-emerald-400" style="width: 50.00%;"`,
-		`bg-blue-400 dark:bg-blue-500" style="width: 25.00%;"`,
+		`viewBox="0 0 4 1"`,
+		`<rect x="0" width="2" height="1" class="fill-emerald-500 dark:fill-emerald-400"`,
+		`<rect x="2" width="1" height="1" class="fill-blue-400 dark:fill-blue-500"`,
 		"Deleted issue",
 	} {
 		if !strings.Contains(body, want) {
