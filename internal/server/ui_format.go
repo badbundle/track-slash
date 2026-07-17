@@ -62,6 +62,16 @@ func uiIssueBreadcrumb(project model.Project, issue model.Issue, parentIssue *mo
 	return uiBreadcrumbData{Items: items}
 }
 
+func uiIssueContextBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue) uiBreadcrumbData {
+	breadcrumb := uiIssueBreadcrumb(project, issue, parentIssue)
+	issueItem := &breadcrumb.Items[len(breadcrumb.Items)-1]
+	issueItem.Href = uiIssuePath(issue)
+	issueItem.HXGet = uiIssuePanelPath(issue)
+	issueItem.Current = false
+	breadcrumb.Items = append(breadcrumb.Items, uiBreadcrumbItem{Label: "Context", Current: true})
+	return breadcrumb
+}
+
 func uiUserAvatar(value any, class string) uiUserAvatarData {
 	switch v := value.(type) {
 	case model.User:

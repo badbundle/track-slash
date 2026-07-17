@@ -444,14 +444,11 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 		items = append(items, uiContextManagerItemFromSummary(contextItem))
 	}
 	return &uiContextManagerData{
-		Mode:      "project",
-		Project:   project,
-		CanWrite:  permissions.CanWrite,
-		BackHref:  uiProjectViewPath(project, "context"),
-		BackHXGet: uiProjectPanelPath(project, "context"),
-		BackLabel: "Context",
-		Items:     items,
-		HasMore:   hasMore,
+		Mode:     "project",
+		Project:  project,
+		CanWrite: permissions.CanWrite,
+		Items:    items,
+		HasMore:  hasMore,
 	}, nil
 }
 
@@ -519,6 +516,17 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 	if err != nil {
 		return nil, err
 	}
+	var parentIssue *model.Issue
+	if issue.ParentIssueID != nil {
+		parent, err := s.store.GetIssue(ctx, *issue.ParentIssueID)
+		if err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				return nil, err
+			}
+		} else {
+			parentIssue = &parent
+		}
+	}
 	project, err := s.store.GetProject(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -556,11 +564,9 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 		Mode:           "issue",
 		Project:        project,
 		Issue:          issue,
+		ParentIssue:    parentIssue,
 		HasIssue:       true,
 		CanWrite:       permissions.CanWrite,
-		BackHref:       uiIssuePath(issue),
-		BackHXGet:      uiIssuePanelPath(issue),
-		BackLabel:      "Issue",
 		Items:          items,
 		HasMore:        hasMore,
 		ContextOptions: contextOptions,

@@ -745,13 +745,10 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		UpdatedAt:   when,
 	}
 	manager := &uiContextManagerData{
-		CanWrite:  true,
-		Mode:      "project",
-		Project:   project,
-		BackHref:  "/bradley/projects/TRACK/about",
-		BackHXGet: "/bradley/projects/TRACK/about/panel",
-		BackLabel: "About",
-		Items:     []uiContextManagerItem{managerItem},
+		CanWrite: true,
+		Mode:     "project",
+		Project:  project,
+		Items:    []uiContextManagerItem{managerItem},
 	}
 	body = renderManager(manager)
 	for _, want := range []string{"Context", "Architecture notes", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/edit"`, `aria-label="Delete context"`} {

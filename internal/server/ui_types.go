@@ -293,11 +293,9 @@ type uiContextManagerData struct {
 	Action             string
 	Project            model.Project
 	Issue              model.Issue
+	ParentIssue        *model.Issue
 	HasIssue           bool
 	CanWrite           bool
-	BackHref           string
-	BackHXGet          string
-	BackLabel          string
 	Items              []uiContextManagerItem
 	HasMore            bool
 	ContextOptions     []uiProjectContextOption
