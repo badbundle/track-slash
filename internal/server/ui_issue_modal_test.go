@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/google/uuid"
+	"html/template"
 	"strings"
 	"testing"
 	"time"
@@ -123,9 +124,6 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 			Project:        project,
 			Issue:          issue,
 			HasIssue:       true,
-			BackHref:       "/bradley/issues/TRACK-7",
-			BackHXGet:      "/bradley/issues/TRACK-7/panel",
-			BackLabel:      "Issue",
 			ContextOptions: []uiProjectContextOption{{Value: "Agent notes"}},
 		}
 	}
@@ -139,10 +137,13 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	}
 
 	emptyBody := renderManager(base())
-	for _, want := range []string{"Context", "No context attached.", "Add context to this issue", `aria-label="Breadcrumb"`, `href="/projects"`, `href="/bradley/projects/TRACK/all"`, `aria-current="page"`, `aria-label="Add issue context"`, `aria-label="Attach project context"`, `aria-label="Back to issue"`, `hx-push-url="/bradley/issues/TRACK-7/context/new"`, `hx-push-url="/bradley/issues/TRACK-7/context/link"`} {
+	for _, want := range []string{"Context", "No context attached.", "Add context to this issue", `aria-label="Breadcrumb"`, `href="/projects"`, `href="/bradley/projects/TRACK/all"`, `href="/bradley/issues/TRACK-7" hx-get="/bradley/issues/TRACK-7/panel"`, `aria-current="page"`, `>Context</span>`, `aria-label="Add issue context"`, `aria-label="Attach project context"`, `hx-push-url="/bradley/issues/TRACK-7/context/new"`, `hx-push-url="/bradley/issues/TRACK-7/context/link"`, `class="min-w-0 self-start overflow-hidden`} {
 		if !strings.Contains(emptyBody, want) {
 			t.Fatalf("empty issue context manager missing %q: %s", want, emptyBody)
 		}
+	}
+	if strings.Contains(emptyBody, `aria-label="Back to issue"`) || strings.Contains(emptyBody, `data-lucide="arrow-left"`) {
+		t.Fatalf("issue context manager should use the breadcrumb instead of a header back button: %s", emptyBody)
 	}
 	breadcrumbIndex := strings.Index(emptyBody, `aria-label="Breadcrumb"`)
 	headerIndex := strings.Index(emptyBody, `<header class="rounded-lg`)
@@ -229,6 +230,22 @@ func TestUIContextManagerPanelRendersIssueStates(t *testing.T) {
 	for _, want := range []string{"Use the compact path.", `aria-current="page"`, `aria-label="Edit context"`, `aria-label="Remove context"`} {
 		if !strings.Contains(viewBody, want) {
 			t.Fatalf("issue context view state missing %q: %s", want, viewBody)
+		}
+	}
+
+	projectViewPanel := viewPanel
+	projectViewPanel.ActiveContext.Scope = model.ProjectContextScopeProject
+	projectViewPanel.ActiveContext.ContentType = "text/markdown; charset=utf-8"
+	projectViewPanel.ActiveHTML = template.HTML("<p>Shared guidance.</p>")
+	projectViewBody := renderManager(projectViewPanel)
+	for _, want := range []string{"Shared guidance.", `aria-label="Remove context"`} {
+		if !strings.Contains(projectViewBody, want) {
+			t.Fatalf("linked project context view missing %q: %s", want, projectViewBody)
+		}
+	}
+	for _, notWant := range []string{`aria-label="Edit context"`, `aria-label="Save context"`, `/context/context-1/edit`} {
+		if strings.Contains(projectViewBody, notWant) {
+			t.Fatalf("linked project context should be read-only, found %q: %s", notWant, projectViewBody)
 		}
 	}
 
