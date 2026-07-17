@@ -170,7 +170,7 @@ func (r markdownRenderer) renderFallbackImageLink(w util.BufWriter, href, alt st
 	}
 	_, _ = w.WriteString(`<a href="`)
 	_, _ = w.WriteString(html.EscapeString(href))
-	_ = w.WriteByte('"')
+	_, _ = w.WriteString(`" rel="noreferrer" referrerpolicy="no-referrer"`)
 	if len(title) > 0 {
 		_, _ = w.WriteString(` title="`)
 		_, _ = w.WriteString(html.EscapeString(string(title)))
@@ -226,15 +226,13 @@ func safeMarkdownImageURL(raw string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if u.Scheme == "" {
-		return trimmed, strings.HasPrefix(trimmed, "/")
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "http", "https":
-		return trimmed, true
-	default:
+	if u.Scheme != "" || u.Host != "" {
 		return "", false
 	}
+	if !strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, `/\`) {
+		return "", false
+	}
+	return trimmed, true
 }
 
 func markdownPlainText(node ast.Node, source []byte) string {

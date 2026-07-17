@@ -31,6 +31,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"initials":                       uiInitials,
 	"projectBreadcrumb":              uiProjectBreadcrumb,
 	"issueBreadcrumb":                uiIssueBreadcrumb,
+	"issueContextBreadcrumb":         uiIssueContextBreadcrumb,
 	"userAvatar":                     uiUserAvatar,
 	"profileImagePicker":             uiProfileImagePicker,
 	"byteSize":                       uiByteSize,

@@ -1,5 +1,18 @@
 (() => {
   const createIcons = () => window.lucide && window.lucide.createIcons();
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
+  const csrfHeaders = (headers = {}) => csrfToken ? { ...headers, "X-CSRF-Token": csrfToken } : headers;
+  const ensureCSRFFormToken = (form) => {
+    if (!(form instanceof HTMLFormElement) || !csrfToken || ["get", "dialog"].includes((form.method || "get").toLowerCase())) return;
+    let input = form.querySelector('input[name="csrf_token"]');
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "csrf_token";
+      form.appendChild(input);
+    }
+    input.value = csrfToken;
+  };
   const escapeHTML = (value) => String(value || "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
     "<": "&lt;",
@@ -24,6 +37,101 @@
       if (value < 1024) return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
     }
     return `${(value / 1024).toFixed(0)} PB`;
+  };
+  const tooltipSelector = "[data-tooltip], button[aria-label], a[aria-label], summary[aria-label], label[aria-label], input[type='button'][aria-label], input[type='submit'][aria-label]";
+  let appTooltip = null;
+  let activeTooltipTarget = null;
+  let tooltipFrame = null;
+  let previousTooltipDescription = null;
+  const ensureAppTooltip = () => {
+    if (appTooltip) return appTooltip;
+    appTooltip = document.createElement("div");
+    appTooltip.id = "app-tooltip";
+    appTooltip.setAttribute("role", "tooltip");
+    appTooltip.setAttribute("data-app-tooltip", "");
+    appTooltip.hidden = true;
+    document.body.appendChild(appTooltip);
+    return appTooltip;
+  };
+  const textNodeIsVisible = (node, control) => {
+    let element = node.parentElement;
+    while (element && control.contains(element)) {
+      const style = window.getComputedStyle(element);
+      if (
+        element.getAttribute("aria-hidden") === "true"
+        || style.display === "none"
+        || style.visibility === "hidden"
+        || Number(style.opacity) === 0
+        || style.clip === "rect(0px, 0px, 0px, 0px)"
+        || style.clipPath === "inset(50%)"
+      ) return false;
+      if (element === control) break;
+      element = element.parentElement;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    return Array.from(range.getClientRects()).some((rect) => rect.width > 0 && rect.height > 0);
+  };
+  const hasVisibleControlText = (control) => {
+    const walker = document.createTreeWalker(control, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node.textContent.trim() && textNodeIsVisible(node, control)) return true;
+      node = walker.nextNode();
+    }
+    return false;
+  };
+  const closestTooltipTarget = (source) => source instanceof Element ? source.closest(tooltipSelector) : null;
+  const tooltipTargetFor = (source) => {
+    const target = closestTooltipTarget(source);
+    if (!target || target.hasAttribute("data-tooltip-disabled") || hasVisibleControlText(target)) return null;
+    const label = (target.getAttribute("data-tooltip") || target.getAttribute("aria-label") || "").trim();
+    return label ? { target, label } : null;
+  };
+  const restoreTooltipDescription = (target) => {
+    if (!target) return;
+    if (previousTooltipDescription === null) {
+      target.removeAttribute("aria-describedby");
+    } else {
+      target.setAttribute("aria-describedby", previousTooltipDescription);
+    }
+    previousTooltipDescription = null;
+  };
+  const hideAppTooltip = () => {
+    if (tooltipFrame !== null) {
+      window.cancelAnimationFrame(tooltipFrame);
+      tooltipFrame = null;
+    }
+    if (activeTooltipTarget) {
+      activeTooltipTarget.removeAttribute("data-app-tooltip-target");
+      restoreTooltipDescription(activeTooltipTarget);
+    }
+    activeTooltipTarget = null;
+    if (!appTooltip) return;
+    appTooltip.removeAttribute("data-visible");
+    appTooltip.hidden = true;
+  };
+  const showAppTooltip = (match) => {
+    if (!match) return;
+    const tooltip = ensureAppTooltip();
+    if (activeTooltipTarget === match.target) {
+      tooltip.textContent = match.label;
+      return;
+    }
+    hideAppTooltip();
+    activeTooltipTarget = match.target;
+    previousTooltipDescription = match.target.getAttribute("aria-describedby");
+    const descriptions = new Set((previousTooltipDescription || "").split(/\s+/).filter(Boolean));
+    descriptions.add(tooltip.id);
+    match.target.setAttribute("aria-describedby", Array.from(descriptions).join(" "));
+    match.target.setAttribute("data-app-tooltip-target", "");
+    tooltip.textContent = match.label;
+    tooltip.hidden = false;
+    tooltip.removeAttribute("data-visible");
+    tooltipFrame = window.requestAnimationFrame(() => {
+      tooltipFrame = null;
+      if (activeTooltipTarget === match.target) tooltip.setAttribute("data-visible", "");
+    });
   };
   const resizeTextarea = (textarea) => {
     const minRows = Number.parseInt(textarea.dataset.autogrowMinRows || textarea.getAttribute("rows") || "2", 10);
@@ -64,6 +172,12 @@
     if (!panel) return;
     panel.hidden = !open;
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    const label = toggle.querySelector("[data-disclosure-label]");
+    if (label) {
+      const text = open ? "Hide issues" : "Show issues";
+      label.textContent = text;
+      toggle.setAttribute("aria-label", text);
+    }
     syncDisclosureIcon(toggle, open);
   };
   let clientModalTrigger = null;
@@ -167,7 +281,7 @@
         method: "POST",
         body: data,
         credentials: "same-origin",
-        headers: { "Accept": "application/json" },
+        headers: csrfHeaders({ "Accept": "application/json" }),
       });
       if (!res.ok) {
         let message = "Attachment upload failed.";
@@ -329,7 +443,7 @@
     const res = await fetch(url, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      headers: csrfHeaders({ "Accept": "application/json", "Content-Type": "application/json" }),
       body: JSON.stringify(payload || {}),
     });
     let body = null;
@@ -672,12 +786,17 @@
     changelogSocket = socket;
     socket.addEventListener("open", () => {
       socket.send(JSON.stringify({ action: "subscribe", topic: activeTopic }));
+      scheduleChangelogRefresh(panel);
     });
     socket.addEventListener("message", (event) => {
       let msg;
       try {
         msg = JSON.parse(event.data);
       } catch (_) {
+        return;
+      }
+      if (msg && msg.type === "resync") {
+        scheduleChangelogRefresh(panel);
         return;
       }
       if (msg && msg.entity === "project_changelog" && msg.project_id === panel.dataset.projectId) {
@@ -711,7 +830,12 @@
     const state = mainContent ? mainContent.querySelector("[data-sidebar-view]") : null;
     setActiveNav(sidebarLinkForState(state));
   };
+  document.body.addEventListener("htmx:configRequest", (event) => {
+    if (csrfToken) event.detail.headers["X-CSRF-Token"] = csrfToken;
+  });
+  document.body.addEventListener("submit", (event) => ensureCSRFFormToken(event.target), true);
   document.body.addEventListener("htmx:beforeRequest", (event) => {
+    hideAppTooltip();
     rememberIssueListControls(event.target);
     const link = event.target.closest("[data-sidebar-link]");
     if (link) {
@@ -790,14 +914,39 @@
   });
   document.body.addEventListener("focusin", (event) => {
     if (!(event.target instanceof Element)) return;
+    showAppTooltip(tooltipTargetFor(event.target));
     const input = event.target.closest("[data-search-input]");
     if (!input) return;
     const search = input.closest("[data-search]");
     filterSearchOptions(input);
     setSearchOptionsOpen(search, !!search && !search.hasAttribute("data-project-search"));
   });
+  document.body.addEventListener("focusout", (event) => {
+    const target = closestTooltipTarget(event.target);
+    if (!target || activeTooltipTarget !== target) return;
+    window.queueMicrotask(() => {
+      if (activeTooltipTarget !== target) return;
+      if (target.matches(":hover") || target.contains(document.activeElement)) return;
+      hideAppTooltip();
+    });
+  });
+  document.body.addEventListener("pointerover", (event) => {
+    if (event.pointerType === "touch") return;
+    const match = tooltipTargetFor(event.target);
+    if (!match) return;
+    if (event.relatedTarget instanceof Node && match.target.contains(event.relatedTarget)) return;
+    showAppTooltip(match);
+  });
+  document.body.addEventListener("pointerout", (event) => {
+    const target = closestTooltipTarget(event.target);
+    if (!target || activeTooltipTarget !== target) return;
+    if (event.relatedTarget instanceof Node && target.contains(event.relatedTarget)) return;
+    if (target.contains(document.activeElement)) return;
+    hideAppTooltip();
+  });
   document.body.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
+    hideAppTooltip();
     const modalOpen = event.target.closest("[data-modal-open]");
     if (modalOpen) {
       event.preventDefault();
@@ -832,7 +981,7 @@
       const list = removeAttachment.closest("[data-attachment-list][data-attachment-editing]");
       if (list && removeAttachment.dataset.attachmentDeleteUrl) {
         event.preventDefault();
-        fetch(removeAttachment.dataset.attachmentDeleteUrl, { method: "DELETE", credentials: "same-origin" }).then((res) => {
+        fetch(removeAttachment.dataset.attachmentDeleteUrl, { method: "DELETE", credentials: "same-origin", headers: csrfHeaders() }).then((res) => {
           if (!res.ok) return;
           const row = removeAttachment.closest("[data-attachment-ref]");
           if (row) row.remove();
@@ -898,12 +1047,14 @@
     if (form.requestSubmit) {
       form.requestSubmit();
     } else {
+      ensureCSRFFormToken(form);
       form.submit();
     }
   });
   document.body.addEventListener("keydown", (event) => {
     if (!(event.target instanceof Element)) return;
     if (event.key === "Escape") {
+      hideAppTooltip();
       const modal = document.querySelector("[data-client-modal]:not(.hidden)");
       if (modal) {
         event.preventDefault();
@@ -920,6 +1071,7 @@
     if (form.requestSubmit) {
       form.requestSubmit();
     } else {
+      ensureCSRFFormToken(form);
       form.submit();
     }
   });

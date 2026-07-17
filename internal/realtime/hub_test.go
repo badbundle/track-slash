@@ -8,7 +8,10 @@ import (
 )
 
 func newTestClient(buffer int) *Client {
-	return &Client{send: make(chan Event, buffer)}
+	return &Client{
+		send:    make(chan Event, buffer),
+		control: make(chan serverControl, 1),
+	}
 }
 
 func recv(t *testing.T, c *Client, timeout time.Duration) (Event, bool) {
@@ -493,14 +496,14 @@ func TestHubDeduplicatesAcrossTopics(t *testing.T) {
 	}
 }
 
-func TestHubDropsForSlowConsumer(t *testing.T) {
+func TestHubSignalsResyncWhenSlowConsumerOverflows(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
 
-	slow := newTestClient(1)
+	slow := newTestClient(sendBuffer)
 	hub.Subscribe(slow, ProjectTopic(projectID))
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < sendBuffer+5; i++ {
 		hub.Publish(Event{
 			Op:        OpInsert,
 			Entity:    EntityIssue,
@@ -510,8 +513,39 @@ func TestHubDropsForSlowConsumer(t *testing.T) {
 		})
 	}
 
-	if got := hub.Dropped(); got != 4 {
-		t.Fatalf("dropped = %d, want 4", got)
+	if got := hub.Dropped(); got != 5 {
+		t.Fatalf("dropped = %d, want 5", got)
+	}
+	if got := len(slow.send); got != sendBuffer {
+		t.Fatalf("queued events = %d, want %d", got, sendBuffer)
+	}
+	if got := len(slow.control); got != 1 {
+		t.Fatalf("queued controls = %d, want one coalesced resync", got)
+	}
+	msg := <-slow.control
+	if msg.Type != resyncMessageType || msg.Reason != resyncOverflow {
+		t.Fatalf("control = %#v, want overflow resync", msg)
+	}
+}
+
+func TestHubResyncAllDeduplicatesClientsAndCoalescesSignals(t *testing.T) {
+	hub := NewHub()
+	client := newTestClient(1)
+	hub.Subscribe(client, ProjectTopic(uuid.New()))
+	hub.Subscribe(client, IssueTopic(uuid.New()))
+
+	hub.ResyncAll(resyncListener)
+	hub.ResyncAll(resyncOverflow)
+	if got := len(client.control); got != 1 {
+		t.Fatalf("queued controls = %d, want one coalesced resync", got)
+	}
+	if msg := <-client.control; msg.Type != resyncMessageType || msg.Reason != resyncListener {
+		t.Fatalf("first control = %#v", msg)
+	}
+
+	hub.ResyncAll(resyncOverflow)
+	if msg := <-client.control; msg.Type != resyncMessageType || msg.Reason != resyncOverflow {
+		t.Fatalf("second control = %#v", msg)
 	}
 }
 

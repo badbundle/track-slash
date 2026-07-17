@@ -8,9 +8,10 @@ import (
 // Hub fans events out from the single Postgres listener to the set of
 // WebSocket clients that have subscribed to matching topics.
 //
-// Publish is non-blocking per client: if a client's send buffer is full
-// the event is dropped for that client and a counter is incremented.
-// This prevents one slow consumer from stalling the listener.
+// Publish is non-blocking per client: if a client's send buffer is full,
+// the event is dropped and a separate recovery control tells that client to
+// refetch authoritative state. This prevents one slow consumer from stalling
+// the listener without allowing it to diverge silently.
 type Hub struct {
 	mu      sync.RWMutex
 	topics  map[string]map[*Client]struct{}
@@ -83,7 +84,33 @@ func (h *Hub) Publish(ev Event) {
 		case c.send <- ev:
 		default:
 			h.dropped.Add(1)
+			c.requestResync(resyncOverflow)
 		}
+	}
+}
+
+// ResyncAll tells every subscribed client to refetch authoritative state.
+// Controls use a separate one-slot channel, so the signal still reaches a
+// client whose event queue is full and repeated signals are coalesced.
+func (h *Hub) ResyncAll(reason string) {
+	h.mu.RLock()
+	clients := make(map[*Client]struct{})
+	for _, set := range h.topics {
+		for c := range set {
+			clients[c] = struct{}{}
+		}
+	}
+	h.mu.RUnlock()
+
+	for c := range clients {
+		c.requestResync(reason)
+	}
+}
+
+func (c *Client) requestResync(reason string) {
+	select {
+	case c.control <- serverControl{Type: resyncMessageType, Reason: reason}:
+	default:
 	}
 }
 

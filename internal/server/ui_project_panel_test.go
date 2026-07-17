@@ -287,7 +287,10 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 		"Undated legacy sprint",
 		"No scheduled dates",
 		"Completion date unavailable",
-		`aria-label="Toggle sprint issues"`,
+		`aria-label="Show issues"`,
+		`data-disclosure-label>Show issues</span>`,
+		`class="grid grid-cols-[minmax(0,1fr)_auto] items-start`,
+		`class="flex justify-end border-t`,
 		`aria-controls="completed-sprint-sprint-7-issues"`,
 		`hx-get="/bradley/projects/TRACK/sprints/sprint-7/history/issues"`,
 		`hx-trigger="click once"`,
@@ -317,8 +320,9 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 	firstCard := strings.Index(body, historyCard)
 	firstHeaderEnd := strings.Index(body[firstCard:], "</header>")
 	description := strings.Index(body[firstCard:], `id="sprint-sprint-7-description"`)
-	if firstCard < 0 || firstHeaderEnd < 0 || description < 0 || description > firstHeaderEnd {
-		t.Fatalf("sprint description should render in the card header: card=%d header=%d description=%d body=%s", firstCard, firstHeaderEnd, description, body)
+	footer := strings.Index(body[firstCard:], "<footer")
+	if firstCard < 0 || firstHeaderEnd < 0 || description < 0 || footer < 0 || description < firstHeaderEnd || description > footer {
+		t.Fatalf("sprint description should render full-width between the card header and footer: card=%d header=%d description=%d footer=%d body=%s", firstCard, firstHeaderEnd, description, footer, body)
 	}
 	for _, notWant := range []string{"Visible **sprint direction**", `aria-label="Edit sprint"`, `aria-label="Add issue to sprint"`} {
 		if strings.Contains(body, notWant) {
@@ -757,13 +761,10 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		UpdatedAt:   when,
 	}
 	manager := &uiContextManagerData{
-		CanWrite:  true,
-		Mode:      "project",
-		Project:   project,
-		BackHref:  "/bradley/projects/TRACK/about",
-		BackHXGet: "/bradley/projects/TRACK/about/panel",
-		BackLabel: "About",
-		Items:     []uiContextManagerItem{managerItem},
+		CanWrite: true,
+		Mode:     "project",
+		Project:  project,
+		Items:    []uiContextManagerItem{managerItem},
 	}
 	body = renderManager(manager)
 	for _, want := range []string{"Context", "Architecture notes", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/edit"`, `aria-label="Delete context"`} {
@@ -1001,6 +1002,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"AL",
 		"GH",
 		"Ship filtering",
+		`data-sprint-ref`,
+		`>sprint-1</span>`,
 		"Todo count issue",
 		"#Sprint Visible",
 		"border-green-200 bg-green-50 text-green-700",
@@ -1015,6 +1018,9 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing %q: %s", want, body)
 		}
+	}
+	if got := strings.Count(body, `data-sprint-ref`); got != 1 {
+		t.Fatalf("active sprint ref badges = %d, want 1: %s", got, body)
 	}
 	filterIdx := strings.Index(body, `aria-label="Issue controls"`)
 	tabIdx := strings.Index(body, `aria-label="Project views"`)

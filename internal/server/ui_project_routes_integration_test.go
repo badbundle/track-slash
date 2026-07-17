@@ -233,12 +233,18 @@ func TestUIProjectSprintHistory(t *testing.T) {
 		`aria-current="page"`,
 		newest.Name,
 		older.Name,
+		`data-sprint-ref`,
+		`>` + newest.Ref + `</span>`,
+		`>` + older.Ref + `</span>`,
 		"Jun 1-Jun 14, 2026",
 		"Completed Jul 3, 2026 10:00",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint history missing %q: %s", want, body)
 		}
+	}
+	if got := strings.Count(body, `data-sprint-ref`); got != 2 {
+		t.Fatalf("historical sprint ref badges = %d, want 2: %s", got, body)
 	}
 	requireMarkupOrder(t, body, newest.Name, older.Name)
 	requireMarkupOrder(t, body, `href="`+e.projectPath()+`/sprints"`, `href="`+e.projectPath()+`/changelog"`)
@@ -361,7 +367,8 @@ func TestUIProjectSprintHistoryExpandsSnapshotIssues(t *testing.T) {
 	issuesPath := e.projectPath() + "/sprints/" + completed.Ref + "/history/issues"
 	descriptionPath := e.projectPath() + "/sprints/" + completed.Ref + "/description"
 	for _, want := range []string{
-		`aria-label="Toggle sprint issues"`,
+		`aria-label="Show issues"`,
+		`data-disclosure-label>Show issues</span>`,
 		`aria-controls="completed-sprint-` + completed.Ref + `-issues"`,
 		`hx-get="` + issuesPath + `"`,
 		`hx-trigger="click once"`,

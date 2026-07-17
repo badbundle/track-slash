@@ -31,6 +31,9 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 			"<script>alert('x')</script>",
 			"![External](https://example.com/image.png)",
 			"![External SVG](https://news.ycombinator.com/y18.svg)",
+			"![Protocol relative](//tracker.example/pixel.png)",
+			"![Local](/static/logo.png)",
+			"[External docs](https://example.com/docs)",
 			"![Data URI](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)",
 		}, "\n\n"),
 	}
@@ -45,11 +48,14 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 		"<strong>Bold</strong>",
 		`<img src="/bradley/issues/TRACK-7/attachments/object-1/content?inline=1" alt="Screenshot">`,
 		`<a href="/bradley/issues/TRACK-7/attachments/object-2/content">Download log</a>`,
-		`<a href="/bradley/issues/TRACK-7/attachments/object-3/content">Vector</a>`,
+		`<a href="/bradley/issues/TRACK-7/attachments/object-3/content" rel="noreferrer" referrerpolicy="no-referrer">Vector</a>`,
 		"Missing",
 		"Unsafe",
-		`<img src="https://example.com/image.png" alt="External">`,
-		`<img src="https://news.ycombinator.com/y18.svg" alt="External SVG">`,
+		`<a href="https://example.com/image.png" rel="noreferrer" referrerpolicy="no-referrer">External</a>`,
+		`<a href="https://news.ycombinator.com/y18.svg" rel="noreferrer" referrerpolicy="no-referrer">External SVG</a>`,
+		`<a href="//tracker.example/pixel.png" rel="noreferrer" referrerpolicy="no-referrer">Protocol relative</a>`,
+		`<img src="/static/logo.png" alt="Local">`,
+		`<a href="https://example.com/docs">External docs</a>`,
 		"Data URI",
 	} {
 		if !strings.Contains(out, want) {
@@ -60,7 +66,9 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 		"<script",
 		"javascript:",
 		`<img src="/bradley/issues/TRACK-7/attachments/object-3/content`,
-		`<a href="https://example.com/image.png">External</a>`,
+		`<img src="https://example.com/image.png"`,
+		`<img src="https://news.ycombinator.com/y18.svg"`,
+		`<img src="//tracker.example/pixel.png"`,
 		"data:image",
 		`object-99/content`,
 	} {
@@ -68,7 +76,7 @@ func TestRenderIssueDescriptionMarkdownResolvesIssueAttachmentsSafely(t *testing
 			t.Fatalf("markdown output included %q: %s", notWant, out)
 		}
 	}
-	if strings.Count(out, "<img ") != 3 {
+	if strings.Count(out, "<img ") != 2 {
 		t.Fatalf("inline image count = %d output=%s", strings.Count(out, "<img "), out)
 	}
 }
@@ -77,6 +85,34 @@ func TestRenderIssueDescriptionMarkdownEmptySource(t *testing.T) {
 	t.Parallel()
 	if got := renderIssueDescriptionMarkdown(model.Issue{Description: " \n\t "}, nil); got != "" {
 		t.Fatalf("empty markdown = %q, want empty", got)
+	}
+}
+
+func TestSafeMarkdownImageURLAllowsOnlySameOriginAbsolutePaths(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		raw  string
+		want string
+		ok   bool
+	}{
+		{name: "same-origin path", raw: "/attachments/object-1/content", want: "/attachments/object-1/content", ok: true},
+		{name: "same-origin path with query", raw: " /image?id=1 ", want: "/image?id=1", ok: true},
+		{name: "empty", raw: ""},
+		{name: "malformed", raw: "%"},
+		{name: "external HTTPS", raw: "https://tracker.example/pixel.png"},
+		{name: "protocol relative", raw: "//tracker.example/pixel.png"},
+		{name: "backslash network path", raw: `/\tracker.example/pixel.png`},
+		{name: "relative path", raw: "images/pixel.png"},
+		{name: "fragment", raw: "#pixel"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := safeMarkdownImageURL(tt.raw)
+			if got != tt.want || ok != tt.ok {
+				t.Fatalf("safeMarkdownImageURL(%q) = %q, %v; want %q, %v", tt.raw, got, ok, tt.want, tt.ok)
+			}
+		})
 	}
 }
 
@@ -137,7 +173,7 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 		"<th>Name</th>",
 		"<td>One</td>",
 		`<a href="/docs">Docs</a>`,
-		`<img src="https://example.com/image.png" alt="External">`,
+		`<a href="https://example.com/image.png" rel="noreferrer" referrerpolicy="no-referrer">External</a>`,
 		"Unsafe",
 		"Object",
 		"Object image",
@@ -151,6 +187,7 @@ func TestRenderProjectDescriptionMarkdownSafely(t *testing.T) {
 	for _, notWant := range []string{
 		"<script",
 		"javascript:",
+		`<img src="https://example.com/image.png"`,
 		`<a href="object-1"`,
 		`<img src="object-2"`,
 	} {

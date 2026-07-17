@@ -15,7 +15,10 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 )
 
-const rawTokenBytes = 32
+const (
+	rawTokenBytes               = 32
+	authTokenUsageWriteInterval = 5 * time.Minute
+)
 
 type AuthenticatedToken struct {
 	User  model.User
@@ -102,10 +105,13 @@ func (s *Store) AuthenticateToken(ctx context.Context, raw string) (Authenticate
 		id := profileThumbnailID.UUID
 		out.User.ProfileImageThumbnailObjectID = &id
 	}
-	if _, err := s.db.Exec(ctx, `UPDATE auth_tokens SET last_used_at = now() WHERE id = $1`, out.Token.ID); err != nil {
-		// Defensive: token row was just read; failure here is a DB/runtime fault.
-		return AuthenticatedToken{}, err
-	}
+	// Usage tracking is best-effort: a non-critical audit write must not reject an otherwise valid token.
+	_, _ = s.db.Exec(ctx, `
+		UPDATE auth_tokens
+		SET last_used_at = now()
+		WHERE id = $1
+		  AND (last_used_at IS NULL OR last_used_at < now() - make_interval(secs => $2))
+	`, out.Token.ID, authTokenUsageWriteInterval.Seconds())
 	return out, nil
 }
 

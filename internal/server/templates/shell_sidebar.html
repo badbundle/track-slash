@@ -1,7 +1,7 @@
 {{define "shell-sidebar"}}
     <aside id="app-sidebar" data-mobile-sidebar aria-hidden="true" inert class="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-visible border-r border-slate-200 bg-white transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900 md:static md:z-auto md:max-w-none md:transition-all">
       <div class="sidebar-head flex h-14 items-center gap-3 border-b border-slate-200 px-4 dark:border-slate-800">
-        <label for="sidebar-toggle" class="hidden h-6 w-6 shrink-0 cursor-pointer place-items-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 md:grid" title="Toggle sidebar"><i data-lucide="menu" class="h-3.5 w-3.5" aria-hidden="true"></i></label>
+        <label for="sidebar-toggle" aria-label="Toggle sidebar" class="hidden h-6 w-6 shrink-0 cursor-pointer place-items-center text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 md:grid"><i data-lucide="menu" class="h-3.5 w-3.5" aria-hidden="true"></i></label>
         <div class="wide-only min-w-0">
           <div class="truncate text-sm font-semibold">track-slash</div>
         </div>
@@ -19,7 +19,7 @@
             <span class="block truncate font-medium">Create issue</span>
           </span>
         </a>
-        <a data-nav-link data-sidebar-link data-sidebar-view="me" href="/me" hx-get="/me/panel" hx-target="#main" hx-push-url="/me" {{if eq .SidebarActive.View "me"}}aria-current="page"{{end}} class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .SidebarActive.View "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link data-sidebar-link data-sidebar-view="me" href="/me" hx-get="/me/panel" hx-target="#main" hx-push-url="/me" aria-label="Me" {{if eq .SidebarActive.View "me"}}aria-current="page"{{end}} class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .SidebarActive.View "me"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="user" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -28,7 +28,7 @@
             <span class="block truncate font-medium">Me</span>
           </span>
         </a>
-        <a data-nav-link data-sidebar-link data-sidebar-view="projects" href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" {{if eq .SidebarActive.View "projects"}}aria-current="page"{{end}} class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .SidebarActive.View "projects"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+        <a data-nav-link data-sidebar-link data-sidebar-view="projects" href="/projects" hx-get="/projects/panel" hx-target="#main" hx-push-url="/projects" aria-label="Projects" {{if eq .SidebarActive.View "projects"}}aria-current="page"{{end}} class="mb-1 flex items-center gap-3 rounded-lg px-2 py-2 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq .SidebarActive.View "projects"}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
           <span data-nav-icon-slot class="grid h-6 w-6 shrink-0 place-items-center text-slate-500 dark:text-slate-400">
             <i data-nav-icon data-lucide="folder" class="h-3.5 w-3.5" aria-hidden="true"></i>
             <span data-nav-loader class="hidden h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true"></span>
@@ -41,8 +41,10 @@
       </nav>
 
       <details data-close-on-outside class="relative border-t border-slate-200 p-2 dark:border-slate-800">
-        <summary data-member-summary class="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800" title="Account menu">
-          {{template "user-avatar" (userAvatar .User "grid h-9 w-9 shrink-0 place-items-center bg-indigo-600 text-xs font-bold text-white")}}
+        <summary data-member-summary aria-label="Account menu" class="flex cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <span aria-hidden="true" class="pointer-events-none">
+            {{template "user-avatar" (userAvatar .User "grid h-9 w-9 shrink-0 place-items-center bg-indigo-600 text-xs font-bold text-white")}}
+          </span>
           <span data-member-label class="wide-only min-w-0">
             <span class="block truncate text-sm font-medium">{{.User.Name}}</span>
             <span class="block truncate text-xs text-slate-500 dark:text-slate-400">{{.User.Email}}</span>
@@ -63,8 +65,10 @@
 {{define "sidebar-favorites"}}
 <div id="sidebar-favorites" {{if .OOB}}hx-swap-oob="true"{{end}} class="{{if .Projects}}mb-2 mt-2 space-y-1 border-t border-slate-200 pt-2 dark:border-slate-800{{else}}hidden{{end}}">
   {{range .Projects}}
-  <a data-sidebar-favorite data-sidebar-link data-sidebar-view="project" data-sidebar-project-id="{{.ID}}" href="{{projectView . "sprint"}}" hx-get="{{projectPanel . "sprint"}}" hx-target="#main" hx-push-url="{{projectView . "sprint"}}" title="{{.Name}}" {{if eq $.ActiveProjectID .ID}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-2 py-1.5 text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq $.ActiveProjectID .ID}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
-    {{template "project-icon" (projectIcon . "grid h-6 w-6 shrink-0 place-items-center border border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300")}}
+  <a data-sidebar-favorite data-sidebar-link data-sidebar-view="project" data-sidebar-project-id="{{.ID}}" href="{{projectView . "sprint"}}" hx-get="{{projectPanel . "sprint"}}" hx-target="#main" hx-push-url="{{projectView . "sprint"}}" aria-label="{{.Name}}" {{if eq $.ActiveProjectID .ID}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-2 py-1.5 text-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 {{if eq $.ActiveProjectID .ID}}bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-900{{else}}text-slate-600 dark:text-slate-300{{end}}">
+    <span aria-hidden="true" class="pointer-events-none">
+      {{template "project-icon" (projectIcon . "grid h-6 w-6 shrink-0 place-items-center border border-slate-200 bg-slate-100 text-[10px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300")}}
+    </span>
     <span class="wide-only min-w-0">
       <span class="block truncate font-medium">{{.Name}}</span>
       <span class="block truncate text-[11px] text-slate-400 dark:text-slate-500">{{.Key}}</span>

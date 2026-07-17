@@ -11,9 +11,12 @@ import (
 )
 
 const (
-	sendBuffer       = 64
-	writeTimeout     = 5 * time.Second
-	readMessageLimit = 1 << 14 // 16 KiB; control frames are tiny
+	sendBuffer        = 64
+	writeTimeout      = 5 * time.Second
+	readMessageLimit  = 1 << 14 // 16 KiB; control frames are tiny
+	resyncMessageType = "resync"
+	resyncOverflow    = "overflow"
+	resyncListener    = "listener_reconnected"
 )
 
 // Client wraps a single WebSocket connection. The read pump handles
@@ -24,6 +27,7 @@ type Client struct {
 	hub       *Hub
 	authorize TopicAuthorizer
 	send      chan Event
+	control   chan serverControl
 }
 
 func newClient(conn *websocket.Conn, hub *Hub, authorize TopicAuthorizer) *Client {
@@ -33,6 +37,7 @@ func newClient(conn *websocket.Conn, hub *Hub, authorize TopicAuthorizer) *Clien
 		hub:       hub,
 		authorize: authorize,
 		send:      make(chan Event, sendBuffer),
+		control:   make(chan serverControl, 1),
 	}
 }
 
@@ -43,6 +48,11 @@ type controlMsg struct {
 
 type serverError struct {
 	Error string `json:"error"`
+}
+
+type serverControl struct {
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
 }
 
 // run blocks until either pump exits, then tears down. It is called
@@ -99,9 +109,24 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 	defer pingTicker.Stop()
 
 	for {
+		// Recovery controls take priority over queued events so a slow client
+		// learns that it must refetch before consuming more incremental state.
+		select {
+		case msg := <-c.control:
+			if err := c.writeJSON(ctx, msg); err != nil {
+				return
+			}
+			continue
+		default:
+		}
+
 		select {
 		case <-ctx.Done():
 			return
+		case msg := <-c.control:
+			if err := c.writeJSON(ctx, msg); err != nil {
+				return
+			}
 		case ev, ok := <-c.send:
 			if !ok {
 				return
