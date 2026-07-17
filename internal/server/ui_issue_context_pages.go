@@ -186,6 +186,10 @@ func (s *Server) uiEditIssueContext(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if contextItem.Scope != model.ProjectContextScopeIssue {
+		writeUIStoreError(w, store.ErrNotFound)
+		return
+	}
 	s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
 		panel.Action = "edit"
 		panel.ActiveContextID = contextItem.ID
@@ -202,6 +206,10 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 	}
 	contextItem, ok := s.uiIssueContextFromRoute(w, r, issue)
 	if !ok {
+		return
+	}
+	if contextItem.Scope != model.ProjectContextScopeIssue {
+		writeUIStoreError(w, store.ErrNotFound)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -226,13 +234,7 @@ func (s *Server) uiUpdateIssueContext(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	var body string
-	var bodyErr error
-	if contextItem.Scope == model.ProjectContextScopeProject {
-		body, bodyErr = validateProjectContextBody(bodyInput)
-	} else {
-		body, bodyErr = validateIssueContextBody(bodyInput)
-	}
+	body, bodyErr := validateIssueContextBody(bodyInput)
 	if bodyErr != nil {
 		s.renderUIIssueContextManager(w, r, issue.ID, func(panel *uiContextManagerData) {
 			panel.Action = "edit"

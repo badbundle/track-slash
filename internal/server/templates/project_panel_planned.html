@@ -61,6 +61,7 @@
                   <i data-disclosure-icon data-lucide="{{if $actionOpen}}chevron-up{{else}}chevron-down{{end}}" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <h3 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{sprintLabel $item.Sprint}}</h3>
+                {{template "sprint-ref" $item.Sprint.Ref}}
                 {{template "count-badge" (len $item.Issues)}}
               </div>
               {{with sprintDateRange $item.Sprint}}<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}

@@ -41,11 +41,13 @@ Project, issue, and sprint description Markdown may reference attached files by 
 
 Rendering resolves `object-N` only against attachments on the current project, issue, or sprint description. Missing, unattached, and cross-parent object refs render inert text instead of links or images.
 
-External Markdown image URLs render inline when they use `http` or `https`, for example:
+External Markdown image URLs do not render inline. They become inert, no-referrer links using their alt text, for example:
 
 ```markdown
 ![](https://news.ycombinator.com/y18.svg)
 ```
+
+This preserves an explicit path to the external resource without contacting it when a description is viewed. Attached safe images and single-slash same-origin image paths continue to render inline. Protocol-relative destinations such as `//tracker.example/pixel.png` are external and never render as images.
 
 The shared project/issue/sprint UI shows attachments below the description editor or expanded view. Safe images include a compact preview, and every row has a copy action for the Markdown snippet. Active, planned, and completed sprint-history views start with a vertically cropped, attachment-scoped Markdown preview and load full Markdown plus attachment rows through “See more”. Completed sprint-history attachment rows remain read-only.
 
@@ -112,7 +114,7 @@ Content responses stream bytes from the backend with stored content type, conten
 
 - Raw HTML in Markdown remains disabled.
 - Markdown links allow safe external URL schemes only, plus same-origin absolute paths and fragments.
-- Markdown images render inline only for attached safe images, same-origin absolute paths, or external `http`/`https` URLs. Unsafe schemes such as `javascript:`, `data:`, and `mailto:` do not render as images.
+- Markdown images render inline only for attached safe images or single-slash same-origin absolute paths. External `http`/`https` and protocol-relative destinations render as no-referrer links instead of images. Unsafe schemes such as `javascript:` and `data:` remain inert.
 - `object-N` refs never cross project, issue, or sprint description boundaries.
 - Context-page `object-N` refs resolve only against attachments on that context page, including when the page is viewed from an issue.
 - Inline rendering is limited to safe image content types; downloads use attachment disposition.

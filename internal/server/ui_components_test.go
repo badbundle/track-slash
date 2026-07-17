@@ -35,6 +35,31 @@ func TestUIPriorityBadgeRendersFilledCircle(t *testing.T) {
 	}
 }
 
+func TestUISprintRefBadgePreservesCanonicalReference(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "sprint-ref", "sprint-23"); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`data-sprint-ref`,
+		`shrink-0`,
+		`whitespace-nowrap`,
+		`font-mono`,
+		`dark:border-slate-700`,
+		`>sprint-23</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sprint ref badge missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "uppercase") {
+		t.Fatalf("sprint ref badge changes canonical casing: %s", body)
+	}
+}
+
 func TestUIIssueSummaryRowReflowsForNarrowScreens(t *testing.T) {
 	t.Parallel()
 
@@ -675,6 +700,29 @@ func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("shell missing client modal behavior %q", want)
+		}
+	}
+}
+
+func TestUIChangelogRealtimeRefetchesOnOpenAndResync(t *testing.T) {
+	t.Parallel()
+
+	body, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
+	}
+	for _, want := range []string{
+		`socket.addEventListener("open", () => {`,
+		`socket.send(JSON.stringify({ action: "subscribe", topic: activeTopic }));
+      scheduleChangelogRefresh(panel);`,
+		`if (msg && msg.type === "resync") {
+        scheduleChangelogRefresh(panel);
+        return;
+      }`,
+		`changelogReconnect = window.setTimeout(syncChangelogRealtime, 1000)`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("changelog recovery behavior missing %q", want)
 		}
 	}
 }

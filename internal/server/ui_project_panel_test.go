@@ -745,13 +745,10 @@ func TestUIProjectContextSurfacesRenderCompactAboutAndManagerRows(t *testing.T) 
 		UpdatedAt:   when,
 	}
 	manager := &uiContextManagerData{
-		CanWrite:  true,
-		Mode:      "project",
-		Project:   project,
-		BackHref:  "/bradley/projects/TRACK/about",
-		BackHXGet: "/bradley/projects/TRACK/about/panel",
-		BackLabel: "About",
-		Items:     []uiContextManagerItem{managerItem},
+		CanWrite: true,
+		Mode:     "project",
+		Project:  project,
+		Items:    []uiContextManagerItem{managerItem},
 	}
 	body = renderManager(manager)
 	for _, want := range []string{"Context", "Architecture notes", `aria-label="Link issue"`, `hx-get="/bradley/projects/TRACK/context/context-1/issues/new"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/issues/new"`, `aria-label="Edit context"`, `hx-push-url="/bradley/projects/TRACK/context/context-1/edit"`, `aria-label="Delete context"`} {
@@ -989,6 +986,8 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		"AL",
 		"GH",
 		"Ship filtering",
+		`data-sprint-ref`,
+		`>sprint-1</span>`,
 		"Todo count issue",
 		"#Sprint Visible",
 		"border-green-200 bg-green-50 text-green-700",
@@ -1003,6 +1002,9 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project panel missing %q: %s", want, body)
 		}
+	}
+	if got := strings.Count(body, `data-sprint-ref`); got != 1 {
+		t.Fatalf("active sprint ref badges = %d, want 1: %s", got, body)
 	}
 	filterIdx := strings.Index(body, `aria-label="Issue controls"`)
 	tabIdx := strings.Index(body, `aria-label="Project views"`)

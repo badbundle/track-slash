@@ -2,12 +2,15 @@ package server_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"github.com/google/uuid"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -25,7 +28,15 @@ func createAssignedIssueForUI(t *testing.T, e *httpEnv, title string, assigneeID
 	return issue
 }
 
-const uiCookieNameForTest = "track_slash_ui_token"
+const (
+	uiCookieNameForTest        = "track_slash_ui_token"
+	uiPreAuthCookieNameForTest = "track_slash_login_csrf"
+)
+
+func uiCSRFTokenForTest(purpose, secret string) string {
+	digest := sha256.Sum256([]byte("track-slash csrf " + purpose + ":" + secret))
+	return base64.RawURLEncoding.EncodeToString(digest[:])
+}
 
 func (e *httpEnv) uiGet(t *testing.T, path, token string) string {
 	t.Helper()
@@ -54,6 +65,9 @@ func (e *httpEnv) uiDoNoRedirectWithHeaders(t *testing.T, method, path, token st
 	}
 	if token != "" {
 		req.AddCookie(&http.Cookie{Name: uiCookieNameForTest, Value: token, Path: "/"})
+		if uiUnsafeMethodForTest(method) {
+			req.Header.Set("X-CSRF-Token", uiCSRFTokenForTest("session", token))
+		}
 	}
 	for key, value := range headers {
 		req.Header.Set(key, value)
@@ -65,6 +79,46 @@ func (e *httpEnv) uiDoNoRedirectWithHeaders(t *testing.T, method, path, token st
 	res, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	return res
+}
+
+func uiUnsafeMethodForTest(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return false
+	default:
+		return true
+	}
+}
+
+func (e *httpEnv) uiDoPreAuthForm(t *testing.T, path string, form url.Values) *http.Response {
+	t.Helper()
+	page := "/login"
+	if strings.HasPrefix(path, "/signup") {
+		page = "/signup"
+	}
+	seedResponse := e.uiDoNoRedirect(t, http.MethodGet, page, "", nil)
+	defer seedResponse.Body.Close()
+	if seedResponse.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s code = %d body = %s", page, seedResponse.StatusCode, readBody(t, seedResponse))
+	}
+	seedCookie := findUICookieNamed(t, seedResponse.Cookies(), uiPreAuthCookieNameForTest)
+	form.Set("csrf_token", uiCSRFTokenForTest("pre-auth", seedCookie.Value))
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+path, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", e.ts.URL)
+	req.AddCookie(seedCookie)
+	client := *e.ts.Client()
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
 	}
 	return res
 }
@@ -95,12 +149,17 @@ func (e *httpEnv) uiDoMultipartContext(t *testing.T, path, token string, fields 
 
 func findUICookie(t *testing.T, cookies []*http.Cookie) *http.Cookie {
 	t.Helper()
+	return findUICookieNamed(t, cookies, uiCookieNameForTest)
+}
+
+func findUICookieNamed(t *testing.T, cookies []*http.Cookie, name string) *http.Cookie {
+	t.Helper()
 	for _, cookie := range cookies {
-		if cookie.Name == uiCookieNameForTest {
+		if cookie.Name == name {
 			return cookie
 		}
 	}
-	t.Fatalf("ui auth cookie not found: %v", cookies)
+	t.Fatalf("cookie %q not found: %v", name, cookies)
 	return nil
 }
 

@@ -4,7 +4,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Navigation
 
-- `breadcrumb`: subtle entity hierarchy navigation backed by `uiBreadcrumbData`. Project pages show `Projects / Project name / Current view`; issue pages append the current issue key to the project, with a parent issue key between them for sub-issues.
+- `breadcrumb`: subtle entity hierarchy navigation backed by `uiBreadcrumbData`. Project pages show `Projects / Project name / Current view`; issue pages append the current issue key to the project, with a parent issue key between them for sub-issues. The issue Context manager links the issue key and appends `Context` as the current item.
 - `tab-bar`: single-line sibling-view navigation with optional Lucide icons, backed by `uiTabBarData`. Set an item's `MobileOverflow` flag when its owning page provides an equivalent constrained-screen overflow-menu link; those tabs return at `lg`.
 - `sidebar-favorites`: shell sidebar favorite-project shortcuts backed by `uiSidebarFavoritesData`. Keep it directly below the `Projects` nav item with a subtle divider from standard navigation, and refresh it with OOB HTMX swaps when favorite state changes.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.
@@ -13,6 +13,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 - `issue-key`: compact monospace issue identifier badge. Use it for ticket numbers wherever possible; if a generic data-driven badge must show an issue identifier, mirror this component's monospace, uppercase, compact bordered treatment.
 - `project-key`: compact project key badge.
+- `sprint-ref`: compact monospace canonical sprint-reference badge. Keep the `sprint-N` value lowercase and pair it with sprint titles on current, planned, and historical cards.
 - `count-badge`: small numeric count badge.
 - `status-badge`: issue status badge using `statusClass`.
 - `close-reason-badge`: close reason badge for closed issues.
@@ -61,7 +62,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 - Project tab route: `/{owner}/projects/{key}/context`; selected pages use `/context/{contextRef}`. Issue manager route: `/{owner}/issues/{issueRef}/context`, with the same selected-page suffix.
 - Project pages support create/import/edit/delete, page-scoped attachments, ordering, and linked-issue management. The page list stays compact without per-page issue counts; only the selected page renders content, followed by its complete linked-issue list and count.
 - Markdown pages use the shared safe Markdown renderer and attachment components. Plain-text imports remain escaped and pre-wrapped.
-- Issue manager mode supports creating issue-scoped context, attaching existing project pages, viewing/editing linked content, and removing links in the same responsive list/document pattern as project Context.
+- Issue manager mode supports creating and editing issue-scoped context, attaching and viewing project pages read-only, and removing links in the same responsive list/document pattern as project Context.
 - User-facing attach/search controls use context titles. Do not present refs such as `context-1` as visible identifiers, badges, placeholders, or option labels.
 
 When adding a reusable component, document its template name, purpose, and expected data shape here.

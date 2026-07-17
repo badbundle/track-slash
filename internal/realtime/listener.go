@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand/v2"
 	"time"
@@ -21,17 +22,23 @@ const pgChannel = "track_events"
 // A dedicated connection is required because LISTEN is session-scoped:
 // pooled connections would silently lose the subscription on release.
 type Listener struct {
-	dbURL string
-	hub   *Hub
+	dbURL           string
+	hub             *Hub
+	applicationName string
 }
 
 func NewListener(dbURL string, hub *Hub) *Listener {
-	return &Listener{dbURL: dbURL, hub: hub}
+	return &Listener{
+		dbURL:           dbURL,
+		hub:             hub,
+		applicationName: fmt.Sprintf("track-slash-realtime-%016x", rand.Uint64()),
+	}
 }
 
 // Run blocks until ctx is cancelled. On any connection / decode error it
-// logs, backs off, and reconnects. Events that arrived while disconnected
-// are lost — WS clients are expected to refetch their state on reconnect.
+// logs, backs off, and reconnects. Every successful LISTEN registration asks
+// subscribed clients to refetch because events may have been lost while the
+// listener was disconnected.
 func (l *Listener) Run(ctx context.Context) {
 	const (
 		minBackoff = 250 * time.Millisecond
@@ -66,7 +73,12 @@ func (l *Listener) Run(ctx context.Context) {
 }
 
 func (l *Listener) runOnce(ctx context.Context) error {
-	conn, err := pgx.Connect(ctx, l.dbURL)
+	config, err := pgx.ParseConfig(l.dbURL)
+	if err != nil {
+		return err
+	}
+	config.RuntimeParams["application_name"] = l.applicationName
+	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {
 		return err
 	}
@@ -76,6 +88,7 @@ func (l *Listener) runOnce(ctx context.Context) error {
 		return err
 	}
 	log.Printf("realtime listener: connected, LISTEN %s", pgChannel)
+	l.hub.ResyncAll(resyncListener)
 
 	for {
 		n, err := conn.WaitForNotification(ctx)

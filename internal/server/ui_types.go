@@ -10,16 +10,19 @@ import (
 )
 
 type uiLoginData struct {
-	Error string
-	Next  string
+	Error     string
+	Next      string
+	CSRFToken string
 }
 
 type uiSignupData struct {
-	Error string
-	Next  string
+	Error     string
+	Next      string
+	CSRFToken string
 }
 
 type uiShellData struct {
+	CSRFToken         string
 	User              model.User
 	Projects          []model.Project
 	SidebarFavorites  uiSidebarFavoritesData
@@ -290,11 +293,9 @@ type uiContextManagerData struct {
 	Action             string
 	Project            model.Project
 	Issue              model.Issue
+	ParentIssue        *model.Issue
 	HasIssue           bool
 	CanWrite           bool
-	BackHref           string
-	BackHXGet          string
-	BackLabel          string
 	Items              []uiContextManagerItem
 	HasMore            bool
 	ContextOptions     []uiProjectContextOption

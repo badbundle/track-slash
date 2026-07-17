@@ -1,9 +1,16 @@
 package realtime
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/google/uuid"
 )
 
 func TestOriginAllowed(t *testing.T) {
@@ -73,5 +80,48 @@ func TestHandlerAcceptsAllowedOriginPreUpgrade(t *testing.T) {
 
 	if rec.Code == http.StatusForbidden {
 		t.Fatalf("allowed origin was forbidden")
+	}
+}
+
+func TestHandlerSendsResyncControlToSubscribedClient(t *testing.T) {
+	hub := NewHub()
+	ts := httptest.NewServer(hub.Handler(OriginPolicy{AllowMissingOrigin: true}, nil))
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.CloseNow() }()
+
+	topic := ProjectTopic(uuid.New())
+	subscribe, err := json.Marshal(controlMsg{Action: "subscribe", Topic: topic})
+	if err != nil {
+		t.Fatalf("marshal subscribe: %v", err)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, subscribe); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	for hub.TopicCount() != 1 {
+		select {
+		case <-ctx.Done():
+			t.Fatal("subscription was not registered")
+		case <-time.After(time.Millisecond):
+		}
+	}
+
+	hub.ResyncAll(resyncOverflow)
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read resync: %v", err)
+	}
+	var got serverControl
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal resync: %v", err)
+	}
+	if got.Type != resyncMessageType || got.Reason != resyncOverflow {
+		t.Fatalf("control = %#v, want overflow resync", got)
 	}
 }

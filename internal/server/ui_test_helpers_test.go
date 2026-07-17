@@ -17,7 +17,7 @@ func requireInlineCount(t *testing.T, body, heading string, count int) {
 	if headingIndex < 0 {
 		t.Fatalf("missing heading %q: %s", heading, body)
 	}
-	segmentEnd := headingIndex + 350
+	segmentEnd := headingIndex + 700
 	if segmentEnd > len(body) {
 		segmentEnd = len(body)
 	}
