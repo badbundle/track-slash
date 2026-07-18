@@ -19,37 +19,39 @@ import (
 )
 
 type Server struct {
-	store               *store.Store
-	hub                 *realtime.Hub
-	corsAllowedOrigins  []string
-	apiWebSocketOrigins realtime.OriginPolicy
-	uiWebSocketOrigins  realtime.OriginPolicy
-	devReload           bool
-	objectStorage       *objectstorage.Service
-	passkeys            *passkeys.Service
-	publicOrigin        string
-	csrfRandom          io.Reader
-	secureCookies       bool
-	httpsDeployment     bool
-	sessionTTL          time.Duration
-	authLimiter         *authRateLimiter
-	trustedProxyCIDRs   []net.IPNet
-	requestTimeout      time.Duration
-	authRequestTimeout  time.Duration
-	uploadTimeout       time.Duration
+	store                *store.Store
+	hub                  *realtime.Hub
+	corsAllowedOrigins   []string
+	apiWebSocketOrigins  realtime.OriginPolicy
+	uiWebSocketOrigins   realtime.OriginPolicy
+	devReload            bool
+	objectStorage        *objectstorage.Service
+	passkeys             *passkeys.Service
+	publicOrigin         string
+	csrfRandom           io.Reader
+	secureCookies        bool
+	httpsDeployment      bool
+	sessionTTL           time.Duration
+	authLimiter          *authRateLimiter
+	trustedProxyCIDRs    []net.IPNet
+	requestTimeout       time.Duration
+	authRequestTimeout   time.Duration
+	uploadTimeout        time.Duration
+	previewTermsRequired bool
 }
 
 type Options struct {
-	CORSAllowedOrigins []string
-	PublicOrigin       string
-	SessionTTL         time.Duration
-	AuthRateLimit      AuthRateLimitOptions
-	TrustedProxyCIDRs  []net.IPNet
-	RequestTimeout     time.Duration
-	AuthRequestTimeout time.Duration
-	UploadTimeout      time.Duration
-	DevReload          bool
-	ObjectStorage      *objectstorage.Service
+	CORSAllowedOrigins   []string
+	PublicOrigin         string
+	SessionTTL           time.Duration
+	AuthRateLimit        AuthRateLimitOptions
+	TrustedProxyCIDRs    []net.IPNet
+	RequestTimeout       time.Duration
+	AuthRequestTimeout   time.Duration
+	UploadTimeout        time.Duration
+	PreviewTermsRequired bool
+	DevReload            bool
+	ObjectStorage        *objectstorage.Service
 }
 
 // New constructs a Server. corsAllowedOrigins is a list of exact browser
@@ -83,24 +85,25 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		uploadTimeout = 2 * time.Minute
 	}
 	return &Server{
-		store:               s,
-		hub:                 hub,
-		corsAllowedOrigins:  opts.CORSAllowedOrigins,
-		apiWebSocketOrigins: apiWebSocketOrigins,
-		uiWebSocketOrigins:  uiWebSocketOrigins,
-		devReload:           opts.DevReload,
-		objectStorage:       opts.ObjectStorage,
-		passkeys:            passkeyService,
-		publicOrigin:        opts.PublicOrigin,
-		csrfRandom:          rand.Reader,
-		secureCookies:       publicOrigin != nil && publicOrigin.Scheme == "https",
-		httpsDeployment:     publicOrigin != nil && publicOrigin.Scheme == "https",
-		sessionTTL:          sessionTTL,
-		authLimiter:         newAuthRateLimiter(opts.AuthRateLimit),
-		trustedProxyCIDRs:   opts.TrustedProxyCIDRs,
-		requestTimeout:      requestTimeout,
-		authRequestTimeout:  authRequestTimeout,
-		uploadTimeout:       uploadTimeout,
+		store:                s,
+		hub:                  hub,
+		corsAllowedOrigins:   opts.CORSAllowedOrigins,
+		apiWebSocketOrigins:  apiWebSocketOrigins,
+		uiWebSocketOrigins:   uiWebSocketOrigins,
+		devReload:            opts.DevReload,
+		objectStorage:        opts.ObjectStorage,
+		passkeys:             passkeyService,
+		publicOrigin:         opts.PublicOrigin,
+		csrfRandom:           rand.Reader,
+		secureCookies:        publicOrigin != nil && publicOrigin.Scheme == "https",
+		httpsDeployment:      publicOrigin != nil && publicOrigin.Scheme == "https",
+		sessionTTL:           sessionTTL,
+		authLimiter:          newAuthRateLimiter(opts.AuthRateLimit),
+		trustedProxyCIDRs:    opts.TrustedProxyCIDRs,
+		requestTimeout:       requestTimeout,
+		authRequestTimeout:   authRequestTimeout,
+		uploadTimeout:        uploadTimeout,
+		previewTermsRequired: opts.PreviewTermsRequired,
 	}
 }
 

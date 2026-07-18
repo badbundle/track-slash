@@ -454,7 +454,7 @@ func (s *Server) verifyMCPBearerToken(ctx context.Context, raw string, _ *http.R
 
 func (s *Server) newMCPServer() *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{Name: "track-slash", Version: "v1"}, &mcp.ServerOptions{
-		Instructions: "Use track-slash tools to read and update issue-tracking data. Prefer refs like KEY-123, sprint-1, tag-1, link-1, context-1, object-1.",
+		Instructions: "Use trackslash tools to read and update issue-tracking data. Prefer refs like KEY-123, sprint-1, tag-1, link-1, context-1, object-1.",
 	})
 
 	readOnly := true
@@ -3977,7 +3977,7 @@ func (s *Server) addMCPPrompts(srv *mcp.Server) {
 			{Name: "owner", Required: true},
 			{Name: "issue", Required: true},
 		},
-	}, staticMCPPrompt("Summarize the track-slash issue identified by owner={{owner}} issue={{issue}}. Use track_get_issue, track_list_comments, track_list_issue_context, track_list_issue_tags, track_list_issue_links, and track_list_attachments before answering."))
+	}, staticMCPPrompt("Summarize the trackslash issue identified by owner={{owner}} issue={{issue}}. Use track_get_issue, track_list_comments, track_list_issue_context, track_list_issue_tags, track_list_issue_links, and track_list_attachments before answering."))
 	srv.AddPrompt(&mcp.Prompt{
 		Name:        "triage_project",
 		Title:       "triage project",
@@ -3986,7 +3986,7 @@ func (s *Server) addMCPPrompts(srv *mcp.Server) {
 			{Name: "owner", Required: true},
 			{Name: "key", Required: true},
 		},
-	}, staticMCPPrompt("Triage track-slash project owner={{owner}} key={{key}}. Use stats, changelog, open issues, tags, and sprints. Return prioritized findings and suggested next actions."))
+	}, staticMCPPrompt("Triage trackslash project owner={{owner}} key={{key}}. Use stats, changelog, open issues, tags, and sprints. Return prioritized findings and suggested next actions."))
 	srv.AddPrompt(&mcp.Prompt{
 		Name:        "plan_sprint",
 		Title:       "plan sprint",
@@ -3996,7 +3996,7 @@ func (s *Server) addMCPPrompts(srv *mcp.Server) {
 			{Name: "key", Required: true},
 			{Name: "sprint", Required: false},
 		},
-	}, staticMCPPrompt("Plan sprint={{sprint}} for track-slash project owner={{owner}} key={{key}}. Use backlog issues, current sprints, tags, priorities, and due dates. Suggest scoped sprint contents and risks."))
+	}, staticMCPPrompt("Plan sprint={{sprint}} for trackslash project owner={{owner}} key={{key}}. Use backlog issues, current sprints, tags, priorities, and due dates. Suggest scoped sprint contents and risks."))
 	srv.AddPrompt(&mcp.Prompt{
 		Name:        "draft_changelog",
 		Title:       "draft changelog",
@@ -4005,7 +4005,7 @@ func (s *Server) addMCPPrompts(srv *mcp.Server) {
 			{Name: "owner", Required: true},
 			{Name: "key", Required: true},
 		},
-	}, staticMCPPrompt("Draft a concise changelog for track-slash project owner={{owner}} key={{key}}. Use track_list_project_changelog and inspect linked issues when needed."))
+	}, staticMCPPrompt("Draft a concise changelog for trackslash project owner={{owner}} key={{key}}. Use track_list_project_changelog and inspect linked issues when needed."))
 }
 
 func staticMCPPrompt(template string) mcp.PromptHandler {

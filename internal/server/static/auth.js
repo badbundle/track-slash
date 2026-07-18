@@ -133,8 +133,11 @@
     const username = form.querySelector("input[name='username']")?.value.trim() || "";
     const name = form.querySelector("input[name='name']")?.value.trim() || "";
     const next = form.querySelector("input[name='next']")?.value || "/";
+    const terms = form.querySelector("input[name='accept_terms']");
+    const acceptTerms = !terms || terms.checked;
     if (!username) throw new Error("Username required.");
-    const options = await postJSON("/signup/passkey/options", { username, name });
+    if (!acceptTerms) throw new Error("You must agree to the Preview Terms and acknowledge the Privacy Notice.");
+    const options = await postJSON("/signup/passkey/options", { username, name, accept_terms: acceptTerms });
     const credential = await navigator.credentials.create({
       publicKey: parseCreationOptions(options.publicKey),
       mediation: options.mediation || "optional",
@@ -144,6 +147,7 @@
       ceremony_id: options.ceremony_id,
       credential: credentialToJSON(credential),
       next,
+      accept_terms: acceptTerms,
     });
     window.location.assign(result.next || "/");
   };

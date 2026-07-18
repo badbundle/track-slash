@@ -1,12 +1,16 @@
 package server
 
 import (
-	"github.com/go-chi/chi/v5"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServerFS(uiStaticFS)))
+	r.Get("/terms", s.uiTermsPage)
+	r.Get("/privacy", s.uiPrivacyPage)
+	r.Get("/security", s.uiSecurityPage)
 
 	r.Get("/login", s.uiLoginPage)
 	r.With(s.uiPreAuthCSRFMiddleware).Post("/login", s.authIPRateLimited(s.uiLogin))

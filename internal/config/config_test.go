@@ -91,6 +91,28 @@ func TestLoadDevReload(t *testing.T) {
 	}
 }
 
+func TestLoadPreviewTermsRequired(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
+	unsetenv(t, "TRACK_SLASH_PREVIEW_TERMS_REQUIRED")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load default preview terms: %v", err)
+	}
+	if cfg.PreviewTermsRequired {
+		t.Fatal("default PreviewTermsRequired = true, want false")
+	}
+
+	t.Setenv("TRACK_SLASH_PREVIEW_TERMS_REQUIRED", "true")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load required preview terms: %v", err)
+	}
+	if !cfg.PreviewTermsRequired {
+		t.Fatal("configured PreviewTermsRequired = false, want true")
+	}
+}
+
 func TestLoadAutoMigrateDefault(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://track:track@localhost:5432/track?sslmode=disable")
 	t.Setenv("TRACK_SLASH_STORAGE_BACKEND", "local")

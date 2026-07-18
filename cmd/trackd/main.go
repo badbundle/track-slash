@@ -94,12 +94,13 @@ func main() {
 	go deletionWorker.Run(ctx)
 
 	srv := server.NewWithOptions(st, hub, server.Options{
-		CORSAllowedOrigins: cfg.CORSAllowedOrigins,
-		PublicOrigin:       cfg.PublicOrigin,
-		TrustedProxyCIDRs:  cfg.TrustedProxyCIDRs,
-		SessionTTL:         cfg.SessionTTL,
-		DevReload:          cfg.DevReload,
-		ObjectStorage:      storageSvc,
+		CORSAllowedOrigins:   cfg.CORSAllowedOrigins,
+		PublicOrigin:         cfg.PublicOrigin,
+		TrustedProxyCIDRs:    cfg.TrustedProxyCIDRs,
+		SessionTTL:           cfg.SessionTTL,
+		PreviewTermsRequired: cfg.PreviewTermsRequired,
+		DevReload:            cfg.DevReload,
+		ObjectStorage:        storageSvc,
 	})
 
 	httpSrv := &http.Server{

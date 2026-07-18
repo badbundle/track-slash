@@ -17,15 +17,16 @@ const (
 )
 
 type Config struct {
-	Port               string
-	DatabaseURL        string
-	CORSAllowedOrigins []string
-	PublicOrigin       string
-	TrustedProxyCIDRs  []net.IPNet
-	SessionTTL         time.Duration
-	DevReload          bool
-	AutoMigrate        bool
-	Storage            StorageConfig
+	Port                 string
+	DatabaseURL          string
+	CORSAllowedOrigins   []string
+	PublicOrigin         string
+	TrustedProxyCIDRs    []net.IPNet
+	SessionTTL           time.Duration
+	PreviewTermsRequired bool
+	DevReload            bool
+	AutoMigrate          bool
+	Storage              StorageConfig
 }
 
 type DatabaseConfig struct {
@@ -68,15 +69,16 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		Port:               envOr("PORT", "8080"),
-		DatabaseURL:        db.DatabaseURL,
-		CORSAllowedOrigins: parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
-		PublicOrigin:       publicOrigin,
-		TrustedProxyCIDRs:  trustedProxyCIDRs,
-		SessionTTL:         sessionTTL,
-		DevReload:          envBool("TRACK_SLASH_DEV_RELOAD"),
-		AutoMigrate:        autoMigrate,
-		Storage:            storage,
+		Port:                 envOr("PORT", "8080"),
+		DatabaseURL:          db.DatabaseURL,
+		CORSAllowedOrigins:   parseList(os.Getenv("CORS_ALLOWED_ORIGINS")),
+		PublicOrigin:         publicOrigin,
+		TrustedProxyCIDRs:    trustedProxyCIDRs,
+		SessionTTL:           sessionTTL,
+		PreviewTermsRequired: envBool("TRACK_SLASH_PREVIEW_TERMS_REQUIRED"),
+		DevReload:            envBool("TRACK_SLASH_DEV_RELOAD"),
+		AutoMigrate:          autoMigrate,
+		Storage:              storage,
 	}
 	return cfg, nil
 }

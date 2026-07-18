@@ -70,6 +70,7 @@ func (s *Server) uiSignupPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderUISignup(w http.ResponseWriter, r *http.Request, status int, data uiSignupData) {
+	data.PreviewTermsRequired = s.previewTermsRequired
 	if data.CSRFToken == "" {
 		var err error
 		data.CSRFToken, err = s.ensureUIPreAuthCSRFToken(w, r)
@@ -90,10 +91,16 @@ func (s *Server) uiSignup(w http.ResponseWriter, r *http.Request) {
 	if !s.allowAuthIdentifier(w, r.Form.Get("username")) {
 		return
 	}
+	previewTermsVersion, err := s.previewTermsVersion(r.Form.Get("accept_terms") == "on")
+	if err != nil {
+		s.renderUISignup(w, r, http.StatusBadRequest, uiSignupData{Error: err.Error(), Next: next})
+		return
+	}
 	u, err := s.store.CreateAccount(r.Context(), store.CreateAccountParams{
-		Username: r.Form.Get("username"),
-		Password: r.Form.Get("password"),
-		Name:     r.Form.Get("name"),
+		Username:            r.Form.Get("username"),
+		Password:            r.Form.Get("password"),
+		Name:                r.Form.Get("name"),
+		PreviewTermsVersion: previewTermsVersion,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {

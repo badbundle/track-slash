@@ -81,12 +81,13 @@ type PasskeySession struct {
 }
 
 type CreatePasskeyOnlyAccountParams struct {
-	Username       string
-	Name           string
-	RPID           string
-	UserHandle     []byte
-	CredentialName string
-	Credential     webauthn.Credential
+	Username            string
+	Name                string
+	RPID                string
+	UserHandle          []byte
+	CredentialName      string
+	Credential          webauthn.Credential
+	PreviewTermsVersion string
 }
 
 func (s *Store) GetOrCreateWebAuthnHandle(ctx context.Context, userID uuid.UUID, rpID string) ([]byte, error) {
@@ -197,6 +198,10 @@ func (s *Store) CreatePasskeyOnlyAccount(ctx context.Context, p CreatePasskeyOnl
 	if p.RPID == "" || len(p.UserHandle) == 0 || len(p.Credential.ID) == 0 {
 		return model.User{}, errors.New("passkey account fields required")
 	}
+	termsVersion, err := normalizePreviewTermsVersion(p.PreviewTermsVersion)
+	if err != nil {
+		return model.User{}, err
+	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -230,6 +235,9 @@ func (s *Store) CreatePasskeyOnlyAccount(ctx context.Context, p CreatePasskeyOnl
 	}
 
 	if _, err := insertPasskeyCredential(ctx, tx, u.ID, p.RPID, p.CredentialName, p.Credential); err != nil {
+		return model.User{}, err
+	}
+	if err := recordPreviewTermsAcceptance(ctx, tx, u.ID, termsVersion); err != nil {
 		return model.User{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

@@ -16,9 +16,10 @@ type uiLoginData struct {
 }
 
 type uiSignupData struct {
-	Error     string
-	Next      string
-	CSRFToken string
+	Error                string
+	Next                 string
+	CSRFToken            string
+	PreviewTermsRequired bool
 }
 
 type uiShellData struct {
