@@ -90,8 +90,8 @@
       {{if .ActiveSprintForm.Error}}<p class="mt-4 border-t border-slate-100 pt-3 text-xs text-rose-600 dark:border-slate-800 dark:text-rose-300">{{.ActiveSprintForm.Error}}</p>{{end}}
       {{end}}
     </div>
-    {{template "issue-list-controls" .SprintControls}}
     {{if .ActiveSprint}}
+    {{template "issue-list-controls" .SprintControls}}
     <section class="grid gap-4 lg:grid-cols-3">
       {{range .SprintColumns}}
       <div class="min-w-0">
@@ -139,8 +139,6 @@
       </div>
       {{end}}
     </section>
-    {{else}}
-    <div class="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No active sprint issues.</div>
     {{end}}
   </section>
 {{end}}

@@ -478,6 +478,52 @@ func TestUIRendersProjectSprintEmptyState(t *testing.T) {
 	if !strings.Contains(body, "No active sprint.") {
 		t.Fatalf("body missing no-active-sprint state: %s", body)
 	}
+	for _, notWant := range []string{`aria-label="Issue controls"`, "No active sprint issues."} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("empty sprint body included %q: %s", notWant, body)
+		}
+	}
+}
+
+func TestUIProjectSprintHidesIssueUIWithOnlyInactiveSprints(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	_, token := e.mustProjectMemberToken(t, "ui-inactive-sprints")
+
+	planned, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{ProjectID: e.projectID, Name: "Future Sprint"})
+	if err != nil {
+		t.Fatalf("CreateSprint planned: %v", err)
+	}
+	completed, err := e.store.CreateSprint(e.ctx, store.CreateSprintParams{ProjectID: e.projectID, Name: "Completed Sprint"})
+	if err != nil {
+		t.Fatalf("CreateSprint completed: %v", err)
+	}
+	active := model.SprintStatusActive
+	if _, err := e.store.UpdateSprint(e.ctx, completed.ID, store.UpdateSprintParams{Status: &active}); err != nil {
+		t.Fatalf("UpdateSprint active: %v", err)
+	}
+	if _, err := e.store.CompleteSprint(e.ctx, completed.ID); err != nil {
+		t.Fatalf("CompleteSprint: %v", err)
+	}
+
+	body := e.uiGet(t, e.projectPath()+"/sprint", token)
+	if !strings.Contains(body, "No active sprint.") {
+		t.Fatalf("inactive-only sprint body missing guidance: %s", body)
+	}
+	for _, notWant := range []string{`aria-label="Issue controls"`, "No active sprint issues."} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("inactive-only sprint body included %q: %s", notWant, body)
+		}
+	}
+
+	plannedBody := e.uiGet(t, e.projectPath()+"/planned", token)
+	if !strings.Contains(plannedBody, planned.Name) {
+		t.Fatalf("planned view missing inactive sprint: %s", plannedBody)
+	}
+	historyBody := e.uiGet(t, e.projectPath()+"/sprints", token)
+	if !strings.Contains(historyBody, completed.Name) {
+		t.Fatalf("sprint history missing completed sprint: %s", historyBody)
+	}
 }
 
 func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
@@ -500,6 +546,12 @@ func TestUIProjectSprintDoesNotIncludeBacklog(t *testing.T) {
 	active := model.SprintStatusActive
 	if _, err := e.store.UpdateSprint(e.ctx, sp.ID, store.UpdateSprintParams{Status: &active}); err != nil {
 		t.Fatalf("UpdateSprint active: %v", err)
+	}
+	emptyBody := e.uiGet(t, e.projectPath()+"/sprint", token)
+	for _, want := range []string{`aria-label="Issue controls"`, "Nothing here."} {
+		if !strings.Contains(emptyBody, want) {
+			t.Fatalf("empty active sprint body missing %q: %s", want, emptyBody)
+		}
 	}
 	inSprint, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "issue inside active sprint", DueDate: &dueDate})
 	if err != nil {
