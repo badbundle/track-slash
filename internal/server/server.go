@@ -38,6 +38,7 @@ type Server struct {
 	authRequestTimeout   time.Duration
 	uploadTimeout        time.Duration
 	previewTermsRequired bool
+	webPushPublicKey     string
 }
 
 type Options struct {
@@ -52,6 +53,7 @@ type Options struct {
 	PreviewTermsRequired bool
 	DevReload            bool
 	ObjectStorage        *objectstorage.Service
+	WebPushPublicKey     string
 }
 
 // New constructs a Server. corsAllowedOrigins is a list of exact browser
@@ -104,6 +106,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		authRequestTimeout:   authRequestTimeout,
 		uploadTimeout:        uploadTimeout,
 		previewTermsRequired: opts.PreviewTermsRequired,
+		webPushPublicKey:     opts.WebPushPublicKey,
 	}
 }
 

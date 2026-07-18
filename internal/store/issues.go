@@ -138,6 +138,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		if preview := changelogPreview(out.Description); preview != "" {
 			details.Preview = preview
 		}
+		details.PushNotification = pushNotificationChangelogData(out.AssigneeID, pushMentionUsernames(out.Description))
 		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 			ProjectID:   out.ProjectID,
 			Entity:      "issue",
@@ -227,6 +228,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		if preview := changelogPreview(out.Description); preview != "" {
 			details.Preview = preview
 		}
+		details.PushNotification = pushNotificationChangelogData(out.AssigneeID, pushMentionUsernames(out.Description))
 		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 			ProjectID:     out.ProjectID,
 			Entity:        "issue",
@@ -971,6 +973,15 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 			return nil
 		}
 		targetRef, targetTitle := changelogTarget(after)
+		details := model.ProjectChangelogDetails{Changes: changes}
+		var assignedID *uuid.UUID
+		if !sameUUIDPtr(before.AssigneeID, after.AssigneeID) {
+			assignedID = after.AssigneeID
+		}
+		details.PushNotification = pushNotificationChangelogData(
+			assignedID,
+			pushNewMentionUsernames(before.Description, after.Description),
+		)
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 			ProjectID:     after.ProjectID,
 			Entity:        "issue",
@@ -981,7 +992,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 			TargetRef:     targetRef,
 			TargetTitle:   targetTitle,
 			Summary:       changelogIssueSummary(after, "Updated issue"),
-			Details:       model.ProjectChangelogDetails{Changes: changes},
+			Details:       details,
 		})
 	})
 	if err != nil {

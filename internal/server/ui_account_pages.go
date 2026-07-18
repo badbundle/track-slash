@@ -71,6 +71,16 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 		writeUIInternalError(w, "ui settings password login state", err)
 		return
 	}
+	pushPreferences, err := s.store.GetPushNotificationPreferences(r.Context(), user.ID)
+	if err != nil {
+		writeUIInternalError(w, "ui settings push preferences", err)
+		return
+	}
+	pushDeviceCount, err := s.store.CountActivePushSubscriptions(r.Context(), user.ID)
+	if err != nil {
+		writeUIInternalError(w, "ui settings push subscriptions", err)
+		return
+	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:     user,
 		Projects: projects,
@@ -82,6 +92,10 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 			PasswordChanged: passwordChanged,
 			PasswordLogin:   passwordLogin,
 			Passkeys:        passkeyCredentials,
+			PushEnabled:     s.webPushPublicKey != "",
+			PushPublicKey:   s.webPushPublicKey,
+			PushPreferences: pushPreferences,
+			PushDeviceCount: pushDeviceCount,
 		},
 	})
 }

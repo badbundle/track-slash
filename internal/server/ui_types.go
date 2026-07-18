@@ -727,4 +727,8 @@ type uiSettingsPanelData struct {
 	PasswordChanged bool
 	PasswordLogin   model.PasswordLoginState
 	Passkeys        []model.PasskeyCredential
+	PushEnabled     bool
+	PushPublicKey   string
+	PushPreferences model.PushNotificationPreferences
+	PushDeviceCount int
 }

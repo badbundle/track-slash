@@ -8,6 +8,7 @@ import (
 
 func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServerFS(uiStaticFS)))
+	r.Get("/service-worker.js", s.uiServiceWorker)
 	r.Get("/terms", s.uiTermsPage)
 	r.Get("/privacy", s.uiPrivacyPage)
 	r.Get("/security", s.uiSecurityPage)
@@ -45,6 +46,10 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/settings/profile-image/delete", s.uiDeleteProfileImage)
 		r.Post("/settings/password", s.uiUpdatePassword)
 		r.Post("/settings/password-login", s.uiUpdatePasswordLogin)
+		r.Post("/settings/push/preferences", s.uiUpdatePushNotificationPreferences)
+		r.Get("/settings/push/subscription", s.uiPushSubscriptionState)
+		r.Post("/settings/push/subscription", s.uiUpsertPushSubscription)
+		r.Delete("/settings/push/subscription", s.uiDisablePushSubscription)
 		r.Post("/settings/passkeys/reauth/password", s.authIPRateLimited(s.authAccountRateLimited(s.uiPasskeyPasswordReauth)))
 		r.Post("/settings/passkeys/reauth/passkey/options", s.authIPRateLimited(s.authAccountRateLimited(s.uiPasskeyReauthOptions)))
 		r.Post("/settings/passkeys/reauth/passkey", s.authIPRateLimited(s.authAccountRateLimited(s.uiPasskeyReauth)))

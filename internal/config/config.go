@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"net"
 	"net/url"
@@ -27,6 +28,7 @@ type Config struct {
 	DevReload            bool
 	AutoMigrate          bool
 	Storage              StorageConfig
+	WebPush              WebPushConfig
 }
 
 type DatabaseConfig struct {
@@ -41,6 +43,13 @@ type StorageConfig struct {
 	S3Endpoint       string
 	S3Region         string
 	S3ForcePathStyle bool
+}
+
+type WebPushConfig struct {
+	Enabled    bool
+	PublicKey  string
+	PrivateKey string
+	Subscriber string
 }
 
 func Load() (Config, error) {
@@ -68,6 +77,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	webPush, err := loadWebPushConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		Port:                 envOr("PORT", "8080"),
 		DatabaseURL:          db.DatabaseURL,
@@ -79,8 +92,37 @@ func Load() (Config, error) {
 		DevReload:            envBool("TRACK_SLASH_DEV_RELOAD"),
 		AutoMigrate:          autoMigrate,
 		Storage:              storage,
+		WebPush:              webPush,
 	}
 	return cfg, nil
+}
+
+func loadWebPushConfig() (WebPushConfig, error) {
+	publicKey := strings.TrimSpace(os.Getenv("TRACK_SLASH_VAPID_PUBLIC_KEY"))
+	privateKey := strings.TrimSpace(os.Getenv("TRACK_SLASH_VAPID_PRIVATE_KEY"))
+	subscriber := strings.TrimSpace(os.Getenv("TRACK_SLASH_VAPID_SUBSCRIBER"))
+	if publicKey == "" && privateKey == "" && subscriber == "" {
+		return WebPushConfig{}, nil
+	}
+	if publicKey == "" || privateKey == "" || subscriber == "" {
+		return WebPushConfig{}, errors.New("TRACK_SLASH_VAPID_PUBLIC_KEY, TRACK_SLASH_VAPID_PRIVATE_KEY, and TRACK_SLASH_VAPID_SUBSCRIBER must be set together")
+	}
+	publicBytes, publicErr := base64.RawURLEncoding.DecodeString(publicKey)
+	privateBytes, privateErr := base64.RawURLEncoding.DecodeString(privateKey)
+	if publicErr != nil || len(publicBytes) != 65 || privateErr != nil || len(privateBytes) != 32 {
+		return WebPushConfig{}, errors.New("TRACK_SLASH_VAPID_PUBLIC_KEY and TRACK_SLASH_VAPID_PRIVATE_KEY must be a valid Web Push key pair")
+	}
+	subscriberURL, err := url.Parse(subscriber)
+	if err != nil || (subscriberURL.Scheme != "mailto" && subscriberURL.Scheme != "https") {
+		return WebPushConfig{}, errors.New("TRACK_SLASH_VAPID_SUBSCRIBER must be a mailto: or https: URI")
+	}
+	if subscriberURL.Scheme == "mailto" && subscriberURL.Opaque == "" {
+		return WebPushConfig{}, errors.New("TRACK_SLASH_VAPID_SUBSCRIBER must include a contact address")
+	}
+	if subscriberURL.Scheme == "https" && subscriberURL.Host == "" {
+		return WebPushConfig{}, errors.New("TRACK_SLASH_VAPID_SUBSCRIBER must include a contact host")
+	}
+	return WebPushConfig{Enabled: true, PublicKey: publicKey, PrivateKey: privateKey, Subscriber: subscriber}, nil
 }
 
 func LoadDatabase() (DatabaseConfig, error) {

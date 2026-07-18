@@ -3,7 +3,7 @@ package server
 import "net/http"
 
 const (
-	contentSecurityPolicy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; media-src 'self'; frame-src 'none'; worker-src 'none'; manifest-src 'self'"
+	contentSecurityPolicy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; media-src 'self'; frame-src 'none'; worker-src 'self'; manifest-src 'self'"
 	permissionsPolicy     = "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
 	strictTransportPolicy = "max-age=31536000"
 )

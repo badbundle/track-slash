@@ -86,7 +86,10 @@ func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model
 			TargetRef:   targetRef,
 			TargetTitle: targetTitle,
 			Summary:     fmt.Sprintf("Commented on %s", issue.Identifier),
-			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(out.Body)},
+			Details: model.ProjectChangelogDetails{
+				Preview:          changelogPreview(out.Body),
+				PushNotification: pushNotificationChangelogData(nil, pushMentionUsernames(out.Body)),
+			},
 		}); err != nil {
 			return err
 		}

@@ -200,6 +200,28 @@ type User struct {
 	CreatedAt                     time.Time  `json:"created_at"`
 }
 
+type PushNotificationPreferences struct {
+	Mentions       bool `json:"mentions"`
+	Assignments    bool `json:"assignments"`
+	Comments       bool `json:"comments"`
+	StatusChanges  bool `json:"status_changes"`
+	DueDateChanges bool `json:"due_date_changes"`
+}
+
+type PushSubscription struct {
+	ID            uuid.UUID  `json:"id"`
+	UserID        uuid.UUID  `json:"user_id"`
+	Endpoint      string     `json:"-"`
+	P256DH        string     `json:"-"`
+	AuthSecret    string     `json:"-"`
+	UserAgent     string     `json:"user_agent"`
+	FailureCount  int        `json:"failure_count"`
+	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+	DisabledAt    *time.Time `json:"disabled_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
 type AuthCredentialKind string
 
 const (
@@ -360,8 +382,14 @@ type ProjectChangelogChange struct {
 }
 
 type ProjectChangelogDetails struct {
-	Changes []ProjectChangelogChange `json:"changes,omitempty"`
-	Preview string                   `json:"preview,omitempty"`
+	Changes          []ProjectChangelogChange              `json:"changes,omitempty"`
+	Preview          string                                `json:"preview,omitempty"`
+	PushNotification *ProjectChangelogPushNotificationData `json:"push_notification,omitempty"`
+}
+
+type ProjectChangelogPushNotificationData struct {
+	AssigneeID       *uuid.UUID `json:"assignee_id,omitempty"`
+	MentionUsernames []string   `json:"mention_usernames,omitempty"`
 }
 
 type ProjectChangelogActor struct {

@@ -1,12 +1,51 @@
 package config
 
 import (
+	"encoding/base64"
 	"net"
 	"os"
 	"reflect"
 	"testing"
 	"time"
 )
+
+func TestLoadWebPushConfig(t *testing.T) {
+	publicKey := base64.RawURLEncoding.EncodeToString(make([]byte, 65))
+	privateKey := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	for _, key := range []string{"TRACK_SLASH_VAPID_PUBLIC_KEY", "TRACK_SLASH_VAPID_PRIVATE_KEY", "TRACK_SLASH_VAPID_SUBSCRIBER"} {
+		unsetenv(t, key)
+	}
+	if got, err := loadWebPushConfig(); err != nil || got.Enabled {
+		t.Fatalf("disabled Web Push = %+v, %v", got, err)
+	}
+
+	t.Setenv("TRACK_SLASH_VAPID_PUBLIC_KEY", publicKey)
+	if _, err := loadWebPushConfig(); err == nil {
+		t.Fatal("partial Web Push config returned nil error")
+	}
+	t.Setenv("TRACK_SLASH_VAPID_PRIVATE_KEY", privateKey)
+	t.Setenv("TRACK_SLASH_VAPID_SUBSCRIBER", "mailto:ops@example.com")
+	got, err := loadWebPushConfig()
+	if err != nil || !got.Enabled || got.PublicKey != publicKey || got.PrivateKey != privateKey || got.Subscriber != "mailto:ops@example.com" {
+		t.Fatalf("configured Web Push = %+v, %v", got, err)
+	}
+
+	t.Setenv("TRACK_SLASH_VAPID_SUBSCRIBER", "https://track.example.com/contact")
+	if got, err := loadWebPushConfig(); err != nil || !got.Enabled {
+		t.Fatalf("HTTPS subscriber Web Push = %+v, %v", got, err)
+	}
+	for _, subscriber := range []string{"ops@example.com", "mailto:", "https://"} {
+		t.Setenv("TRACK_SLASH_VAPID_SUBSCRIBER", subscriber)
+		if _, err := loadWebPushConfig(); err == nil {
+			t.Fatalf("subscriber %q returned nil error", subscriber)
+		}
+	}
+	t.Setenv("TRACK_SLASH_VAPID_SUBSCRIBER", "mailto:ops@example.com")
+	t.Setenv("TRACK_SLASH_VAPID_PUBLIC_KEY", "invalid")
+	if _, err := loadWebPushConfig(); err == nil {
+		t.Fatal("invalid Web Push key returned nil error")
+	}
+}
 
 func TestParseList(t *testing.T) {
 	cases := []struct {
