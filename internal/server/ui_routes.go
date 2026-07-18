@@ -137,6 +137,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/projects/{key}/favorite", s.uiToggleProjectFavorite)
 		r.Get("/{owner}/projects/{key}/members", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "members") })
 		r.Get("/{owner}/projects/{key}/members/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "members") })
+		r.Get("/{owner}/projects/{key}/members/candidates", s.uiProjectMemberCandidates)
 		r.Post("/{owner}/projects/{key}/members", s.uiAddProjectMember)
 		r.Post("/{owner}/projects/{key}/members/{username}", s.uiUpdateProjectMember)
 		r.Post("/{owner}/projects/{key}/members/{username}/delete", s.uiDeleteProjectMember)

@@ -207,7 +207,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	pageBody := e.uiGet(t, membersPath, e.authToken)
-	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "@" + readonly.Username, "Public access", "Public read-only access", "Allow public issue creation", "Blocked users", "Exact username"} {
+	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "Public access", "Public read-only access", "Allow public issue creation", "Blocked users", "Exact username"} {
 		if !strings.Contains(pageBody, want) {
 			t.Fatalf("member page missing %q: %s", want, pageBody)
 		}
@@ -216,6 +216,33 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 		if strings.Contains(pageBody, notWant) {
 			t.Fatalf("member page retained modal markup %q: %s", notWant, pageBody)
 		}
+	}
+	candidatesPath := membersPath + "/candidates"
+	for _, want := range []string{
+		`name="username" value=""`,
+		`hx-get="` + candidatesPath + `"`,
+		`hx-trigger="input changed delay:300ms"`,
+		`hx-target="#project-member-options"`,
+		`hx-swap="outerHTML"`,
+		`data-search data-search-collapsible data-project-search`,
+		`id="project-member-options" data-search-options hidden`,
+	} {
+		if !strings.Contains(pageBody, want) {
+			t.Fatalf("member search missing %q: %s", want, pageBody)
+		}
+	}
+	if strings.Contains(pageBody, "@"+readonly.Username) {
+		t.Fatalf("member page disclosed candidate before a search: %s", pageBody)
+	}
+	for _, query := range []string{"", "   ", readonly.Username[:1]} {
+		body := e.uiGet(t, candidatesPath+"?username="+url.QueryEscape(query), e.authToken)
+		if strings.Contains(body, "@"+readonly.Username) || !strings.Contains(body, `id="project-member-options" data-search-options hidden`) {
+			t.Fatalf("short member search %q returned candidates: %s", query, body)
+		}
+	}
+	searchBody := e.uiGet(t, candidatesPath+"?username="+url.QueryEscape(readonly.Username), e.authToken)
+	if !strings.Contains(searchBody, "@"+readonly.Username) || strings.Contains(searchBody, readonly.Email) || strings.Contains(searchBody, `data-search-options hidden`) {
+		t.Fatalf("intentional member search response = %s", searchBody)
 	}
 
 	form := url.Values{"username": {readonly.Username}, "role": {"readonly"}}
@@ -250,6 +277,11 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	res = e.uiDoNoRedirect(t, http.MethodGet, membersPath, readonlyToken, nil)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("readonly member page code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res.Body.Close()
+	res = e.uiDoNoRedirect(t, http.MethodGet, candidatesPath+"?username="+url.QueryEscape(readonly.Username), readonlyToken, nil)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly member search code = %d body = %s", res.StatusCode, readBody(t, res))
 	}
 	res.Body.Close()
 

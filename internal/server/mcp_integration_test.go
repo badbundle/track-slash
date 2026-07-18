@@ -357,6 +357,13 @@ func TestMCPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
 	outsiderSession := mcpConnect(t, e, tokenFor(t, outsider))
 	adminSession := mcpConnect(t, e, e.authToken)
 	projectArgs := map[string]any{"owner": projectOwner.Username, "key": project.Key}
+	for _, query := range []string{"", " ", "m"} {
+		args := map[string]any{"owner": projectOwner.Username, "key": project.Key, "query": query}
+		out := mcpCall(t, e, ownerSession, "track_search_project_member_candidates", args)
+		if candidates := decodeMCPField[[]model.ProjectMemberCandidate](t, out, "users"); len(candidates) != 0 {
+			t.Fatalf("short MCP candidate query %q = %+v", query, candidates)
+		}
+	}
 
 	candidateOut := mcpCall(t, e, ownerSession, "track_search_project_member_candidates", map[string]any{
 		"owner": projectOwner.Username, "key": project.Key, "query": "mcp-", "limit": 10,

@@ -81,6 +81,10 @@ func uiProjectMembersPanelPath(project model.Project) string {
 	return uiProjectMembersPath(project) + "/panel"
 }
 
+func uiProjectMemberCandidatesPath(project model.Project) string {
+	return uiProjectMembersPath(project) + "/candidates"
+}
+
 func uiProjectMemberPath(project model.Project, username string) string {
 	return uiProjectMembersPath(project) + "/" + username
 }

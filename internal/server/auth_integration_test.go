@@ -196,6 +196,12 @@ func TestHTTPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
 	if code != http.StatusForbidden {
 		t.Fatalf("readonly candidates code = %d body = %s", code, body)
 	}
+	for _, query := range []string{"", "   ", candidate.Username[:1]} {
+		code, body = e.doWithToken(t, ownerToken, http.MethodGet, path+"/members/candidates?q="+url.QueryEscape(query), nil)
+		if code != http.StatusOK || len(decode[[]model.ProjectMemberCandidate](t, body)) != 0 {
+			t.Fatalf("short candidate query %q code = %d body = %s", query, code, body)
+		}
+	}
 
 	code, body = e.doWithToken(t, memberToken, http.MethodPatch, path, map[string]any{"name": "Member Updated"})
 	if code != http.StatusOK {
@@ -213,6 +219,20 @@ func TestHTTPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
 	candidates := decode[[]model.ProjectMemberCandidate](t, body)
 	if len(candidates) != 1 || candidates[0].ID != candidate.ID {
 		t.Fatalf("candidates = %+v", candidates)
+	}
+	if bytes.Contains(body, []byte(candidate.Email)) {
+		t.Fatalf("candidate response exposed email: %s", body)
+	}
+	candidatePrefix := "role-cap-" + strings.ToLower(uniqueProjectKey(t))
+	for i := 0; i < store.ProjectMemberCandidateLimit+1; i++ {
+		username := fmt.Sprintf("%s-%02d", candidatePrefix, i)
+		if _, err := e.store.CreateUserProfile(e.ctx, username, username+"@example.com", "Role Limit Candidate"); err != nil {
+			t.Fatalf("CreateUserProfile candidate %d: %v", i, err)
+		}
+	}
+	code, body = e.doWithToken(t, ownerToken, http.MethodGet, path+"/members/candidates?q="+url.QueryEscape(candidatePrefix)+"&limit=200", nil)
+	if limited := decode[[]model.ProjectMemberCandidate](t, body); code != http.StatusOK || len(limited) != store.ProjectMemberCandidateLimit {
+		t.Fatalf("limited candidates code = %d count = %d body = %s", code, len(limited), body)
 	}
 	code, body = e.doWithToken(t, ownerToken, http.MethodPut, path+"/members/"+owner.Username, map[string]any{"role": "readonly"})
 	if code != http.StatusConflict {
