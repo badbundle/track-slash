@@ -42,6 +42,32 @@ func TestUIProjectBreadcrumbIncludesCurrentView(t *testing.T) {
 	}
 }
 
+func TestUIBreadcrumbsIncludeOwnerForAnotherProfile(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issue := model.Issue{Identifier: "TRACK-20"}
+	for name, breadcrumb := range map[string]uiBreadcrumbData{
+		"project":       uiProjectBreadcrumb(project, "all", true),
+		"issue":         uiIssueBreadcrumb(project, issue, nil, true),
+		"issue context": uiIssueContextBreadcrumb(project, issue, nil, true),
+	} {
+		t.Run(name, func(t *testing.T) {
+			items := breadcrumb.Items
+			if len(items) < 3 {
+				t.Fatalf("breadcrumb items = %#v, want owner hierarchy", items)
+			}
+			owner := items[1]
+			if owner.Label != "@bradley" || owner.Href != "/bradley/projects" || owner.HXGet != "/bradley/projects/panel" || owner.Current {
+				t.Fatalf("owner breadcrumb = %#v", owner)
+			}
+			if items[2].Label != project.Name {
+				t.Fatalf("project breadcrumb = %#v, want project after owner", items[2])
+			}
+		})
+	}
+}
+
 func TestUIProjectFavoriteViewKeepsSprintHistory(t *testing.T) {
 	t.Parallel()
 	if got := uiProjectFavoriteView("sprints"); got != "sprints" {

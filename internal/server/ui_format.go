@@ -37,19 +37,32 @@ var uiProjectViewLabels = map[string]string{
 	"changelog": "Changelog",
 }
 
-func uiProjectBreadcrumb(project model.Project, view string) uiBreadcrumbData {
-	return uiBreadcrumbData{Items: []uiBreadcrumbItem{
-		{Label: "Projects", Href: "/projects", HXGet: "/projects/panel"},
-		{Label: project.Name, Href: uiProjectViewPath(project, "all"), HXGet: uiProjectPanelPath(project, "all")},
-		{Label: uiProjectViewLabels[view], Current: true},
-	}}
+func uiProjectBreadcrumb(project model.Project, view string, showOwner ...bool) uiBreadcrumbData {
+	items := uiProjectBreadcrumbItems(project, showOwner...)
+	items = append(items, uiBreadcrumbItem{Label: uiProjectViewLabels[view], Current: true})
+	return uiBreadcrumbData{Items: items}
 }
 
-func uiIssueBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue) uiBreadcrumbData {
+func uiProjectBreadcrumbItems(project model.Project, showOwner ...bool) []uiBreadcrumbItem {
 	items := []uiBreadcrumbItem{
 		{Label: "Projects", Href: "/projects", HXGet: "/projects/panel"},
-		{Label: project.Name, Href: uiProjectViewPath(project, "all"), HXGet: uiProjectPanelPath(project, "all")},
 	}
+	if len(showOwner) > 0 && showOwner[0] {
+		items = append(items, uiBreadcrumbItem{
+			Label: "@" + project.OwnerUsername,
+			Href:  uiOwnerProjectsPath(project.OwnerUsername),
+			HXGet: uiOwnerProjectsPanelPath(project.OwnerUsername),
+		})
+	}
+	return append(items, uiBreadcrumbItem{
+		Label: project.Name,
+		Href:  uiProjectViewPath(project, "all"),
+		HXGet: uiProjectPanelPath(project, "all"),
+	})
+}
+
+func uiIssueBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue, showOwner ...bool) uiBreadcrumbData {
+	items := uiProjectBreadcrumbItems(project, showOwner...)
 	if parentIssue != nil {
 		items = append(items, uiBreadcrumbItem{
 			Label:    parentIssue.Identifier,
@@ -62,8 +75,8 @@ func uiIssueBreadcrumb(project model.Project, issue model.Issue, parentIssue *mo
 	return uiBreadcrumbData{Items: items}
 }
 
-func uiIssueContextBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue) uiBreadcrumbData {
-	breadcrumb := uiIssueBreadcrumb(project, issue, parentIssue)
+func uiIssueContextBreadcrumb(project model.Project, issue model.Issue, parentIssue *model.Issue, showOwner ...bool) uiBreadcrumbData {
+	breadcrumb := uiIssueBreadcrumb(project, issue, parentIssue, showOwner...)
 	issueItem := &breadcrumb.Items[len(breadcrumb.Items)-1]
 	issueItem.Href = uiIssuePath(issue)
 	issueItem.HXGet = uiIssuePanelPath(issue)

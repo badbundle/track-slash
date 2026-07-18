@@ -9,6 +9,14 @@ func uiProjectPath(project model.Project) string {
 	return "/" + project.OwnerUsername + "/projects/" + project.Key
 }
 
+func uiOwnerProjectsPath(username string) string {
+	return "/" + username + "/projects"
+}
+
+func uiOwnerProjectsPanelPath(username string) string {
+	return uiOwnerProjectsPath(username) + "/panel"
+}
+
 func uiProjectViewPath(project model.Project, view string, assigneeIDs ...[]uuid.UUID) string {
 	ids := []uuid.UUID(nil)
 	if len(assigneeIDs) > 0 {

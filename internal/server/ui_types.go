@@ -299,6 +299,7 @@ type uiContextManagerData struct {
 	ParentIssue        *model.Issue
 	HasIssue           bool
 	CanWrite           bool
+	OwnerCrumb         bool
 	Items              []uiContextManagerItem
 	HasMore            bool
 	ContextOptions     []uiProjectContextOption
@@ -449,6 +450,7 @@ type uiProjectPanelData struct {
 	CanCreateIssues                 bool
 	PublicIssueCreationEnabled      bool
 	CanManageMembers                bool
+	OwnerCrumb                      bool
 	MembersPage                     bool
 	Members                         []model.ProjectMember
 	AccessSettings                  model.ProjectAccessSettings
@@ -564,6 +566,7 @@ type uiIssuePanelData struct {
 	Issue              model.Issue
 	Project            model.Project
 	CanWrite           bool
+	OwnerCrumb         bool
 	ParentIssue        *model.Issue
 	Sprint             *model.Sprint
 	Assignee           *model.User
@@ -653,6 +656,7 @@ type uiTagManagerData struct {
 type uiProjectsPanelData struct {
 	Projects []model.Project
 	HasMore  bool
+	Owner    *model.User
 }
 
 type uiNewProjectPanelData struct {

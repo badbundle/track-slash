@@ -106,6 +106,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/{owner}/issues/{issueRef}/tags", s.uiIssueWriteHandler(s.uiIssueTagsPage))
 		r.Post("/{owner}/issues/{issueRef}/tags", s.uiIssueWriteHandler(s.uiAttachIssueTag))
 		r.Post("/{owner}/issues/{issueRef}/tags/{tagRef}/delete", s.uiIssueWriteHandler(s.uiDetachIssueTag))
+		r.Get("/{owner}/projects", s.uiOwnerProjectsPage)
+		r.Get("/{owner}/projects/panel", s.uiOwnerProjectsPanel)
 		r.Get("/{owner}/projects/{key}", s.uiProjectPage)
 		r.Get("/{owner}/projects/{key}/about", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "about") })
 		r.Get("/{owner}/projects/{key}/about/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "about") })

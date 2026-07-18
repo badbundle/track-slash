@@ -243,6 +243,27 @@ func (s *Server) uiBuildProjectsPanel(ctx context.Context, user model.User) (*ui
 	}, nil
 }
 
+func (s *Server) uiBuildOwnerProjectsPanel(ctx context.Context, user model.User, username string) (*uiProjectsPanelData, error) {
+	owner, err := s.store.GetUserByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	panel, err := s.uiBuildProjectsPanel(ctx, user)
+	if err != nil {
+		// Defensive: the live owner lookup succeeded; remaining failures require a DB outage.
+		return nil, err
+	}
+	projects := make([]model.Project, 0, len(panel.Projects))
+	for _, project := range panel.Projects {
+		if project.OwnerID == owner.ID {
+			projects = append(projects, project)
+		}
+	}
+	panel.Projects = projects
+	panel.Owner = &owner
+	return panel, nil
+}
+
 func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project, userID uuid.UUID, query uiIssueListQuery) ([]uiIssueItem, bool, error) {
 	var out []uiIssueItem
 	var hasMore bool
@@ -418,6 +439,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		CanCreateIssues:            permissions.CanCreateIssues,
 		PublicIssueCreationEnabled: permissions.IsPublic && permissions.PublicIssueCreation && !permissions.IsBlocked,
 		CanManageMembers:           permissions.CanManageMembers,
+		OwnerCrumb:                 currentUser(r).ID != project.OwnerID,
 		Favorite:                   favorite,
 		ProjectTabs:                uiProjectTabs(project, view, assigneeIDs),
 		AssigneeFilterActive:       len(assigneeIDs) > 0,
