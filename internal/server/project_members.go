@@ -201,7 +201,7 @@ func (s *Server) searchAvailableProjectMembers(w http.ResponseWriter, r *http.Re
 	candidates, err := s.store.SearchAvailableProjectMembers(r.Context(), store.SearchAvailableProjectMembersParams{
 		ProjectID: project.ID,
 		Query:     r.URL.Query().Get("q"),
-		Limit:     limit,
+		Limit:     min(limit, store.ProjectMemberCandidateLimit),
 	})
 	if err != nil {
 		writeStoreError(w, err)

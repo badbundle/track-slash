@@ -13,6 +13,7 @@ import (
 )
 
 func uiProjectMemberAutocomplete(panel *uiProjectPanelData) uiAutocompleteEditData {
+	queryReady := store.ProjectMemberCandidateQueryReady(panel.MemberInput)
 	options := make([]uiAutocompleteOption, 0, len(panel.MemberCandidates))
 	for _, candidate := range panel.MemberCandidates {
 		options = append(options, uiAutocompleteOption{
@@ -22,18 +23,53 @@ func uiProjectMemberAutocomplete(panel *uiProjectPanelData) uiAutocompleteEditDa
 			SearchText: candidate.Name + " " + candidate.Username,
 		})
 	}
-	return uiAutocompleteEditData{
-		ID:          "project-member-user",
-		Label:       "User",
-		Name:        "username",
-		Value:       panel.MemberInput,
-		Placeholder: "Search existing users",
-		Autofocus:   true,
-		OptionsOpen: true,
-		OptionsID:   "project-member-options",
-		EmptyLabel:  "No users available to add.",
-		Options:     options,
+	data := uiAutocompleteEditData{
+		ID:             "project-member-user",
+		Label:          "User",
+		Name:           "username",
+		Value:          panel.MemberInput,
+		Placeholder:    "Search existing users",
+		Autofocus:      true,
+		Collapsible:    true,
+		OptionsOpen:    queryReady,
+		InputHXGet:     uiProjectMemberCandidatesPath(panel.Project),
+		InputHXTrigger: "input changed delay:300ms",
+		InputHXTarget:  "#project-member-options",
+		InputHXSwap:    "outerHTML",
+		InputHXPushURL: "false",
+		OptionsID:      "project-member-options",
+		Options:        options,
 	}
+	if queryReady {
+		data.EmptyLabel = "No users found."
+	}
+	return data
+}
+
+func (s *Server) uiProjectMemberCandidates(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectMemberManagement(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	input := r.URL.Query().Get("username")
+	candidates, err := s.store.SearchAvailableProjectMembers(r.Context(), store.SearchAvailableProjectMembersParams{
+		ProjectID: project.ID,
+		Query:     input,
+		Limit:     store.ProjectMemberCandidateLimit,
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "autocomplete-options", uiProjectMemberAutocomplete(&uiProjectPanelData{
+		Project:          project,
+		MemberInput:      input,
+		MemberCandidates: candidates,
+	}))
 }
 
 func (s *Server) uiAddProjectMember(w http.ResponseWriter, r *http.Request) {

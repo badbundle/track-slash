@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -541,12 +542,25 @@ type SearchAvailableProjectMembersParams struct {
 	Limit     int
 }
 
+const (
+	ProjectMemberCandidateMinQueryLength = 2
+	ProjectMemberCandidateLimit          = 10
+)
+
+func ProjectMemberCandidateQueryReady(query string) bool {
+	return utf8.RuneCountInString(strings.TrimSpace(query)) >= ProjectMemberCandidateMinQueryLength
+}
+
 func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvailableProjectMembersParams) ([]model.ProjectMemberCandidate, error) {
 	project, err := s.GetProject(ctx, p.ProjectID)
 	if err != nil {
 		return nil, err
 	}
+	if !ProjectMemberCandidateQueryReady(p.Query) {
+		return []model.ProjectMemberCandidate{}, nil
+	}
 	query := strings.ToLower(strings.TrimSpace(p.Query))
+	limit := min(p.Limit, ProjectMemberCandidateLimit)
 	rows, err := s.db.Query(ctx, `
 		SELECT u.id, u.username, u.name, u.profile_image_thumbnail_object_id
 		FROM users u
@@ -567,7 +581,7 @@ func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvail
 		  )
 		ORDER BY lower(u.name) ASC, lower(u.username) ASC, u.id ASC
 		LIMIT $4
-	`, p.ProjectID, project.OwnerID, query, p.Limit)
+	`, p.ProjectID, project.OwnerID, query, limit)
 	if err != nil {
 		return nil, err
 	}

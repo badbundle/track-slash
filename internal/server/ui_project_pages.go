@@ -614,10 +614,6 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		if err != nil {
 			return nil, err
 		}
-		panel.MemberCandidates, err = s.store.SearchAvailableProjectMembers(ctx, store.SearchAvailableProjectMembersParams{ProjectID: projectID, Limit: MaxLimit})
-		if err != nil {
-			return nil, err
-		}
 		panel.AccessSettings, err = s.store.GetProjectAccessSettings(ctx, projectID)
 		if err != nil {
 			return nil, err

@@ -70,7 +70,7 @@
 
       <section class="border-t border-slate-100 pt-5 dark:border-slate-800">
         <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Add member</h3>
-        <form method="post" action="{{projectMembers .Project}}" hx-post="{{projectMembers .Project}}" hx-target="#main" hx-push-url="false" data-search class="mt-2 space-y-2">
+        <form method="post" action="{{projectMembers .Project}}" hx-post="{{projectMembers .Project}}" hx-target="#main" hx-push-url="false" data-search data-search-collapsible data-project-search class="mt-2 space-y-2">
           <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto]">
             {{template "autocomplete-input" (projectMemberAutocomplete .)}}
             <select name="role" aria-label="New member role" class="h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">

@@ -476,7 +476,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_block_project_user", "Block user from project. Project owner or admin only.", write, s.mcpBlockProjectUser)
 	addMCPTool(srv, "track_unblock_project_user", "Unblock user from project. Project owner or admin only.", write, s.mcpUnblockProjectUser)
 	addMCPTool(srv, "track_search_project_members", "Search users with access to project.", readOnly, s.mcpSearchProjectMembers)
-	addMCPTool(srv, "track_search_project_member_candidates", "Search existing users who can be added to a project. Project owner or admin only.", readOnly, s.mcpSearchProjectMemberCandidates)
+	addMCPTool(srv, "track_search_project_member_candidates", "Search existing users who can be added to a project. Queries shorter than two characters return no candidates. Project owner or admin only.", readOnly, s.mcpSearchProjectMemberCandidates)
 	addMCPTool(srv, "track_list_project_assignees", "List assignable users for project.", readOnly, s.mcpListProjectAssignees)
 	addMCPTool(srv, "track_get_project_stats", "Get project issue status stats.", readOnly, s.mcpGetProjectStats)
 	addMCPTool(srv, "track_list_project_changelog", "List project changelog entries.", readOnly, s.mcpListProjectChangelog)
@@ -1237,7 +1237,7 @@ func (s *Server) mcpSearchProjectMemberCandidates(ctx context.Context, req *mcp.
 	candidates, err := s.store.SearchAvailableProjectMembers(ctx, store.SearchAvailableProjectMembersParams{
 		ProjectID: project.ID,
 		Query:     input.Query,
-		Limit:     limit,
+		Limit:     min(limit, store.ProjectMemberCandidateLimit),
 	})
 	if err != nil {
 		return nil, err

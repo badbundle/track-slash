@@ -119,6 +119,12 @@ func TestProjectMemberRolesAndPermissions(t *testing.T) {
 		t.Fatalf("missing project permissions err = %v, want ErrNotFound", err)
 	}
 
+	for _, query := range []string{"", "   ", "o"} {
+		candidates, err := env.store.SearchAvailableProjectMembers(env.ctx, store.SearchAvailableProjectMembersParams{ProjectID: env.projectID, Query: query, Limit: 10})
+		if err != nil || len(candidates) != 0 {
+			t.Fatalf("short-query candidates for %q = %+v, %v", query, candidates, err)
+		}
+	}
 	candidates, err := env.store.SearchAvailableProjectMembers(env.ctx, store.SearchAvailableProjectMembersParams{ProjectID: env.projectID, Query: "outsider", Limit: 10})
 	if err != nil {
 		t.Fatalf("SearchAvailableProjectMembers: %v", err)
