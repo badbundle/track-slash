@@ -1042,7 +1042,7 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 			t.Fatalf("project work tabs should not preserve sprint assignee filter %q: %s", notWant, body)
 		}
 	}
-	requireInlineCount(t, body, "Sprint", 2)
+	requireInlineCountText(t, body, "Sprint", "2 Issues")
 	requireInlineCount(t, body, "To do", 1)
 	requireInlineCount(t, body, "In progress", 1)
 	requireInlineCount(t, body, "Done", 0)

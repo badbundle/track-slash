@@ -13,6 +13,11 @@ const uiCountBadgeClass = "inline-flex shrink-0 items-center rounded-md border b
 
 func requireInlineCount(t *testing.T, body, heading string, count int) {
 	t.Helper()
+	requireInlineCountText(t, body, heading, strconv.Itoa(count))
+}
+
+func requireInlineCountText(t *testing.T, body, heading, count string) {
+	t.Helper()
 	headingIndex := strings.Index(body, ">"+heading+"</h")
 	if headingIndex < 0 {
 		t.Fatalf("missing heading %q: %s", heading, body)
@@ -22,9 +27,9 @@ func requireInlineCount(t *testing.T, body, heading string, count int) {
 		segmentEnd = len(body)
 	}
 	segment := body[headingIndex:segmentEnd]
-	want := `class="` + uiCountBadgeClass + `">` + strconv.Itoa(count) + `</span>`
+	want := `class="` + uiCountBadgeClass + `">` + count + `</span>`
 	if !strings.Contains(segment, want) {
-		t.Fatalf("heading %q missing inline count %d: %s", heading, count, body)
+		t.Fatalf("heading %q missing inline count %q: %s", heading, count, body)
 	}
 }
 

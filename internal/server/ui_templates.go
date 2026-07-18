@@ -106,6 +106,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueStatusDropdown":            uiIssueStatusDropdown,
 	"closeReasonOptions":             uiCloseReasonOptions,
 	"issueColumnCount":               uiIssueColumnCount,
+	"sprintIssueCount":               uiSprintIssueCount,
 	"priorityClass":                  uiPriorityClass,
 	"priorityLabel":                  uiPriorityLabel,
 	"priorityOptions":                uiPriorityOptions,

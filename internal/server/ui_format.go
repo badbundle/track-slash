@@ -775,6 +775,14 @@ func uiIssueColumnCount(columns []uiIssueColumn) int {
 	return total
 }
 
+func uiSprintIssueCount(count int) string {
+	label := "Issues"
+	if count == 1 {
+		label = "Issue"
+	}
+	return fmt.Sprintf("%d %s", count, label)
+}
+
 func uiPercent(part, total int) string {
 	if total <= 0 || part <= 0 {
 		return "0%"
