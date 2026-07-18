@@ -567,6 +567,7 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 		ParentIssue:    parentIssue,
 		HasIssue:       true,
 		CanWrite:       permissions.CanWrite,
+		OwnerCrumb:     currentUser(r).ID != project.OwnerID,
 		Items:          items,
 		HasMore:        hasMore,
 		ContextOptions: contextOptions,

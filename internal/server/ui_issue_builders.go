@@ -528,6 +528,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		Issue:              issue,
 		Project:            project,
 		CanWrite:           permissions.CanWrite,
+		OwnerCrumb:         currentUser(r).ID != project.OwnerID,
 		ParentIssue:        parentIssue,
 		Sprint:             sprint,
 		Assignee:           assignee,

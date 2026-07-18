@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/go-chi/chi/v5"
 	"net/http"
 	"net/url"
 	"strings"
@@ -58,6 +59,19 @@ func (s *Server) uiProjectsPanel(w http.ResponseWriter, r *http.Request) {
 	panel, err := s.uiBuildProjectsPanel(r.Context(), currentUser(r))
 	if err != nil {
 		writeUIInternalError(w, "ui projects panel", err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "projects-panel", panel)
+}
+
+func (s *Server) uiOwnerProjectsPage(w http.ResponseWriter, r *http.Request) {
+	s.renderUIOwnerProjects(w, r, http.StatusOK)
+}
+
+func (s *Server) uiOwnerProjectsPanel(w http.ResponseWriter, r *http.Request) {
+	panel, err := s.uiBuildOwnerProjectsPanel(r.Context(), currentUser(r), chi.URLParam(r, "owner"))
+	if err != nil {
+		writeUIStoreError(w, err)
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "projects-panel", panel)
@@ -368,6 +382,26 @@ func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status
 	s.renderUIShell(w, r, status, uiShellData{
 		User:          currentUser(r),
 		Projects:      panel.Projects,
+		SidebarActive: uiSidebarState{View: "projects"},
+		ProjectsPanel: panel,
+	})
+}
+
+func (s *Server) renderUIOwnerProjects(w http.ResponseWriter, r *http.Request, status int) {
+	panel, err := s.uiBuildOwnerProjectsPanel(r.Context(), currentUser(r), chi.URLParam(r, "owner"))
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	if err != nil {
+		// Defensive: the owner panel already completed the same project query; this requires a subsequent DB outage.
+		writeUIInternalError(w, "ui owner projects visible projects", err)
+		return
+	}
+	s.renderUIShell(w, r, status, uiShellData{
+		User:          currentUser(r),
+		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "projects"},
 		ProjectsPanel: panel,
 	})

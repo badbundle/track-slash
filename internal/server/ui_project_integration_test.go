@@ -157,6 +157,126 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 }
 
+func TestUIOwnerProjectListingsAndBreadcrumbAccess(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	member, memberToken := e.mustProjectMemberToken(t, "ui-owner-list-member")
+	readonly, readonlyToken := e.mustUserToken(t, "ui-owner-list-readonly")
+	if _, err := e.store.SetProjectMemberRole(e.ctx, e.projectID, readonly.ID, model.ProjectMemberRoleReadonly); err != nil {
+		t.Fatalf("SetProjectMemberRole readonly: %v", err)
+	}
+
+	hidden, err := e.store.CreateProjectForUser(e.ctx, e.adminID, uniqueProjectKey(t), "Owner hidden project", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser hidden: %v", err)
+	}
+	publicProject, err := e.store.CreateProjectForUser(e.ctx, e.adminID, uniqueProjectKey(t), "Owner public project", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser public: %v", err)
+	}
+	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, publicProject.ID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+		t.Fatalf("UpdateProjectAccessSettings public: %v", err)
+	}
+	deleted, err := e.store.CreateProjectForUser(e.ctx, e.adminID, uniqueProjectKey(t), "Owner deleted project", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser deleted: %v", err)
+	}
+	if err := e.store.DeleteProject(e.ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteProject: %v", err)
+	}
+	owned, err := e.store.CreateProjectForUser(e.ctx, member.ID, uniqueProjectKey(t), "Member own project", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser member: %v", err)
+	}
+
+	ownerPath := "/" + e.ownerUsername + "/projects"
+	body := e.uiGet(t, ownerPath, memberToken)
+	for _, want := range []string{"@" + e.ownerUsername + " projects", "Projects owned by @" + e.ownerUsername + " that you can access.", "http-test", publicProject.Name} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("owner project listing missing %q: %s", want, body)
+		}
+	}
+	for _, notWant := range []string{hidden.Name, deleted.Name, owned.Name, `aria-label="New project"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("owner project listing leaked or rendered %q: %s", notWant, body)
+		}
+	}
+	panelBody := e.uiGet(t, ownerPath+"/panel", memberToken)
+	if !strings.Contains(panelBody, publicProject.Name) || strings.Contains(panelBody, hidden.Name) {
+		t.Fatalf("owner projects panel did not preserve access filtering: %s", panelBody)
+	}
+
+	for label, tc := range map[string]struct {
+		path  string
+		token string
+	}{
+		"writable member": {path: e.projectPath() + "/all", token: memberToken},
+		"readonly member": {path: e.projectPath() + "/all", token: readonlyToken},
+		"public viewer":   {path: "/" + publicProject.OwnerUsername + "/projects/" + publicProject.Key + "/all"},
+	} {
+		t.Run(label, func(t *testing.T) {
+			res := e.uiDoNoRedirect(t, http.MethodGet, tc.path, tc.token, nil)
+			defer res.Body.Close()
+			page := readBody(t, res)
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("project page code = %d body = %s", res.StatusCode, page)
+			}
+			for _, want := range []string{`href="` + ownerPath + `"`, `hx-get="` + ownerPath + `/panel"`, `>@` + e.ownerUsername + `</a>`} {
+				if !strings.Contains(page, want) {
+					t.Fatalf("project breadcrumb missing %q: %s", want, page)
+				}
+			}
+		})
+	}
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "Owner breadcrumb issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	for _, path := range []string{e.issuePath(issue), e.issuePath(issue) + "/context"} {
+		issueBody := e.uiGet(t, path, memberToken)
+		if !strings.Contains(issueBody, `href="`+ownerPath+`"`) || !strings.Contains(issueBody, `>@`+e.ownerUsername+`</a>`) {
+			t.Fatalf("issue hierarchy missing owner breadcrumb at %s: %s", path, issueBody)
+		}
+	}
+
+	ownPath := "/" + owned.OwnerUsername + "/projects/" + owned.Key + "/all"
+	ownBody := e.uiGet(t, ownPath, memberToken)
+	if strings.Contains(mainContentBlock(t, ownBody), `href="/`+member.Username+`/projects"`) {
+		t.Fatalf("own project rendered redundant owner breadcrumb: %s", ownBody)
+	}
+
+	res := e.uiDoNoRedirect(t, http.MethodGet, ownerPath, "", nil)
+	defer res.Body.Close()
+	publicBody := readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(publicBody, publicProject.Name) || strings.Contains(publicBody, "http-test") || strings.Contains(publicBody, hidden.Name) {
+		t.Fatalf("anonymous owner listing code = %d body = %s", res.StatusCode, publicBody)
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, ownerPath+"/panel", "", nil)
+	defer res.Body.Close()
+	publicPanelBody := readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(publicPanelBody, publicProject.Name) || strings.Contains(publicPanelBody, "http-test") {
+		t.Fatalf("anonymous owner panel code = %d body = %s", res.StatusCode, publicPanelBody)
+	}
+
+	missingPath := "/missingowner" + strings.ToLower(uniqueProjectKey(t)) + "/projects"
+	res = e.uiDoNoRedirect(t, http.MethodGet, missingPath, memberToken, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown owner code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+	res = e.uiDoNoRedirect(t, http.MethodGet, missingPath+"/panel", memberToken, nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown owner panel code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+
+	res = e.uiDoNoRedirect(t, http.MethodGet, "/not-valid!/projects", "", nil)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || !strings.HasPrefix(res.Header.Get("Location"), "/login") {
+		t.Fatalf("invalid anonymous owner route code = %d location = %q", res.StatusCode, res.Header.Get("Location"))
+	}
+}
+
 func TestUIProjectAboutStats(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

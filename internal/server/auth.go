@@ -160,6 +160,10 @@ func (s *Server) anonymousProjectReadAllowed(r *http.Request, api bool) bool {
 			return true
 		}
 	}
+	if (len(parts) == 2 || len(parts) == 3 && parts[2] == "panel") && parts[1] == "projects" {
+		_, err := store.NormalizeUsername(parts[0])
+		return err == nil
+	}
 	if len(parts) < 3 {
 		return false
 	}
