@@ -426,7 +426,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		ClearAssigneeHXPush:        uiProjectViewPath(project, view),
 		DeleteNotice:               deleteNotice,
 	}
-	if view == "sprint" || view == "all" {
+	if view == "all" {
 		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
 		if err != nil {
 			return nil, err
@@ -438,21 +438,12 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		if err != nil {
 			return nil, err
 		}
-		if view == "all" {
-			panel.AssigneeFilters = uiProjectAllAssigneeFilters(project, assignees, allQuery)
-			clearAssigneeQuery := allQuery
-			clearAssigneeQuery.AssigneeIDs = nil
-			panel.ClearAssigneeHref = uiProjectAllViewPath(project, clearAssigneeQuery)
-			panel.ClearAssigneeHXGet = uiProjectAllPanelPath(project, clearAssigneeQuery)
-			panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
-		} else {
-			panel.AssigneeFilters = uiProjectSprintAssigneeFilters(project, assignees, sprintQuery)
-			clearAssigneeQuery := sprintQuery
-			clearAssigneeQuery.AssigneeIDs = nil
-			panel.ClearAssigneeHref = uiProjectSprintViewPath(project, clearAssigneeQuery)
-			panel.ClearAssigneeHXGet = uiProjectSprintPanelPath(project, clearAssigneeQuery)
-			panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
-		}
+		panel.AssigneeFilters = uiProjectAllAssigneeFilters(project, assignees, allQuery)
+		clearAssigneeQuery := allQuery
+		clearAssigneeQuery.AssigneeIDs = nil
+		panel.ClearAssigneeHref = uiProjectAllViewPath(project, clearAssigneeQuery)
+		panel.ClearAssigneeHXGet = uiProjectAllPanelPath(project, clearAssigneeQuery)
+		panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
 	}
 
 	switch view {
@@ -488,12 +479,29 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		if err != nil {
 			return nil, err
 		}
-		panel.SprintColumns = uiIssueColumns()
-		panel.SprintControls = uiProjectSprintIssueControls(project, sprintQuery, tags, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
 		if len(activeSprints) == 0 {
 			return panel, nil
 		}
 		panel.ActiveSprint = &activeSprints[0]
+		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		tags, _, err = s.store.ListIssueTags(ctx, store.ListIssueTagsParams{
+			ProjectID: projectID,
+			Limit:     MaxLimit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		panel.AssigneeFilters = uiProjectSprintAssigneeFilters(project, assignees, sprintQuery)
+		clearAssigneeQuery := sprintQuery
+		clearAssigneeQuery.AssigneeIDs = nil
+		panel.ClearAssigneeHref = uiProjectSprintViewPath(project, clearAssigneeQuery)
+		panel.ClearAssigneeHXGet = uiProjectSprintPanelPath(project, clearAssigneeQuery)
+		panel.ClearAssigneeHXPush = panel.ClearAssigneeHref
+		panel.SprintColumns = uiIssueColumns()
+		panel.SprintControls = uiProjectSprintIssueControls(project, sprintQuery, tags, panel.AssigneeFilters, panel.AssigneeFilterActive, panel.ClearAssigneeHref, panel.ClearAssigneeHXGet, panel.ClearAssigneeHXPush)
 		activeAttachments, _, err := s.store.ListSprintAttachments(ctx, store.ListSprintAttachmentsParams{
 			SprintID: panel.ActiveSprint.ID,
 			Limit:    MaxLimit,

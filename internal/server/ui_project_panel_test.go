@@ -1092,3 +1092,24 @@ func TestUIProjectPanelRendersActiveSprintDates(t *testing.T) {
 		})
 	}
 }
+
+func TestUIProjectPanelHidesIssueControlsWithoutActiveSprint(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel-sprint", &uiProjectPanelData{
+		Project: model.Project{OwnerUsername: "bradley", Key: "TRACK"},
+	}); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	body := buf.String()
+	if !strings.Contains(body, "No active sprint.") {
+		t.Fatalf("sprint panel missing no-active guidance: %s", body)
+	}
+	for _, notWant := range []string{`aria-label="Issue controls"`, "No active sprint issues.", `class="grid gap-4 lg:grid-cols-3"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("sprint panel without an active sprint included %q: %s", notWant, body)
+		}
+	}
+}
