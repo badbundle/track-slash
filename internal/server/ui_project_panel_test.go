@@ -1047,3 +1047,48 @@ func TestUIProjectPanelRendersAssigneeFilterAndSprintGoal(t *testing.T) {
 	requireInlineCount(t, body, "In progress", 1)
 	requireInlineCount(t, body, "Done", 0)
 }
+
+func TestUIProjectPanelRendersActiveSprintDates(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	for _, tt := range []struct {
+		name      string
+		startDate *time.Time
+		endDate   *time.Time
+		want      string
+	}{
+		{name: "no dates", want: "No scheduled dates"},
+		{name: "start only", startDate: &start, want: "Jun 1"},
+		{name: "end only", endDate: &end, want: "Jun 14"},
+		{name: "both dates", startDate: &start, endDate: &end, want: "Jun 1-Jun 14"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			activeSprint := model.Sprint{
+				Ref:       "sprint-1",
+				Name:      "Current Sprint",
+				StartDate: tt.startDate,
+				EndDate:   tt.endDate,
+			}
+			var buf bytes.Buffer
+			if err := uiTemplates.ExecuteTemplate(&buf, "project-panel-sprint", &uiProjectPanelData{
+				Project:      model.Project{OwnerUsername: "bradley", Key: "TRACK"},
+				ActiveSprint: &activeSprint,
+			}); err != nil {
+				t.Fatalf("ExecuteTemplate: %v", err)
+			}
+
+			body := buf.String()
+			want := `<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">` + tt.want + `</p>`
+			if !strings.Contains(body, want) {
+				t.Fatalf("active sprint dates missing %q: %s", want, body)
+			}
+			if tt.startDate != nil || tt.endDate != nil {
+				if strings.Contains(body, "No scheduled dates") {
+					t.Fatalf("partial or complete active sprint dates rendered as unscheduled: %s", body)
+				}
+			}
+		})
+	}
+}

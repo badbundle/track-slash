@@ -293,8 +293,11 @@ func uiSprintDateRange(sprint model.Sprint) string {
 	if sprint.StartDate == nil && sprint.EndDate == nil {
 		return ""
 	}
-	if sprint.StartDate == nil || sprint.EndDate == nil {
-		return "Invalid dates"
+	if sprint.StartDate == nil {
+		return uiSprintDate(*sprint.EndDate)
+	}
+	if sprint.EndDate == nil {
+		return uiSprintDate(*sprint.StartDate)
 	}
 	return uiSprintDate(*sprint.StartDate) + "-" + uiSprintDate(*sprint.EndDate)
 }
