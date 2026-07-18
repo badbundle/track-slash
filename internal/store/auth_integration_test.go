@@ -341,6 +341,82 @@ func TestAccountValidationAndLegacyTokenOnlyUser(t *testing.T) {
 	}
 }
 
+func TestPreviewTermsAcceptanceDuringAccountCreation(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+
+	passwordUser, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username:            "termspwd" + strings.ToLower(uniqueProjectKey(t)),
+		Password:            "correct-horse-battery",
+		PreviewTermsVersion: " 2026-07-18 ",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	assertStoredPreviewTermsAcceptance(t, env, passwordUser.ID, "2026-07-18")
+
+	passkeyUser, err := env.store.CreatePasskeyOnlyAccount(env.ctx, store.CreatePasskeyOnlyAccountParams{
+		Username:            "termspk" + strings.ToLower(uniqueProjectKey(t)),
+		RPID:                "localhost",
+		UserHandle:          []byte("terms-handle-" + uniqueProjectKey(t)),
+		Credential:          testPasskeyCredential("terms-credential-"+uniqueProjectKey(t), 1),
+		PreviewTermsVersion: "2026-07-18",
+	})
+	if err != nil {
+		t.Fatalf("CreatePasskeyOnlyAccount: %v", err)
+	}
+	assertStoredPreviewTermsAcceptance(t, env, passkeyUser.ID, "2026-07-18")
+
+	withoutTerms, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username: "termsnone" + strings.ToLower(uniqueProjectKey(t)),
+		Password: "correct-horse-battery",
+	})
+	if err != nil {
+		t.Fatalf("CreateAccount without terms: %v", err)
+	}
+	var count int
+	if err := env.pool.QueryRow(env.ctx, `SELECT count(*) FROM preview_terms_acceptances WHERE user_id = $1`, withoutTerms.ID).Scan(&count); err != nil {
+		t.Fatalf("count acceptance without terms: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("acceptance count without terms = %d, want 0", count)
+	}
+
+	tooLong := strings.Repeat("v", 65)
+	if _, err := env.store.CreateAccount(env.ctx, store.CreateAccountParams{
+		Username:            "termsbadpwd" + strings.ToLower(uniqueProjectKey(t)),
+		Password:            "correct-horse-battery",
+		PreviewTermsVersion: tooLong,
+	}); err == nil {
+		t.Fatal("CreateAccount long preview terms version err = nil")
+	}
+	if _, err := env.store.CreatePasskeyOnlyAccount(env.ctx, store.CreatePasskeyOnlyAccountParams{
+		Username:            "termsbadpk" + strings.ToLower(uniqueProjectKey(t)),
+		RPID:                "localhost",
+		UserHandle:          []byte("bad-terms-handle"),
+		Credential:          testPasskeyCredential("bad-terms-credential", 1),
+		PreviewTermsVersion: tooLong,
+	}); err == nil {
+		t.Fatal("CreatePasskeyOnlyAccount long preview terms version err = nil")
+	}
+}
+
+func assertStoredPreviewTermsAcceptance(t *testing.T, env *sprintsTestEnv, userID uuid.UUID, wantVersion string) {
+	t.Helper()
+	var version string
+	var acceptedAt time.Time
+	if err := env.pool.QueryRow(env.ctx, `
+		SELECT terms_version, accepted_at
+		FROM preview_terms_acceptances
+		WHERE user_id = $1
+	`, userID).Scan(&version, &acceptedAt); err != nil {
+		t.Fatalf("query preview terms acceptance: %v", err)
+	}
+	if version != wantVersion || acceptedAt.IsZero() {
+		t.Fatalf("acceptance = version %q at %v, want %q and a timestamp", version, acceptedAt, wantVersion)
+	}
+}
+
 func TestPasskeyOnlyAccountLifecycle(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)

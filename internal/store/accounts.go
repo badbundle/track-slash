@@ -48,9 +48,10 @@ func UsernameFromEmail(email string) string {
 }
 
 type CreateAccountParams struct {
-	Username string
-	Password string
-	Name     string
+	Username            string
+	Password            string
+	Name                string
+	PreviewTermsVersion string
 }
 
 func (s *Store) CreateAccount(ctx context.Context, p CreateAccountParams) (model.User, error) {
@@ -59,6 +60,10 @@ func (s *Store) CreateAccount(ctx context.Context, p CreateAccountParams) (model
 		return model.User{}, err
 	}
 	if err := ValidatePassword(p.Password); err != nil {
+		return model.User{}, err
+	}
+	termsVersion, err := normalizePreviewTermsVersion(p.PreviewTermsVersion)
+	if err != nil {
 		return model.User{}, err
 	}
 	name := strings.TrimSpace(p.Name)
@@ -99,6 +104,9 @@ func (s *Store) CreateAccount(ctx context.Context, p CreateAccountParams) (model
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return model.User{}, ErrConflict
 		}
+		return model.User{}, err
+	}
+	if err := recordPreviewTermsAcceptance(ctx, tx, u.ID, termsVersion); err != nil {
 		return model.User{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

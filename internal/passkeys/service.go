@@ -54,7 +54,7 @@ func New(st *store.Store, publicOrigin string) *Service {
 	return &Service{
 		store:        st,
 		publicOrigin: strings.TrimSpace(publicOrigin),
-		displayName:  "track-slash",
+		displayName:  "trackslash",
 	}
 }
 
@@ -106,7 +106,7 @@ func (s *Service) BeginSignup(ctx context.Context, r *http.Request, p SignupOpti
 	return CreationOptions{CeremonyID: id, PublicKey: creation.Response, Mediation: creation.Mediation}, nil
 }
 
-func (s *Service) FinishSignup(ctx context.Context, r *http.Request, ceremonyID uuid.UUID, response []byte) (model.User, error) {
+func (s *Service) FinishSignup(ctx context.Context, r *http.Request, ceremonyID uuid.UUID, response []byte, previewTermsVersion string) (model.User, error) {
 	rp, session, err := s.consumeSession(ctx, r, ceremonyID, store.PasskeyCeremonySignup)
 	if err != nil {
 		return model.User{}, err
@@ -121,12 +121,13 @@ func (s *Service) FinishSignup(ctx context.Context, r *http.Request, ceremonyID 
 		return model.User{}, err
 	}
 	return s.store.CreatePasskeyOnlyAccount(ctx, store.CreatePasskeyOnlyAccountParams{
-		Username:       session.Username,
-		Name:           session.DisplayName,
-		RPID:           session.RPID,
-		UserHandle:     session.UserHandle,
-		CredentialName: session.CredentialName,
-		Credential:     *credential,
+		Username:            session.Username,
+		Name:                session.DisplayName,
+		RPID:                session.RPID,
+		UserHandle:          session.UserHandle,
+		CredentialName:      session.CredentialName,
+		Credential:          *credential,
+		PreviewTermsVersion: previewTermsVersion,
 	})
 }
 

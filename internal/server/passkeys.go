@@ -13,14 +13,16 @@ import (
 )
 
 type passkeySignupOptionsReq struct {
-	Username string `json:"username"`
-	Name     string `json:"name,omitempty"`
+	Username    string `json:"username"`
+	Name        string `json:"name,omitempty"`
+	AcceptTerms bool   `json:"accept_terms,omitempty"`
 }
 
 type passkeyFinishReq struct {
-	CeremonyID uuid.UUID       `json:"ceremony_id"`
-	Credential json.RawMessage `json:"credential"`
-	Next       string          `json:"next,omitempty"`
+	CeremonyID  uuid.UUID       `json:"ceremony_id"`
+	Credential  json.RawMessage `json:"credential"`
+	Next        string          `json:"next,omitempty"`
+	AcceptTerms bool            `json:"accept_terms,omitempty"`
 }
 
 type passkeyAddOptionsReq struct {
@@ -58,6 +60,10 @@ func (s *Server) createPasskeyAccountOptions(w http.ResponseWriter, r *http.Requ
 	if !s.allowAuthIdentifier(w, req.Username) {
 		return
 	}
+	if _, err := s.previewTermsVersion(req.AcceptTerms); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	options, err := s.passkeyOptions().BeginSignup(r.Context(), r, passkeys.SignupOptionsParams{
 		Username: req.Username,
 		Name:     req.Name,
@@ -75,7 +81,12 @@ func (s *Server) createPasskeyAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	u, err := s.passkeyOptions().FinishSignup(r.Context(), r, req.CeremonyID, req.Credential)
+	previewTermsVersion, err := s.previewTermsVersion(req.AcceptTerms)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	u, err := s.passkeyOptions().FinishSignup(r.Context(), r, req.CeremonyID, req.Credential, previewTermsVersion)
 	if err != nil {
 		writePasskeyError(w, err)
 		return
@@ -258,7 +269,12 @@ func (s *Server) uiPasskeySignup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	u, err := s.passkeyOptions().FinishSignup(r.Context(), r, req.CeremonyID, req.Credential)
+	previewTermsVersion, err := s.previewTermsVersion(req.AcceptTerms)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	u, err := s.passkeyOptions().FinishSignup(r.Context(), r, req.CeremonyID, req.Credential, previewTermsVersion)
 	if err != nil {
 		writePasskeyError(w, err)
 		return

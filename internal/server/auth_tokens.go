@@ -86,9 +86,10 @@ func (s *Server) updateMySettings(w http.ResponseWriter, r *http.Request) {
 }
 
 type createAccountReq struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Name     string `json:"name,omitempty"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	Name        string `json:"name,omitempty"`
+	AcceptTerms bool   `json:"accept_terms,omitempty"`
 }
 
 func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +101,11 @@ func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
 	if !s.allowAuthIdentifier(w, req.Username) {
 		return
 	}
+	previewTermsVersion, err := s.previewTermsVersion(req.AcceptTerms)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if _, err := store.NormalizeUsername(req.Username); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -109,9 +115,10 @@ func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u, err := s.store.CreateAccount(r.Context(), store.CreateAccountParams{
-		Username: req.Username,
-		Password: req.Password,
-		Name:     req.Name,
+		Username:            req.Username,
+		Password:            req.Password,
+		Name:                req.Name,
+		PreviewTermsVersion: previewTermsVersion,
 	})
 	if err != nil {
 		writeStoreError(w, err)
