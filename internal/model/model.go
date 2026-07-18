@@ -337,6 +337,21 @@ type ProjectStats struct {
 	TopAssignees []ProjectAssigneeIssueStats `json:"top_assignees"`
 }
 
+type ProjectCompletionHistoryPoint struct {
+	PeriodStart time.Time `json:"period_start"`
+	AsOf        time.Time `json:"as_of"`
+	Total       int       `json:"total"`
+	Completed   int       `json:"completed"`
+	Rate        float64   `json:"rate"`
+}
+
+type ProjectCompletionHistory struct {
+	ProjectID uuid.UUID                       `json:"project_id"`
+	Start     time.Time                       `json:"start"`
+	End       time.Time                       `json:"end"`
+	Points    []ProjectCompletionHistoryPoint `json:"points"`
+}
+
 type ProjectChangelogChange struct {
 	Field string `json:"field"`
 	Label string `json:"label"`
