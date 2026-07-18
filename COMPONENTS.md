@@ -19,6 +19,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 - `project-key`: compact project key badge.
 - `sprint-ref`: compact monospace canonical sprint-reference badge. Keep the `sprint-N` value lowercase and pair it with sprint titles on current, planned, and historical cards.
 - `count-badge`: small numeric count badge.
+- `sprint-issue-count-badge`: compact sprint-total badge that uses `Issue` for one and `Issues` for zero or multiple while reusing `count-badge` styling.
 - `status-badge`: issue status badge using `statusClass`.
 - `close-reason-badge`: close reason badge for closed issues.
 - `missing-close-reason-badge`: dashed placeholder for invalid or incomplete closed issue detail states.

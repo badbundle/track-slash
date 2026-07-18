@@ -71,7 +71,7 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		}
 	}
 	requireInlineCount(t, body, "Planned", 1)
-	requireInlineCount(t, body, "First Planned Sprint", 2)
+	requireInlineCountText(t, body, "First Planned Sprint", "2 Issues")
 	if got := strings.Count(body, `data-sprint-ref`); got != 1 {
 		t.Fatalf("planned sprint ref badges = %d, want 1: %s", got, body)
 	}

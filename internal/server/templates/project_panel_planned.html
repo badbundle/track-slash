@@ -59,7 +59,7 @@
               <div class="flex min-w-0 flex-wrap items-center gap-2">
                 <h3 class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{{sprintLabel $item.Sprint}}</h3>
                 {{template "sprint-ref" $item.Sprint.Ref}}
-                {{template "count-badge" (len $item.Issues)}}
+                {{template "sprint-issue-count-badge" (len $item.Issues)}}
               </div>
               <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with sprintDateRange $item.Sprint}}{{.}}{{else}}No scheduled dates{{end}}</p>
             </div>
