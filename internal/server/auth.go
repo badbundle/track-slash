@@ -36,6 +36,10 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		auth, err := s.authenticateRequest(r)
 		if err != nil {
 			if errors.Is(err, store.ErrUnauthorized) {
+				if s.anonymousProjectReadAllowed(r, true) {
+					next.ServeHTTP(w, r)
+					return
+				}
 				writeUnauthorized(w)
 				return
 			}
@@ -104,6 +108,19 @@ func (s *Server) requireProjectWriteAccess(w http.ResponseWriter, r *http.Reques
 	return true
 }
 
+func (s *Server) requireProjectIssueCreation(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
+	ok, err := s.store.UserCanCreateProjectIssue(r.Context(), currentUser(r), projectID)
+	if err != nil {
+		writeStoreError(w, err)
+		return false
+	}
+	if !ok {
+		writeForbidden(w)
+		return false
+	}
+	return true
+}
+
 func (s *Server) requireProjectMemberManagement(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
 	ok, err := s.store.UserCanManageProjectMembers(r.Context(), currentUser(r), projectID)
 	if err != nil {
@@ -124,4 +141,57 @@ func writeUnauthorized(w http.ResponseWriter) {
 
 func writeForbidden(w http.ResponseWriter) {
 	writeError(w, http.StatusForbidden, "forbidden")
+}
+
+func (s *Server) anonymousProjectReadAllowed(r *http.Request, api bool) bool {
+	if s.store == nil {
+		return false
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if api {
+		if len(parts) < 3 || parts[0] != "api" || parts[1] != "v1" {
+			return false
+		}
+		parts = parts[2:]
+		if len(parts) == 1 && parts[0] == "projects" {
+			return true
+		}
+	}
+	if len(parts) < 3 {
+		return false
+	}
+	owner, err := store.NormalizeUsername(parts[0])
+	if err != nil {
+		return false
+	}
+	var projectID uuid.UUID
+	switch parts[1] {
+	case "projects":
+		key := strings.ToUpper(strings.TrimSpace(parts[2]))
+		if !projectKeyRe.MatchString(key) {
+			return false
+		}
+		project, err := s.store.GetProjectByOwnerKey(r.Context(), owner, key)
+		if err != nil {
+			return false
+		}
+		projectID = project.ID
+	case "issues":
+		ref, err := parseIssueRef(parts[2])
+		if err != nil {
+			return false
+		}
+		issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+		if err != nil {
+			return false
+		}
+		projectID = issue.ProjectID
+	default:
+		return false
+	}
+	permissions, err := s.store.ProjectPermissionsForUser(r.Context(), model.User{}, projectID)
+	return err == nil && permissions.CanRead
 }

@@ -291,6 +291,22 @@ type ProjectMemberCandidate struct {
 	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
 }
 
+type ProjectAccessSettings struct {
+	IsPublic            bool `json:"is_public"`
+	PublicIssueCreation bool `json:"public_issue_creation"`
+}
+
+type ProjectUserBlock struct {
+	ID                            uuid.UUID  `json:"id"`
+	ProjectID                     uuid.UUID  `json:"project_id"`
+	UserID                        uuid.UUID  `json:"user_id"`
+	Username                      string     `json:"username"`
+	Name                          string     `json:"name"`
+	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
+	CreatedByID                   uuid.UUID  `json:"created_by_id"`
+	CreatedAt                     time.Time  `json:"created_at"`
+}
+
 type ProjectAssignee struct {
 	ID                            uuid.UUID  `json:"id"`
 	Username                      string     `json:"username"`

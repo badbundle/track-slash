@@ -155,6 +155,55 @@ func TestListenerReceivesEventFromIssueInsert(t *testing.T) {
 	}
 }
 
+func TestListenerReceivesProjectBlockEvent(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-project-block")
+	client := newTestClient(8)
+	hub.Subscribe(client, "project:"+projectID)
+
+	suffix := strconv.FormatInt(time.Now().UnixNano(), 10)
+	var userID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (username, email, name)
+		VALUES ($1, $2, 'Blocked Realtime User')
+		RETURNING id::text
+	`, "rtblocked"+suffix, "rt-blocked-"+suffix+"@example.com").Scan(&userID); err != nil {
+		t.Fatalf("insert blocked user: %v", err)
+	}
+	var blockID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO project_user_blocks (project_id, user_id, created_by_id)
+		SELECT $1, $2, owner_id FROM projects WHERE id = $1
+		RETURNING id::text
+	`, projectID, userID).Scan(&blockID); err != nil {
+		t.Fatalf("insert project block: %v", err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-client.send:
+			if ev.Entity != EntityProjectBlock {
+				continue
+			}
+			if ev.Op != OpInsert || ev.ID.String() != blockID {
+				t.Fatalf("project block event = %#v", ev)
+			}
+			if ev.ProjectID == nil || ev.ProjectID.String() != projectID {
+				t.Fatalf("project block project_id = %v, want %s", ev.ProjectID, projectID)
+			}
+			return
+		case <-deadline:
+			t.Fatal("did not receive project block event within 3s")
+		}
+	}
+}
+
 // TestListenerReceivesSubIssueEvent verifies child issue events include
 // parent_issue_id so the hub can fan them out on the parent issue topic.
 func TestListenerReceivesSubIssueEvent(t *testing.T) {

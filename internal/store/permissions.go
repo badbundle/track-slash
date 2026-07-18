@@ -53,6 +53,18 @@ func (s *Store) SetProjectMemberRole(ctx context.Context, projectID, userID uuid
 		out.ProjectID = projectID
 		out.UserID = userID
 		out.Role = role
+		var blocked bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM project_user_blocks
+				WHERE project_id = $1 AND user_id = $2
+			)
+		`, projectID, userID).Scan(&blocked); err != nil {
+			return err
+		}
+		if blocked {
+			return fmt.Errorf("blocked user cannot be added to project: %w", ErrConflict)
+		}
 
 		var existingRole model.ProjectMemberRole
 		var existingCreatedAt time.Time
@@ -162,6 +174,231 @@ func (s *Store) RevokeProjectAccess(ctx context.Context, projectID, userID uuid.
 	})
 }
 
+func (s *Store) GetProjectAccessSettings(ctx context.Context, projectID uuid.UUID) (model.ProjectAccessSettings, error) {
+	var out model.ProjectAccessSettings
+	err := s.db.QueryRow(ctx, `
+		SELECT p.is_public, p.public_issue_creation
+		FROM projects p
+		JOIN users owner ON owner.id = p.owner_id
+		WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
+	`, projectID).Scan(&out.IsPublic, &out.PublicIssueCreation)
+	if err != nil {
+		if isNoRows(err) {
+			return model.ProjectAccessSettings{}, ErrNotFound
+		}
+		return model.ProjectAccessSettings{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) UpdateProjectAccessSettings(ctx context.Context, projectID uuid.UUID, settings model.ProjectAccessSettings) (model.ProjectAccessSettings, error) {
+	if !settings.IsPublic {
+		settings.PublicIssueCreation = false
+	}
+	var out model.ProjectAccessSettings
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var projectKey, projectName string
+		var before model.ProjectAccessSettings
+		if err := tx.QueryRow(ctx, `
+			SELECT p.key, p.name, p.is_public, p.public_issue_creation
+			FROM projects p
+			JOIN users owner ON owner.id = p.owner_id
+			WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
+			FOR UPDATE OF p
+		`, projectID).Scan(&projectKey, &projectName, &before.IsPublic, &before.PublicIssueCreation); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if before == settings {
+			out = before
+			return nil
+		}
+		if err := tx.QueryRow(ctx, `
+			UPDATE projects
+			SET is_public = $2, public_issue_creation = $3, updated_at = now()
+			WHERE id = $1
+			RETURNING is_public, public_issue_creation
+		`, projectID, settings.IsPublic, settings.PublicIssueCreation).Scan(&out.IsPublic, &out.PublicIssueCreation); err != nil {
+			return err
+		}
+		changes := make([]model.ProjectChangelogChange, 0, 2)
+		if before.IsPublic != out.IsPublic {
+			changes = append(changes, model.ProjectChangelogChange{Field: "is_public", Label: "Public access", From: fmt.Sprintf("%t", before.IsPublic), To: fmt.Sprintf("%t", out.IsPublic)})
+		}
+		if before.PublicIssueCreation != out.PublicIssueCreation {
+			changes = append(changes, model.ProjectChangelogChange{Field: "public_issue_creation", Label: "Public issue creation", From: fmt.Sprintf("%t", before.PublicIssueCreation), To: fmt.Sprintf("%t", out.PublicIssueCreation)})
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   projectID,
+			Entity:      "project",
+			Op:          "update",
+			EntityID:    projectID,
+			TargetRef:   projectKey,
+			TargetTitle: projectName,
+			Summary:     fmt.Sprintf("Updated public access for project %s", projectKey),
+			Details:     model.ProjectChangelogDetails{Changes: changes},
+		})
+	})
+	if err != nil {
+		return model.ProjectAccessSettings{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) BlockProjectUser(ctx context.Context, projectID, userID, createdByID uuid.UUID) (model.ProjectUserBlock, error) {
+	var out model.ProjectUserBlock
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var ownerID uuid.UUID
+		var projectKey, projectName string
+		if err := tx.QueryRow(ctx, `
+			SELECT p.owner_id, p.key, p.name
+			FROM projects p
+			JOIN users owner ON owner.id = p.owner_id
+			WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
+			FOR UPDATE OF p
+		`, projectID).Scan(&ownerID, &projectKey, &projectName); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if userID == ownerID {
+			return fmt.Errorf("project owner cannot be blocked: %w", ErrConflict)
+		}
+		var creatorExists bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND deleted_at IS NULL)
+		`, createdByID).Scan(&creatorExists); err != nil {
+			return err
+		}
+		if !creatorExists {
+			return ErrNotFound
+		}
+		var thumbnailID uuid.NullUUID
+		if err := tx.QueryRow(ctx, `
+			SELECT username, name, profile_image_thumbnail_object_id
+			FROM users WHERE id = $1 AND deleted_at IS NULL
+		`, userID).Scan(&out.Username, &out.Name, &thumbnailID); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		out.ProjectID = projectID
+		out.UserID = userID
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			out.ProfileImageThumbnailObjectID = &id
+		}
+		var existingCreator uuid.UUID
+		err := tx.QueryRow(ctx, `
+			SELECT id, created_by_id, created_at
+			FROM project_user_blocks
+			WHERE project_id = $1 AND user_id = $2
+			FOR UPDATE
+		`, projectID, userID).Scan(&out.ID, &existingCreator, &out.CreatedAt)
+		if err == nil {
+			out.CreatedByID = existingCreator
+			return nil
+		}
+		if !isNoRows(err) {
+			return err
+		}
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO project_user_blocks (project_id, user_id, created_by_id)
+			VALUES ($1, $2, $3)
+			RETURNING id, created_by_id, created_at
+		`, projectID, userID, createdByID).Scan(&out.ID, &out.CreatedByID, &out.CreatedAt); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM project_members WHERE project_id = $1 AND user_id = $2
+		`, projectID, userID); err != nil {
+			return err
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   projectID,
+			Entity:      "project_block",
+			Op:          "insert",
+			EntityID:    out.ID,
+			TargetRef:   projectKey,
+			TargetTitle: projectName,
+			Summary:     fmt.Sprintf("Blocked @%s from project %s", out.Username, projectKey),
+		})
+	})
+	if err != nil {
+		return model.ProjectUserBlock{}, err
+	}
+	return out, nil
+}
+
+func (s *Store) UnblockProjectUser(ctx context.Context, projectID, userID uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var blockID uuid.UUID
+		var projectKey, projectName, username string
+		if err := tx.QueryRow(ctx, `
+			SELECT b.id, p.key, p.name, u.username
+			FROM project_user_blocks b
+			JOIN projects p ON p.id = b.project_id
+			JOIN users u ON u.id = b.user_id
+			WHERE b.project_id = $1 AND b.user_id = $2
+			  AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+			FOR UPDATE OF b
+		`, projectID, userID).Scan(&blockID, &projectKey, &projectName, &username); err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM project_user_blocks WHERE id = $1`, blockID); err != nil {
+			return err
+		}
+		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:   projectID,
+			Entity:      "project_block",
+			Op:          "delete",
+			EntityID:    blockID,
+			TargetRef:   projectKey,
+			TargetTitle: projectName,
+			Summary:     fmt.Sprintf("Unblocked @%s from project %s", username, projectKey),
+		})
+	})
+}
+
+func (s *Store) ListProjectUserBlocks(ctx context.Context, projectID uuid.UUID) ([]model.ProjectUserBlock, error) {
+	if _, err := s.GetProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT b.id, b.project_id, b.user_id, u.username, u.name,
+		       u.profile_image_thumbnail_object_id, b.created_by_id, b.created_at
+		FROM project_user_blocks b
+		JOIN users u ON u.id = b.user_id
+		WHERE b.project_id = $1 AND u.deleted_at IS NULL
+		ORDER BY lower(u.name), lower(u.username), b.id
+	`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.ProjectUserBlock{}
+	for rows.Next() {
+		var block model.ProjectUserBlock
+		var thumbnailID uuid.NullUUID
+		if err := rows.Scan(&block.ID, &block.ProjectID, &block.UserID, &block.Username, &block.Name, &thumbnailID, &block.CreatedByID, &block.CreatedAt); err != nil {
+			return nil, err
+		}
+		if thumbnailID.Valid {
+			id := thumbnailID.UUID
+			block.ProfileImageThumbnailObjectID = &id
+		}
+		out = append(out, block)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]model.ProjectMember, error) {
 	if _, err := s.GetProject(ctx, projectID); err != nil {
 		return nil, err
@@ -207,11 +444,19 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 			FROM project_members pm
 			JOIN users u ON u.id = pm.user_id
 			WHERE pm.project_id = $1 AND u.deleted_at IS NULL
+			  AND NOT EXISTS (
+			      SELECT 1 FROM project_user_blocks b
+			      WHERE b.project_id = pm.project_id AND b.user_id = u.id
+			  )
 			UNION
 			SELECT u.id, u.username, u.name, u.profile_image_thumbnail_object_id
 			FROM issues i
 			JOIN users u ON u.id = i.assignee_id
 			WHERE i.project_id = $1 AND i.deleted_at IS NULL AND u.deleted_at IS NULL
+			  AND NOT EXISTS (
+			      SELECT 1 FROM project_user_blocks b
+			      WHERE b.project_id = i.project_id AND b.user_id = u.id
+			  )
 		)
 		SELECT id, username, name, profile_image_thumbnail_object_id
 		FROM assignees
@@ -311,6 +556,10 @@ func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvail
 		      SELECT 1 FROM project_members pm
 		      WHERE pm.project_id = $1 AND pm.user_id = u.id
 		  )
+		  AND NOT EXISTS (
+		      SELECT 1 FROM project_user_blocks b
+		      WHERE b.project_id = $1 AND b.user_id = u.id
+		  )
 		  AND (
 		      $3 = ''
 		      OR lower(u.name) LIKE '%' || $3 || '%'
@@ -341,41 +590,61 @@ func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvail
 }
 
 type ProjectPermissions struct {
-	Role             model.ProjectMemberRole
-	IsOwner          bool
-	CanRead          bool
-	CanWrite         bool
-	CanManageMembers bool
+	Role                model.ProjectMemberRole
+	IsOwner             bool
+	IsPublic            bool
+	PublicIssueCreation bool
+	IsBlocked           bool
+	CanRead             bool
+	CanWrite            bool
+	CanCreateIssues     bool
+	CanManageMembers    bool
 }
 
 func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, projectID uuid.UUID) (ProjectPermissions, error) {
 	var ownerID uuid.UUID
 	var role string
+	var isPublic, publicIssueCreation, isBlocked bool
 	err := s.db.QueryRow(ctx, `
-		SELECT p.owner_id, COALESCE(pm.role::text, '')
+		SELECT p.owner_id, p.is_public, p.public_issue_creation,
+		       COALESCE(pm.role::text, ''), EXISTS (
+		           SELECT 1 FROM project_user_blocks b
+		           WHERE b.project_id = p.id AND b.user_id = $2
+		       )
 		FROM projects p
 		JOIN users owner ON owner.id = p.owner_id
 		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $2
 		WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
-	`, projectID, user.ID).Scan(&ownerID, &role)
+	`, projectID, user.ID).Scan(&ownerID, &isPublic, &publicIssueCreation, &role, &isBlocked)
 	if err != nil {
 		if isNoRows(err) {
 			return ProjectPermissions{}, ErrNotFound
 		}
 		return ProjectPermissions{}, err
 	}
-	permissions := ProjectPermissions{Role: model.ProjectMemberRole(role), IsOwner: ownerID == user.ID}
+	permissions := ProjectPermissions{
+		Role:                model.ProjectMemberRole(role),
+		IsOwner:             ownerID == user.ID,
+		IsPublic:            isPublic,
+		PublicIssueCreation: publicIssueCreation,
+		IsBlocked:           isBlocked,
+	}
 	if user.IsAdmin || permissions.IsOwner {
 		permissions.CanRead = true
 		permissions.CanWrite = true
+		permissions.CanCreateIssues = true
 		permissions.CanManageMembers = true
 		if permissions.Role == "" {
 			permissions.Role = model.ProjectMemberRoleMember
 		}
 		return permissions, nil
 	}
-	permissions.CanRead = permissions.Role.Valid()
+	if permissions.IsBlocked {
+		return permissions, nil
+	}
+	permissions.CanRead = permissions.Role.Valid() || isPublic
 	permissions.CanWrite = permissions.Role == model.ProjectMemberRoleMember
+	permissions.CanCreateIssues = permissions.CanWrite || (user.ID != uuid.Nil && permissions.Role == "" && isPublic && publicIssueCreation)
 	return permissions, nil
 }
 
@@ -387,6 +656,11 @@ func (s *Store) UserCanAccessProject(ctx context.Context, user model.User, proje
 func (s *Store) UserCanWriteProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
 	permissions, err := s.ProjectPermissionsForUser(ctx, user, projectID)
 	return permissions.CanWrite, err
+}
+
+func (s *Store) UserCanCreateProjectIssue(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {
+	permissions, err := s.ProjectPermissionsForUser(ctx, user, projectID)
+	return permissions.CanCreateIssues, err
 }
 
 func (s *Store) UserCanManageProjectMembers(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {

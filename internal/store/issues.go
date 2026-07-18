@@ -1015,6 +1015,29 @@ func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID 
 	return ok, err
 }
 
+func issueProjectReporterExists(ctx context.Context, tx pgx.Tx, projectID, userID uuid.UUID) (bool, error) {
+	var ok bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM projects p
+			JOIN users u ON u.id = $2 AND u.deleted_at IS NULL
+			LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = u.id
+			WHERE p.id = $1
+			  AND p.deleted_at IS NULL
+			  AND NOT EXISTS (
+			      SELECT 1 FROM project_user_blocks b
+			      WHERE b.project_id = p.id AND b.user_id = u.id
+			  )
+			  AND (
+			      p.owner_id = u.id
+			      OR pm.role = 'member'
+			      OR (pm.user_id IS NULL AND p.is_public AND p.public_issue_creation)
+			  )
+		)
+	`, projectID, userID).Scan(&ok)
+	return ok, err
+}
+
 func validateIssuePeople(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, assigneeID, reporterID *uuid.UUID) error {
 	if assigneeID != nil {
 		ok, err := issueProjectMemberExists(ctx, tx, projectID, *assigneeID)
@@ -1026,7 +1049,7 @@ func validateIssuePeople(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, as
 		}
 	}
 	if reporterID != nil {
-		ok, err := issueProjectMemberExists(ctx, tx, projectID, *reporterID)
+		ok, err := issueProjectReporterExists(ctx, tx, projectID, *reporterID)
 		if err != nil {
 			return err
 		}

@@ -64,7 +64,7 @@ SVG is not rendered inline. Non-image attachments render as download links.
 
 ## Routes
 
-Project readers, including readonly members, can use the `GET` routes below. Owners, admins, and members with write access can also use the `POST` and `DELETE` routes:
+Project readers, including readonly members and anonymous readers of public projects, can use the `GET` routes below. Owners, admins, and members with write access can also use the `POST` and `DELETE` routes. A project-level user block overrides public read access for that signed-in account:
 
 - `POST /api/v1/{owner}/projects/{key}/attachments`
 - `GET /api/v1/{owner}/projects/{key}/attachments`

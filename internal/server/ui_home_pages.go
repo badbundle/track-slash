@@ -130,7 +130,7 @@ func (s *Server) uiNewIssuePanel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) uiNewIssueProjectOptions(w http.ResponseWriter, r *http.Request) {
 	input := uiNewIssueInputFromValues(r.URL.Query())
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	projects, err := s.uiIssueCreatableProjects(r.Context(), currentUser(r))
 	if err != nil {
 		writeUIInternalError(w, "ui new issue project options visible projects", err)
 		return
@@ -222,6 +222,15 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 	}
 	if !ok {
 		s.renderUINewIssueWithError(w, r, input, message)
+		return
+	}
+	permissions, err := s.uiProjectPermissions(r.Context(), currentUser(r), project.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if !permissions.CanWrite && (strings.TrimSpace(input.AssigneeInput) != "" || strings.TrimSpace(input.ReporterInput) != "") {
+		s.renderUINewIssueWithError(w, r, input, "Public issue submissions cannot select an assignee or another reporter.")
 		return
 	}
 

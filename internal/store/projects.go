@@ -247,10 +247,11 @@ type ProjectsCursor struct {
 }
 
 type ListProjectsParams struct {
-	Cursor         *ProjectsCursor
-	Limit          int
-	VisibleToUser  *uuid.UUID
-	WritableToUser *uuid.UUID
+	Cursor               *ProjectsCursor
+	Limit                int
+	VisibleToUser        *uuid.UUID
+	WritableToUser       *uuid.UUID
+	IssueCreatableToUser *uuid.UUID
 }
 
 func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model.Project, bool, error) {
@@ -266,12 +267,16 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 	if p.VisibleToUser != nil {
 		args = append(args, *p.VisibleToUser)
 		q += fmt.Sprintf(` AND (
-			projects.owner_id = $%d
+			projects.is_public
+			OR projects.owner_id = $%d
 			OR EXISTS (
 				SELECT 1 FROM project_members pm
 				WHERE pm.project_id = projects.id AND pm.user_id = $%d
 			)
-		)`, len(args), len(args))
+		) AND NOT EXISTS (
+			SELECT 1 FROM project_user_blocks b
+			WHERE b.project_id = projects.id AND b.user_id = $%d
+		)`, len(args), len(args), len(args))
 	}
 	if p.WritableToUser != nil {
 		args = append(args, *p.WritableToUser)
@@ -283,7 +288,33 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 				  AND pm.user_id = $%d
 				  AND pm.role = 'member'
 			)
-		)`, len(args), len(args))
+		) AND NOT EXISTS (
+			SELECT 1 FROM project_user_blocks b
+			WHERE b.project_id = projects.id AND b.user_id = $%d
+		)`, len(args), len(args), len(args))
+	}
+	if p.IssueCreatableToUser != nil {
+		args = append(args, *p.IssueCreatableToUser)
+		q += fmt.Sprintf(` AND (
+			projects.owner_id = $%d
+			OR EXISTS (
+				SELECT 1 FROM project_members pm
+				WHERE pm.project_id = projects.id
+				  AND pm.user_id = $%d
+				  AND pm.role = 'member'
+			)
+			OR (
+				projects.is_public
+				AND projects.public_issue_creation
+				AND NOT EXISTS (
+					SELECT 1 FROM project_members pm
+					WHERE pm.project_id = projects.id AND pm.user_id = $%d
+				)
+			)
+		) AND NOT EXISTS (
+			SELECT 1 FROM project_user_blocks b
+			WHERE b.project_id = projects.id AND b.user_id = $%d
+		)`, len(args), len(args), len(args), len(args))
 	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)

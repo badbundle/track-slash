@@ -89,6 +89,18 @@ func uiProjectMemberDeletePath(project model.Project, username string) string {
 	return uiProjectMemberPath(project, username) + "/delete"
 }
 
+func uiProjectAccessPath(project model.Project) string {
+	return uiProjectMembersPath(project) + "/access"
+}
+
+func uiProjectBlocksPath(project model.Project) string {
+	return uiProjectMembersPath(project) + "/blocks"
+}
+
+func uiProjectBlockDeletePath(project model.Project, username string) string {
+	return uiProjectBlocksPath(project) + "/" + username + "/delete"
+}
+
 func uiProjectSprintsPath(project model.Project) string {
 	return uiProjectPath(project) + "/sprints"
 }

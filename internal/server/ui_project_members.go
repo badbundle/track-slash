@@ -136,6 +136,119 @@ func (s *Server) uiDeleteProjectMember(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "project-panel", panel)
 }
 
+func (s *Server) uiUpdateProjectAccess(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectMemberManagement(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	_, err := s.store.UpdateProjectAccessSettings(r.Context(), project.ID, model.ProjectAccessSettings{
+		IsPublic:            r.Form.Get("is_public") == "on",
+		PublicIssueCreation: r.Form.Get("public_issue_creation") == "on",
+	})
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.disconnectRealtimeClients()
+	panel, err := s.uiBuildProjectMemberPanel(r.Context(), r, project, "", model.ProjectMemberRoleMember, "")
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiBlockProjectUser(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectMemberManagement(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	input := strings.TrimSpace(strings.TrimPrefix(r.Form.Get("username"), "@"))
+	message := ""
+	username, err := store.NormalizeUsername(input)
+	if err != nil {
+		message = "Enter an exact existing username."
+	} else {
+		user, getErr := s.store.GetUserByUsername(r.Context(), username)
+		if getErr != nil {
+			if errors.Is(getErr, store.ErrNotFound) {
+				message = "Enter an exact existing username."
+			} else {
+				writeUIStoreError(w, getErr)
+				return
+			}
+		} else if _, blockErr := s.store.BlockProjectUser(r.Context(), project.ID, user.ID, currentUser(r).ID); blockErr != nil {
+			if errors.Is(blockErr, store.ErrConflict) {
+				message = blockErr.Error()
+			} else {
+				writeUIStoreError(w, blockErr)
+				return
+			}
+		} else {
+			s.disconnectRealtimeClients()
+		}
+	}
+	panel, buildErr := s.uiBuildProjectMemberPanel(r.Context(), r, project, "", model.ProjectMemberRoleMember, "")
+	if buildErr != nil {
+		writeUIStoreError(w, buildErr)
+		return
+	}
+	panel.BlockInput = input
+	panel.BlockError = message
+	if message == "" {
+		panel.BlockInput = ""
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
+func (s *Server) uiUnblockProjectUser(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.uiProjectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.uiRequireProjectMemberManagement(r.Context(), currentUser(r), project.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	username, err := store.NormalizeUsername(chi.URLParam(r, "username"))
+	if err != nil {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	user, err := s.store.GetUserByUsername(r.Context(), username)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.store.UnblockProjectUser(r.Context(), project.ID, user.ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	s.disconnectRealtimeClients()
+	panel, err := s.uiBuildProjectMemberPanel(r.Context(), r, project, "", model.ProjectMemberRoleMember, "")
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "project-panel", panel)
+}
+
 func (s *Server) uiBuildProjectMemberPanel(ctx context.Context, r *http.Request, project model.Project, input string, role model.ProjectMemberRole, message string) (*uiProjectPanelData, error) {
 	panel, err := s.uiBuildProjectPanel(ctx, r, project.ID, "members")
 	if err != nil {

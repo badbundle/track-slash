@@ -187,6 +187,8 @@ func (s *Server) Router() http.Handler {
 			r.Route("/{owner}", func(r chi.Router) {
 				r.Route("/projects/{key}", func(r chi.Router) {
 					r.Get("/", s.getProject)
+					r.Get("/access", s.getProjectAccess)
+					r.Patch("/access", s.updateProjectAccess)
 					r.Patch("/", s.updateProject)
 					r.Delete("/", s.deleteProject)
 					r.Post("/image", s.createProjectImage)
@@ -203,6 +205,9 @@ func (s *Server) Router() http.Handler {
 					r.Get("/assignees", s.listProjectAssignees)
 					r.Put("/members/{username}", s.grantProjectMember)
 					r.Delete("/members/{username}", s.revokeProjectMember)
+					r.Get("/blocks", s.listProjectBlocks)
+					r.Put("/blocks/{username}", s.blockProjectUser)
+					r.Delete("/blocks/{username}", s.unblockProjectUser)
 					r.Post("/objects", s.createStorageObject)
 					r.Get("/objects", s.listStorageObjects)
 					r.Get("/objects/{objectRef}", s.getStorageObject)

@@ -107,6 +107,23 @@ func (h *Hub) ResyncAll(reason string) {
 	}
 }
 
+// DisconnectAll closes every subscribed client. Access-control mutations use
+// this rare, coarse operation so revoked clients must reauthorize before they
+// can receive another event without adding database work to normal fanout.
+func (h *Hub) DisconnectAll() {
+	h.mu.RLock()
+	clients := make(map[*Client]struct{})
+	for _, set := range h.topics {
+		for c := range set {
+			clients[c] = struct{}{}
+		}
+	}
+	h.mu.RUnlock()
+	for c := range clients {
+		c.requestDisconnect()
+	}
+}
+
 func (c *Client) requestResync(reason string) {
 	select {
 	case c.control <- serverControl{Type: resyncMessageType, Reason: reason}:

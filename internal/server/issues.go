@@ -26,7 +26,12 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectWriteAccess(w, r, project.ID) {
+	if !s.requireProjectIssueCreation(w, r, project.ID) {
+		return
+	}
+	permissions, err := s.store.ProjectPermissionsForUser(r.Context(), currentUser(r), project.ID)
+	if err != nil {
+		writeStoreError(w, err)
 		return
 	}
 	var req createIssueReq
@@ -46,6 +51,10 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		priority = *req.Priority
+	}
+	if !permissions.CanWrite && req.AssigneeID != nil {
+		writeForbidden(w)
+		return
 	}
 	reporterID := req.ReporterID
 	if reporterID == nil {

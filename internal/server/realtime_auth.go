@@ -53,3 +53,9 @@ func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) 
 	}
 	return nil
 }
+
+func (s *Server) disconnectRealtimeClients() {
+	if s.hub != nil {
+		s.hub.DisconnectAll()
+	}
+}

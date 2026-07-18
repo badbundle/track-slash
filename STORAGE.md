@@ -81,7 +81,7 @@ Project images are project-owned objects referenced by `projects.image_object_id
 
 ## API
 
-Project readers can list object metadata and download object content. Owners, admins, and members with write access can also upload and delete objects:
+Project readers, including anonymous readers of public projects, can list object metadata and download object content. Owners, admins, and members with write access can also upload and delete objects. A project-level user block overrides public read access for that signed-in account:
 
 - `POST /api/v1/{owner}/projects/{key}/objects` with multipart field `file`.
 - `GET /api/v1/{owner}/projects/{key}/objects`.

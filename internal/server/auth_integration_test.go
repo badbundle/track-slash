@@ -27,8 +27,12 @@ func TestHTTPAuthRequiredAndAdminOnly(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	code, body := e.doUnauth(t, http.MethodGet, "/projects", nil)
+	if code != http.StatusOK || len(decodePage[projectResponseDecoded](t, body).Items) != 0 {
+		t.Fatalf("anonymous public project list code = %d body = %s", code, body)
+	}
+	code, body = e.doUnauth(t, http.MethodGet, "/me", nil)
 	if code != http.StatusUnauthorized {
-		t.Fatalf("unauth code = %d body = %s", code, body)
+		t.Fatalf("unauthenticated /me code = %d body = %s", code, body)
 	}
 
 	user, token := e.mustUserToken(t, "normal")
