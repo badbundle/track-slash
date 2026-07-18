@@ -177,3 +177,25 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	}
 	requireInlineCount(t, body, "All issues", 2)
 }
+
+func TestUIProjectPanelRendersUndatedPlannedSprint(t *testing.T) {
+	t.Parallel()
+
+	project := model.Project{OwnerUsername: "bradley", Key: "TRACK"}
+	sprint := model.Sprint{Ref: "sprint-1", Name: "Flexible Sprint"}
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "project-panel-planned", &uiProjectPanelData{
+		Project: project,
+		PlannedSprints: []uiPlannedSprint{{
+			Project: project,
+			Sprint:  sprint,
+		}},
+	}); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+
+	want := `<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">No scheduled dates</p>`
+	if body := buf.String(); !strings.Contains(body, want) {
+		t.Fatalf("undated planned sprint missing %q: %s", want, body)
+	}
+}

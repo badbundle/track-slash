@@ -61,7 +61,7 @@
                 {{template "sprint-ref" $item.Sprint.Ref}}
                 {{template "count-badge" (len $item.Issues)}}
               </div>
-              {{with sprintDateRange $item.Sprint}}<p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{.}}</p>{{end}}
+              <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with sprintDateRange $item.Sprint}}{{.}}{{else}}No scheduled dates{{end}}</p>
             </div>
             <div class="flex max-w-[9rem] shrink-0 flex-wrap items-center justify-end gap-2 justify-self-end sm:max-w-none">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
