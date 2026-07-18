@@ -207,7 +207,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	pageBody := e.uiGet(t, membersPath, e.authToken)
-	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "@" + readonly.Username} {
+	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "@" + readonly.Username, "Public access", "Public read-only access", "Allow public issue creation", "Blocked users", "Exact username"} {
 		if !strings.Contains(pageBody, want) {
 			t.Fatalf("member page missing %q: %s", want, pageBody)
 		}
@@ -224,6 +224,18 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK || !strings.Contains(body, "@"+readonly.Username) || !strings.Contains(body, `value="readonly" selected`) {
 		t.Fatalf("add readonly response code = %d body = %s", res.StatusCode, body)
+	}
+
+	accessForm := url.Values{"is_public": {"on"}, "public_issue_creation": {"on"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/access", e.authToken, strings.NewReader(accessForm.Encode()))
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `name="is_public" checked`) || !strings.Contains(body, `name="public_issue_creation" checked`) {
+		t.Fatalf("update public access response code = %d body = %s", res.StatusCode, body)
+	}
+	settings, err := e.store.GetProjectAccessSettings(e.ctx, e.projectID)
+	if err != nil || !settings.IsPublic || !settings.PublicIssueCreation {
+		t.Fatalf("public access settings = %+v, %v", settings, err)
 	}
 
 	readonlyBody := e.uiGet(t, e.projectPath()+"/planned", readonlyToken)
@@ -245,6 +257,25 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("readonly direct edit code = %d body = %s", res.StatusCode, readBody(t, res))
+	}
+
+	blocked, _ := e.mustUserToken(t, "ui-project-blocked")
+	blockForm := url.Values{"username": {blocked.Username}}
+	blockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks", e.authToken, strings.NewReader(blockForm.Encode()))
+	blockBody := readBody(t, blockResponse)
+	blockResponse.Body.Close()
+	if blockResponse.StatusCode != http.StatusOK || !strings.Contains(blockBody, "@"+blocked.Username) || !strings.Contains(blockBody, "Unblock") {
+		t.Fatalf("block user response code = %d body = %s", blockResponse.StatusCode, blockBody)
+	}
+	unblockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks/"+blocked.Username+"/delete", e.authToken, nil)
+	unblockBody := readBody(t, unblockResponse)
+	unblockResponse.Body.Close()
+	if unblockResponse.StatusCode != http.StatusOK || strings.Contains(unblockBody, ">Unblock</button>") {
+		t.Fatalf("unblock user response code = %d body = %s", unblockResponse.StatusCode, unblockBody)
+	}
+	blocks, err := e.store.ListProjectUserBlocks(e.ctx, e.projectID)
+	if err != nil || len(blocks) != 0 {
+		t.Fatalf("blocks after UI unblock = %+v, %v", blocks, err)
 	}
 }
 

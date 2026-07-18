@@ -33,6 +33,7 @@ const (
 	EntityProjectAttachment Entity = "project_attachment"
 	EntityContextAttachment Entity = "context_attachment"
 	EntityChangelog         Entity = "project_changelog"
+	EntityProjectBlock      Entity = "project_block"
 )
 
 // Event is the wire envelope sent over both pg_notify and the WebSocket.
@@ -168,6 +169,11 @@ func (e Event) Topics() []string {
 			topics = append(topics, IssueTopic(*e.ParentIssueID))
 		}
 		return topics
+	case EntityProjectBlock:
+		if e.ProjectID != nil {
+			return []string{ProjectTopic(*e.ProjectID)}
+		}
+		return nil
 	}
 	return nil
 }

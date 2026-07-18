@@ -23,6 +23,8 @@ type uiSignupData struct {
 
 type uiShellData struct {
 	CSRFToken         string
+	Authenticated     bool
+	Anonymous         bool
 	User              model.User
 	Projects          []model.Project
 	SidebarFavorites  uiSidebarFavoritesData
@@ -441,10 +443,18 @@ type uiWorkPanelData struct {
 type uiProjectPanelData struct {
 	Project                         model.Project
 	View                            string
+	Anonymous                       bool
 	CanWrite                        bool
+	CanCreateIssues                 bool
+	PublicIssueCreationEnabled      bool
 	CanManageMembers                bool
 	MembersPage                     bool
 	Members                         []model.ProjectMember
+	AccessSettings                  model.ProjectAccessSettings
+	AccessError                     string
+	BlockedUsers                    []model.ProjectUserBlock
+	BlockInput                      string
+	BlockError                      string
 	MemberCandidates                []model.ProjectMemberCandidate
 	MemberInput                     string
 	MemberRoleInput                 model.ProjectMemberRole
@@ -655,6 +665,7 @@ type uiNewIssuePanelData struct {
 	Project           model.Project
 	HasProject        bool
 	ProjectScoped     bool
+	PublicSubmission  bool
 	ProjectID         string
 	ProjectInput      string
 	ProjectSearchOpen bool

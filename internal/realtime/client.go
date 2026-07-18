@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -23,21 +24,24 @@ const (
 // subscribe/unsubscribe control frames; the write pump drains events
 // that the Hub publishes into the bounded send channel.
 type Client struct {
-	conn      *websocket.Conn
-	hub       *Hub
-	authorize TopicAuthorizer
-	send      chan Event
-	control   chan serverControl
+	conn           *websocket.Conn
+	hub            *Hub
+	authorize      TopicAuthorizer
+	send           chan Event
+	control        chan serverControl
+	disconnect     chan struct{}
+	disconnectOnce sync.Once
 }
 
 func newClient(conn *websocket.Conn, hub *Hub, authorize TopicAuthorizer) *Client {
 	conn.SetReadLimit(readMessageLimit)
 	return &Client{
-		conn:      conn,
-		hub:       hub,
-		authorize: authorize,
-		send:      make(chan Event, sendBuffer),
-		control:   make(chan serverControl, 1),
+		conn:       conn,
+		hub:        hub,
+		authorize:  authorize,
+		send:       make(chan Event, sendBuffer),
+		control:    make(chan serverControl, 1),
+		disconnect: make(chan struct{}),
 	}
 }
 
@@ -112,6 +116,8 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 		// Recovery controls take priority over queued events so a slow client
 		// learns that it must refetch before consuming more incremental state.
 		select {
+		case <-c.disconnect:
+			return
 		case msg := <-c.control:
 			if err := c.writeJSON(ctx, msg); err != nil {
 				return
@@ -122,6 +128,8 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 
 		select {
 		case <-ctx.Done():
+			return
+		case <-c.disconnect:
 			return
 		case msg := <-c.control:
 			if err := c.writeJSON(ctx, msg); err != nil {
@@ -143,6 +151,13 @@ func (c *Client) writePump(ctx context.Context, cancel context.CancelFunc) {
 			}
 		}
 	}
+}
+
+func (c *Client) requestDisconnect() {
+	if c.disconnect == nil {
+		return
+	}
+	c.disconnectOnce.Do(func() { close(c.disconnect) })
 }
 
 func (c *Client) writeJSON(ctx context.Context, v any) error {

@@ -771,6 +771,10 @@
     }, 150);
   };
   const syncChangelogRealtime = () => {
+    if (document.body.dataset.authenticated !== "true") {
+      closeChangelogSocket();
+      return;
+    }
     const panel = document.querySelector("[data-project-changelog]");
     if (!panel || !panel.dataset.projectId) {
       closeChangelogSocket();

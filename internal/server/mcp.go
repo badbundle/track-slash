@@ -342,6 +342,17 @@ type mcpMemberInput struct {
 	Role     string `json:"role,omitempty" jsonschema:"member or readonly; defaults to member"`
 }
 
+type mcpUpdateProjectAccessInput struct {
+	mcpProjectInput
+	IsPublic            bool `json:"is_public"`
+	PublicIssueCreation bool `json:"public_issue_creation"`
+}
+
+type mcpProjectBlockInput struct {
+	mcpProjectInput
+	Username string `json:"username"`
+}
+
 type mcpSearchMembersInput struct {
 	mcpProjectInput
 	Limit int    `json:"limit,omitempty"`
@@ -459,6 +470,11 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_project_members", "List project members and roles.", readOnly, s.mcpListProjectMembers)
 	addMCPTool(srv, "track_grant_project_member", "Add a project member or update their role. Project owner or admin only.", write, s.mcpGrantProjectMember)
 	addMCPTool(srv, "track_revoke_project_member", "Remove a project member. Project owner or admin only.", write, s.mcpRevokeProjectMember)
+	addMCPTool(srv, "track_get_project_access", "Get public access settings for project.", readOnly, s.mcpGetProjectAccess)
+	addMCPTool(srv, "track_update_project_access", "Update public access settings. Project owner or admin only.", write, s.mcpUpdateProjectAccess)
+	addMCPTool(srv, "track_list_project_blocks", "List users blocked from project. Project owner or admin only.", readOnly, s.mcpListProjectBlocks)
+	addMCPTool(srv, "track_block_project_user", "Block user from project. Project owner or admin only.", write, s.mcpBlockProjectUser)
+	addMCPTool(srv, "track_unblock_project_user", "Unblock user from project. Project owner or admin only.", write, s.mcpUnblockProjectUser)
 	addMCPTool(srv, "track_search_project_members", "Search users with access to project.", readOnly, s.mcpSearchProjectMembers)
 	addMCPTool(srv, "track_search_project_member_candidates", "Search existing users who can be added to a project. Project owner or admin only.", readOnly, s.mcpSearchProjectMemberCandidates)
 	addMCPTool(srv, "track_list_project_assignees", "List assignable users for project.", readOnly, s.mcpListProjectAssignees)
@@ -651,6 +667,17 @@ func (s *Server) requireMCPProjectWriteAccess(ctx context.Context, auth authCont
 		return errMCPForbidden
 	}
 	return nil
+}
+
+func (s *Server) requireMCPProjectIssueCreation(ctx context.Context, auth authContext, projectID uuid.UUID) (store.ProjectPermissions, error) {
+	permissions, err := s.store.ProjectPermissionsForUser(ctx, auth.User, projectID)
+	if err != nil {
+		return store.ProjectPermissions{}, err
+	}
+	if !permissions.CanCreateIssues {
+		return store.ProjectPermissions{}, errMCPForbidden
+	}
+	return permissions, nil
 }
 
 func (s *Server) requireMCPProjectMemberManagement(ctx context.Context, auth authContext, projectID uuid.UUID) error {
@@ -1054,6 +1081,119 @@ func (s *Server) mcpRevokeProjectMember(ctx context.Context, req *mcp.CallToolRe
 	return mcpOK(), nil
 }
 
+func (s *Server) mcpGetProjectAccess(ctx context.Context, req *mcp.CallToolRequest, input mcpProjectInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := s.store.GetProjectAccessSettings(ctx, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"access": settings}, nil
+}
+
+func (s *Server) mcpUpdateProjectAccess(ctx context.Context, req *mcp.CallToolRequest, input mcpUpdateProjectAccessInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
+	settings, err := s.store.UpdateProjectAccessSettings(ctx, project.ID, model.ProjectAccessSettings{
+		IsPublic:            input.IsPublic,
+		PublicIssueCreation: input.PublicIssueCreation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.disconnectRealtimeClients()
+	return mcpToolOutput{"access": settings}, nil
+}
+
+func (s *Server) mcpListProjectBlocks(ctx context.Context, req *mcp.CallToolRequest, input mcpProjectInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
+	blocks, err := s.store.ListProjectUserBlocks(ctx, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	return mcpToolOutput{"blocks": blocks}, nil
+}
+
+func (s *Server) mcpBlockProjectUser(ctx context.Context, req *mcp.CallToolRequest, input mcpProjectBlockInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
+	username, err := store.NormalizeUsername(input.Username)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	user, err := s.store.GetUserByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	block, err := s.store.BlockProjectUser(ctx, project.ID, user.ID, auth.User.ID)
+	if err != nil {
+		return nil, err
+	}
+	s.disconnectRealtimeClients()
+	return mcpToolOutput{"block": block}, nil
+}
+
+func (s *Server) mcpUnblockProjectUser(ctx context.Context, req *mcp.CallToolRequest, input mcpProjectBlockInput) (mcpToolOutput, error) {
+	ctx, auth, err := s.mcpAuth(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
+		return nil, err
+	}
+	username, err := store.NormalizeUsername(input.Username)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
+	user, err := s.store.GetUserByUsername(ctx, username)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.UnblockProjectUser(ctx, project.ID, user.ID); err != nil {
+		return nil, err
+	}
+	s.disconnectRealtimeClients()
+	return mcpOK(), nil
+}
+
 func (s *Server) mcpSearchProjectMembers(ctx context.Context, req *mcp.CallToolRequest, input mcpSearchMembersInput) (mcpToolOutput, error) {
 	ctx, auth, err := s.mcpAuth(ctx, req)
 	if err != nil {
@@ -1184,7 +1324,8 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPProjectWriteAccess(ctx, auth, project.ID); err != nil {
+	permissions, err := s.requireMCPProjectIssueCreation(ctx, auth, project.ID)
+	if err != nil {
 		return nil, err
 	}
 	title, err := validateMCPTitle(input.Title)
@@ -1198,6 +1339,9 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
 	if err != nil {
 		return nil, err
+	}
+	if !permissions.CanWrite && assigneeID != nil {
+		return nil, errMCPForbidden
 	}
 	inputReporterID, err := mcpOptionalUUID(input.ReporterID, "reporter_id")
 	if err != nil {

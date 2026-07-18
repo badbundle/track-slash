@@ -182,6 +182,10 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(uiAuthCookieName)
 		if err != nil || strings.TrimSpace(cookie.Value) == "" {
+			if s.anonymousProjectReadAllowed(r, false) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			redirectUILogin(w, r)
 			return
 		}
@@ -189,6 +193,10 @@ func (s *Server) uiAuthMiddleware(next http.Handler) http.Handler {
 		if err != nil {
 			if errors.Is(err, store.ErrUnauthorized) {
 				s.clearUISessionCookie(w, r)
+				if s.anonymousProjectReadAllowed(r, false) {
+					next.ServeHTTP(w, r)
+					return
+				}
 				redirectUILogin(w, r)
 				return
 			}

@@ -172,6 +172,27 @@ func TestProjectAttachmentEventFansOutToProjectTopic(t *testing.T) {
 	}
 }
 
+func TestProjectBlockEventFansOutToProjectTopic(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	projectSub := newTestClient(4)
+	unrelated := newTestClient(4)
+	hub.Subscribe(projectSub, ProjectTopic(projectID))
+	hub.Subscribe(unrelated, ProjectTopic(uuid.New()))
+
+	hub.Publish(Event{Op: OpInsert, Entity: EntityProjectBlock, ID: uuid.New(), ProjectID: &projectID, Version: 1})
+
+	if ev, ok := recv(t, projectSub, time.Second); !ok || ev.Entity != EntityProjectBlock {
+		t.Fatalf("project block event = %#v, received = %v", ev, ok)
+	}
+	if _, ok := recv(t, unrelated, 100*time.Millisecond); ok {
+		t.Fatal("unrelated subscriber received project block event")
+	}
+	if got := (Event{Entity: EntityProjectBlock, ID: uuid.New()}).Topics(); got != nil {
+		t.Fatalf("project block topics without project ID = %v, want nil", got)
+	}
+}
+
 func TestContextAttachmentEventFansOutToContextAndProjectTopics(t *testing.T) {
 	hub := NewHub()
 	projectID := uuid.New()
@@ -546,6 +567,22 @@ func TestHubResyncAllDeduplicatesClientsAndCoalescesSignals(t *testing.T) {
 	hub.ResyncAll(resyncOverflow)
 	if msg := <-client.control; msg.Type != resyncMessageType || msg.Reason != resyncOverflow {
 		t.Fatalf("second control = %#v", msg)
+	}
+}
+
+func TestHubDisconnectAllDeduplicatesClients(t *testing.T) {
+	hub := NewHub()
+	client := newTestClient(1)
+	client.disconnect = make(chan struct{})
+	hub.Subscribe(client, ProjectTopic(uuid.New()))
+	hub.Subscribe(client, IssueTopic(uuid.New()))
+
+	hub.DisconnectAll()
+	hub.DisconnectAll()
+	select {
+	case <-client.disconnect:
+	default:
+		t.Fatal("client was not disconnected")
 	}
 }
 

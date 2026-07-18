@@ -54,6 +54,27 @@ func (s *Server) uiWritableProjects(ctx context.Context, user model.User) ([]mod
 	}
 }
 
+func (s *Server) uiIssueCreatableProjects(ctx context.Context, user model.User) ([]model.Project, error) {
+	var all []model.Project
+	var cursor *store.ProjectsCursor
+	for {
+		params := store.ListProjectsParams{Cursor: cursor, Limit: MaxLimit}
+		if !user.IsAdmin {
+			params.IssueCreatableToUser = &user.ID
+		}
+		projects, hasMore, err := s.store.ListProjects(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, projects...)
+		if !hasMore {
+			return all, nil
+		}
+		last := projects[len(projects)-1]
+		cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+}
+
 func (s *Server) uiFavoriteProjects(ctx context.Context, user model.User) ([]model.Project, error) {
 	return s.store.ListFavoriteProjects(ctx, store.ListFavoriteProjectsParams{
 		User:  user,
@@ -68,10 +89,16 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 	if data.User.ID == uuid.Nil {
 		data.User = currentUser(r)
 	}
-	favorites, err := s.uiFavoriteProjects(r.Context(), data.User)
-	if err != nil {
-		writeUIInternalError(w, "ui shell favorites", err)
-		return
+	data.Authenticated = data.User.ID != uuid.Nil
+	data.Anonymous = !data.Authenticated
+	var favorites []model.Project
+	if data.Authenticated {
+		var err error
+		favorites, err = s.uiFavoriteProjects(r.Context(), data.User)
+		if err != nil {
+			writeUIInternalError(w, "ui shell favorites", err)
+			return
+		}
 	}
 	activeProjectID := uuid.Nil
 	if data.SidebarActive.View == "project" {
@@ -97,6 +124,17 @@ func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, pr
 
 func (s *Server) uiRequireProjectWriteAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
 	ok, err := s.store.UserCanWriteProject(ctx, user, projectID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errUIForbidden
+	}
+	return nil
+}
+
+func (s *Server) uiRequireProjectIssueCreationAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
+	ok, err := s.store.UserCanCreateProjectIssue(ctx, user, projectID)
 	if err != nil {
 		return err
 	}
@@ -149,6 +187,24 @@ func (s *Server) uiIssueWriteHandler(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func (s *Server) uiProjectIssueCreateHandler(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if currentUser(r).ID == uuid.Nil {
+			redirectUILogin(w, r)
+			return
+		}
+		project, ok := s.uiProjectFromRoute(w, r)
+		if !ok {
+			return
+		}
+		if err := s.uiRequireProjectIssueCreationAccess(r.Context(), currentUser(r), project.ID); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *Server) uiProjectFromNewIssueSelection(ctx context.Context, user model.User, raw string) (model.Project, bool, string, error) {
 	input := strings.TrimSpace(raw)
 	if input == "" {
@@ -165,7 +221,7 @@ func (s *Server) uiProjectFromNewIssueSelection(ctx context.Context, user model.
 		}
 		return model.Project{}, false, "", err
 	}
-	if err := s.uiRequireProjectWriteAccess(ctx, user, project.ID); err != nil {
+	if err := s.uiRequireProjectIssueCreationAccess(ctx, user, project.ID); err != nil {
 		return model.Project{}, false, "", err
 	}
 	return project, true, "", nil

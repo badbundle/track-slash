@@ -13,6 +13,11 @@ type projectMemberReq struct {
 	Role model.ProjectMemberRole `json:"role,omitempty"`
 }
 
+type projectAccessReq struct {
+	IsPublic            bool `json:"is_public"`
+	PublicIssueCreation bool `json:"public_issue_creation"`
+}
+
 func (s *Server) grantProjectMember(w http.ResponseWriter, r *http.Request) {
 	project, ok := s.projectFromRoute(w, r)
 	if !ok {
@@ -63,6 +68,104 @@ func (s *Server) revokeProjectMember(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getProjectAccess(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectAccess(w, r, project.ID) {
+		return
+	}
+	settings, err := s.store.GetProjectAccessSettings(r.Context(), project.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) updateProjectAccess(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectMemberManagement(w, r, project.ID) {
+		return
+	}
+	var req projectAccessReq
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	settings, err := s.store.UpdateProjectAccessSettings(r.Context(), project.ID, model.ProjectAccessSettings{
+		IsPublic:            req.IsPublic,
+		PublicIssueCreation: req.PublicIssueCreation,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.disconnectRealtimeClients()
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) listProjectBlocks(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectMemberManagement(w, r, project.ID) {
+		return
+	}
+	blocks, err := s.store.ListProjectUserBlocks(r.Context(), project.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, blocks)
+}
+
+func (s *Server) blockProjectUser(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectMemberManagement(w, r, project.ID) {
+		return
+	}
+	user, ok := s.projectMemberUserFromRoute(w, r)
+	if !ok {
+		return
+	}
+	block, err := s.store.BlockProjectUser(r.Context(), project.ID, user.ID, currentUser(r).ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.disconnectRealtimeClients()
+	writeJSON(w, http.StatusOK, block)
+}
+
+func (s *Server) unblockProjectUser(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.projectFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if !s.requireProjectMemberManagement(w, r, project.ID) {
+		return
+	}
+	user, ok := s.projectMemberUserFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.UnblockProjectUser(r.Context(), project.ID, user.ID); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	s.disconnectRealtimeClients()
 	w.WriteHeader(http.StatusNoContent)
 }
 

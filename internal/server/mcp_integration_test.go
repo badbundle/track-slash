@@ -445,6 +445,90 @@ func TestMCPProjectMemberRolesAndReadonlyAccess(t *testing.T) {
 	})
 }
 
+func TestMCPPublicProjectAccessAndBlocks(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	ownerSession := mcpConnect(t, e, e.authToken)
+	outsider, outsiderToken := e.mustUserToken(t, "mcp-public-outsider")
+	outsiderSession := mcpConnect(t, e, outsiderToken)
+	projectArgs := map[string]any{"owner": e.ownerUsername, "key": e.projKey}
+
+	if out := mcpCallExpectError(t, e, outsiderSession, "track_get_project_access", projectArgs); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	defaultOut := mcpCall(t, e, ownerSession, "track_get_project_access", projectArgs)
+	defaults := decodeMCPField[model.ProjectAccessSettings](t, defaultOut, "access")
+	if defaults.IsPublic || defaults.PublicIssueCreation {
+		t.Fatalf("default project access = %+v", defaults)
+	}
+	updatedOut := mcpCall(t, e, ownerSession, "track_update_project_access", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "is_public": true, "public_issue_creation": true,
+	})
+	updated := decodeMCPField[model.ProjectAccessSettings](t, updatedOut, "access")
+	if !updated.IsPublic || !updated.PublicIssueCreation {
+		t.Fatalf("updated project access = %+v", updated)
+	}
+	publicOut := mcpCall(t, e, outsiderSession, "track_get_project_access", projectArgs)
+	if public := decodeMCPField[model.ProjectAccessSettings](t, publicOut, "access"); public != updated {
+		t.Fatalf("public project access = %+v, want %+v", public, updated)
+	}
+	if out := mcpCallExpectError(t, e, outsiderSession, "track_update_project_access", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "is_public": false, "public_issue_creation": false,
+	}); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	createdOut := mcpCall(t, e, outsiderSession, "track_create_issue", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "title": "MCP public submission",
+	})
+	created := decodeMCPField[model.Issue](t, createdOut, "issue")
+	if created.ReporterID == nil || *created.ReporterID != outsider.ID {
+		t.Fatalf("public MCP issue reporter = %v, want %s", created.ReporterID, outsider.ID)
+	}
+	if out := mcpCallExpectError(t, e, outsiderSession, "track_create_issue", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "title": "MCP public assigned", "assignee_id": e.adminID.String(),
+	}); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	blockOut := mcpCall(t, e, ownerSession, "track_block_project_user", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "username": outsider.Username,
+	})
+	block := decodeMCPField[model.ProjectUserBlock](t, blockOut, "block")
+	if block.UserID != outsider.ID || block.ProjectID != e.projectID {
+		t.Fatalf("MCP project block = %+v", block)
+	}
+	listOut := mcpCall(t, e, ownerSession, "track_list_project_blocks", projectArgs)
+	blocks := decodeMCPField[[]model.ProjectUserBlock](t, listOut, "blocks")
+	if len(blocks) != 1 || blocks[0].ID != block.ID {
+		t.Fatalf("MCP project blocks = %+v", blocks)
+	}
+	if out := mcpCallExpectError(t, e, outsiderSession, "track_get_project_access", projectArgs); true {
+		requireMCPErrorCode(t, out, "forbidden")
+	}
+	if out := mcpCallExpectError(t, e, ownerSession, "track_grant_project_member", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "username": outsider.Username,
+	}); true {
+		requireMCPErrorCode(t, out, "conflict")
+	}
+	if out := mcpCallExpectError(t, e, ownerSession, "track_block_project_user", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "username": "not valid!",
+	}); true {
+		requireMCPErrorCode(t, out, "validation_error")
+	}
+	if out := mcpCallExpectError(t, e, ownerSession, "track_block_project_user", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "username": e.ownerUsername,
+	}); true {
+		requireMCPErrorCode(t, out, "conflict")
+	}
+	mcpCall(t, e, ownerSession, "track_unblock_project_user", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "username": outsider.Username,
+	})
+	if out := mcpCallExpectError(t, e, ownerSession, "track_unblock_project_user", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "username": outsider.Username,
+	}); true {
+		requireMCPErrorCode(t, out, "not_found")
+	}
+}
+
 func TestMCPSprintOptionalDates(t *testing.T) {
 	t.Parallel()
 	e := newMCPHTTPEnv(t, nil)

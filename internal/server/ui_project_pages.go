@@ -309,7 +309,7 @@ func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []mo
 
 func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, input uiNewIssuePanelData) (*uiNewIssuePanelData, error) {
 	user := currentUser(r)
-	projects, err := s.uiWritableProjects(ctx, user)
+	projects, err := s.uiIssueCreatableProjects(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -324,11 +324,7 @@ func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, inpu
 			input.ProjectID = ""
 		}
 		if ok {
-			members, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
-				ProjectID:    project.ID,
-				Limit:        MaxLimit,
-				WritableOnly: true,
-			})
+			permissions, err := s.uiProjectPermissions(ctx, user, project.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -338,7 +334,18 @@ func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, inpu
 			if input.ProjectInput == "" {
 				input.ProjectInput = uiNewIssueProjectLabel(project)
 			}
-			input.MemberOptions = members
+			input.PublicSubmission = !permissions.CanWrite
+			if permissions.CanWrite {
+				members, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
+					ProjectID:    project.ID,
+					Limit:        MaxLimit,
+					WritableOnly: true,
+				})
+				if err != nil {
+					return nil, err
+				}
+				input.MemberOptions = members
+			}
 		} else if input.Error == "" {
 			input.Error = message
 		}
@@ -373,9 +380,12 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	if err != nil {
 		return nil, err
 	}
-	favorite, err := s.store.IsProjectFavorite(ctx, currentUser(r).ID, projectID)
-	if err != nil {
-		return nil, err
+	favorite := false
+	if currentUser(r).ID != uuid.Nil {
+		favorite, err = s.store.IsProjectFavorite(ctx, currentUser(r).ID, projectID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	deleteNotice, err := s.uiDeletedIssueNotice(ctx, r, project.OwnerUsername, projectID)
 	if err != nil {
@@ -401,17 +411,20 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	panel := &uiProjectPanelData{
-		Project:              project,
-		View:                 view,
-		CanWrite:             permissions.CanWrite,
-		CanManageMembers:     permissions.CanManageMembers,
-		Favorite:             favorite,
-		ProjectTabs:          uiProjectTabs(project, view, assigneeIDs),
-		AssigneeFilterActive: len(assigneeIDs) > 0,
-		ClearAssigneeHref:    uiProjectViewPath(project, view),
-		ClearAssigneeHXGet:   uiProjectPanelPath(project, view),
-		ClearAssigneeHXPush:  uiProjectViewPath(project, view),
-		DeleteNotice:         deleteNotice,
+		Project:                    project,
+		View:                       view,
+		Anonymous:                  currentUser(r).ID == uuid.Nil,
+		CanWrite:                   permissions.CanWrite,
+		CanCreateIssues:            permissions.CanCreateIssues,
+		PublicIssueCreationEnabled: permissions.IsPublic && permissions.PublicIssueCreation && !permissions.IsBlocked,
+		CanManageMembers:           permissions.CanManageMembers,
+		Favorite:                   favorite,
+		ProjectTabs:                uiProjectTabs(project, view, assigneeIDs),
+		AssigneeFilterActive:       len(assigneeIDs) > 0,
+		ClearAssigneeHref:          uiProjectViewPath(project, view),
+		ClearAssigneeHXGet:         uiProjectPanelPath(project, view),
+		ClearAssigneeHXPush:        uiProjectViewPath(project, view),
+		DeleteNotice:               deleteNotice,
 	}
 	if view == "sprint" || view == "all" {
 		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
@@ -594,6 +607,14 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.MemberCandidates, err = s.store.SearchAvailableProjectMembers(ctx, store.SearchAvailableProjectMembersParams{ProjectID: projectID, Limit: MaxLimit})
+		if err != nil {
+			return nil, err
+		}
+		panel.AccessSettings, err = s.store.GetProjectAccessSettings(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
+		panel.BlockedUsers, err = s.store.ListProjectUserBlocks(ctx, projectID)
 		if err != nil {
 			return nil, err
 		}
