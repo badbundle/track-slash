@@ -304,13 +304,47 @@ func TestUIProjectAboutStats(t *testing.T) {
 	}
 
 	body := e.uiGet(t, e.projectPath()+"/about", token)
-	for _, want := range []string{"Issue stats", "All time", "Last 7 days", "Top assignees", "ui-stats", ">2</td>", ">1</td>"} {
+	for _, want := range []string{"Issue stats", "All time", "Last 7 days", "Completion rate", "Weekly snapshot for the last 12 weeks", "Not enough history for a trend yet.", "Weekly ticket completion rate summary", "50%", "Top assignees", "ui-stats", ">2</td>", ">1</td>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("project about stats missing %q: %s", want, body)
 		}
 	}
 	if strings.Contains(body, "No assigned issues.") {
 		t.Fatalf("project about stats rendered empty assignee state: %s", body)
+	}
+}
+
+func TestUIProjectCompletionHistoryVisibleToReadonlyAndPublicReaders(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	issue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "completion reader issue"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	done := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, issue.ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("UpdateIssue: %v", err)
+	}
+	readonly, readonlyToken := e.mustUserToken(t, "ui-completion-readonly")
+	if _, err := e.store.SetProjectMemberRole(e.ctx, e.projectID, readonly.ID, model.ProjectMemberRoleReadonly); err != nil {
+		t.Fatalf("SetProjectMemberRole: %v", err)
+	}
+
+	readonlyBody := e.uiGet(t, e.projectPath()+"/about", readonlyToken)
+	for _, want := range []string{"Completion rate", `role="img"`, "Weekly ticket completion rate summary", "100% (1 of 1 tickets completed)"} {
+		if !strings.Contains(readonlyBody, want) {
+			t.Fatalf("readonly completion chart missing %q: %s", want, readonlyBody)
+		}
+	}
+
+	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+		t.Fatalf("UpdateProjectAccessSettings: %v", err)
+	}
+	res := e.uiDoNoRedirect(t, http.MethodGet, e.projectPath()+"/about", "", nil)
+	defer res.Body.Close()
+	publicBody := readBody(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(publicBody, "Completion rate") || !strings.Contains(publicBody, "100% (1 of 1 tickets completed)") {
+		t.Fatalf("public completion chart code = %d body = %s", res.StatusCode, publicBody)
 	}
 }
 

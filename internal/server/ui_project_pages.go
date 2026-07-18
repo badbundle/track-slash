@@ -482,6 +482,11 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.ProjectStats = stats
+		completionHistory, err := s.store.GetProjectCompletionHistory(ctx, store.ProjectCompletionHistoryParams{ProjectID: projectID})
+		if err != nil {
+			return nil, err
+		}
+		panel.CompletionChart = uiProjectCompletionChart(completionHistory)
 		projectTags, _, err := s.store.ListIssueTags(ctx, store.ListIssueTagsParams{
 			ProjectID: projectID,
 			Limit:     MaxLimit,
