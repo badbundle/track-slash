@@ -3,6 +3,7 @@ module github.com/bradleymackey/track-slash
 go 1.26.3
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.27
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.2
@@ -23,7 +24,6 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/SherClockHolmes/webpush-go v1.4.0 // indirect
 	github.com/air-verse/air v1.65.3 // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.14 // indirect
