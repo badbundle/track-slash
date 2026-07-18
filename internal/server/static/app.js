@@ -453,6 +453,139 @@
     if (!res.ok) throw new Error((body && body.error) || "Request failed.");
     return body || {};
   };
+  const deleteJSON = async (url, payload) => {
+    const res = await fetch(url, {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: csrfHeaders({ "Accept": "application/json", "Content-Type": "application/json" }),
+      body: JSON.stringify(payload || {}),
+    });
+    let body = null;
+    try {
+      body = await res.json();
+    } catch (_) {}
+    if (!res.ok) throw new Error((body && body.error) || "Request failed.");
+    return body || {};
+  };
+  const pushApplicationServerKey = (value) => {
+    const padding = "=".repeat((4 - value.length % 4) % 4);
+    const raw = window.atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+  };
+  const setPushStatus = (panel, message, error = false) => {
+    const status = panel && panel.querySelector("[data-push-status]");
+    if (!status) return;
+    status.textContent = message || "";
+    status.classList.toggle("hidden", !message);
+    status.classList.toggle("border-red-200", !!message && error);
+    status.classList.toggle("bg-red-50", !!message && error);
+    status.classList.toggle("text-red-700", !!message && error);
+    status.classList.toggle("dark:border-red-900", !!message && error);
+    status.classList.toggle("dark:bg-red-950", !!message && error);
+    status.classList.toggle("dark:text-red-200", !!message && error);
+    status.classList.toggle("border-emerald-200", !!message && !error);
+    status.classList.toggle("bg-emerald-50", !!message && !error);
+    status.classList.toggle("text-emerald-800", !!message && !error);
+    status.classList.toggle("dark:border-emerald-900", !!message && !error);
+    status.classList.toggle("dark:bg-emerald-950", !!message && !error);
+    status.classList.toggle("dark:text-emerald-200", !!message && !error);
+  };
+  const setPushBusy = (panel, busy) => {
+    panel.querySelectorAll("[data-push-enable], [data-push-disable]").forEach((button) => {
+      button.disabled = busy;
+    });
+  };
+  const setPushBrowserState = (panel, state, message) => {
+    const label = panel.querySelector("[data-push-browser-state]");
+    const enable = panel.querySelector("[data-push-enable]");
+    const disable = panel.querySelector("[data-push-disable]");
+    if (label) label.textContent = message;
+    if (enable) enable.classList.toggle("hidden", state !== "available");
+    if (disable) disable.classList.toggle("hidden", state !== "subscribed");
+  };
+  const pushRegistration = () => navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
+  const browserPushSupportError = () => {
+    if (!window.isSecureContext) return "Browser notifications require HTTPS or localhost.";
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      return "This browser does not support Web Push notifications.";
+    }
+    return "";
+  };
+  const serverPushSubscriptionActive = async (endpoint) => {
+    const res = await fetch(`/settings/push/subscription?endpoint=${encodeURIComponent(endpoint)}`, {
+      credentials: "same-origin",
+      headers: { "Accept": "application/json" },
+    });
+    if (!res.ok) throw new Error("Unable to check this browser subscription.");
+    const body = await res.json();
+    return body.subscribed === true;
+  };
+  const syncPushNotifications = async (root = document) => {
+    const panel = root instanceof Element && root.matches("[data-push-notifications]")
+      ? root
+      : root.querySelector("[data-push-notifications]");
+    if (!panel || panel.dataset.pushEnabled !== "true") return;
+    const unsupported = browserPushSupportError();
+    if (unsupported) {
+      setPushBrowserState(panel, "unsupported", unsupported);
+      return;
+    }
+    try {
+      const registration = await pushRegistration();
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        if (Notification.permission === "denied") {
+          setPushBrowserState(panel, "blocked", "Notifications are blocked in this browser's site settings.");
+        } else {
+          setPushBrowserState(panel, "available", "Not subscribed on this browser.");
+        }
+        return;
+      }
+      if (await serverPushSubscriptionActive(subscription.endpoint)) {
+        setPushBrowserState(panel, "subscribed", "Subscribed on this browser.");
+      } else {
+        setPushBrowserState(panel, "available", "This browser is not linked to your account. Select Enable to link it.");
+      }
+    } catch (err) {
+      setPushBrowserState(panel, "error", "Unable to inspect this browser's notification subscription.");
+      setPushStatus(panel, err && err.message ? err.message : "Notification check failed.", true);
+    }
+  };
+  const enablePushNotifications = async (panel) => {
+    const unsupported = browserPushSupportError();
+    if (unsupported) throw new Error(unsupported);
+    const registration = await pushRegistration();
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("Notification permission was not granted.");
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: pushApplicationServerKey(panel.dataset.pushPublicKey || ""),
+      });
+    }
+    await postJSON("/settings/push/subscription", subscription.toJSON());
+    setPushStatus(panel, "Browser notifications enabled.");
+    await syncPushNotifications(panel);
+  };
+  const disablePushNotifications = async (panel) => {
+    const registration = await pushRegistration();
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      setPushBrowserState(panel, "available", "Not subscribed on this browser.");
+      return;
+    }
+    let serverError = null;
+    try {
+      await deleteJSON("/settings/push/subscription", { endpoint: subscription.endpoint });
+    } catch (err) {
+      serverError = err;
+    }
+    await subscription.unsubscribe();
+    if (serverError) throw serverError;
+    setPushStatus(panel, "Browser notifications disabled.");
+    await syncPushNotifications(panel);
+  };
   const createPasskeyReauthToken = async (panel) => {
     assertPasskeysSupported();
     const options = await postJSON("/settings/passkeys/reauth/passkey/options", {});
@@ -998,6 +1131,23 @@
       }
     }
     const passkeyAction = event.target.closest("[data-passkey-add], [data-passkey-revoke]");
+    const pushAction = event.target.closest("[data-push-enable], [data-push-disable]");
+    if (pushAction) {
+      const panel = pushAction.closest("[data-push-notifications]");
+      if (panel) {
+        event.preventDefault();
+        setPushStatus(panel, "");
+        setPushBusy(panel, true);
+        const action = pushAction.hasAttribute("data-push-enable")
+          ? enablePushNotifications(panel)
+          : disablePushNotifications(panel);
+        action.catch((err) => {
+          setPushStatus(panel, err && err.message ? err.message : "Browser notification update failed.", true);
+          syncPushNotifications(panel);
+        }).finally(() => setPushBusy(panel, false));
+        return;
+      }
+    }
     if (passkeyAction) {
       const panel = passkeyAction.closest("[data-passkeys-panel]");
       if (panel) {
@@ -1107,6 +1257,7 @@
     restoreIssueListControls(event.target);
     syncSidebarActive();
     syncChangelogRealtime();
+    syncPushNotifications(event.target);
   });
   document.body.addEventListener("htmx:historyRestore", syncSidebarActive);
   if (document.readyState === "loading") {
@@ -1116,6 +1267,7 @@
       syncCheckboxReveals();
       syncSidebarActive();
       syncChangelogRealtime();
+      syncPushNotifications();
     });
   } else {
     createIcons();
@@ -1123,5 +1275,6 @@
     syncCheckboxReveals();
     syncSidebarActive();
     syncChangelogRealtime();
+    syncPushNotifications();
   }
 })();

@@ -15,12 +15,14 @@ import (
 	"syscall"
 	"time"
 
+	webpush "github.com/SherClockHolmes/webpush-go"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/config"
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/notifications"
 	"github.com/bradleymackey/track-slash/internal/realtime"
 	"github.com/bradleymackey/track-slash/internal/server"
 	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
@@ -33,7 +35,17 @@ func main() {
 	adminEmail := flag.String("email", "", "email for -create-admin-token")
 	adminName := flag.String("name", "", "name for -create-admin-token")
 	adminTokenName := flag.String("token-name", "bootstrap", "token name for -create-admin-token")
+	generateVAPIDKeys := flag.Bool("generate-vapid-keys", false, "generate a Web Push VAPID key pair and exit")
 	flag.Parse()
+	if *generateVAPIDKeys {
+		privateKey, publicKey, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			log.Fatalf("generate VAPID keys: %v", err)
+		}
+		fmt.Printf("TRACK_SLASH_VAPID_PUBLIC_KEY=%s\n", publicKey)
+		fmt.Printf("TRACK_SLASH_VAPID_PRIVATE_KEY=%s\n", privateKey)
+		return
+	}
 
 	if *migrateOnly {
 		db, err := config.LoadDatabase()
@@ -92,6 +104,19 @@ func main() {
 	}
 	deletionWorker := objectstorage.NewDeletionWorker(st, storageSvc, objectstorage.DeletionWorkerOptions{})
 	go deletionWorker.Run(ctx)
+	if cfg.WebPush.Enabled {
+		pushSender, err := notifications.NewWebPushSender(
+			cfg.WebPush.PublicKey,
+			cfg.WebPush.PrivateKey,
+			cfg.WebPush.Subscriber,
+			nil,
+		)
+		if err != nil {
+			log.Fatalf("web push: %v", err)
+		}
+		pushWorker := notifications.NewWorker(st, pushSender, notifications.WorkerOptions{})
+		go pushWorker.Run(ctx)
+	}
 
 	srv := server.NewWithOptions(st, hub, server.Options{
 		CORSAllowedOrigins:   cfg.CORSAllowedOrigins,
@@ -101,6 +126,7 @@ func main() {
 		PreviewTermsRequired: cfg.PreviewTermsRequired,
 		DevReload:            cfg.DevReload,
 		ObjectStorage:        storageSvc,
+		WebPushPublicKey:     cfg.WebPush.PublicKey,
 	})
 
 	httpSrv := &http.Server{

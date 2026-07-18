@@ -42,6 +42,10 @@ func sprintTestDate(year int, month time.Month, day int) time.Time {
 }
 
 func newHTTPEnv(t *testing.T) *httpEnv {
+	return newHTTPEnvWithOptions(t, server.Options{})
+}
+
+func newHTTPEnvWithOptions(t *testing.T, options server.Options) *httpEnv {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -50,7 +54,7 @@ func newHTTPEnv(t *testing.T) *httpEnv {
 	s := store.New(db.Pool)
 	// Hub is nil — none of these handlers need realtime fanout; /api/v1/ws route
 	// is just skipped when hub == nil.
-	srv := server.New(s, nil, nil)
+	srv := server.NewWithOptions(s, nil, options)
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 
