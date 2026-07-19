@@ -398,6 +398,7 @@ type uiModalData struct {
 	CancelHXPushURL  string
 	Badges           []uiModalBadge
 	ClientControlled bool
+	Open             bool
 }
 
 type uiModalBadge struct {

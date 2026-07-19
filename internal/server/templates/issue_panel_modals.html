@@ -1,4 +1,26 @@
 {{define "issue-panel-modals"}}
+  {{if and .CanWrite .GitHubConfigured .GitHubConnections}}
+  {{template "modal-open" (issueGitHubLinkModal .)}}
+    <form method="post" action="{{issueGitHubLinks .Issue}}" hx-post="{{issueGitHubLinks .Issue}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-4">
+      <div>
+        <label for="issue-github-repository" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Repository</label>
+        <select id="issue-github-repository" name="connection_id" autofocus class="mt-2 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          {{range .GitHubConnections}}<option value="{{.ID}}" {{if eq $.GitHubConnectionID .ID.String}}selected{{end}}>{{.FullName}}{{if .Private}} (private){{end}}</option>{{end}}
+        </select>
+      </div>
+      <div>
+        <label for="issue-github-reference" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Branch or pull request</label>
+        <input id="issue-github-reference" name="reference" value="{{.GitHubReference}}" placeholder="#123, branch/name, or GitHub URL" autocomplete="off" class="mt-2 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+      </div>
+      {{if .GitHubError}}<p class="text-sm text-rose-600 dark:text-rose-300">{{.GitHubError}}</p>{{end}}
+      <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <button type="button" data-modal-close class="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
+        <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Link GitHub</button>
+      </div>
+    </form>
+  {{template "modal-close" .}}
+  {{end}}
+
   {{if .PendingCloseReason}}
   {{template "modal-open" (closeReasonModal .)}}
     <div class="mt-4">

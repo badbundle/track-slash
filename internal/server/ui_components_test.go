@@ -776,7 +776,8 @@ func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 		`event.target.closest("[data-modal-close]")`,
 		`event.target.closest("[data-client-modal]")`,
 		`document.querySelector("[data-client-modal]:not(.hidden)")`,
-		`modal.querySelector("input[type='file']")?.focus()`,
+		`const focusClientModal = (modal) => {`,
+		`modal.querySelector("[autofocus]") || modal.querySelector("input:not([type='hidden']), select, textarea, button:not([disabled]), [href]")`,
 		`returnFocus.focus()`,
 	} {
 		if !strings.Contains(string(body), want) {
