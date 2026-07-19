@@ -23,6 +23,8 @@ html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; tran
   #sidebar-toggle:checked ~ .app-shell [data-sidebar-action] { justify-content: center; gap: 0; }
   html[data-sidebar-collapsed] .app-shell [data-sidebar-favorite],
   #sidebar-toggle:checked ~ .app-shell [data-sidebar-favorite] { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
+  html[data-sidebar-collapsed] .app-shell [data-sidebar-legal],
+  #sidebar-toggle:checked ~ .app-shell [data-sidebar-legal] { display: none; }
   html[data-sidebar-collapsed] .app-shell [data-nav-link] .wide-only,
   html[data-sidebar-collapsed] .app-shell .sidebar-head .wide-only,
   html[data-sidebar-collapsed] .app-shell [data-sidebar-action] .wide-only,
