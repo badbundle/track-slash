@@ -18,12 +18,23 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	user, token := e.mustProjectMemberToken(t, "ui-tokens")
 
 	body := e.uiGet(t, "/tokens", token)
-	if !strings.Contains(body, "New API token") || !strings.Contains(body, "Tokens") {
-		t.Fatalf("tokens page missing form/header: %s", body)
+	for _, want := range []string{"Tokens", `data-modal-open="token-create"`, `id="token-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="token-create-title"`, "Create API token"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("tokens page missing modal behavior %q: %s", want, body)
+		}
 	}
 	csrfToken := uiCSRFTokenForTest("session", token)
 	if !strings.Contains(body, `name="csrf_token" value="`+csrfToken+`"`) {
 		t.Fatalf("tokens page missing session-bound CSRF field: %s", body)
+	}
+	invalidForm := url.Values{"name": {""}, "csrf_token": {csrfToken}}
+	invalidResponse := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens", token, strings.NewReader(invalidForm.Encode()), map[string]string{
+		"Origin": e.ts.URL,
+	})
+	invalidBody := readBody(t, invalidResponse)
+	invalidResponse.Body.Close()
+	if invalidResponse.StatusCode != http.StatusOK || !strings.Contains(invalidBody, "Name required, max 200 chars.") || !strings.Contains(invalidBody, `id="token-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid token creation should keep modal open, code = %d body = %s", invalidResponse.StatusCode, invalidBody)
 	}
 
 	form := url.Values{"name": {"from ui"}, "csrf_token": {csrfToken}}
@@ -38,6 +49,9 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	}
 	if !strings.Contains(body, "Copy this token now.") {
 		t.Fatalf("body missing created token notice: %s", body)
+	}
+	if !strings.Contains(body, `id="token-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("created token response should keep the one-time secret modal open: %s", body)
 	}
 	rawToken := createdTokenValue(t, body)
 	if nextBody := e.uiGet(t, "/tokens", token); strings.Contains(nextBody, rawToken) || strings.Contains(nextBody, "Copy this token now.") {
@@ -202,7 +216,7 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added.", "Legal", "Review the terms, privacy notice, and security policy for trackslash.", `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
+	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added.", `data-modal-open="passkey-create"`, `id="passkey-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="passkey-create-title"`, "Legal", "Review the terms, privacy notice, and security policy for trackslash.", `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
 		}

@@ -427,6 +427,33 @@ func TestUIProjectAndIssueContext(t *testing.T) {
 	}
 }
 
+func TestUIProjectTagCreationUsesModalLifecycle(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	path := e.projectPath() + "/tags"
+
+	body := e.uiGet(t, path, e.authToken)
+	for _, want := range []string{`data-modal-open="project-tag-create"`, `id="project-tag-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="project-tag-create-title"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("project tag page missing modal behavior %q: %s", want, body)
+		}
+	}
+
+	invalid := e.uiDoNoRedirect(t, http.MethodPost, path, e.authToken, strings.NewReader(url.Values{"name": {"   "}, "color": {"blue"}}.Encode()))
+	invalidBody := readBody(t, invalid)
+	invalid.Body.Close()
+	if invalid.StatusCode != http.StatusOK || !strings.Contains(invalidBody, `id="project-tag-create" data-client-modal class="fixed inset-0 z-50 grid`) || !strings.Contains(invalidBody, "Tag") {
+		t.Fatalf("invalid tag should keep modal open, code = %d body = %s", invalid.StatusCode, invalidBody)
+	}
+
+	created := e.uiDoNoRedirect(t, http.MethodPost, path, e.authToken, strings.NewReader(url.Values{"name": {"#Modal Flow"}, "color": {"blue"}}.Encode()))
+	createdBody := readBody(t, created)
+	created.Body.Close()
+	if created.StatusCode != http.StatusOK || !strings.Contains(createdBody, "#Modal Flow") || !strings.Contains(createdBody, `id="project-tag-create" data-client-modal class="fixed inset-0 z-50 hidden`) {
+		t.Fatalf("successful tag creation should refresh list and close modal, code = %d body = %s", created.StatusCode, createdBody)
+	}
+}
+
 func TestUIProjectContextRendersAllLinkedIssues(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

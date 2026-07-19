@@ -8,15 +8,15 @@
         </div>
         <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
           {{if .PlannedHasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
-          {{if .CanWrite}}<button type="button" aria-label="New planned sprint" hx-get="{{projectSprintNew .Project}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
+          {{if .CanWrite}}<button type="button" data-modal-return="planned-sprint-create" aria-label="New planned sprint" aria-haspopup="dialog" aria-controls="planned-sprint-create" aria-expanded="{{if .NewSprint}}true{{else}}false{{end}}" hx-get="{{projectSprintNew .Project}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-900/50 dark:focus:ring-offset-slate-900">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
           </button>{{end}}
         </div>
       </div>
 
       {{if .NewSprint}}
-      <section class="mb-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <form method="post" action="{{projectSprints .Project}}" hx-post="{{projectSprints .Project}}" hx-target="#main" hx-push-url="false" class="grid gap-3">
+      {{template "modal-open" (newSprintCreateModal .)}}
+        <form method="post" action="{{projectSprints .Project}}" hx-post="{{projectSprints .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3">
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Name
               <input name="name" value="{{.NewSprintForm.NameInput}}" autofocus class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
@@ -45,7 +45,7 @@
             </button>
           </div>
         </form>
-      </section>
+      {{template "modal-close" .}}
       {{end}}
 
       {{if .PlannedSprints}}
@@ -75,7 +75,7 @@
                   <i data-lucide="arrow-down" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
               </form>
-              <button type="button" aria-label="Add issue to sprint" hx-get="{{projectSprintIssueNew $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <button type="button" data-modal-return="planned-sprint-issue-create" aria-label="Add issue to sprint" aria-haspopup="dialog" aria-controls="planned-sprint-issue-create" aria-expanded="{{if and (eq $.PlannedSprintActionID $item.Sprint.ID) (eq $.PlannedSprintAction "add-issue")}}true{{else}}false{{end}}" hx-get="{{projectSprintIssueNew $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
               </button>
               <button type="button" aria-label="Edit sprint" hx-get="{{projectSprintEdit $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
@@ -129,21 +129,20 @@
             </div>
           </form>
           {{else if and (eq $.PlannedSprintActionID $item.Sprint.ID) (eq $.PlannedSprintAction "add-issue")}}
-          <form method="post" action="{{projectSprintIssues $.Project $item.Sprint}}" hx-post="{{projectSprintIssues $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="border-t border-slate-100 px-4 py-4 dark:border-slate-800">
+          {{template "modal-open" (plannedSprintIssueCreateModal $ $item.Sprint)}}
+          <form method="post" action="{{projectSprintIssues $.Project $item.Sprint}}" hx-post="{{projectSprintIssues $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="mt-4">
             <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Issue</label>
-            <div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,18rem)_auto_auto]">
-              <input name="issue" value="{{$.PlannedSprintIssueForm.IssueInput}}" autofocus placeholder="{{$.Project.Key}}-12" class="h-9 min-w-0 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <input name="issue" value="{{$.PlannedSprintIssueForm.IssueInput}}" autofocus placeholder="{{$.Project.Key}}-12" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <div class="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+              <button type="button" data-modal-close class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">Cancel</button>
               <button type="submit" aria-label="Add issue to sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
                 <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
                 Add issue
               </button>
-              <button type="button" aria-label="Cancel adding issue" hx-get="{{projectPanel $.Project "planned"}}" hx-target="#main" hx-push-url="false" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
-                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
-                Cancel
-              </button>
             </div>
             {{if $.PlannedSprintIssueForm.Error}}<p class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{$.PlannedSprintIssueForm.Error}}</p>{{end}}
           </form>
+          {{template "modal-close" $}}
           {{else if and (eq $.PlannedSprintActionID $item.Sprint.ID) (eq $.PlannedSprintAction "error")}}
           {{if $.PlannedSprintForm.Error}}<p class="border-t border-slate-100 px-4 py-3 text-xs text-rose-600 dark:border-slate-800 dark:text-rose-300">{{$.PlannedSprintForm.Error}}</p>{{end}}
           {{end}}

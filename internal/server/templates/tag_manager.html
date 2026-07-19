@@ -16,11 +16,16 @@
     </div>
   </header>
 
-  <section class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+  <section class="mt-6">
     <div class="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <header class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
         <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">{{if .HasIssue}}Attached tags{{else}}Tags{{end}}</h2>
-        {{template "count-badge" (len .Tags)}}
+        <div class="flex items-center gap-2">
+          {{template "count-badge" (len .Tags)}}
+          {{if .CanWrite}}
+          <button type="button" data-modal-open="{{if .HasIssue}}issue-tag-attach{{else}}project-tag-create{{end}}" aria-haspopup="dialog" aria-controls="{{if .HasIssue}}issue-tag-attach{{else}}project-tag-create{{end}}" aria-expanded="false" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-3.5 w-3.5" aria-hidden="true"></i>{{if .HasIssue}}Attach tag{{else}}Create tag{{end}}</button>
+          {{end}}
+        </div>
       </header>
       {{if .Tags}}
       <div class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -82,31 +87,28 @@
       {{end}}
     </div>
 
-    {{if .CanWrite}}<aside class="min-w-0">
+    {{if .CanWrite}}
       {{if .HasIssue}}
-      <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Attach tag</h2>
+      <div class="mt-3 flex justify-end">
+        <a href="{{projectTags .Project}}" hx-get="{{projectTags .Project}}" hx-target="#main" hx-push-url="{{projectTags .Project}}" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200"><i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>Manage project tags</a>
+      </div>
+      {{template "modal-open" (tagAttachModal .)}}
         <form method="post" action="{{issueTags .Issue}}" hx-post="{{issueTags .Issue}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-3">
           <select name="tag" class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <option value="">Choose tag</option>
             {{range .Available}}<option value="{{.Name}}" {{if eq $.AttachInput .Name}}selected{{end}}>{{.DisplayName}}</option>{{end}}
           </select>
           {{if .AttachError}}<p class="text-sm text-rose-700 dark:text-rose-300">{{.AttachError}}</p>{{end}}
-          <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-            Attach
-          </button>
+          <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <button type="button" data-modal-close class="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
+            <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Attach tag</button>
+          </div>
         </form>
-        <a href="{{projectTags .Project}}" hx-get="{{projectTags .Project}}" hx-target="#main" hx-push-url="{{projectTags .Project}}" class="mt-4 inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200">
-          <i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>
-          Manage project tags
-        </a>
-      </section>
+      {{template "modal-close" .}}
       {{else}}
-      <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Create tag</h2>
+      {{template "modal-open" (tagCreateModal .)}}
         <form method="post" action="{{projectTags .Project}}" hx-post="{{projectTags .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-3">
-          <input name="name" value="{{.NameInput}}" placeholder="#Customer Beta" class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+          <input name="name" value="{{.NameInput}}" placeholder="#Customer Beta" autofocus class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
           <div class="flex flex-wrap items-center gap-1.5">
             {{range tagColors}}
             <label class="cursor-pointer">
@@ -118,14 +120,14 @@
             {{end}}
           </div>
           {{if .TagError}}<p class="text-sm text-rose-700 dark:text-rose-300">{{.TagError}}</p>{{end}}
-          <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
-            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-            Create
-          </button>
+          <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <button type="button" data-modal-close class="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
+            <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Create tag</button>
+          </div>
         </form>
-      </section>
+      {{template "modal-close" .}}
       {{end}}
-    </aside>{{end}}
+    {{end}}
   </section>
 </section>
 {{end}}

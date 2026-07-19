@@ -766,6 +766,7 @@ func TestUIModalAndSpecialRowsStayContainedOnNarrowScreens(t *testing.T) {
 	for _, want := range []string{
 		`role="dialog"`,
 		`aria-modal="true"`,
+		`tabindex="-1"`,
 		`modal-panel`,
 		`overflow-y-auto`,
 	} {
@@ -849,6 +850,11 @@ func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 		`event.target.closest("[data-client-modal]")`,
 		`document.querySelector("[data-client-modal]:not(.hidden)")`,
 		`const focusClientModal = (modal) => {`,
+		`const trapModalFocus = (event, modal) => {`,
+		`event.key !== "Tab"`,
+		`document.activeElement === last`,
+		`document.activeElement === first`,
+		`[data-modal-return="${modal.id}"]`,
 		`modal.querySelector("[autofocus]") || modal.querySelector("input:not([type='hidden']), select, textarea, button:not([disabled]), [href]")`,
 		`returnFocus.focus()`,
 	} {

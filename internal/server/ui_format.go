@@ -260,6 +260,159 @@ func uiProjectGitHubConnectionModal(panel *uiProjectPanelData) uiModalData {
 	}
 }
 
+func uiTokenCreateModal(panel *uiTokenPanelData) uiModalData {
+	return uiModalData{
+		ID:               "token-create",
+		Title:            "Create API token",
+		Description:      "Name this token so you can identify and revoke it later.",
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel creating API token",
+		ClientControlled: true,
+		Open:             panel.Error != "" || panel.Created != "",
+	}
+}
+
+func uiPasskeyCreateModal(uiSettingsPanelData) uiModalData {
+	return uiModalData{
+		ID:               "passkey-create",
+		Title:            "Add a passkey",
+		Description:      "Choose a label that identifies this device or password manager.",
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel adding passkey",
+		ClientControlled: true,
+	}
+}
+
+func uiProjectMemberCreateModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:               "project-member-create",
+		Title:            "Add project member",
+		Description:      "Choose a project user and the access they should receive.",
+		WidthClass:       "max-w-lg",
+		CancelLabel:      "Cancel adding project member",
+		ClientControlled: true,
+		Open:             panel.MemberError != "",
+	}
+}
+
+func uiProjectBlockCreateModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:               "project-block-create",
+		Title:            "Block project user",
+		Description:      "Blocking removes project membership and overrides public access.",
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel blocking project user",
+		ClientControlled: true,
+		Open:             panel.BlockError != "",
+	}
+}
+
+func uiTagCreateModal(data *uiTagManagerData) uiModalData {
+	return uiModalData{
+		ID:               "project-tag-create",
+		Title:            "Create project tag",
+		Description:      "Add a reusable label for issues in this project.",
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel creating project tag",
+		ClientControlled: true,
+		Open:             data.TagError != "",
+	}
+}
+
+func uiTagAttachModal(data *uiTagManagerData) uiModalData {
+	return uiModalData{
+		ID:               "issue-tag-attach",
+		Title:            "Attach tag",
+		Description:      fmt.Sprintf("Choose a project tag for %s.", data.Issue.Identifier),
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel attaching tag",
+		ClientControlled: true,
+		Open:             data.AttachError != "",
+	}
+}
+
+func uiIssueCommentCreateModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:               "issue-comment-create",
+		Title:            "Add comment",
+		Description:      fmt.Sprintf("Post a comment on %s.", panel.Issue.Identifier),
+		WidthClass:       "max-w-lg",
+		CancelLabel:      "Cancel adding comment",
+		ClientControlled: true,
+		Open:             panel.CommentError != "",
+	}
+}
+
+func uiIssueSubIssueCreateModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:               "issue-sub-issue-create",
+		Title:            "Add sub-issue",
+		Description:      fmt.Sprintf("Create a child issue under %s.", panel.Issue.Identifier),
+		WidthClass:       "max-w-lg",
+		CancelLabel:      "Cancel adding sub-issue",
+		CancelHXGet:      uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL:  "false",
+		ClientControlled: true,
+		Open:             true,
+	}
+}
+
+func uiIssueLinkCreateModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:               "issue-link-create",
+		Title:            "Add issue link",
+		Description:      fmt.Sprintf("Link another issue to %s.", panel.Issue.Identifier),
+		WidthClass:       "max-w-lg",
+		CancelLabel:      "Cancel adding issue link",
+		CancelHXGet:      uiIssuePanelPath(panel.Issue),
+		CancelHXPushURL:  "false",
+		ClientControlled: true,
+		Open:             true,
+	}
+}
+
+func uiNewSprintCreateModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:               "planned-sprint-create",
+		Title:            "Create planned sprint",
+		Description:      "Add a sprint to the project plan.",
+		WidthClass:       "max-w-2xl",
+		CancelLabel:      "Cancel creating planned sprint",
+		CancelHXGet:      uiProjectPanelPath(panel.Project, "planned"),
+		CancelHXPushURL:  "false",
+		ClientControlled: true,
+		Open:             true,
+	}
+}
+
+func uiActiveSprintIssueCreateModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:               "active-sprint-issue-create",
+		Title:            "Add issue to sprint",
+		Description:      fmt.Sprintf("Move an issue into %s.", uiSprintLabel(*panel.ActiveSprint)),
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel adding issue to sprint",
+		CancelHXGet:      uiProjectPanelPath(panel.Project, "sprint"),
+		CancelHXPushURL:  "false",
+		ClientControlled: true,
+		Open:             true,
+	}
+}
+
+func uiPlannedSprintIssueCreateModal(panel *uiProjectPanelData, sprint model.Sprint) uiModalData {
+	return uiModalData{
+		ID:               "planned-sprint-issue-create",
+		Title:            "Add issue to sprint",
+		Description:      fmt.Sprintf("Move an issue into %s.", uiSprintLabel(sprint)),
+		WidthClass:       "max-w-md",
+		CancelLabel:      "Cancel adding issue to sprint",
+		CancelHXGet:      uiProjectPanelPath(panel.Project, "planned"),
+		CancelHXPushURL:  "false",
+		ClientControlled: true,
+		Open:             true,
+	}
+}
+
 func uiImagePickerTriggerLabel(hasImage bool) string {
 	if hasImage {
 		return "Change image"
