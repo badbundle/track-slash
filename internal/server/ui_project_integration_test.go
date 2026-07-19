@@ -1,14 +1,16 @@
 package server_test
 
 import (
-	"github.com/bradleymackey/track-slash/internal/model"
-	"github.com/bradleymackey/track-slash/internal/store"
-	"github.com/google/uuid"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bradleymackey/track-slash/internal/model"
+	"github.com/bradleymackey/track-slash/internal/store"
+	"github.com/google/uuid"
 )
 
 func sidebarNavMarkup(t *testing.T, body string) string {
@@ -637,6 +639,20 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 	if _, err := e.store.UpdateIssue(e.ctx, todo.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
 		t.Fatalf("assign todo: %v", err)
 	}
+	for i, status := range []model.Status{model.StatusTodo, model.StatusDone, model.StatusClosed} {
+		child, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{ParentIssueID: todo.ID, Title: fmt.Sprintf("board sub-issue %d", i+1)})
+		if err != nil {
+			t.Fatalf("CreateSubIssue %d: %v", i+1, err)
+		}
+		params := store.UpdateIssueParams{Status: &status}
+		if status == model.StatusClosed {
+			reason := model.CloseReasonDuplicate
+			params.CloseReason = &reason
+		}
+		if _, err := e.store.UpdateIssue(e.ctx, child.ID, params); err != nil {
+			t.Fatalf("UpdateIssue sub-issue %d: %v", i+1, err)
+		}
+	}
 	if _, err := e.store.UpdateIssue(e.ctx, laterTodo.ID, store.UpdateIssueParams{SprintID: &sp.ID}); err != nil {
 		t.Fatalf("assign later todo: %v", err)
 	}
@@ -689,6 +705,14 @@ func TestUIRendersProjectSprintBoard(t *testing.T) {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("sprint body included %q: %s", notWant, body)
 		}
+	}
+	for _, want := range []string{`role="progressbar" aria-label="Sub-issues completed" aria-valuemin="0" aria-valuemax="3" aria-valuenow="2"`, `pathLength="3" stroke-dasharray="2 3"`, ">2/3</span>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sprint body missing sub-issue progress %q: %s", want, body)
+		}
+	}
+	if got := strings.Count(body, `role="progressbar" aria-label="Sub-issues completed"`); got != 1 {
+		t.Fatalf("sub-issue progress count = %d, want 1: %s", got, body)
 	}
 
 	filteredBody := e.uiGet(t, e.projectPath()+"/sprint?status=in_progress&priority=P0", token)

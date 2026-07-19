@@ -103,10 +103,11 @@ type uiBreadcrumbItem struct {
 }
 
 type uiIssueItem struct {
-	Issue    model.Issue
-	Project  model.Project
-	Sprint   *model.Sprint
-	Assignee *model.ProjectAssignee
+	Issue            model.Issue
+	Project          model.Project
+	Sprint           *model.Sprint
+	Assignee         *model.ProjectAssignee
+	SubIssueProgress store.SubIssueProgress
 }
 
 type uiIssueColumn struct {

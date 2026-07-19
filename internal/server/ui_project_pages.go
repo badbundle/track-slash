@@ -562,9 +562,17 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.SprintIssuesHasMore = sprintHasMore
+		parentIssueIDs := make([]uuid.UUID, 0, len(sprintIssues))
+		for _, issue := range sprintIssues {
+			parentIssueIDs = append(parentIssueIDs, issue.ID)
+		}
+		subIssueProgress, err := s.store.ListSubIssueProgress(ctx, parentIssueIDs)
+		if err != nil {
+			return nil, err
+		}
 		assigneesByID := uiProjectAssigneeMap(assignees)
 		for _, issue := range sprintIssues {
-			item := uiIssueItem{Issue: issue, Project: project, Sprint: panel.ActiveSprint, Assignee: uiIssueItemAssignee(issue, assigneesByID)}
+			item := uiIssueItem{Issue: issue, Project: project, Sprint: panel.ActiveSprint, Assignee: uiIssueItemAssignee(issue, assigneesByID), SubIssueProgress: subIssueProgress[issue.ID]}
 			for i := range panel.SprintColumns {
 				if panel.SprintColumns[i].Status == uiIssueColumnStatus(issue.Status) {
 					panel.SprintColumns[i].Issues = append(panel.SprintColumns[i].Issues, item)
