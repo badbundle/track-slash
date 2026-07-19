@@ -119,7 +119,7 @@ func TestHTTPListDeletedIssues(t *testing.T) {
 		t.Fatalf("list deleted code = %d body = %s", code, body)
 	}
 	page := decodePage[model.Issue](t, body)
-	wantIDs := []uuid.UUID{deleted.ID, parent.ID, child.ID}
+	wantIDs := []uuid.UUID{deleted.ID, parent.ID}
 	if len(page.Items) != len(wantIDs) || page.NextCursor != nil {
 		t.Fatalf("deleted page = %+v next=%v, want %d items no cursor", page.Items, page.NextCursor, len(wantIDs))
 	}
@@ -134,21 +134,29 @@ func TestHTTPListDeletedIssues(t *testing.T) {
 		}
 	}
 
-	code, body = e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted?limit=2", nil)
+	code, body = e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted?limit=1", nil)
 	if code != http.StatusOK {
 		t.Fatalf("deleted page 1 code = %d body = %s", code, body)
 	}
 	page = decodePage[model.Issue](t, body)
-	if len(page.Items) != 2 || page.NextCursor == nil {
-		t.Fatalf("deleted page 1 = %+v next=%v, want 2 items and cursor", page.Items, page.NextCursor)
+	if len(page.Items) != 1 || page.Items[0].ID != deleted.ID || page.NextCursor == nil {
+		t.Fatalf("deleted page 1 = %+v next=%v, want deleted issue and cursor", page.Items, page.NextCursor)
 	}
-	code, body = e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted?limit=2&cursor="+url.QueryEscape(*page.NextCursor), nil)
+	code, body = e.do(t, http.MethodGet, e.projectIssuesPath()+"/deleted?limit=1&cursor="+url.QueryEscape(*page.NextCursor), nil)
 	if code != http.StatusOK {
 		t.Fatalf("deleted page 2 code = %d body = %s", code, body)
 	}
 	page = decodePage[model.Issue](t, body)
-	if len(page.Items) != 1 || page.Items[0].ID != child.ID || page.NextCursor != nil {
-		t.Fatalf("deleted page 2 = %+v next=%v, want child only", page.Items, page.NextCursor)
+	if len(page.Items) != 1 || page.Items[0].ID != parent.ID || page.NextCursor != nil {
+		t.Fatalf("deleted page 2 = %+v next=%v, want parent only", page.Items, page.NextCursor)
+	}
+
+	code, body = e.do(t, http.MethodPost, e.issuePath(child)+"/restore", nil)
+	if code != http.StatusOK {
+		t.Fatalf("restore unlisted child code = %d body = %s", code, body)
+	}
+	if restored := decode[model.Issue](t, body); restored.ID != child.ID {
+		t.Fatalf("restored unlisted child = %+v, want %s", restored, child.ID)
 	}
 
 	code, body = e.do(t, http.MethodGet, e.issuePath(deleted), nil)

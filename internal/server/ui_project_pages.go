@@ -269,14 +269,13 @@ func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project,
 	var hasMore bool
 	for _, project := range projects {
 		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID:        project.ID,
-			Statuses:         query.Statuses,
-			Priorities:       query.Priorities,
-			AssigneeIDs:      []uuid.UUID{userID},
-			Limit:            MaxLimit,
-			Sort:             query.Sort,
-			Direction:        query.Direction,
-			IncludeSubIssues: true,
+			ProjectID:   project.ID,
+			Statuses:    query.Statuses,
+			Priorities:  query.Priorities,
+			AssigneeIDs: []uuid.UUID{userID},
+			Limit:       MaxLimit,
+			Sort:        query.Sort,
+			Direction:   query.Direction,
 		})
 		if err != nil {
 			return nil, false, err
@@ -892,16 +891,15 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 		cursor = &c
 	}
 	issues, hasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-		ProjectID:        project.ID,
-		Statuses:         allQuery.Statuses,
-		Priorities:       allQuery.Priorities,
-		TagNames:         allQuery.TagNames,
-		AssigneeIDs:      allQuery.AssigneeIDs,
-		Cursor:           cursor,
-		Limit:            DefaultLimit,
-		Sort:             allQuery.Sort,
-		Direction:        allQuery.Direction,
-		IncludeSubIssues: true,
+		ProjectID:   project.ID,
+		Statuses:    allQuery.Statuses,
+		Priorities:  allQuery.Priorities,
+		TagNames:    allQuery.TagNames,
+		AssigneeIDs: allQuery.AssigneeIDs,
+		Cursor:      cursor,
+		Limit:       DefaultLimit,
+		Sort:        allQuery.Sort,
+		Direction:   allQuery.Direction,
 	})
 	if err != nil {
 		return uiProjectAllIssuePageData{}, err

@@ -361,8 +361,8 @@ type ListIssuesParams struct {
 	Limit     int
 	Sort      ListIssuesSort
 	Direction ListIssuesSortDirection
-	// IncludeSubIssues is for personal/work views that should surface assigned
-	// child work. Project planning lists keep the default top-level-only shape.
+	// IncludeSubIssues is reserved for explicit parent/child traversal. Product
+	// issue collections keep the default top-level-only shape.
 	IncludeSubIssues bool
 }
 
@@ -693,7 +693,8 @@ func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		JOIN users u ON u.id = pr.owner_id
-		WHERE i.project_id = $1 AND i.deleted_at IS NOT NULL AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
+		WHERE i.project_id = $1 AND i.deleted_at IS NOT NULL AND i.parent_issue_id IS NULL
+		  AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)
