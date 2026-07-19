@@ -29,6 +29,7 @@ type Config struct {
 	AutoMigrate          bool
 	Storage              StorageConfig
 	WebPush              WebPushConfig
+	GitHub               GitHubConfig
 }
 
 type DatabaseConfig struct {
@@ -50,6 +51,11 @@ type WebPushConfig struct {
 	PublicKey  string
 	PrivateKey string
 	Subscriber string
+}
+
+type GitHubConfig struct {
+	Enabled       bool
+	EncryptionKey []byte
 }
 
 func Load() (Config, error) {
@@ -81,6 +87,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	github, err := loadGitHubConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		Port:                 envOr("PORT", "8080"),
 		DatabaseURL:          db.DatabaseURL,
@@ -93,8 +103,21 @@ func Load() (Config, error) {
 		AutoMigrate:          autoMigrate,
 		Storage:              storage,
 		WebPush:              webPush,
+		GitHub:               github,
 	}
 	return cfg, nil
+}
+
+func loadGitHubConfig() (GitHubConfig, error) {
+	raw := strings.TrimSpace(os.Getenv("TRACK_SLASH_GITHUB_ENCRYPTION_KEY"))
+	if raw == "" {
+		return GitHubConfig{}, nil
+	}
+	key, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil || len(key) != 32 {
+		return GitHubConfig{}, errors.New("TRACK_SLASH_GITHUB_ENCRYPTION_KEY must be an unpadded URL-safe base64 encoding of exactly 32 bytes")
+	}
+	return GitHubConfig{Enabled: true, EncryptionKey: key}, nil
 }
 
 func loadWebPushConfig() (WebPushConfig, error) {

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/bradleymackey/track-slash/internal/githubintegration"
 	"github.com/bradleymackey/track-slash/internal/passkeys"
 	"github.com/bradleymackey/track-slash/internal/realtime"
 	objectstorage "github.com/bradleymackey/track-slash/internal/storage"
@@ -39,6 +40,7 @@ type Server struct {
 	uploadTimeout        time.Duration
 	previewTermsRequired bool
 	webPushPublicKey     string
+	githubIntegration    *githubintegration.Service
 }
 
 type Options struct {
@@ -54,6 +56,7 @@ type Options struct {
 	DevReload            bool
 	ObjectStorage        *objectstorage.Service
 	WebPushPublicKey     string
+	GitHubIntegration    *githubintegration.Service
 }
 
 // New constructs a Server. corsAllowedOrigins is a list of exact browser
@@ -107,6 +110,7 @@ func NewWithOptions(s *store.Store, hub *realtime.Hub, opts Options) *Server {
 		uploadTimeout:        uploadTimeout,
 		previewTermsRequired: opts.PreviewTermsRequired,
 		webPushPublicKey:     opts.WebPushPublicKey,
+		githubIntegration:    opts.GitHubIntegration,
 	}
 }
 
@@ -205,6 +209,9 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/favorite", s.unfavoriteProject)
 					r.Get("/changelog", s.listProjectChangelog)
 					r.Get("/stats", s.getProjectStats)
+					r.Get("/github/connections", s.listGitHubConnections)
+					r.Post("/github/connections", s.connectGitHubRepository)
+					r.Delete("/github/connections/{connectionID}", s.disconnectGitHubRepository)
 					r.Get("/members/search", s.searchProjectMembers)
 					r.Get("/members/candidates", s.searchAvailableProjectMembers)
 					r.Get("/members", s.listProjectMembers)
@@ -282,6 +289,10 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/{issueRef}/tags/{tagRef}", s.detachIssueTag)
 					r.Post("/{issueRef}/links", s.createIssueLink)
 					r.Get("/{issueRef}/links", s.listIssueLinks)
+					r.Get("/{issueRef}/github-links", s.listGitHubIssueLinks)
+					r.Post("/{issueRef}/github-links", s.createGitHubIssueLink)
+					r.Delete("/{issueRef}/github-links/{githubLinkID}", s.deleteGitHubIssueLink)
+					r.Post("/{issueRef}/github-links/{githubLinkID}/refresh", s.refreshGitHubIssueLink)
 				})
 			})
 		})

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func (s *Server) renderUIIssuePanelWithSubIssueError(w http.ResponseWriter, r *http.Request, issueID uuid.UUID, title, message string) {
@@ -523,11 +524,31 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		return nil, err
 	}
 
+	githubConnections, err := s.store.ListGitHubConnections(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	githubLinks, err := s.store.ListGitHubIssueLinks(ctx, issueID)
+	if err != nil {
+		return nil, err
+	}
+	githubItems := make([]uiGitHubIssueLink, 0, len(githubLinks))
+	for _, link := range githubLinks {
+		item := uiGitHubIssueLink{Link: link, Stale: link.Stale(time.Now(), 30*time.Minute), LastRefreshedLabel: "Never refreshed"}
+		if link.LastRefreshedAt != nil {
+			item.LastRefreshedLabel = uiTokenTime(*link.LastRefreshedAt)
+		}
+		githubItems = append(githubItems, item)
+	}
+
 	backHref, backHXGet, backLabel := uiIssueBackLink(project, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
 		Issue:              issue,
 		Project:            project,
 		CanWrite:           permissions.CanWrite,
+		GitHubConfigured:   s.githubIntegration != nil,
+		GitHubConnections:  githubConnections,
+		GitHubLinks:        githubItems,
 		OwnerCrumb:         currentUser(r).ID != project.OwnerID,
 		ParentIssue:        parentIssue,
 		Sprint:             sprint,

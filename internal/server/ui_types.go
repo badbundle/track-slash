@@ -450,6 +450,10 @@ type uiProjectPanelData struct {
 	CanCreateIssues                 bool
 	PublicIssueCreationEnabled      bool
 	CanManageMembers                bool
+	GitHubConfigured                bool
+	GitHubConnections               []model.GitHubConnection
+	GitHubRepositoryInput           string
+	GitHubConnectionError           string
 	OwnerCrumb                      bool
 	MembersPage                     bool
 	Members                         []model.ProjectMember
@@ -592,6 +596,12 @@ type uiIssuePanelData struct {
 	Issue              model.Issue
 	Project            model.Project
 	CanWrite           bool
+	GitHubConfigured   bool
+	GitHubConnections  []model.GitHubConnection
+	GitHubLinks        []uiGitHubIssueLink
+	GitHubConnectionID string
+	GitHubReference    string
+	GitHubError        string
 	OwnerCrumb         bool
 	ParentIssue        *model.Issue
 	Sprint             *model.Sprint
@@ -655,6 +665,12 @@ type uiIssuePanelData struct {
 	BackHXGet          string
 	BackLabel          string
 	DeleteNotice       *uiIssueDeleteNotice
+}
+
+type uiGitHubIssueLink struct {
+	Link               model.GitHubIssueLink
+	Stale              bool
+	LastRefreshedLabel string
 }
 
 type uiTagManagerData struct {

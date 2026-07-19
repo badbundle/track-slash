@@ -47,6 +47,26 @@ func TestLoadWebPushConfig(t *testing.T) {
 	}
 }
 
+func TestLoadGitHubConfig(t *testing.T) {
+	t.Setenv("TRACK_SLASH_GITHUB_ENCRYPTION_KEY", "")
+	if got, err := loadGitHubConfig(); err != nil || got.Enabled {
+		t.Fatalf("disabled GitHub config = %+v, %v", got, err)
+	}
+	for _, raw := range []string{"invalid", base64.RawURLEncoding.EncodeToString(make([]byte, 31)), base64.StdEncoding.EncodeToString(make([]byte, 32))} {
+		t.Setenv("TRACK_SLASH_GITHUB_ENCRYPTION_KEY", raw)
+		if _, err := loadGitHubConfig(); err == nil {
+			t.Fatalf("key %q returned nil error", raw)
+		}
+	}
+	key := make([]byte, 32)
+	key[0] = 7
+	t.Setenv("TRACK_SLASH_GITHUB_ENCRYPTION_KEY", base64.RawURLEncoding.EncodeToString(key))
+	got, err := loadGitHubConfig()
+	if err != nil || !got.Enabled || !reflect.DeepEqual(got.EncryptionKey, key) {
+		t.Fatalf("configured GitHub = %+v, %v", got, err)
+	}
+}
+
 func TestParseList(t *testing.T) {
 	cases := []struct {
 		in   string

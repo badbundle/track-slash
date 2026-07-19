@@ -100,6 +100,41 @@ TRACK_SLASH_VAPID_SUBSCRIBER=mailto:ops@example.com
 
 The frontend process runs the push outbox worker in the same Go binary. It claims jobs from Postgres, re-checks current issue access immediately before delivery, retries transient provider/network failures, and records terminal failures. Push provider endpoints require outbound HTTPS. Browser permission is requested only when a signed-in user selects **Enable on this browser** in Settings, and production browser Push APIs require a secure HTTPS origin.
 
+### GitHub repository links
+
+GitHub integration is optional. Generate one stable 32-byte encryption key and configure it only on the frontend app:
+
+```bash
+openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'
+```
+
+```bash
+TRACK_SLASH_GITHUB_ENCRYPTION_KEY=<generated-unpadded-url-safe-base64-key>
+```
+
+Back up this key as a deployment secret. trackslash uses AES-256-GCM with repository-bound associated data to encrypt each repository token before storing it in Postgres. Tokens are never returned by the API or sent to browsers, and disconnecting a repository scrubs its stored ciphertext while retaining cached issue-link history. Changing or losing the key makes existing connections unreadable; reconnect each repository with a new token if that occurs. The migration job still needs only `DATABASE_URL`.
+
+For each repository connection, create a GitHub fine-grained personal access token with:
+
+- access restricted to the selected repository (private repositories are supported); and
+- repository **Contents: read-only** permission. GitHub grants **Metadata: read-only** automatically.
+
+Do not grant write permissions, organization administration, Actions, webhooks, or account-wide repository access. The integration reads repository identity, branch metadata, and pull request metadata only. GitHub.com must be reachable over outbound HTTPS.
+
+Project owners and global administrators can connect or disconnect repositories on the project About page. Write members can link, unlink, and manually refresh branches or pull requests on issues. Read-only members and other authorized project viewers can see cached GitHub metadata but cannot mutate it. A disconnected, deleted, inaccessible, or rate-limited resource continues to show its last known state with an explicit stale or unavailable message.
+
+The in-process refresh worker polls due links and refreshes each active connection approximately every 15 minutes. Provider rate-limit reset times are honored when GitHub supplies them; other failures use a bounded retry and never block issue reads. Manual refresh remains available as an eventual-consistency fallback.
+
+The bearer-authenticated JSON API exposes the same lifecycle:
+
+- `GET|POST /api/v1/{owner}/projects/{key}/github/connections`
+- `DELETE /api/v1/{owner}/projects/{key}/github/connections/{connectionID}`
+- `GET|POST /api/v1/{owner}/issues/{issueRef}/github-links`
+- `DELETE /api/v1/{owner}/issues/{issueRef}/github-links/{linkID}`
+- `POST /api/v1/{owner}/issues/{issueRef}/github-links/{linkID}/refresh`
+
+Connection creation accepts `{"repository":"owner/name","token":"..."}`. Issue-link creation accepts `{"connection_id":"...","reference":"#123"}`; repository-relative `pull/123`, branch names, and matching `https://github.com/...` URLs are also accepted. Responses contain immutable GitHub repository and pull-request IDs separately from mutable names, titles, URLs, and states.
+
 ### Development-preview terms
 
 The canonical `/terms`, `/privacy`, and `/security` pages describe the development preview operated by Bad Bundle Limited at `trackslash.com`. They do not govern independent self-hosted installations.
