@@ -52,7 +52,6 @@ func TestUIEditPriorityUpdatesIssuePanel(t *testing.T) {
 	if strings.Contains(edit, `title="Change priority"`) ||
 		strings.Contains(edit, `title="Cancel priority change"`) ||
 		strings.Contains(edit, `aria-label="Cancel priority change"`) ||
-		strings.Contains(edit, `data-lucide="x"`) ||
 		strings.Contains(edit, `aria-expanded="true"`) ||
 		strings.Contains(edit, `data-lucide="chevron-up"`) ||
 		strings.Contains(edit, `opacity-100 ring-2 ring-indigo-500`) {

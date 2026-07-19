@@ -230,13 +230,14 @@ func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
+		`id="issue-sub-issue-create" data-client-modal class="fixed inset-0 z-50 grid`,
+		`role="dialog" aria-modal="true" aria-labelledby="issue-sub-issue-create-title"`,
 		`aria-label="Cancel adding sub-issue"`,
 		`method="post" action="/bradley/issues/TRACK-7/sub-issues"`,
 		`hx-post="/bradley/issues/TRACK-7/sub-issues"`,
 		`hx-push-url="false"`,
-		`name="title" value="Draft child" autofocus placeholder="Title"`,
-		`aria-label="Create sub-issue"`,
-		`data-lucide="check"`,
+		`name="title" value="Draft child" autofocus placeholder="Issue title"`,
+		`Create sub-issue`,
 		"Title required, max 200 chars.",
 		"Existing child",
 	} {
@@ -249,12 +250,9 @@ func TestUIIssuePanelRendersSubIssueComposerAtTop(t *testing.T) {
 	if formIndex < 0 || childIndex < 0 || formIndex > childIndex {
 		t.Fatalf("sub-issue composer should render before the list rows: %s", body)
 	}
-	for _, notWant := range []string{
-		`aria-label="Add sub-issue"`,
-		`hx-get="/bradley/issues/TRACK-7/sub-issues/new"`,
-	} {
-		if strings.Contains(body, notWant) {
-			t.Fatalf("sub-issue composer included closed-state control %q: %s", notWant, body)
+	for _, want := range []string{`data-modal-return="issue-sub-issue-create"`, `aria-label="Add sub-issue"`, `hx-get="/bradley/issues/TRACK-7/sub-issues/new"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sub-issue modal missing persistent trigger %q: %s", want, body)
 		}
 	}
 }
@@ -294,11 +292,13 @@ func TestUIIssuePanelRendersAddLinkForm(t *testing.T) {
 
 	body := buf.String()
 	for _, want := range []string{
+		`id="issue-link-create" data-client-modal class="fixed inset-0 z-50 grid`,
+		`role="dialog" aria-modal="true" aria-labelledby="issue-link-create-title"`,
 		`method="post" action="/bradley/issues/TRACK-7/links"`,
 		`hx-post="/bradley/issues/TRACK-7/links"`,
 		`hx-target="#main"`,
 		`hx-push-url="false"`,
-		`name="relation" aria-label="Link relationship"`,
+		`name="relation" class=`,
 		`value="relates_to"`,
 		`value="blocks"`,
 		`value="blocked_by" selected`,
@@ -307,8 +307,8 @@ func TestUIIssuePanelRendersAddLinkForm(t *testing.T) {
 		`value="clones"`,
 		`value="cloned_by"`,
 		`name="target_issue" value="TRACK-8" placeholder="TRACK-12"`,
-		`aria-label="Save link"`,
-		`aria-label="Cancel adding link"`,
+		`aria-label="Cancel adding issue link"`,
+		`>Add link</button>`,
 		"Linked issue required.",
 	} {
 		if !strings.Contains(body, want) {
@@ -316,13 +316,17 @@ func TestUIIssuePanelRendersAddLinkForm(t *testing.T) {
 		}
 	}
 	for _, notWant := range []string{
-		`hx-get="/bradley/issues/TRACK-7/links/new"`,
 		"No linked issues.",
 		`title="Save link"`,
 		`title="Cancel adding link"`,
 	} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("add link form included %q: %s", notWant, body)
+		}
+	}
+	for _, want := range []string{`data-modal-return="issue-link-create"`, `hx-get="/bradley/issues/TRACK-7/links/new"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("add link modal missing persistent trigger %q: %s", want, body)
 		}
 	}
 }

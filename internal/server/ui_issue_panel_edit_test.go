@@ -182,7 +182,6 @@ func TestUIIssuePanelRendersPriorityPicker(t *testing.T) {
 		`data-lucide="chevron-up"`,
 		`opacity-100 ring-2 ring-indigo-500`,
 		`aria-label="Cancel priority change"`,
-		`data-lucide="x"`,
 		`title="Cancel priority change"`,
 		`title="Change priority"`,
 	} {

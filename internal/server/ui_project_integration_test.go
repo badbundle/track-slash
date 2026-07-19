@@ -363,14 +363,9 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	pageBody := e.uiGet(t, membersPath, e.authToken)
-	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "Public access", "Public read-only access", "Allow public issue creation", "Blocked users", "Exact username"} {
+	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "Public access", "Public read-only access", "Allow public issue creation", "Blocked users", "Exact username", `data-modal-open="project-member-create"`, `id="project-member-create" data-client-modal class="fixed inset-0 z-50 hidden`, `data-modal-open="project-block-create"`, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog"`} {
 		if !strings.Contains(pageBody, want) {
 			t.Fatalf("member page missing %q: %s", want, pageBody)
-		}
-	}
-	for _, notWant := range []string{`id="project-members-modal"`, `role="dialog"`} {
-		if strings.Contains(pageBody, notWant) {
-			t.Fatalf("member page retained modal markup %q: %s", notWant, pageBody)
 		}
 	}
 	candidatesPath := membersPath + "/candidates"
@@ -390,6 +385,12 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	if strings.Contains(pageBody, "@"+readonly.Username) {
 		t.Fatalf("member page disclosed candidate before a search: %s", pageBody)
 	}
+	invalidMemberResponse := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/members", e.authToken, strings.NewReader(url.Values{"username": {""}, "role": {"member"}}.Encode()))
+	invalidMemberBody := readBody(t, invalidMemberResponse)
+	invalidMemberResponse.Body.Close()
+	if invalidMemberResponse.StatusCode != http.StatusOK || !strings.Contains(invalidMemberBody, "Choose an existing user.") || !strings.Contains(invalidMemberBody, `id="project-member-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid member should keep modal open, code = %d body = %s", invalidMemberResponse.StatusCode, invalidMemberBody)
+	}
 	for _, query := range []string{"", "   ", readonly.Username[:1]} {
 		body := e.uiGet(t, candidatesPath+"?username="+url.QueryEscape(query), e.authToken)
 		if strings.Contains(body, "@"+readonly.Username) || !strings.Contains(body, `id="project-member-options" data-search-options hidden`) {
@@ -407,6 +408,9 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK || !strings.Contains(body, "@"+readonly.Username) || !strings.Contains(body, `value="readonly" selected`) {
 		t.Fatalf("add readonly response code = %d body = %s", res.StatusCode, body)
+	}
+	if !strings.Contains(body, `id="project-member-create" data-client-modal class="fixed inset-0 z-50 hidden`) {
+		t.Fatalf("successful member add should close modal: %s", body)
 	}
 
 	accessForm := url.Values{"is_public": {"on"}, "public_issue_creation": {"on"}}
@@ -448,12 +452,21 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	blocked, _ := e.mustUserToken(t, "ui-project-blocked")
+	invalidBlockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks", e.authToken, strings.NewReader(url.Values{"username": {""}}.Encode()))
+	invalidBlockBody := readBody(t, invalidBlockResponse)
+	invalidBlockResponse.Body.Close()
+	if invalidBlockResponse.StatusCode != http.StatusOK || !strings.Contains(invalidBlockBody, "Enter an exact existing username.") || !strings.Contains(invalidBlockBody, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid block should keep modal open, code = %d body = %s", invalidBlockResponse.StatusCode, invalidBlockBody)
+	}
 	blockForm := url.Values{"username": {blocked.Username}}
 	blockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks", e.authToken, strings.NewReader(blockForm.Encode()))
 	blockBody := readBody(t, blockResponse)
 	blockResponse.Body.Close()
 	if blockResponse.StatusCode != http.StatusOK || !strings.Contains(blockBody, "@"+blocked.Username) || !strings.Contains(blockBody, "Unblock") {
 		t.Fatalf("block user response code = %d body = %s", blockResponse.StatusCode, blockBody)
+	}
+	if !strings.Contains(blockBody, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 hidden`) {
+		t.Fatalf("successful block should close modal: %s", blockBody)
 	}
 	unblockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks/"+blocked.Username+"/delete", e.authToken, nil)
 	unblockBody := readBody(t, unblockResponse)
@@ -743,7 +756,7 @@ func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
 		t.Fatalf("planned body missing new sprint action: %s", body)
 	}
 	body = e.uiGet(t, e.projectPath()+"/sprints/new", token)
-	for _, want := range []string{`action="` + e.projectPath() + `/sprints"`, `name="start_date"`, `name="end_date"`, `name="goal"`, `aria-label="Create planned sprint"`} {
+	for _, want := range []string{`id="planned-sprint-create" data-client-modal class="fixed inset-0 z-50 grid`, `role="dialog" aria-modal="true" aria-labelledby="planned-sprint-create-title"`, `action="` + e.projectPath() + `/sprints"`, `name="start_date"`, `name="end_date"`, `name="goal"`, `aria-label="Create planned sprint"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("new sprint form missing %q: %s", want, body)
 		}
@@ -775,6 +788,9 @@ func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
 	if res.StatusCode != http.StatusOK || !strings.Contains(body, "End date must be on or after start date.") {
 		t.Fatalf("bad sprint dates code = %d body = %s", res.StatusCode, body)
 	}
+	if !strings.Contains(body, `id="planned-sprint-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid sprint should keep modal open: %s", body)
+	}
 
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints", token, strings.NewReader(url.Values{
 		"name":       {"Second planned"},
@@ -795,7 +811,7 @@ func TestUIProjectSprintPlanningLifecycle(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 	body = e.uiGet(t, e.projectPath()+"/sprints/"+sp.Ref+"/issues/new", token)
-	if !strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || !strings.Contains(body, `aria-label="Add issue to sprint"`) {
+	if !strings.Contains(body, `placeholder="`+e.projKey+`-12"`) || !strings.Contains(body, `aria-label="Add issue to sprint"`) || !strings.Contains(body, `data-client-modal class="fixed inset-0 z-50 grid`) || !strings.Contains(body, `role="dialog" aria-modal="true"`) {
 		t.Fatalf("add issue form missing: %s", body)
 	}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/sprints/"+sp.Ref+"/issues", token, strings.NewReader(url.Values{"issue": {issue.Identifier}}.Encode()))

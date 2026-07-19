@@ -153,28 +153,28 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`hx-get="/bradley/issues/TRACK-7/links/new"`,
 		`aria-label="Add sub-issue"`,
 		`hx-get="/bradley/issues/TRACK-7/sub-issues/new"`,
-		`aria-label="Post comment"`,
+		`data-modal-open="issue-comment-create"`,
+		`aria-controls="issue-comment-create"`,
+		`id="issue-comment-create" data-client-modal class="fixed inset-0 z-50 hidden`,
+		`role="dialog" aria-modal="true" aria-labelledby="issue-comment-create-title"`,
 		`aria-haspopup="listbox"`,
 		`data-lucide="chevron-down"`,
 		`role="img" aria-label="Linked issue progress: 1 done, 0 in progress, 0 to do"`,
 		`viewBox="0 0 1 1"`,
 		`<rect x="0" width="1" height="1" class="fill-emerald-500 dark:fill-emerald-400"`,
-		`placeholder="Add a comment"`,
+		`placeholder="Write a comment"`,
 		`method="post" action="/bradley/issues/TRACK-7/comments"`,
 		`hx-post="/bradley/issues/TRACK-7/comments"`,
 		`hx-target="#main"`,
 		`hx-push-url="false"`,
 		`data-submit-shortcut="meta-enter"`,
 		`data-autogrow-textarea`,
-		`<textarea name="body" rows="1"`,
+		`<textarea name="body" rows="4"`,
 		`data-lucide="send-horizontal"`,
 		`class="order-2 min-w-0 space-y-6 lg:order-1"`,
 		`class="order-1 min-w-0 lg:order-2"`,
-		`class="flex items-start gap-2"`,
-		`class="min-w-0 flex-1 resize-none overflow-hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950`,
-		`class="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700`,
+		`class="min-h-24 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950`,
 		`class="space-y-3 px-4"`,
-		`class="flex items-start gap-2"`,
 		`class="grid h-4 w-4 shrink-0 place-items-center bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300 overflow-hidden rounded-full"`,
 		`class="w-fit max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25"`,
 		`class="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-1"`,
@@ -268,7 +268,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if commentMetaStart < 0 || commentBodyStart < 0 || commentMetaStart > commentBodyStart {
 		t.Fatalf("issue panel should render comment metadata above the body: %s", body)
 	}
-	commentComposerStart := strings.Index(commentsBlock, `placeholder="Add a comment"`)
+	commentComposerStart := strings.Index(commentsBlock, `placeholder="Write a comment"`)
 	if commentComposerStart < 0 || commentsSectionStart+commentComposerStart > commentMetaStart {
 		t.Fatalf("comment composer should render above the comment list: %s", body)
 	}
@@ -284,10 +284,7 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	if commentEditStart < 0 || commentEditStart < commentMetaStart || commentEditStart > commentBubbleStart {
 		t.Fatalf("comment edit button should render with metadata above the bubble: %s", body)
 	}
-	if strings.Contains(body, "\n            Comment\n") {
-		t.Fatalf("post comment button should be icon-only: %s", body)
-	}
-	if strings.Contains(body, "<textarea disabled") || strings.Contains(body, `aria-label="Post comment" class="grid h-9 w-9 shrink-0 cursor-not-allowed`) || strings.Contains(body, `aria-label="Post comment" class="grid h-7 w-7 shrink-0 cursor-not-allowed`) {
+	if strings.Contains(body, "<textarea disabled") {
 		t.Fatalf("comment composer should be enabled: %s", body)
 	}
 	titleHeaderEnd := strings.Index(body, "</header>")

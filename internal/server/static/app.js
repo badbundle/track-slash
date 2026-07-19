@@ -200,20 +200,52 @@
     syncDisclosureIcon(toggle, open);
   };
   let clientModalTrigger = null;
+  const modalFocusableElements = (modal) => Array.from(modal.querySelectorAll("button:not([disabled]), [href], input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"))
+    .filter((element) => element instanceof HTMLElement && !element.hasAttribute("hidden") && element.getAttribute("aria-hidden") !== "true");
+  const trapModalFocus = (event, modal) => {
+    if (event.key !== "Tab" || !(modal instanceof HTMLElement)) return false;
+    const focusable = modalFocusableElements(modal);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      modal.focus();
+      return true;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+      return true;
+    }
+    if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+      return true;
+    }
+    return false;
+  };
   const focusClientModal = (modal) => {
     if (!(modal instanceof HTMLElement)) return;
+    if (!(clientModalTrigger instanceof HTMLElement) || !clientModalTrigger.isConnected) {
+      clientModalTrigger = document.querySelector(`[data-modal-open="${modal.id}"], [data-modal-return="${modal.id}"]`);
+    }
+    if (clientModalTrigger instanceof HTMLElement) clientModalTrigger.setAttribute("aria-expanded", "true");
     const target = modal.querySelector("[autofocus]") || modal.querySelector("input:not([type='hidden']), select, textarea, button:not([disabled]), [href]");
-    if (target instanceof HTMLElement) target.focus();
+    if (target instanceof HTMLElement) {
+      target.focus();
+      return;
+    }
+    modal.focus();
   };
   const setClientModalOpen = (modal, open, trigger = null) => {
     if (!(modal instanceof HTMLElement)) return;
     modal.classList.toggle("hidden", !open);
     modal.classList.toggle("grid", open);
-    document.querySelectorAll(`[data-modal-open="${modal.id}"]`).forEach((button) => {
+    document.querySelectorAll(`[data-modal-open="${modal.id}"], [data-modal-return="${modal.id}"]`).forEach((button) => {
       button.setAttribute("aria-expanded", open ? "true" : "false");
     });
     if (open) {
-      clientModalTrigger = trigger;
+      clientModalTrigger = trigger || document.querySelector(`[data-modal-open="${modal.id}"], [data-modal-return="${modal.id}"]`);
       window.setTimeout(() => focusClientModal(modal), 0);
       return;
     }
@@ -645,6 +677,8 @@
       reject(new Error("Current password form missing."));
       return;
     }
+    const clientModal = document.querySelector("#passkey-create[data-client-modal]:not(.hidden)");
+    const returnFocus = document.activeElement;
 
     const setSubmitBusy = (busy) => {
       submit.disabled = busy;
@@ -658,6 +692,10 @@
     let settled = false;
     const cleanup = () => {
       setModalOpen(false);
+      if (clientModal instanceof HTMLElement) {
+        clientModal.inert = false;
+        clientModal.removeAttribute("aria-hidden");
+      }
       input.value = "";
       setSubmitBusy(false);
       showPasskeyPasswordError(modal, "");
@@ -665,6 +703,7 @@
       modal.querySelectorAll("[data-passkey-password-cancel]").forEach((button) => button.removeEventListener("click", onCancel));
       modal.removeEventListener("click", onBackdropClick);
       document.removeEventListener("keydown", onKeydown);
+      if (returnFocus instanceof HTMLElement && returnFocus.isConnected) window.setTimeout(() => returnFocus.focus(), 0);
     };
     const cancel = () => {
       if (settled) return;
@@ -681,6 +720,7 @@
       if (event.target === modal) cancel();
     };
     const onKeydown = (event) => {
+      if (trapModalFocus(event, modal)) return;
       if (event.key === "Escape" && !modal.classList.contains("hidden")) {
         event.preventDefault();
         cancel();
@@ -713,6 +753,10 @@
 
     showPasskeyPasswordError(modal, "");
     input.value = "";
+    if (clientModal instanceof HTMLElement) {
+      clientModal.inert = true;
+      clientModal.setAttribute("aria-hidden", "true");
+    }
     setModalOpen(true);
     form.addEventListener("submit", onSubmit);
     modal.querySelectorAll("[data-passkey-password-cancel]").forEach((button) => button.addEventListener("click", onCancel));
@@ -1184,14 +1228,15 @@
       const panel = passkeyAction.closest("[data-passkeys-panel]");
       if (panel) {
         event.preventDefault();
-        setPasskeyStatus(panel, "");
+        const statusScope = passkeyAction.closest("[data-client-modal]") || panel;
+        setPasskeyStatus(statusScope, "");
         setPasskeyBusy(panel, true);
         const action = passkeyAction.hasAttribute("data-passkey-add")
           ? addPasskey(panel)
           : revokePasskey(panel, passkeyAction);
         action.catch((err) => {
           if (err && err.passkeyCanceled) return;
-          setPasskeyStatus(panel, err && err.message ? err.message : "Passkey request failed.");
+          setPasskeyStatus(statusScope, err && err.message ? err.message : "Passkey request failed.");
         }).finally(() => setPasskeyBusy(panel, false));
         return;
       }
@@ -1239,12 +1284,15 @@
   });
   document.body.addEventListener("keydown", (event) => {
     if (!(event.target instanceof Element)) return;
+    const passkeyPasswordModal = document.querySelector("[data-passkey-password-modal]:not(.hidden)");
+    if (passkeyPasswordModal) return;
+    const openClientModal = document.querySelector("[data-client-modal]:not(.hidden)");
+    if (openClientModal && trapModalFocus(event, openClientModal)) return;
     if (event.key === "Escape") {
       hideAppTooltip();
-      const modal = document.querySelector("[data-client-modal]:not(.hidden)");
-      if (modal) {
+      if (openClientModal) {
         event.preventDefault();
-        setClientModalOpen(modal, false);
+        setClientModalOpen(openClientModal, false);
         return;
       }
       setSearchOptionsOpen(event.target.closest("[data-search]"), false);
@@ -1303,6 +1351,7 @@
       syncSidebarActive();
       syncChangelogRealtime();
       syncPushNotifications();
+      focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)"));
     });
   } else {
     createIcons();
@@ -1312,5 +1361,6 @@
     syncSidebarActive();
     syncChangelogRealtime();
     syncPushNotifications();
+    focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)"));
   }
 })();

@@ -42,14 +42,16 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	edit := e.uiGet(t, e.issueLinksPath(issue)+"/new", token)
 	for _, want := range []string{
 		"link ui source",
+		`id="issue-link-create" data-client-modal class="fixed inset-0 z-50 grid`,
+		`role="dialog" aria-modal="true" aria-labelledby="issue-link-create-title"`,
 		`method="post" action="` + e.issueLinksPath(issue) + `"`,
 		`hx-post="` + e.issueLinksPath(issue) + `"`,
-		`name="relation" aria-label="Link relationship"`,
+		`name="relation" class=`,
 		`value="relates_to" selected`,
 		`value="blocked_by"`,
 		`name="target_issue" value="" placeholder="` + e.projKey + `-12"`,
-		`aria-label="Save link"`,
-		`aria-label="Cancel adding link"`,
+		`aria-label="Cancel adding issue link"`,
+		`>Add link</button>`,
 	} {
 		if !strings.Contains(edit, want) {
 			t.Fatalf("add link response missing %q: %s", want, edit)
@@ -68,6 +70,9 @@ func TestUIAddEditAndRemoveIssueLinks(t *testing.T) {
 	}
 	if !strings.Contains(body, "Linked issue required.") {
 		t.Fatalf("empty target response missing validation error: %s", body)
+	}
+	if !strings.Contains(body, `id="issue-link-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid issue link should keep modal open: %s", body)
 	}
 
 	badRelation := url.Values{"relation": {"blocks_by_magic"}, "target_issue": {target.Identifier}}
@@ -186,12 +191,12 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("code = %d body = %s", res.StatusCode, body)
 	}
-	for _, want := range []string{"comment target issue", "new ui comment", `placeholder="Add a comment"`} {
+	for _, want := range []string{"comment target issue", "new ui comment", `placeholder="Write a comment"`, `data-modal-open="issue-comment-create"`, `id="issue-comment-create" data-client-modal class="fixed inset-0 z-50 hidden`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("comment post response missing %q: %s", want, body)
 		}
 	}
-	composerStart := strings.Index(body, `placeholder="Add a comment"`)
+	composerStart := strings.Index(body, `placeholder="Write a comment"`)
 	firstCommentStart := strings.Index(body, "new ui comment")
 	if composerStart < 0 || firstCommentStart < 0 || composerStart > firstCommentStart {
 		t.Fatalf("comment composer should render above comments: %s", body)
@@ -213,7 +218,7 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	}
 	secondCommentStart := strings.Index(body, "second ui comment")
 	firstCommentStart = strings.Index(body, "new ui comment")
-	composerStart = strings.Index(body, `placeholder="Add a comment"`)
+	composerStart = strings.Index(body, `placeholder="Write a comment"`)
 	if composerStart < 0 || secondCommentStart < 0 || firstCommentStart < 0 || composerStart > secondCommentStart || secondCommentStart > firstCommentStart {
 		t.Fatalf("comments should render newest-first below the composer: %s", body)
 	}
@@ -234,6 +239,9 @@ func TestUICreateCommentPostsAndRerendersIssuePanel(t *testing.T) {
 	}
 	if !strings.Contains(body, "Comment required, max 10000 chars.") {
 		t.Fatalf("empty comment response missing validation error: %s", body)
+	}
+	if !strings.Contains(body, `id="issue-comment-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid comment should keep modal open: %s", body)
 	}
 	comments, _, err = e.store.ListCommentsForIssue(e.ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Limit: 10})
 	if err != nil {
@@ -358,19 +366,20 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	edit := e.uiGet(t, e.issueSubIssuesPath(parent)+"/new", token)
 	for _, want := range []string{
 		"parent target issue",
+		`id="issue-sub-issue-create" data-client-modal class="fixed inset-0 z-50 grid`,
+		`role="dialog" aria-modal="true" aria-labelledby="issue-sub-issue-create-title"`,
 		`aria-label="Cancel adding sub-issue"`,
 		`method="post" action="` + e.issueSubIssuesPath(parent) + `"`,
 		`hx-post="` + e.issueSubIssuesPath(parent) + `"`,
-		`name="title" value="" autofocus placeholder="Title"`,
-		`aria-label="Create sub-issue"`,
-		`data-lucide="check"`,
+		`name="title" value="" autofocus placeholder="Issue title"`,
+		`>Create sub-issue</button>`,
 	} {
 		if !strings.Contains(edit, want) {
 			t.Fatalf("sub-issue add response missing %q: %s", want, edit)
 		}
 	}
-	if strings.Contains(edit, `hx-get="`+e.issueSubIssuesPath(parent)+`/new"`) {
-		t.Fatalf("sub-issue add response should replace the add button with a cancel button: %s", edit)
+	if !strings.Contains(edit, `data-modal-return="issue-sub-issue-create"`) || !strings.Contains(edit, `hx-get="`+e.issueSubIssuesPath(parent)+`/new"`) {
+		t.Fatalf("sub-issue modal response should retain its trigger: %s", edit)
 	}
 
 	form := url.Values{"title": {"new child from ui"}}
@@ -420,11 +429,14 @@ func TestUICreateSubIssuePostsTitleOnlyAndRerendersIssuePanel(t *testing.T) {
 	if !strings.Contains(body, "Title required, max 200 chars.") {
 		t.Fatalf("empty sub-issue response missing validation error: %s", body)
 	}
+	if !strings.Contains(body, `id="issue-sub-issue-create" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("invalid sub-issue should keep modal open: %s", body)
+	}
 	for _, want := range []string{
 		`aria-label="Cancel adding sub-issue"`,
 		`method="post" action="` + e.issueSubIssuesPath(parent) + `"`,
-		`name="title" value="   " autofocus placeholder="Title"`,
-		`aria-label="Create sub-issue"`,
+		`name="title" value="   " autofocus placeholder="Issue title"`,
+		`>Create sub-issue</button>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("empty sub-issue response should keep composer open with %q: %s", want, body)
