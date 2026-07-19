@@ -756,6 +756,10 @@ type uiSubIssueProgressData struct {
 	Label             string
 }
 
+func uiIssueItemFromIssue(issue model.Issue) uiIssueItem {
+	return uiIssueItem{Issue: issue}
+}
+
 func uiSubIssueProgress(issues []model.Issue) uiSubIssueProgressData {
 	out := uiSubIssueProgressData{Total: len(issues)}
 	for _, issue := range issues {

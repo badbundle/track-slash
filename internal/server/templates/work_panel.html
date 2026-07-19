@@ -31,7 +31,7 @@
 <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
   {{range .}}
   <a href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="block min-w-0 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800 {{statusRow .Issue.Status}}">
-    {{template "issue-summary-row" .Issue}}
+    {{template "issue-summary-row" .}}
   </a>
   {{end}}
 </div>

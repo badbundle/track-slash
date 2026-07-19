@@ -49,7 +49,7 @@
         <div class="border-t border-slate-100 dark:border-slate-800">
           {{range .SubIssues}}
           <a href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="block min-w-0 border-b border-slate-100 px-4 py-2.5 text-xs last:border-b-0 dark:border-slate-800 {{statusRow .Status}}">
-            {{template "issue-summary-row" .}}
+            {{template "issue-summary-row" (issueItem .)}}
           </a>
           {{end}}
         </div>

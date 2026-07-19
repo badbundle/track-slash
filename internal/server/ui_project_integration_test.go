@@ -1109,6 +1109,18 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	if _, err := e.store.UpdateIssue(e.ctx, firstPlannedIssue.ID, store.UpdateIssueParams{SprintID: &firstPlanned.ID}); err != nil {
 		t.Fatalf("assign first planned: %v", err)
 	}
+	progressTodo, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{ParentIssueID: firstPlannedIssue.ID, Title: "planned progress todo"})
+	if err != nil {
+		t.Fatalf("CreateSubIssue progress todo: %v", err)
+	}
+	progressDone, err := e.store.CreateSubIssue(e.ctx, store.CreateSubIssueParams{ParentIssueID: firstPlannedIssue.ID, Title: "planned progress done"})
+	if err != nil {
+		t.Fatalf("CreateSubIssue progress done: %v", err)
+	}
+	doneStatus := model.StatusDone
+	if _, err := e.store.UpdateIssue(e.ctx, progressDone.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
+		t.Fatalf("complete progress sub-issue: %v", err)
+	}
 	secondPlannedIssue, err := e.store.CreateIssue(e.ctx, store.CreateIssueParams{ProjectID: e.projectID, Title: "scheduled second issue"})
 	if err != nil {
 		t.Fatalf("CreateIssue second planned: %v", err)
@@ -1158,6 +1170,11 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	if strings.Contains(body, backlogIssue.Title) {
 		t.Fatalf("planned body included unscheduled issue: %s", body)
 	}
+	for _, want := range []string{`role="progressbar" aria-label="Sub-issues completed" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1"`, `pathLength="2" stroke-dasharray="1 2"`, `>1/2</span>`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("planned body missing sub-issue progress %q: %s", want, body)
+		}
+	}
 	for _, notWant := range []string{"other project backlog issue", "other project planned issue", "Other Planned Sprint", "Backlog issues across accessible projects.", `aria-label="Remove issue from sprint"`, `data-lucide="unlink"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("planned body included %q: %s", notWant, body)
@@ -1178,6 +1195,18 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	}
 	if strings.Contains(body, "Other Planned Sprint") || strings.Contains(body, "other project backlog issue") || strings.Contains(body, "other project planned issue") {
 		t.Fatalf("all body included wrong scope: %s", body)
+	}
+	if got := strings.Count(body, `role="progressbar" aria-label="Sub-issues completed"`); got != 1 {
+		t.Fatalf("all issue progress count = %d, want 1: %s", got, body)
+	}
+	if _, err := e.store.UpdateIssue(e.ctx, progressTodo.ID, store.UpdateIssueParams{Status: &doneStatus}); err != nil {
+		t.Fatalf("complete remaining progress sub-issue: %v", err)
+	}
+	updatedBody := e.uiGet(t, e.projectPath()+"/all", token)
+	for _, want := range []string{`aria-valuemax="2" aria-valuenow="2"`, `pathLength="2" stroke-dasharray="2 2"`, `>2/2</span>`} {
+		if !strings.Contains(updatedBody, want) {
+			t.Fatalf("updated all body missing sub-issue progress %q: %s", want, updatedBody)
+		}
 	}
 }
 

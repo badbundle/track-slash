@@ -41,9 +41,9 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 			Project:         project,
 			Sprint:          sprint,
 			DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, nil),
-			Issues: []model.Issue{
-				{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo},
-				{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Second planned issue", Status: model.StatusDone},
+			Issues: []uiIssueItem{
+				{Issue: model.Issue{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo}, Project: project},
+				{Issue: model.Issue{ID: uuid.MustParse("af63e70c-bf9d-4f80-999d-df145379ec6d"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-11", Title: "Second planned issue", Status: model.StatusDone}, Project: project},
 			},
 		}},
 	})
@@ -89,8 +89,8 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 			Project:         project,
 			Sprint:          sprint,
 			DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, nil),
-			Issues: []model.Issue{
-				{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo},
+			Issues: []uiIssueItem{
+				{Issue: model.Issue{ID: uuid.MustParse("adbf2723-a44d-4b43-a3d0-e12276fa59c0"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Identifier: "TRACK-10", Title: "First planned issue", Status: model.StatusTodo}, Project: project},
 			},
 		}},
 	})
@@ -119,6 +119,10 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 	nextQuery.Cursor = "next-cursor"
 	assigneeFilters := uiProjectAllAssigneeFilters(project, []model.ProjectAssignee{{ID: assigneeID, Username: "ada", Name: "Ada Lovelace"}}, allQuery)
 	allControls := uiProjectAllIssueControls(project, allQuery, nil, assigneeFilters, true, uiProjectAllViewPath(project, clearAssigneeQuery), uiProjectAllPanelPath(project, clearAssigneeQuery), uiProjectAllViewPath(project, clearAssigneeQuery))
+	allIssueItems := make([]uiIssueItem, 0, len(allIssues))
+	for _, issue := range allIssues {
+		allIssueItems = append(allIssueItems, uiIssueItem{Issue: issue, Project: project})
+	}
 	err = uiTemplates.ExecuteTemplate(&buf, "project-panel", &uiProjectPanelData{
 		CanWrite:             true,
 		Project:              project,
@@ -129,9 +133,9 @@ func TestUIProjectPanelRendersPlannedAndAllViews(t *testing.T) {
 		ClearAssigneeHref:    uiProjectAllViewPath(project, clearAssigneeQuery),
 		ClearAssigneeHXGet:   uiProjectAllPanelPath(project, clearAssigneeQuery),
 		ClearAssigneeHXPush:  uiProjectAllViewPath(project, clearAssigneeQuery),
-		AllIssues:            allIssues,
+		AllIssues:            allIssueItems,
 		AllIssuePage: uiProjectAllIssuePageData{
-			Issues:    allIssues,
+			Issues:    allIssueItems,
 			NextHXGet: uiProjectAllPagePath(project, nextQuery),
 		},
 		AllControls: allControls,

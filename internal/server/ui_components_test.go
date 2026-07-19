@@ -64,11 +64,14 @@ func TestUIIssueSummaryRowReflowsForNarrowScreens(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	err := uiTemplates.ExecuteTemplate(&buf, "issue-summary-row", model.Issue{
-		Identifier: "TRACK-12",
-		Title:      "Responsive issue row",
-		Status:     model.StatusDone,
-		Priority:   model.PriorityP1,
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-summary-row", uiIssueItem{
+		Issue: model.Issue{
+			Identifier: "TRACK-12",
+			Title:      "Responsive issue row",
+			Status:     model.StatusDone,
+			Priority:   model.PriorityP1,
+		},
+		SubIssueProgress: store.SubIssueProgress{Total: 5, Completed: 3},
 	})
 	if err != nil {
 		t.Fatalf("ExecuteTemplate: %v", err)
@@ -86,11 +89,32 @@ func TestUIIssueSummaryRowReflowsForNarrowScreens(t *testing.T) {
 		`TRACK-12`,
 		`Responsive issue row`,
 		`aria-label="Priority P1"`,
+		`role="progressbar" aria-label="Sub-issues completed" aria-valuemin="0" aria-valuemax="5" aria-valuenow="3"`,
+		`pathLength="5" stroke-dasharray="3 5"`,
+		`>3/5</span>`,
 		`Done`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("responsive issue summary row missing %q: %s", want, body)
 		}
+	}
+}
+
+func TestUIIssueSummaryRowOmitsEmptySubIssueProgress(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	err := uiTemplates.ExecuteTemplate(&buf, "issue-summary-row", uiIssueItem{Issue: model.Issue{
+		Identifier: "TRACK-13",
+		Title:      "No sub-issues",
+		Status:     model.StatusTodo,
+		Priority:   model.PriorityP2,
+	}})
+	if err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	if body := buf.String(); strings.Contains(body, `role="progressbar"`) {
+		t.Fatalf("empty sub-issue progress rendered: %s", body)
 	}
 }
 
@@ -102,10 +126,10 @@ func TestUIIssueListsUseSharedResponsiveSummaryRow(t *testing.T) {
 		path string
 		call string
 	}{
-		{name: "personal work", path: "templates/work_panel.html", call: `{{template "issue-summary-row" .Issue}}`},
+		{name: "personal work", path: "templates/work_panel.html", call: `{{template "issue-summary-row" .}}`},
 		{name: "project issue lists", path: "templates/project_issue_lists.html", call: `{{template "issue-summary-row" .}}`},
 		{name: "planned sprint", path: "templates/project_panel_planned.html", call: `{{template "issue-summary-row" .}}`},
-		{name: "sub-issues", path: "templates/issue_panel_relationships.html", call: `{{template "issue-summary-row" .}}`},
+		{name: "sub-issues", path: "templates/issue_panel_relationships.html", call: `{{template "issue-summary-row" (issueItem .)}}`},
 	} {
 		src, err := uiTemplateFS.ReadFile(tt.path)
 		if err != nil {
@@ -231,7 +255,7 @@ func TestUIProjectIssueControlsRenderTagFiltersAndBadges(t *testing.T) {
 		View:        "all",
 		ProjectTabs: uiProjectTabs(project, "all", nil),
 		AllIssuePage: uiProjectAllIssuePageData{
-			Issues: []model.Issue{issue},
+			Issues: []uiIssueItem{{Issue: issue, Project: project}},
 		},
 		AllControls: uiProjectAllIssueControls(project, query, tags[:2], nil, false, "", "", ""),
 	})

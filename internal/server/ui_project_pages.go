@@ -282,9 +282,11 @@ func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project,
 			return nil, false, err
 		}
 		hasMore = hasMore || more
-		for _, issue := range issues {
-			out = append(out, uiIssueItem{Issue: issue, Project: project})
+		items, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, nil)
+		if err != nil {
+			return nil, false, err
 		}
+		out = append(out, items...)
 	}
 	uiSortIssueItems(out, query.Sort, query.Direction)
 	return out, hasMore, nil
@@ -320,12 +322,35 @@ func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []mo
 			return nil, false, err
 		}
 		hasMore = hasMore || more
-		for _, issue := range issues {
-			out = append(out, uiIssueItem{Issue: issue, Project: project, Sprint: &sprint})
+		items, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint)
+		if err != nil {
+			return nil, false, err
 		}
+		out = append(out, items...)
 	}
 	uiSortIssueItems(out, query.Sort, query.Direction)
 	return out, hasMore, nil
+}
+
+func (s *Server) uiIssueItemsWithSubIssueProgress(ctx context.Context, issues []model.Issue, project model.Project, sprint *model.Sprint) ([]uiIssueItem, error) {
+	parentIssueIDs := make([]uuid.UUID, 0, len(issues))
+	for _, issue := range issues {
+		parentIssueIDs = append(parentIssueIDs, issue.ID)
+	}
+	progressByIssue, err := s.store.ListSubIssueProgress(ctx, parentIssueIDs)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]uiIssueItem, 0, len(issues))
+	for _, issue := range issues {
+		items = append(items, uiIssueItem{
+			Issue:            issue,
+			Project:          project,
+			Sprint:           sprint,
+			SubIssueProgress: progressByIssue[issue.ID],
+		})
+	}
+	return items, nil
 }
 
 func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, input uiNewIssuePanelData) (*uiNewIssuePanelData, error) {
@@ -562,19 +587,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return nil, err
 		}
 		panel.SprintIssuesHasMore = sprintHasMore
-		parentIssueIDs := make([]uuid.UUID, 0, len(sprintIssues))
-		for _, issue := range sprintIssues {
-			parentIssueIDs = append(parentIssueIDs, issue.ID)
-		}
-		subIssueProgress, err := s.store.ListSubIssueProgress(ctx, parentIssueIDs)
+		sprintItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, sprintIssues, project, panel.ActiveSprint)
 		if err != nil {
 			return nil, err
 		}
 		assigneesByID := uiProjectAssigneeMap(assignees)
-		for _, issue := range sprintIssues {
-			item := uiIssueItem{Issue: issue, Project: project, Sprint: panel.ActiveSprint, Assignee: uiIssueItemAssignee(issue, assigneesByID), SubIssueProgress: subIssueProgress[issue.ID]}
+		for _, item := range sprintItems {
+			item.Assignee = uiIssueItemAssignee(item.Issue, assigneesByID)
 			for i := range panel.SprintColumns {
-				if panel.SprintColumns[i].Status == uiIssueColumnStatus(issue.Status) {
+				if panel.SprintColumns[i].Status == uiIssueColumnStatus(item.Issue.Status) {
 					panel.SprintColumns[i].Issues = append(panel.SprintColumns[i].Issues, item)
 					break
 				}
@@ -608,10 +629,14 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			if err != nil {
 				return nil, err
 			}
+			issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint)
+			if err != nil {
+				return nil, err
+			}
 			panel.PlannedSprints = append(panel.PlannedSprints, uiPlannedSprint{
 				Project:         project,
 				Sprint:          sprint,
-				Issues:          issues,
+				Issues:          issueItems,
 				HasMore:         issuesHasMore,
 				AttachmentCount: len(attachments),
 				DescriptionHTML: renderSprintDescriptionMarkdown(project, sprint, attachments),
@@ -788,10 +813,14 @@ func (s *Server) uiBuildProjectSprintHistoryIssuePage(ctx context.Context, r *ht
 	if err != nil {
 		return uiProjectSprintHistoryIssuePageData{}, err
 	}
+	issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint)
+	if err != nil {
+		return uiProjectSprintHistoryIssuePageData{}, err
+	}
 	pageData := uiProjectSprintHistoryIssuePageData{
 		Project: project,
 		Sprint:  sprint,
-		Issues:  issues,
+		Issues:  issueItems,
 	}
 	if hasMore {
 		cursor := encodeCursor(sprintHistoryIssueCursor(issues[len(issues)-1]))
@@ -877,7 +906,11 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 	if err != nil {
 		return uiProjectAllIssuePageData{}, err
 	}
-	pageData := uiProjectAllIssuePageData{Issues: issues}
+	issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, nil)
+	if err != nil {
+		return uiProjectAllIssuePageData{}, err
+	}
+	pageData := uiProjectAllIssuePageData{Issues: issueItems}
 	if hasMore {
 		last := issues[len(issues)-1]
 		nextQuery := allQuery

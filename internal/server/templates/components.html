@@ -346,22 +346,31 @@
 {{define "issue-summary-row"}}
 <span data-issue-summary-row class="grid min-w-0 gap-2 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
   <span class="flex min-w-0 items-center gap-2 sm:contents">
-    {{template "issue-key" .Identifier}}
-    {{template "priority-badge" .Priority}}
+    {{template "issue-key" .Issue.Identifier}}
+    {{template "priority-badge" .Issue.Priority}}
   </span>
   <span class="min-w-0">
-    <span class="block break-words text-slate-900 dark:text-slate-100 sm:truncate">{{.Title}}</span>
-    {{if .Tags}}
+    <span class="block break-words text-slate-900 dark:text-slate-100 sm:truncate">{{.Issue.Title}}</span>
+    {{if .Issue.Tags}}
     <span class="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-      {{range issueVisibleTags .Tags}}{{template "tag-badge" .}}{{end}}
-      {{if issueHiddenTagCount .Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Tags))}}{{end}}
+      {{range issueVisibleTags .Issue.Tags}}{{template "tag-badge" .}}{{end}}
+      {{if issueHiddenTagCount .Issue.Tags}}{{template "count-badge" (printf "+%d" (issueHiddenTagCount .Issue.Tags))}}{{end}}
     </span>
     {{end}}
   </span>
   <span class="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end sm:flex-nowrap">
-    {{template "issue-due-badge" .}}
-    {{template "status-badge" .Status}}
-    {{if eq .Status "closed"}}{{template "close-reason-badge" .CloseReason}}{{end}}
+    {{if gt .SubIssueProgress.Total 0}}
+    <span role="progressbar" aria-label="Sub-issues completed" aria-valuemin="0" aria-valuemax="{{.SubIssueProgress.Total}}" aria-valuenow="{{.SubIssueProgress.Completed}}" class="inline-flex shrink-0 items-center gap-1.5 tabular-nums text-xs text-slate-600 dark:text-slate-300">
+      <svg viewBox="0 0 16 16" class="h-4 w-4 -rotate-90" aria-hidden="true">
+        <circle cx="8" cy="8" r="6" fill="none" stroke-width="2" class="stroke-slate-200 dark:stroke-slate-700"></circle>
+        <circle cx="8" cy="8" r="6" fill="none" stroke-width="2" pathLength="{{.SubIssueProgress.Total}}" stroke-dasharray="{{.SubIssueProgress.Completed}} {{.SubIssueProgress.Total}}" stroke-linecap="round" class="stroke-emerald-500 dark:stroke-emerald-400"></circle>
+      </svg>
+      <span aria-hidden="true">{{.SubIssueProgress.Completed}}/{{.SubIssueProgress.Total}}</span>
+    </span>
+    {{end}}
+    {{template "issue-due-badge" .Issue}}
+    {{template "status-badge" .Issue.Status}}
+    {{if eq .Issue.Status "closed"}}{{template "close-reason-badge" .Issue.CloseReason}}{{end}}
   </span>
 </span>
 {{end}}

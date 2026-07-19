@@ -57,7 +57,7 @@ func TestUISprintIssueCountBadges(t *testing.T) {
 					PlannedSprints: []uiPlannedSprint{{
 						Project: project,
 						Sprint:  plannedSprint,
-						Issues:  issues,
+						Issues:  activeItems,
 					}},
 				}),
 				"history": renderSprintCountTemplate(t, "project-panel-sprint-history", uiProjectSprintHistoryPageData{

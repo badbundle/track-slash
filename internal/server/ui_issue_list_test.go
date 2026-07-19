@@ -188,8 +188,8 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		hasBadge   bool
 		hasSummary bool
 	}{
-		{name: "project issue list", template: "issue-list", data: []model.Issue{issue}, hasBadge: true, hasSummary: true},
-		{name: "project inset issue list", template: "issue-list-inset", data: []model.Issue{issue}, hasBadge: true, hasSummary: true},
+		{name: "project issue list", template: "issue-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
+		{name: "project inset issue list", template: "issue-list-inset", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
 		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
 		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project, Assignee: &model.ProjectAssignee{ID: uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb"), Username: "ada", Name: "Ada Lovelace"}}}},
 	}
