@@ -77,7 +77,7 @@
       <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
         <div class="min-w-0">
           <div class="flex min-w-0 flex-wrap items-center gap-2"><h2 class="truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{.ActiveContext.Title}}</h2>{{if eq .ActiveContext.Scope "issue"}}<span class="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">Issue-only</span>{{end}}</div>
-          <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with .ActiveContext.SourceFilename}}{{.}} · {{end}}Updated {{tokenTime .ActiveContext.UpdatedAt}}</p>
+          <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with .ActiveContext.SourceFilename}}{{.}} · {{end}}Updated {{template "local-time" (tokenTime .ActiveContext.UpdatedAt)}}</p>
         </div>
         {{if .CanWrite}}<div class="flex shrink-0 items-center gap-2">
           {{if eq .ActiveContext.Scope "issue"}}

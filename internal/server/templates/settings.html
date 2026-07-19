@@ -146,7 +146,7 @@
                   {{if .BackupEligible}}<span class="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">synced</span>{{end}}
                   {{if .CloneWarning}}<span class="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">review</span>{{end}}
                 </div>
-                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">Created {{tokenTime .CreatedAt}} · Last used {{tokenTime .LastUsedAt}}</div>
+                <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">Created {{template "local-time" (tokenTime .CreatedAt)}} · Last used {{template "local-time" (tokenTime .LastUsedAt)}}</div>
               </div>
               <button type="button" data-passkey-revoke data-passkey-id="{{.ID}}" class="inline-flex items-center justify-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
                 <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>

@@ -9,6 +9,45 @@ import (
 	"time"
 )
 
+func TestUITokenTime(t *testing.T) {
+	t.Parallel()
+
+	instant := time.Date(2026, time.March, 29, 2, 30, 45, 123456789, time.FixedZone("CEST", 2*60*60))
+	want := uiLocalTimeData{
+		Valid:    true,
+		Datetime: "2026-03-29T00:30:45.123456789Z",
+		Fallback: "Mar 29, 2026 00:30 UTC",
+	}
+	for _, input := range []any{instant, &instant} {
+		if got := uiTokenTime(input); got != want {
+			t.Fatalf("uiTokenTime(%T) = %+v, want %+v", input, got, want)
+		}
+	}
+
+	var nilTime *time.Time
+	for _, input := range []any{nil, nilTime, "not a time"} {
+		if got := uiTokenTime(input); got.Valid || got.Datetime != "" || got.Fallback != "" {
+			t.Fatalf("uiTokenTime(%T) = %+v, want empty", input, got)
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "local-time", want); err != nil {
+		t.Fatalf("ExecuteTemplate local-time: %v", err)
+	}
+	wantHTML := `<time datetime="2026-03-29T00:30:45.123456789Z" data-local-time title="Mar 29, 2026 00:30 UTC">Mar 29, 2026 00:30 UTC</time>`
+	if got := buf.String(); got != wantHTML {
+		t.Fatalf("local-time = %q, want %q", got, wantHTML)
+	}
+	buf.Reset()
+	if err := uiTemplates.ExecuteTemplate(&buf, "local-time", uiLocalTimeData{}); err != nil {
+		t.Fatalf("ExecuteTemplate empty local-time: %v", err)
+	}
+	if got := buf.String(); got != "-" {
+		t.Fatalf("empty local-time = %q, want -", got)
+	}
+}
+
 func TestUIProjectIcon(t *testing.T) {
 	t.Parallel()
 

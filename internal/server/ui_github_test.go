@@ -25,8 +25,8 @@ func TestGitHubIssuePanelRendersStatesFreshnessAndControls(t *testing.T) {
 		CanWrite: true, GitHubConfigured: true,
 		GitHubConnections: []model.GitHubConnection{{ID: uuid.New(), RepositoryOwner: "acme", RepositoryName: "private", Private: true}},
 		GitHubLinks: []uiGitHubIssueLink{
-			{Link: model.GitHubIssueLink{ID: uuid.New(), ResourceType: model.GitHubResourcePullRequest, RepositoryOwner: "acme", RepositoryName: "private", PullRequestID: &prID, PullRequestNumber: &prNumber, Title: "Closed PR", HTMLURL: "https://github.com/acme/private/pull/12", State: model.GitHubLinkStateClosed, LastRefreshedAt: &now, LastError: "GitHub resource is unavailable; showing the last known state"}, LastRefreshedLabel: "today", Stale: true},
-			{Link: model.GitHubIssueLink{ID: uuid.New(), ResourceType: model.GitHubResourceBranch, RepositoryOwner: "acme", RepositoryName: "private", BranchName: &branch, Title: branch, HTMLURL: "https://github.com/acme/private/tree/feature/ship", State: model.GitHubLinkStateBranch, LastRefreshedAt: &now}, LastRefreshedLabel: "today"},
+			{Link: model.GitHubIssueLink{ID: uuid.New(), ResourceType: model.GitHubResourcePullRequest, RepositoryOwner: "acme", RepositoryName: "private", PullRequestID: &prID, PullRequestNumber: &prNumber, Title: "Closed PR", HTMLURL: "https://github.com/acme/private/pull/12", State: model.GitHubLinkStateClosed, LastRefreshedAt: &now, LastError: "GitHub resource is unavailable; showing the last known state"}, LastRefreshed: uiTokenTime(now), Stale: true},
+			{Link: model.GitHubIssueLink{ID: uuid.New(), ResourceType: model.GitHubResourceBranch, RepositoryOwner: "acme", RepositoryName: "private", BranchName: &branch, Title: branch, HTMLURL: "https://github.com/acme/private/tree/feature/ship", State: model.GitHubLinkStateBranch, LastRefreshedAt: &now}, LastRefreshed: uiTokenTime(now)},
 		},
 	}
 	var out bytes.Buffer

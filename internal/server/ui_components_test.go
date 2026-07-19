@@ -849,6 +849,27 @@ func TestUIShellIncludesClientModalBehavior(t *testing.T) {
 	}
 }
 
+func TestUIShellLocalizesSemanticTimes(t *testing.T) {
+	t.Parallel()
+
+	body, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
+	}
+	for _, want := range []string{
+		`const localTimeFormatter = new Intl.DateTimeFormat(undefined, {`,
+		`timeZoneName: "short"`,
+		`const value = new Date(element.getAttribute("datetime") || "")`,
+		`root.querySelectorAll("[data-local-time]").forEach(localizeTime)`,
+		`localizeTimes(event.target)`,
+		`localizeTimes()`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("shell missing local-time behavior %q", want)
+		}
+	}
+}
+
 func TestUIChangelogRealtimeRefetchesOnOpenAndResync(t *testing.T) {
 	t.Parallel()
 

@@ -38,6 +38,25 @@
     }
     return `${(value / 1024).toFixed(0)} PB`;
   };
+  const localTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  const localizeTime = (element) => {
+    const value = new Date(element.getAttribute("datetime") || "");
+    if (Number.isNaN(value.getTime())) return;
+    const formatted = localTimeFormatter.format(value);
+    element.textContent = formatted;
+    element.title = formatted;
+  };
+  const localizeTimes = (root = document) => {
+    if (root instanceof Element && root.matches("[data-local-time]")) localizeTime(root);
+    root.querySelectorAll("[data-local-time]").forEach(localizeTime);
+  };
   const tooltipSelector = "[data-tooltip], button[aria-label], a[aria-label], summary[aria-label], label[aria-label], input[type='button'][aria-label], input[type='submit'][aria-label]";
   let appTooltip = null;
   let activeTooltipTarget = null;
@@ -1257,6 +1276,7 @@
   });
   document.body.addEventListener("htmx:afterSwap", (event) => {
     createIcons();
+    localizeTimes(event.target);
     resizeTextareas(event.target);
     syncCheckboxReveals(event.target);
     restoreIssueListControls(event.target);
@@ -1269,6 +1289,7 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       createIcons();
+      localizeTimes();
       resizeTextareas();
       syncCheckboxReveals();
       syncSidebarActive();
@@ -1277,6 +1298,7 @@
     });
   } else {
     createIcons();
+    localizeTimes();
     resizeTextareas();
     syncCheckboxReveals();
     syncSidebarActive();

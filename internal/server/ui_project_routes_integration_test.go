@@ -197,7 +197,7 @@ func TestUIProjectSprintHistory(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	user, token := e.mustProjectMemberToken(t, "ui-sprint-history")
-	olderAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.Local)
+	olderAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 	newestAt := olderAt.Add(48 * time.Hour)
 	older := createCompletedSprintAtFor(t, e, e.projectID, "Older completed sprint", sprintTestDate(2026, 8, 1), sprintTestDate(2026, 8, 14), &olderAt)
 	newest := createCompletedSprintAtFor(t, e, e.projectID, "Newest completed sprint", sprintTestDate(2026, 6, 1), sprintTestDate(2026, 6, 14), &newestAt)
@@ -237,7 +237,7 @@ func TestUIProjectSprintHistory(t *testing.T) {
 		`>` + newest.Ref + `</span>`,
 		`>` + older.Ref + `</span>`,
 		"Jun 1-Jun 14, 2026",
-		"Completed Jul 3, 2026 10:00",
+		`Completed <time datetime="2026-07-03T10:00:00Z" data-local-time title="Jul 3, 2026 10:00 UTC">Jul 3, 2026 10:00 UTC</time>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("sprint history missing %q: %s", want, body)

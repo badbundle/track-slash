@@ -25,8 +25,8 @@
             <div class="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-1">
 	              {{template "user-avatar" (userAvatar . "grid h-4 w-4 shrink-0 place-items-center bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300")}}
               <span class="text-xs font-medium text-slate-600 dark:text-slate-300">{{.AuthorName}}</span>
-              <span class="text-xs text-slate-500 dark:text-slate-400">{{tokenTime .Comment.CreatedAt}}</span>
-              {{if .Comment.EditedAt}}<span class="text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">•</span><span class="text-xs text-slate-500 dark:text-slate-400">Edited {{tokenTime .Comment.EditedAt}}</span>{{end}}
+              <span class="text-xs text-slate-500 dark:text-slate-400">{{template "local-time" (tokenTime .Comment.CreatedAt)}}</span>
+              {{if .Comment.EditedAt}}<span class="text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">•</span><span class="text-xs text-slate-500 dark:text-slate-400">Edited {{template "local-time" (tokenTime .Comment.EditedAt)}}</span>{{end}}
               {{if and .CanEdit (ne $.EditCommentID .Comment.ID)}}
               <button type="button" aria-label="Edit comment" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="false" class="grid h-5 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>

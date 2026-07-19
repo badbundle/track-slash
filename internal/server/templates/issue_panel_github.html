@@ -26,7 +26,7 @@
           {{else if eq .Link.State "branch"}}<span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-200">Branch</span>
           {{else}}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-200">Unknown</span>{{end}}
         </div>
-        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{.Link.RepositoryFullName}}{{if .Link.PullRequestNumber}} · PR #{{.Link.PullRequestNumber}}{{else if .Link.BranchName}} · {{.Link.BranchName}}{{end}} · refreshed {{.LastRefreshedLabel}}{{if .Stale}} · stale{{end}}</p>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{.Link.RepositoryFullName}}{{if .Link.PullRequestNumber}} · PR #{{.Link.PullRequestNumber}}{{else if .Link.BranchName}} · {{.Link.BranchName}}{{end}} · {{if .LastRefreshed.Valid}}refreshed {{template "local-time" .LastRefreshed}}{{else}}Never refreshed{{end}}{{if .Stale}} · stale{{end}}</p>
         {{if .Link.LastError}}<p class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{.Link.LastError}}</p>{{end}}
       </div>
       {{if $.CanWrite}}<div class="flex shrink-0 items-center gap-1">

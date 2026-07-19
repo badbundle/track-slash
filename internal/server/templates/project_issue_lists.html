@@ -57,7 +57,7 @@
 	      {{if .Actor}}{{template "user-avatar" (userAvatar .Actor "grid h-5 w-5 shrink-0 place-items-center border border-slate-300 bg-white text-[9px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200")}}{{end}}
 	      <span>{{changelogActor .}}</span>
 	    </span>
-	    <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{tokenTime .CreatedAt}}</time>
+	    {{template "local-time" (tokenTime .CreatedAt)}}
 	  </div>
 </article>
 {{end}}

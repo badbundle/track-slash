@@ -343,6 +343,8 @@
 {{end}}
 {{end}}
 
+{{define "local-time"}}{{if .Valid}}<time datetime="{{.Datetime}}" data-local-time title="{{.Fallback}}">{{.Fallback}}</time>{{else}}-{{end}}{{end}}
+
 {{define "issue-summary-row"}}
 <span data-issue-summary-row class="grid min-w-0 gap-2 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
   <span class="flex min-w-0 items-center gap-2 sm:contents">

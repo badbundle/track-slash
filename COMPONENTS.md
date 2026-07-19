@@ -13,6 +13,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 ## Controls
 
 - App tooltip: one body-level tooltip in `shell_scripts.html` automatically labels interactive controls that have an `aria-label` but no visible text. It appears on pointer hover and keyboard focus, follows the control through the shared CSS anchor in `frontend/tailwind.css`, and stays outside card overflow. Keep labels concise and action-oriented; do not add a tooltip to controls whose text is already visible.
+- `local-time`: semantic timestamp backed by `uiLocalTimeData` from `tokenTime`. It keeps canonical UTC in `datetime`, renders an explicit UTC fallback, and is enhanced by `app.js` into the browser's local date, time, and timezone on initial load and after HTMX swaps.
 
 ## Badges
 
