@@ -154,6 +154,6 @@ func (s *Server) renderUITokens(w http.ResponseWriter, r *http.Request, message,
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:       currentUser(r),
 		Projects:   projects,
-		TokenPanel: &uiTokenPanelData{Tokens: tokens, Error: message, Created: created},
+		TokenPanel: &uiTokenPanelData{CSRFToken: uiSessionCSRFToken(r), Tokens: tokens, Error: message, Created: created},
 	})
 }

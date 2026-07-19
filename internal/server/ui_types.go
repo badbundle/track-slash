@@ -732,9 +732,10 @@ type uiNewIssuePanelData struct {
 }
 
 type uiTokenPanelData struct {
-	Tokens  []model.AuthToken
-	Error   string
-	Created string
+	CSRFToken string
+	Tokens    []model.AuthToken
+	Error     string
+	Created   string
 }
 
 type uiSettingsPanelData struct {

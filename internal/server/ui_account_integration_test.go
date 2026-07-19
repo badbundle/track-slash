@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
@@ -20,9 +21,16 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	if !strings.Contains(body, "New API token") || !strings.Contains(body, "Tokens") {
 		t.Fatalf("tokens page missing form/header: %s", body)
 	}
+	csrfToken := uiCSRFTokenForTest("session", token)
+	if !strings.Contains(body, `name="csrf_token" value="`+csrfToken+`"`) {
+		t.Fatalf("tokens page missing session-bound CSRF field: %s", body)
+	}
 
-	form := url.Values{"name": {"from ui"}}
-	res := e.uiDoNoRedirect(t, http.MethodPost, "/tokens", token, strings.NewReader(form.Encode()))
+	form := url.Values{"name": {"from ui"}, "csrf_token": {csrfToken}}
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens", token, strings.NewReader(form.Encode()), map[string]string{
+		"Origin":       e.ts.URL,
+		"X-CSRF-Token": "",
+	})
 	defer res.Body.Close()
 	body = readBody(t, res)
 	if res.StatusCode != http.StatusOK {
@@ -30,6 +38,10 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	}
 	if !strings.Contains(body, "Copy this token now.") {
 		t.Fatalf("body missing created token notice: %s", body)
+	}
+	rawToken := createdTokenValue(t, body)
+	if nextBody := e.uiGet(t, "/tokens", token); strings.Contains(nextBody, rawToken) || strings.Contains(nextBody, "Copy this token now.") {
+		t.Fatalf("created token was shown after its one-time response: %s", nextBody)
 	}
 	tokens, err := e.store.ListAuthTokens(e.ctx, user.ID)
 	if err != nil {
@@ -45,7 +57,11 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	if created == nil {
 		t.Fatalf("created token missing: %+v", tokens)
 	}
-	res = e.uiDoNoRedirect(t, http.MethodPost, "/tokens/"+created.ID.String()+"/revoke", token, strings.NewReader(url.Values{}.Encode()))
+	revokeForm := url.Values{"csrf_token": {csrfToken}}
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens/"+created.ID.String()+"/revoke", token, strings.NewReader(revokeForm.Encode()), map[string]string{
+		"Origin":       e.ts.URL,
+		"X-CSRF-Token": "",
+	})
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Fatalf("revoke code = %d body = %s", res.StatusCode, readBody(t, res))
@@ -59,6 +75,107 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 			t.Fatalf("token not revoked: %+v", tok)
 		}
 	}
+}
+
+func TestUITokenCreationCSRFVariants(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-token-csrf")
+	csrfToken := uiCSRFTokenForTest("session", token)
+
+	htmxForm := url.Values{"name": {"from htmx"}}
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens", token, strings.NewReader(htmxForm.Encode()), map[string]string{
+		"HX-Request": "true",
+		"Origin":     e.ts.URL,
+	})
+	body := readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Copy this token now.") {
+		t.Fatalf("HTMX create token code = %d body = %s", res.StatusCode, body)
+	}
+	htmxRawToken := createdTokenValue(t, body)
+	if nextBody := e.uiGet(t, "/tokens", token); strings.Contains(nextBody, htmxRawToken) {
+		t.Fatalf("HTMX-created token was shown after its one-time response: %s", nextBody)
+	}
+
+	missingForm := url.Values{"name": {"missing csrf"}}
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens", token, strings.NewReader(missingForm.Encode()), map[string]string{
+		"Origin":       e.ts.URL,
+		"X-CSRF-Token": "",
+	})
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden || !strings.Contains(body, "CSRF validation failed.") {
+		t.Fatalf("missing CSRF code = %d body = %s", res.StatusCode, body)
+	}
+
+	invalidForm := url.Values{"name": {"invalid csrf"}, "csrf_token": {csrfToken}}
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens", token, strings.NewReader(invalidForm.Encode()), map[string]string{
+		"Origin":       e.ts.URL,
+		"X-CSRF-Token": "wrong",
+	})
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden || !strings.Contains(body, "CSRF validation failed.") {
+		t.Fatalf("invalid CSRF code = %d body = %s", res.StatusCode, body)
+	}
+
+	past := time.Now().Add(-time.Minute)
+	expired, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{
+		UserID:    user.ID,
+		Kind:      model.AuthTokenKindSession,
+		Name:      "expired session",
+		ExpiresAt: &past,
+	})
+	if err != nil {
+		t.Fatalf("CreateAuthToken expired session: %v", err)
+	}
+	expiredForm := url.Values{
+		"name":       {"expired session attempt"},
+		"csrf_token": {uiCSRFTokenForTest("session", expired.RawToken)},
+	}
+	res = e.uiDoNoRedirectWithHeaders(t, http.MethodPost, "/tokens", expired.RawToken, strings.NewReader(expiredForm.Encode()), map[string]string{"Origin": e.ts.URL})
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login?next=%2Ftokens" {
+		t.Fatalf("expired session code = %d location = %q body = %s", res.StatusCode, res.Header.Get("Location"), body)
+	}
+	if cookie := res.Header.Get("Set-Cookie"); !strings.Contains(cookie, uiCookieNameForTest+"=") || !strings.Contains(cookie, "Max-Age=0") {
+		t.Fatalf("expired session Set-Cookie = %q, want cleared session", cookie)
+	}
+
+	tokens, err := e.store.ListAuthTokens(e.ctx, user.ID)
+	if err != nil {
+		t.Fatalf("ListAuthTokens: %v", err)
+	}
+	for _, authToken := range tokens {
+		switch authToken.Name {
+		case "missing csrf", "invalid csrf", "expired session attempt":
+			t.Fatalf("rejected token creation persisted %+v", authToken)
+		}
+	}
+}
+
+func createdTokenValue(t *testing.T, body string) string {
+	t.Helper()
+	codeStart := strings.Index(body, "<code")
+	if codeStart < 0 {
+		t.Fatalf("created token code missing: %s", body)
+	}
+	valueStart := strings.Index(body[codeStart:], ">")
+	if valueStart < 0 {
+		t.Fatalf("created token code malformed: %s", body)
+	}
+	valueStart += codeStart + 1
+	valueEnd := strings.Index(body[valueStart:], "</code>")
+	if valueEnd < 0 {
+		t.Fatalf("created token code closing tag missing: %s", body)
+	}
+	value := strings.TrimSpace(body[valueStart : valueStart+valueEnd])
+	if value == "" {
+		t.Fatalf("created token value empty: %s", body)
+	}
+	return value
 }
 
 func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
