@@ -216,13 +216,32 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added.", `data-modal-open="passkey-create"`, `id="passkey-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="passkey-create-title"`, "Legal", "Review the terms, privacy notice, and security policy for trackslash.", `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
+	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added.", `data-modal-open="passkey-create"`, `id="passkey-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog" aria-modal="true" aria-labelledby="passkey-create-title"`, `<footer data-settings-footer class="border-t border-slate-200 py-4 dark:border-slate-800">`, `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
 		}
 	}
 	if got := strings.Count(body, `aria-label="Legal"`); got != 1 {
 		t.Fatalf("settings legal navigation count = %d, want 1: %s", got, body)
+	}
+	footerStart := strings.Index(body, `<footer data-settings-footer`)
+	if footerStart < 0 {
+		t.Fatalf("settings body missing legal footer: %s", body)
+	}
+	footerEnd := strings.Index(body[footerStart:], `</footer>`)
+	if footerEnd < 0 {
+		t.Fatalf("settings body has unterminated legal footer: %s", body)
+	}
+	footer := body[footerStart : footerStart+footerEnd]
+	for _, want := range []string{`aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("settings legal footer missing %q: %s", want, footer)
+		}
+	}
+	for _, notWant := range []string{`rounded-lg`, `bg-white`, `dark:bg-slate-900`, `settings-legal-title`, "Review the terms"} {
+		if strings.Contains(footer, notWant) {
+			t.Fatalf("settings legal footer still has boxed treatment %q: %s", notWant, footer)
+		}
 	}
 	sidebarStart := strings.Index(body, `<aside id="app-sidebar"`)
 	if sidebarStart < 0 {
