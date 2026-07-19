@@ -262,13 +262,15 @@ func TestUIRendersPersonalWorkViews(t *testing.T) {
 	}
 
 	allBody := e.uiGet(t, "/me/all", token)
-	for _, want := range []string{"All assigned issues", activeTodoP0.Title, activeDoneP1.Title, plannedAssigned.Title, backlogAssigned.Title, child.Title, otherP0.Title} {
+	for _, want := range []string{"All assigned issues", activeTodoP0.Title, activeDoneP1.Title, plannedAssigned.Title, backlogAssigned.Title, otherP0.Title} {
 		if !strings.Contains(allBody, want) {
 			t.Fatalf("me all body missing %q: %s", want, allBody)
 		}
 	}
-	if strings.Contains(allBody, activeUnassigned.Title) {
-		t.Fatalf("me all body included unassigned issue: %s", allBody)
+	for _, notWant := range []string{activeUnassigned.Title, child.Title} {
+		if strings.Contains(allBody, notWant) {
+			t.Fatalf("me all body included %q: %s", notWant, allBody)
+		}
 	}
 
 	filteredActive := e.uiGet(t, "/me?status=done&priority=P1", token)

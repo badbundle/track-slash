@@ -155,7 +155,7 @@ func TestListDeletedIssues(t *testing.T) {
 	if hasMore {
 		t.Fatalf("ListDeletedIssues hasMore = true, want false")
 	}
-	wantIDs := []uuid.UUID{deleted.ID, parent.ID, child.ID}
+	wantIDs := []uuid.UUID{deleted.ID, parent.ID}
 	if len(got) != len(wantIDs) {
 		t.Fatalf("ListDeletedIssues len = %d, want %d: %+v", len(got), len(wantIDs), got)
 	}
@@ -188,8 +188,12 @@ func TestListDeletedIssues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListDeletedIssues next: %v", err)
 	}
-	if hasMore || len(next) != 2 || next[0].ID != parent.ID || next[1].ID != child.ID {
-		t.Fatalf("ListDeletedIssues next = %+v hasMore=%v, want parent/child only", next, hasMore)
+	if hasMore || len(next) != 1 || next[0].ID != parent.ID {
+		t.Fatalf("ListDeletedIssues next = %+v hasMore=%v, want parent only", next, hasMore)
+	}
+	gotChild, err := env.store.GetDeletedIssueByOwnerKeyNumber(env.ctx, child.OwnerUsername, child.ProjectKey, child.Number)
+	if err != nil || gotChild.ID != child.ID {
+		t.Fatalf("GetDeletedIssue child = %+v, %v", gotChild, err)
 	}
 }
 

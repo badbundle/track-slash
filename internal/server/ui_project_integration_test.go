@@ -1193,8 +1193,10 @@ func TestUIRendersProjectPlannedAndAll(t *testing.T) {
 	if backlogIdx < 0 || firstIdx < 0 || secondIdx < 0 || secondIdx > firstIdx || firstIdx > backlogIdx {
 		t.Fatalf("all issue order wrong: backlog=%d first=%d second=%d body=%s", backlogIdx, firstIdx, secondIdx, body)
 	}
-	if strings.Contains(body, "Other Planned Sprint") || strings.Contains(body, "other project backlog issue") || strings.Contains(body, "other project planned issue") {
-		t.Fatalf("all body included wrong scope: %s", body)
+	for _, notWant := range []string{"Other Planned Sprint", "other project backlog issue", "other project planned issue", progressTodo.Title, progressDone.Title} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("all body included %q: %s", notWant, body)
+		}
 	}
 	if got := strings.Count(body, `role="progressbar" aria-label="Sub-issues completed"`); got != 1 {
 		t.Fatalf("all issue progress count = %d, want 1: %s", got, body)
@@ -1300,13 +1302,8 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 		`href="` + e.issuePath(deleted) + `"`,
 		`hx-get="` + e.issuePath(deleted) + `/panel"`,
 		parent.Title,
-		child.Title,
-		"Sub-issue",
 		`method="post" action="` + e.issuePath(deleted) + `/restore"`,
 		`hx-post="` + e.issuePath(deleted) + `/restore"`,
-		`method="post" action="` + e.issuePath(child) + `/restore"`,
-		`hx-post="` + e.issuePath(child) + `/restore"`,
-		`hx-push-url="` + e.issuePath(child) + `"`,
 		`data-lucide="rotate-ccw"`,
 		"Restore",
 	} {
@@ -1319,7 +1316,7 @@ func TestUIProjectDeletedPageListsAndRestoresIssues(t *testing.T) {
 			t.Fatalf("deleted body should not render back button markup %q: %s", notWant, body)
 		}
 	}
-	for _, notWant := range []string{live.Title, otherDeleted.Title, "Issue deleted", `aria-label="Project views"`, `aria-label="Project actions"`} {
+	for _, notWant := range []string{live.Title, otherDeleted.Title, child.Title, `method="post" action="` + e.issuePath(child) + `/restore"`, "Issue deleted", `aria-label="Project views"`, `aria-label="Project actions"`} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("deleted body included %q: %s", notWant, body)
 		}
