@@ -181,6 +181,11 @@
     syncDisclosureIcon(toggle, open);
   };
   let clientModalTrigger = null;
+  const focusClientModal = (modal) => {
+    if (!(modal instanceof HTMLElement)) return;
+    const target = modal.querySelector("[autofocus]") || modal.querySelector("input:not([type='hidden']), select, textarea, button:not([disabled]), [href]");
+    if (target instanceof HTMLElement) target.focus();
+  };
   const setClientModalOpen = (modal, open, trigger = null) => {
     if (!(modal instanceof HTMLElement)) return;
     modal.classList.toggle("hidden", !open);
@@ -190,7 +195,7 @@
     });
     if (open) {
       clientModalTrigger = trigger;
-      window.setTimeout(() => modal.querySelector("input[type='file']")?.focus(), 0);
+      window.setTimeout(() => focusClientModal(modal), 0);
       return;
     }
     modal.querySelectorAll("form").forEach((form) => form.reset());
@@ -1258,6 +1263,7 @@
     syncSidebarActive();
     syncChangelogRealtime();
     syncPushNotifications(event.target);
+    window.setTimeout(() => focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)")), 0);
   });
   document.body.addEventListener("htmx:historyRestore", syncSidebarActive);
   if (document.readyState === "loading") {

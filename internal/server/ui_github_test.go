@@ -34,10 +34,13 @@ func TestGitHubIssuePanelRendersStatesFreshnessAndControls(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	body := out.String()
-	for _, want := range []string{"Closed, not merged", "stale", "unavailable", "feature/ship", "Refresh GitHub link", "Remove GitHub link"} {
+	for _, want := range []string{"Closed, not merged", "stale", "unavailable", "feature/ship", "Refresh GitHub link", "Remove GitHub link", `data-modal-open="issue-github-link"`, `id="issue-github-link" data-client-modal class="fixed inset-0 z-50 hidden`, "Link GitHub branch or pull request"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+	if strings.Contains(body, "sm:grid-cols-[13rem_minmax(0,1fr)_auto]") {
+		t.Fatal("rendered the GitHub linking form inline")
 	}
 }
 
@@ -72,12 +75,53 @@ func TestGitHubProjectPanelRendersPrivateRepositoryAndProtectedTokenField(t *tes
 		t.Fatalf("render: %v", err)
 	}
 	body := out.String()
-	for _, want := range []string{"GitHub repositories", "acme/private", "Private", `type="password"`, `autocomplete="off"`, "Disconnect"} {
+	for _, want := range []string{"GitHub repositories", "acme/private", "Private", `type="password"`, `autocomplete="off"`, "Disconnect", `data-modal-open="project-github-connection"`, `id="project-github-connection" data-client-modal class="fixed inset-0 z-50 hidden`, "Connect GitHub repository"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
 	}
+	if strings.Contains(body, "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]") {
+		t.Fatal("rendered the GitHub connection form inline")
+	}
 	if strings.Contains(body, "private-token") {
 		t.Fatal("rendered a token")
+	}
+}
+
+func TestGitHubFormErrorsKeepClientModalsOpen(t *testing.T) {
+	projectPanel := &uiProjectPanelData{
+		Project:               model.Project{ID: uuid.New(), OwnerUsername: "owner", Key: "TRACK", Name: "Track"},
+		View:                  "about",
+		CanManageMembers:      true,
+		GitHubConfigured:      true,
+		GitHubConnectionError: "Repository is unavailable.",
+	}
+	var out bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&out, "project-panel", projectPanel); err != nil {
+		t.Fatalf("render project: %v", err)
+	}
+	for _, want := range []string{`id="project-github-connection" data-client-modal class="fixed inset-0 z-50 grid`, "Repository is unavailable."} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("project modal missing %q", want)
+		}
+	}
+
+	issuePanel := &uiIssuePanelData{
+		Issue:             model.Issue{ID: uuid.New(), OwnerUsername: "owner", ProjectKey: "TRACK", Identifier: "TRACK-31"},
+		Project:           model.Project{ID: uuid.New(), OwnerUsername: "owner", Key: "TRACK"},
+		CanWrite:          true,
+		GitHubConfigured:  true,
+		GitHubConnections: []model.GitHubConnection{{ID: uuid.New(), RepositoryOwner: "acme", RepositoryName: "private"}},
+		GitHubReference:   "feature/modal",
+		GitHubError:       "Choose a repository.",
+	}
+	out.Reset()
+	if err := uiTemplates.ExecuteTemplate(&out, "issue-panel", issuePanel); err != nil {
+		t.Fatalf("render issue: %v", err)
+	}
+	for _, want := range []string{`id="issue-github-link" data-client-modal class="fixed inset-0 z-50 grid`, "Choose a repository.", `value="feature/modal"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("issue modal missing %q", want)
+		}
 	}
 }

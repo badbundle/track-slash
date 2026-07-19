@@ -41,7 +41,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Modals
 
-- `modal-open` and `modal-close`: reusable modal shell with title, optional description, badges, and cancel action. Wrap workflow-specific body content between the two templates.
+- `modal-open` and `modal-close`: reusable modal shell with title, optional description, badges, and cancel action. Wrap workflow-specific body content between the two templates. Client-controlled modals may set `Open` when a validation response must keep the modal visible; the shared script focuses the first form control after open or an HTMX swap.
 - `image-picker`: shared client-controlled profile/project image modal backed by `uiImagePickerData`. Keep only the current avatar/icon and its Add/Change trigger in the owning panel; file selection, upload, and removal live inside this modal. Profile previews remain circular and project previews remain square with a small corner radius.
 - Issue-scoped relationship edits should prefer modals when the user is making a small local change from issue detail. Issue Context is the deliberate exception because browsing and editing multiple documents benefits from its integrated manager. Other modal workflows should keep the surrounding issue visible, avoid URL pushes for open/submit/close, support repeated HTMX updates, and link out when the task expands.
 - Issue tag modal convention: show attached tags first, then a searchable list of available project tags. Attach/detach existing tags only; create/edit/delete project tags stays in the project tag manager.

@@ -6,6 +6,10 @@
       <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">GitHub</h2>
       {{template "count-badge" (len .GitHubLinks)}}
     </div>
+    {{if and .CanWrite .GitHubConfigured .GitHubConnections}}<button type="button" data-modal-open="issue-github-link" aria-haspopup="dialog" aria-controls="issue-github-link" aria-expanded="false" class="inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+      <i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>
+      Link GitHub
+    </button>{{end}}
   </header>
   {{if .GitHubLinks}}
   <div class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -34,19 +38,12 @@
   </div>
   {{else}}<p class="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">No branches or pull requests linked.</p>{{end}}
   {{if .CanWrite}}
+  {{if or (not .GitHubConfigured) (not .GitHubConnections)}}
   <div class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
-    {{if and .GitHubConfigured .GitHubConnections}}
-    <form method="post" action="{{issueGitHubLinks .Issue}}" hx-post="{{issueGitHubLinks .Issue}}" hx-target="#main" hx-push-url="false" class="grid gap-2 sm:grid-cols-[13rem_minmax(0,1fr)_auto]">
-      <select name="connection_id" aria-label="GitHub repository" class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-        {{range .GitHubConnections}}<option value="{{.ID}}" {{if eq $.GitHubConnectionID .ID.String}}selected{{end}}>{{.FullName}}{{if .Private}} (private){{end}}</option>{{end}}
-      </select>
-      <input name="reference" value="{{.GitHubReference}}" placeholder="#123, branch/name, or GitHub URL" aria-label="Branch or pull request" class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-      <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Link</button>
-    </form>
-    {{else if not .GitHubConfigured}}<p class="text-sm text-slate-500 dark:text-slate-400">GitHub integration is not configured on this server.</p>
+    {{if not .GitHubConfigured}}<p class="text-sm text-slate-500 dark:text-slate-400">GitHub integration is not configured on this server.</p>
     {{else}}<p class="text-sm text-slate-500 dark:text-slate-400">A project owner or administrator must connect a repository first.</p>{{end}}
-    {{if .GitHubError}}<p class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{.GitHubError}}</p>{{end}}
   </div>
+  {{end}}
   {{end}}
 </section>
 {{end}}

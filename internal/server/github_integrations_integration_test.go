@@ -221,14 +221,22 @@ func githubAPIRequest(t *testing.T, e *httpEnv, method, path string, body any) *
 func TestUIGitHubConnectionAndIssueActions(t *testing.T) {
 	e, provider := newGitHubHTTPEnv(t)
 	aboutPath := e.projectPath() + "/about"
-	if body := e.uiGet(t, aboutPath, e.authToken); !strings.Contains(body, "GitHub repositories") || !strings.Contains(body, "Fine-grained token") {
+	if body := e.uiGet(t, aboutPath, e.authToken); !strings.Contains(body, "GitHub repositories") || !strings.Contains(body, "Fine-grained token") || !strings.Contains(body, `data-modal-open="project-github-connection"`) || !strings.Contains(body, `id="project-github-connection" data-client-modal class="fixed inset-0 z-50 hidden`) {
 		t.Fatalf("about page missing GitHub controls: %s", body)
 	}
 	form := url.Values{"repository": {"acme/private"}, "token": {"private-token"}}
+	provider.err = githubintegration.ErrUnavailable
 	res := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/github/connections", e.authToken, strings.NewReader(form.Encode()))
 	body := readBody(t, res)
 	res.Body.Close()
-	if res.StatusCode != http.StatusOK || !strings.Contains(body, "acme/private") || strings.Contains(body, "private-token") {
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "could not find") || !strings.Contains(body, `id="project-github-connection" data-client-modal class="fixed inset-0 z-50 grid`) {
+		t.Fatalf("UI connect error code=%d body=%s", res.StatusCode, body)
+	}
+	provider.err = nil
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/github/connections", e.authToken, strings.NewReader(form.Encode()))
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "acme/private") || strings.Contains(body, "private-token") || !strings.Contains(body, `id="project-github-connection" data-client-modal class="fixed inset-0 z-50 hidden`) {
 		t.Fatalf("UI connect code=%d body=%s", res.StatusCode, body)
 	}
 	connections, err := e.store.ListGitHubConnections(e.ctx, e.projectID)
@@ -240,8 +248,15 @@ func TestUIGitHubConnectionAndIssueActions(t *testing.T) {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 	issuePath := e.issuePath(issue)
-	if body := e.uiGet(t, issuePath, e.authToken); !strings.Contains(body, "Branch or pull request") {
+	if body := e.uiGet(t, issuePath, e.authToken); !strings.Contains(body, "Branch or pull request") || !strings.Contains(body, `data-modal-open="issue-github-link"`) || !strings.Contains(body, `id="issue-github-link" data-client-modal class="fixed inset-0 z-50 hidden`) {
 		t.Fatalf("issue page missing GitHub form: %s", body)
+	}
+	badLinkForm := url.Values{"connection_id": {"not-a-uuid"}, "reference": {"feature/modal"}}
+	res = e.uiDoNoRedirect(t, http.MethodPost, issuePath+"/github-links", e.authToken, strings.NewReader(badLinkForm.Encode()))
+	body = readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "Choose a repository") || !strings.Contains(body, `id="issue-github-link" data-client-modal class="fixed inset-0 z-50 grid`) || !strings.Contains(body, `value="feature/modal"`) {
+		t.Fatalf("UI link error code=%d body=%s", res.StatusCode, body)
 	}
 	linkForm := url.Values{"connection_id": {connections[0].ID.String()}, "reference": {"#12"}}
 	res = e.uiDoNoRedirect(t, http.MethodPost, issuePath+"/github-links", e.authToken, strings.NewReader(linkForm.Encode()))

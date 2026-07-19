@@ -248,6 +248,18 @@ func uiProjectImagePicker(project model.Project) uiImagePickerData {
 	}
 }
 
+func uiProjectGitHubConnectionModal(panel *uiProjectPanelData) uiModalData {
+	return uiModalData{
+		ID:               "project-github-connection",
+		Title:            "Connect GitHub repository",
+		Description:      "Add a repository that issues in this project can link to.",
+		WidthClass:       "max-w-lg",
+		CancelLabel:      "Cancel connecting GitHub repository",
+		ClientControlled: true,
+		Open:             panel.GitHubConnectionError != "",
+	}
+}
+
 func uiImagePickerTriggerLabel(hasImage bool) string {
 	if hasImage {
 		return "Change image"
@@ -706,6 +718,24 @@ func uiIssueTagsModal(panel *uiIssuePanelData) uiModalData {
 		CancelLabel:     "Close tag manager",
 		CancelHXGet:     uiIssuePanelPath(panel.Issue),
 		CancelHXPushURL: "false",
+		Badges: []uiModalBadge{
+			{
+				Label: panel.Issue.Identifier,
+				Class: "border-slate-300 bg-white font-mono text-[11px] font-semibold uppercase leading-4 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300",
+			},
+		},
+	}
+}
+
+func uiIssueGitHubLinkModal(panel *uiIssuePanelData) uiModalData {
+	return uiModalData{
+		ID:               "issue-github-link",
+		Title:            "Link GitHub branch or pull request",
+		Description:      fmt.Sprintf("Choose a connected repository and reference for %s.", panel.Issue.Identifier),
+		WidthClass:       "max-w-lg",
+		CancelLabel:      "Cancel linking GitHub resource",
+		ClientControlled: true,
+		Open:             panel.GitHubError != "",
 		Badges: []uiModalBadge{
 			{
 				Label: panel.Issue.Identifier,
