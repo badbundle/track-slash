@@ -315,6 +315,70 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 	}
 }
 
+func TestUIIssuePanelKeepsTitleEditActionAttached(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	when := time.Date(2026, 6, 6, 12, 30, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name     string
+		title    string
+		leading  string
+		trailing string
+	}{
+		{name: "short", title: "A", trailing: "A"},
+		{name: "long", title: "A deliberately long issue title that can wrap naturally before its final character界", leading: "A deliberately long issue title that can wrap naturally before its final character", trailing: "界"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			err := uiTemplates.ExecuteTemplate(&buf, "issue-panel-header", &uiIssuePanelData{
+				CanWrite: true,
+				Issue: model.Issue{
+					ID:            issueID,
+					ProjectID:     projectID,
+					OwnerUsername: "bradley",
+					ProjectKey:    "TRACK",
+					Identifier:    "TRACK-7",
+					Title:         tc.title,
+					Status:        model.StatusTodo,
+					CreatedAt:     when,
+					UpdatedAt:     when,
+				},
+				Project:   model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"},
+				BackHref:  "/bradley/projects/TRACK/backlog",
+				BackHXGet: "/bradley/projects/TRACK/backlog/panel",
+				BackLabel: "Backlog",
+			})
+			if err != nil {
+				t.Fatalf("ExecuteTemplate: %v", err)
+			}
+
+			body := buf.String()
+			tail := `<span data-issue-title-tail class="inline-flex items-center whitespace-nowrap align-middle"><span>` + tc.trailing + `</span><button type="button" aria-label="Edit title"`
+			if !strings.Contains(body, tc.leading+tail) {
+				t.Fatalf("issue title does not keep its final character and edit action together: %s", body)
+			}
+			for _, want := range []string{
+				`class="mt-2 min-w-0 break-words text-2xl sm:text-3xl`,
+				`hx-get="/bradley/issues/TRACK-7/title/edit"`,
+				`hx-target="#main"`,
+				`hx-push-url="false"`,
+				`class="ml-2 grid h-7 w-7 shrink-0`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("attached title action missing %q: %s", want, body)
+				}
+			}
+			if strings.Contains(body, `title="Edit title"`) {
+				t.Fatalf("attached title action should use the shared aria-label tooltip: %s", body)
+			}
+		})
+	}
+}
+
 func TestUIIssuePanelRendersTitleEditor(t *testing.T) {
 	t.Parallel()
 

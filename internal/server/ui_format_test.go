@@ -9,6 +9,23 @@ import (
 	"time"
 )
 
+func TestUIIssueTitlePartsForDisplay(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		title string
+		want  uiIssueTitleParts
+	}{
+		{title: "", want: uiIssueTitleParts{}},
+		{title: "A", want: uiIssueTitleParts{Trailing: "A"}},
+		{title: "Responsive title界", want: uiIssueTitleParts{Leading: "Responsive title", Trailing: "界"}},
+	} {
+		if got := uiIssueTitlePartsForDisplay(tc.title); got != tc.want {
+			t.Fatalf("uiIssueTitlePartsForDisplay(%q) = %+v, want %+v", tc.title, got, tc.want)
+		}
+	}
+}
+
 func TestUITokenTime(t *testing.T) {
 	t.Parallel()
 
