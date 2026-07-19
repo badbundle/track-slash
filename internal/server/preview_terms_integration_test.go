@@ -69,7 +69,7 @@ func TestPublicLegalPagesAndLinks(t *testing.T) {
 	}{
 		{path: "/login"},
 		{path: "/signup"},
-		{path: "/projects", token: e.authToken},
+		{path: "/settings", token: e.authToken},
 	} {
 		body := e.uiGet(t, tc.path, tc.token)
 		for _, href := range []string{`href="/terms"`, `href="/privacy"`, `href="/security"`} {

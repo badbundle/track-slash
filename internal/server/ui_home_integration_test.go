@@ -88,6 +88,11 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	if strings.Contains(body, `data-lucide="key-round"`) {
 		t.Fatalf("body still has tokens sidebar icon: %s", body)
 	}
+	for _, notWant := range []string{`data-sidebar-legal`, `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("work shell still contains sidebar legal link %q: %s", notWant, body)
+		}
+	}
 	for _, notWant := range []string{"Assigned to me", "Active work board", "Across projects"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("body still has sidebar subtitle %q: %s", notWant, body)
