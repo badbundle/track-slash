@@ -20,6 +20,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bradleymackey/track-slash/internal/config"
+	"github.com/bradleymackey/track-slash/internal/githubintegration"
 	"github.com/bradleymackey/track-slash/internal/migrations"
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/notifications"
@@ -117,6 +118,16 @@ func main() {
 		pushWorker := notifications.NewWorker(st, pushSender, notifications.WorkerOptions{})
 		go pushWorker.Run(ctx)
 	}
+	var githubService *githubintegration.Service
+	if cfg.GitHub.Enabled {
+		cryptor, err := githubintegration.NewCryptor(cfg.GitHub.EncryptionKey)
+		if err != nil {
+			log.Fatalf("github integration: %v", err)
+		}
+		githubService = githubintegration.NewService(st, githubintegration.NewClient(nil, ""), cryptor, githubintegration.ServiceOptions{})
+		githubWorker := githubintegration.NewWorker(st, githubService, githubintegration.WorkerOptions{})
+		go githubWorker.Run(ctx)
+	}
 
 	srv := server.NewWithOptions(st, hub, server.Options{
 		CORSAllowedOrigins:   cfg.CORSAllowedOrigins,
@@ -127,6 +138,7 @@ func main() {
 		DevReload:            cfg.DevReload,
 		ObjectStorage:        storageSvc,
 		WebPushPublicKey:     cfg.WebPush.PublicKey,
+		GitHubIntegration:    githubService,
 	})
 
 	httpSrv := &http.Server{

@@ -1,0 +1,52 @@
+{{define "issue-panel-github"}}
+<section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+  <header class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+    <div class="flex items-center gap-2">
+      <i data-lucide="github" class="h-4 w-4 text-slate-500" aria-hidden="true"></i>
+      <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">GitHub</h2>
+      {{template "count-badge" (len .GitHubLinks)}}
+    </div>
+  </header>
+  {{if .GitHubLinks}}
+  <div class="divide-y divide-slate-100 dark:divide-slate-800">
+    {{range .GitHubLinks}}
+    <div class="flex min-w-0 items-start gap-3 px-4 py-3">
+      <i data-lucide="{{if eq .Link.ResourceType "pull_request"}}git-pull-request{{else}}git-branch{{end}}" class="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden="true"></i>
+      <div class="min-w-0 flex-1">
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <a href="{{.Link.HTMLURL}}" target="_blank" rel="noreferrer" class="min-w-0 truncate text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300">{{.Link.Title}}</a>
+          {{if eq .Link.State "merged"}}<span class="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-200">Merged</span>
+          {{else if eq .Link.State "closed"}}<span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">Closed, not merged</span>
+          {{else if eq .Link.State "draft"}}<span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">Draft</span>
+          {{else if eq .Link.State "open"}}<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">Open</span>
+          {{else if eq .Link.State "branch"}}<span class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-200">Branch</span>
+          {{else}}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-200">Unknown</span>{{end}}
+        </div>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{.Link.RepositoryFullName}}{{if .Link.PullRequestNumber}} · PR #{{.Link.PullRequestNumber}}{{else if .Link.BranchName}} · {{.Link.BranchName}}{{end}} · refreshed {{.LastRefreshedLabel}}{{if .Stale}} · stale{{end}}</p>
+        {{if .Link.LastError}}<p class="mt-1 text-xs text-amber-700 dark:text-amber-300">{{.Link.LastError}}</p>{{end}}
+      </div>
+      {{if $.CanWrite}}<div class="flex shrink-0 items-center gap-1">
+        <form method="post" action="{{issueGitHubLinkRefresh $.Issue .Link}}" hx-post="{{issueGitHubLinkRefresh $.Issue .Link}}" hx-target="#main" hx-push-url="false"><button type="submit" aria-label="Refresh GitHub link" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="refresh-cw" class="h-3.5 w-3.5" aria-hidden="true"></i></button></form>
+        <form method="post" action="{{issueGitHubLinkDelete $.Issue .Link}}" hx-post="{{issueGitHubLinkDelete $.Issue .Link}}" hx-target="#main" hx-push-url="false"><button type="submit" aria-label="Remove GitHub link" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i></button></form>
+      </div>{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{else}}<p class="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">No branches or pull requests linked.</p>{{end}}
+  {{if .CanWrite}}
+  <div class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+    {{if and .GitHubConfigured .GitHubConnections}}
+    <form method="post" action="{{issueGitHubLinks .Issue}}" hx-post="{{issueGitHubLinks .Issue}}" hx-target="#main" hx-push-url="false" class="grid gap-2 sm:grid-cols-[13rem_minmax(0,1fr)_auto]">
+      <select name="connection_id" aria-label="GitHub repository" class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+        {{range .GitHubConnections}}<option value="{{.ID}}" {{if eq $.GitHubConnectionID .ID.String}}selected{{end}}>{{.FullName}}{{if .Private}} (private){{end}}</option>{{end}}
+      </select>
+      <input name="reference" value="{{.GitHubReference}}" placeholder="#123, branch/name, or GitHub URL" aria-label="Branch or pull request" class="min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+      <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Link</button>
+    </form>
+    {{else if not .GitHubConfigured}}<p class="text-sm text-slate-500 dark:text-slate-400">GitHub integration is not configured on this server.</p>
+    {{else}}<p class="text-sm text-slate-500 dark:text-slate-400">A project owner or administrator must connect a repository first.</p>{{end}}
+    {{if .GitHubError}}<p class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{.GitHubError}}</p>{{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}

@@ -81,6 +81,14 @@ func uiProjectFavoritePath(project model.Project) string {
 	return uiProjectPath(project) + "/favorite"
 }
 
+func uiProjectGitHubConnectionsPath(project model.Project) string {
+	return uiProjectPath(project) + "/github/connections"
+}
+
+func uiProjectGitHubConnectionDisconnectPath(project model.Project, connection model.GitHubConnection) string {
+	return uiProjectGitHubConnectionsPath(project) + "/" + connection.ID.String() + "/disconnect"
+}
+
 func uiProjectMembersPath(project model.Project) string {
 	return uiProjectPath(project) + "/members"
 }
@@ -183,6 +191,18 @@ func uiProjectSprintIssueNewPath(project model.Project, sprint any) string {
 
 func uiIssuesPath() string {
 	return "/issues"
+}
+
+func uiIssueGitHubLinksPath(issue model.Issue) string {
+	return uiIssuePath(issue) + "/github-links"
+}
+
+func uiIssueGitHubLinkDeletePath(issue model.Issue, link model.GitHubIssueLink) string {
+	return uiIssueGitHubLinksPath(issue) + "/" + link.ID.String() + "/delete"
+}
+
+func uiIssueGitHubLinkRefreshPath(issue model.Issue, link model.GitHubIssueLink) string {
+	return uiIssueGitHubLinksPath(issue) + "/" + link.ID.String() + "/refresh"
 }
 
 func uiIssueNewPath() string {

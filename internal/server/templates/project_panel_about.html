@@ -32,6 +32,28 @@
       </section>
 
       <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <header class="flex items-center gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+          <i data-lucide="github" class="h-4 w-4 text-slate-500" aria-hidden="true"></i>
+          <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">GitHub repositories</h2>
+          {{template "count-badge" (len .GitHubConnections)}}
+        </header>
+        {{if .GitHubConnections}}<div class="divide-y divide-slate-100 dark:divide-slate-800">
+          {{range .GitHubConnections}}<div class="flex items-center gap-3 px-4 py-3">
+            <div class="min-w-0 flex-1"><a href="{{.RepositoryURL}}" target="_blank" rel="noreferrer" class="truncate text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300">{{.FullName}}</a><p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{if .Private}}Private{{else}}Public{{end}} · validated {{tokenTime .LastValidatedAt}}</p></div>
+            {{if $.CanManageMembers}}<form method="post" action="{{projectGitHubDisconnect $.Project .}}" hx-post="{{projectGitHubDisconnect $.Project .}}" hx-target="#main" hx-push-url="false"><button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"><i data-lucide="unlink" class="h-3.5 w-3.5" aria-hidden="true"></i>Disconnect</button></form>{{end}}
+          </div>{{end}}
+        </div>{{else}}<p class="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">No GitHub repositories connected.</p>{{end}}
+        {{if .CanManageMembers}}<div class="border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+          {{if .GitHubConfigured}}<form method="post" action="{{projectGitHubConnections .Project}}" hx-post="{{projectGitHubConnections .Project}}" hx-target="#main" hx-push-url="false" class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <input name="repository" value="{{.GitHubRepositoryInput}}" placeholder="owner/repository" aria-label="GitHub repository" class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <input name="token" type="password" autocomplete="off" placeholder="Fine-grained token" aria-label="GitHub token" class="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+            <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Connect</button>
+          </form>{{else}}<p class="text-sm text-slate-500 dark:text-slate-400">Set the server encryption key to enable repository connections.</p>{{end}}
+          {{if .GitHubConnectionError}}<p class="mt-2 text-xs text-rose-600 dark:text-rose-300">{{.GitHubConnectionError}}</p>{{end}}
+        </div>{{end}}
+      </section>
+
+      <section class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <header class="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
           <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Issue stats</h2>
         </header>

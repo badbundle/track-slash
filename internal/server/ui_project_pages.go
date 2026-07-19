@@ -470,6 +470,11 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 
 	switch view {
 	case "about":
+		panel.GitHubConfigured = s.githubIntegration != nil
+		panel.GitHubConnections, err = s.store.ListGitHubConnections(ctx, projectID)
+		if err != nil {
+			return nil, err
+		}
 		attachments, attachmentsHasMore, err := s.store.ListProjectAttachments(ctx, store.ListProjectAttachmentsParams{ProjectID: projectID, Limit: MaxLimit})
 		if err != nil {
 			return nil, err
