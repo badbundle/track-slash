@@ -378,6 +378,8 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`overflow-x-hidden overflow-y-auto`,
 		"#sidebar-toggle:checked ~ .app-shell > aside",
 		`html[data-sidebar-collapsed] .app-shell > aside`,
+		`html[data-sidebar-collapsed] .app-shell .wide-only`,
+		`#sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }`,
 		`track-slash.sidebar.collapsed`,
 		`document.documentElement.toggleAttribute("data-sidebar-collapsed", collapsed)`,
 		`sidebarToggle.addEventListener("change"`,
@@ -501,6 +503,35 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, `.dark .markdown-body`) {
 		t.Fatalf("shell markdown dark-mode CSS should follow the system media query: %s", body)
+	}
+}
+
+func TestUIShellRemovesCollapsedLabelsFromLoggedOutSidebar(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{Anonymous: true}); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	css, err := os.ReadFile("../../frontend/tailwind.css")
+	if err != nil {
+		t.Fatalf("read Tailwind source: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`<a data-nav-link href="/login" aria-label="Sign in"`,
+		`<a data-nav-link href="/signup" aria-label="Create account"`,
+		`<span class="wide-only font-medium">Sign in</span>`,
+		`<span class="wide-only font-medium">Create account</span>`,
+		`#sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }`,
+		`#sidebar-toggle:checked ~ .app-shell [data-nav-link] { justify-content: center; gap: 0; }`,
+	} {
+		if !strings.Contains(body+string(css), want) {
+			t.Fatalf("logged-out sidebar missing collapsed-label behavior %q: %s", want, body)
+		}
+	}
+	if strings.Contains(string(css), `.wide-only { transition: opacity`) || strings.Contains(string(css), `.wide-only { opacity: 0`) {
+		t.Fatalf("collapsed labels must be removed from layout instead of hidden with opacity: %s", css)
 	}
 }
 
