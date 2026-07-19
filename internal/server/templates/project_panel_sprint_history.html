@@ -30,7 +30,7 @@
     </div>
     <div class="shrink-0 text-right">
       {{if .CompletedAt}}
-      <time datetime="{{.CompletedAt.Format "2006-01-02T15:04:05Z07:00"}}" class="block text-xs text-slate-500 dark:text-slate-400">Completed {{tokenTime .CompletedAt}}</time>
+      <span class="block text-xs text-slate-500 dark:text-slate-400">Completed {{template "local-time" (tokenTime .CompletedAt)}}</span>
       {{else}}
       <span class="block text-xs text-slate-500 dark:text-slate-400">Completion date unavailable</span>
       {{end}}

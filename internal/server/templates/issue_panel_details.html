@@ -179,11 +179,11 @@
           {{end}}
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Created</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{tokenTime .Issue.CreatedAt}}</dd>
+            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{template "local-time" (tokenTime .Issue.CreatedAt)}}</dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Updated</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{tokenTime .Issue.UpdatedAt}}</dd>
+            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{template "local-time" (tokenTime .Issue.UpdatedAt)}}</dd>
           </div>
         </dl>
       </section>

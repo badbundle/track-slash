@@ -309,7 +309,7 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 		"Sprint history",
 		"Completed release",
 		"Jun 1-Jun 14, 2026",
-		"Completed Jul 14, 2026 16:30",
+		`Completed <time datetime="2026-07-14T16:30:00Z" data-local-time title="Jul 14, 2026 16:30 UTC">Jul 14, 2026 16:30 UTC</time>`,
 		"Undated legacy sprint",
 		"No scheduled dates",
 		"Completion date unavailable",
@@ -360,7 +360,7 @@ func TestUIProjectPanelRendersSprintHistory(t *testing.T) {
 			t.Fatalf("sprint history included hidden outcome count %q: %s", notWant, body)
 		}
 	}
-	completedTimeIndex := strings.Index(body, "Completed Jul 14, 2026 16:30")
+	completedTimeIndex := strings.Index(body, `<time datetime="2026-07-14T16:30:00Z" data-local-time`)
 	outcomeCountsIndex := strings.Index(body, `aria-label="Sprint issue outcome counts"`)
 	if completedTimeIndex < 0 || outcomeCountsIndex < completedTimeIndex {
 		t.Fatalf("sprint outcome counts should render below completion time: time=%d counts=%d body=%s", completedTimeIndex, outcomeCountsIndex, body)

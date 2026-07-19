@@ -45,7 +45,7 @@
         </header>
         {{if .GitHubConnections}}<div class="divide-y divide-slate-100 dark:divide-slate-800">
           {{range .GitHubConnections}}<div class="flex items-center gap-3 px-4 py-3">
-            <div class="min-w-0 flex-1"><a href="{{.RepositoryURL}}" target="_blank" rel="noreferrer" class="truncate text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300">{{.FullName}}</a><p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{if .Private}}Private{{else}}Public{{end}} · validated {{tokenTime .LastValidatedAt}}</p></div>
+            <div class="min-w-0 flex-1"><a href="{{.RepositoryURL}}" target="_blank" rel="noreferrer" class="truncate text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300">{{.FullName}}</a><p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{if .Private}}Private{{else}}Public{{end}} · validated {{template "local-time" (tokenTime .LastValidatedAt)}}</p></div>
             {{if $.CanManageMembers}}<form method="post" action="{{projectGitHubDisconnect $.Project .}}" hx-post="{{projectGitHubDisconnect $.Project .}}" hx-target="#main" hx-push-url="false"><button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"><i data-lucide="unlink" class="h-3.5 w-3.5" aria-hidden="true"></i>Disconnect</button></form>{{end}}
           </div>{{end}}
         </div>{{else}}<p class="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">No GitHub repositories connected.</p>{{end}}
@@ -257,11 +257,11 @@
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Created</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{tokenTime .Project.CreatedAt}}</dd>
+            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{template "local-time" (tokenTime .Project.CreatedAt)}}</dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Updated</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{tokenTime .Project.UpdatedAt}}</dd>
+            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{template "local-time" (tokenTime .Project.UpdatedAt)}}</dd>
           </div>
         </dl>
       </section>

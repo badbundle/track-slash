@@ -1064,19 +1064,34 @@ func uiIssueLinkLabel(link model.IssueLink, issueID uuid.UUID) string {
 	}
 }
 
-func uiTokenTime(v any) string {
+type uiLocalTimeData struct {
+	Valid    bool
+	Datetime string
+	Fallback string
+}
+
+func uiTokenTime(v any) uiLocalTimeData {
 	if v == nil {
-		return "-"
+		return uiLocalTimeData{}
 	}
 	switch t := v.(type) {
 	case time.Time:
-		return t.Format("Jan 2, 2006 15:04")
+		return uiLocalTime(t)
 	case *time.Time:
 		if t == nil {
-			return "-"
+			return uiLocalTimeData{}
 		}
-		return t.Format("Jan 2, 2006 15:04")
+		return uiLocalTime(*t)
 	default:
-		return "-"
+		return uiLocalTimeData{}
+	}
+}
+
+func uiLocalTime(t time.Time) uiLocalTimeData {
+	utc := t.UTC()
+	return uiLocalTimeData{
+		Valid:    true,
+		Datetime: utc.Format(time.RFC3339Nano),
+		Fallback: utc.Format("Jan 2, 2006 15:04 UTC"),
 	}
 }

@@ -50,7 +50,7 @@
     <header class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
       <div class="min-w-0">
         <h2 class="truncate text-lg font-semibold text-slate-950 dark:text-slate-100">{{.ActiveContext.Title}}</h2>
-        <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with .ActiveContext.SourceFilename}}{{.}} · {{end}}Updated {{tokenTime .ActiveContext.UpdatedAt}}</p>
+        <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{with .ActiveContext.SourceFilename}}{{.}} · {{end}}Updated {{template "local-time" (tokenTime .ActiveContext.UpdatedAt)}}</p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
         {{if .CanWrite}}<form method="post" action="{{projectContextMoveUp .Project .ActiveContext}}" hx-post="{{projectContextMoveUp .Project .ActiveContext}}" hx-target="#main" hx-push-url="false"><button type="submit" aria-label="Move context page up" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="arrow-up" class="h-4 w-4" aria-hidden="true"></i></button></form>

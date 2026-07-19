@@ -670,9 +670,9 @@ type uiIssuePanelData struct {
 }
 
 type uiGitHubIssueLink struct {
-	Link               model.GitHubIssueLink
-	Stale              bool
-	LastRefreshedLabel string
+	Link          model.GitHubIssueLink
+	Stale         bool
+	LastRefreshed uiLocalTimeData
 }
 
 type uiTagManagerData struct {

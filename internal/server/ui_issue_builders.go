@@ -534,9 +534,9 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	}
 	githubItems := make([]uiGitHubIssueLink, 0, len(githubLinks))
 	for _, link := range githubLinks {
-		item := uiGitHubIssueLink{Link: link, Stale: link.Stale(time.Now(), 30*time.Minute), LastRefreshedLabel: "Never refreshed"}
+		item := uiGitHubIssueLink{Link: link, Stale: link.Stale(time.Now(), 30*time.Minute)}
 		if link.LastRefreshedAt != nil {
-			item.LastRefreshedLabel = uiTokenTime(*link.LastRefreshedAt)
+			item.LastRefreshed = uiTokenTime(*link.LastRefreshedAt)
 		}
 		githubItems = append(githubItems, item)
 	}
