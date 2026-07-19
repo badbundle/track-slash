@@ -99,6 +99,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"issueTagDelete":                 uiIssueTagDeletePath,
 	"issueTitle":                     uiIssueTitlePath,
 	"issueTitleEdit":                 uiIssueTitleEditPath,
+	"issueTitleParts":                uiIssueTitlePartsForDisplay,
 	"issueAssigneeAutocomplete":      uiIssueAssigneeAutocomplete,
 	"issueReporterAutocomplete":      uiIssueReporterAutocomplete,
 	"issueSprintAutocomplete":        uiIssueSprintAutocomplete,

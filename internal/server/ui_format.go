@@ -26,6 +26,22 @@ func uiInitials(name, email string) string {
 	return strings.ToUpper(string(first[0]) + string(last[0]))
 }
 
+type uiIssueTitleParts struct {
+	Leading  string
+	Trailing string
+}
+
+func uiIssueTitlePartsForDisplay(title string) uiIssueTitleParts {
+	runes := []rune(title)
+	if len(runes) == 0 {
+		return uiIssueTitleParts{}
+	}
+	return uiIssueTitleParts{
+		Leading:  string(runes[:len(runes)-1]),
+		Trailing: string(runes[len(runes)-1]),
+	}
+}
+
 var uiProjectViewLabels = map[string]string{
 	"sprint":    "Sprint",
 	"planned":   "Planned",

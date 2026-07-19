@@ -19,6 +19,10 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 - Every icon-only action needs a concise, action-oriented `aria-label` and the shared app tooltip on pointer hover and keyboard focus. Do not show redundant tooltips while equivalent text is visibly rendered, and do not rely on native `title` tooltips for interactive controls.
 
+## Issue Detail
+
+- Keep the issue-title edit action attached to the title's final character at every viewport width. Long titles may wrap before that final character-and-action unit, but the action must never become an orphaned line by itself.
+
 ## Project View
 
 - Render project images as squares with a small corner radius everywhere, using the shared project icon component and a project-initial fallback. Keep them visually distinct from circular user avatars.
