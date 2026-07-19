@@ -34,6 +34,9 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 		`data-mobile-sidebar-backdrop`,
 		`id="app-sidebar" data-mobile-sidebar`,
 		`data-mobile-sidebar-close`,
+		`data-sidebar-collapse-toggle`,
+		`aria-label="Collapse sidebar"`,
+		`data-sidebar-collapse-icon data-lucide="panel-left-close"`,
 		`data-member-menu`,
 		`data-close-on-outside`,
 		`overflow-visible border-r`,
@@ -57,7 +60,7 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	for _, want := range []string{
 		`[data-mobile-sidebar]{visibility:hidden;transform:translateX(-100%)}`,
 		`@media (min-width:768px)`,
-		"#sidebar-toggle:checked~.app-shell>aside",
+		`html[data-sidebar-collapsed] .app-shell>aside`,
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app stylesheet missing %q: %s", want, css)
@@ -68,8 +71,8 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	if mediaStart < 0 || desktopCollapseStart < mediaStart {
 		t.Fatalf("desktop sidebar collapse CSS must be scoped to the md breakpoint: %s", css)
 	}
-	if strings.Contains(css, "#sidebar-toggle:checked~.app-shell aside{width") {
-		t.Fatalf("sidebar collapse selector targets nested asides: %s", css)
+	if strings.Contains(css, "#sidebar-toggle") {
+		t.Fatalf("stylesheet retains the hidden-checkbox sidebar toggle: %s", css)
 	}
 
 	scripts := e.uiGet(t, "/static/app.js", token) + e.uiGet(t, "/static/preload.js", token)
@@ -79,6 +82,9 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 		`closeMobileSidebar`,
 		`mobileSidebar.inert = !visible`,
 		`track-slash.sidebar.collapsed`,
+		`sidebarToggle.addEventListener("click"`,
+		`collapsed ? "Expand sidebar" : "Collapse sidebar"`,
+		`collapsed ? "panel-left-open" : "panel-left-close"`,
 		`closeOpenDropdowns`,
 	} {
 		if !strings.Contains(scripts, want) {
