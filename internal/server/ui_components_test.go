@@ -388,9 +388,6 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`data-member-summary`,
 		`data-member-label`,
 		`data-member-menu`,
-		`data-sidebar-legal`,
-		`html[data-sidebar-collapsed] .app-shell [data-sidebar-legal]`,
-		`#sidebar-toggle:checked ~ .app-shell [data-sidebar-legal] { display: none; }`,
 		`>@demo<`,
 		`data-sidebar-link data-sidebar-view="projects"`,
 		`const syncSidebarActive = () =>`,
@@ -434,10 +431,8 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	if strings.Contains(body[menuStart:menuStart+menuEnd], "wide-only") {
 		t.Fatalf("member menu should remain visible when the sidebar is collapsed: %s", body)
 	}
-	legalStart := strings.Index(body, `<div data-sidebar-legal`)
-	memberStart := strings.Index(body, `<details data-close-on-outside`)
-	if legalStart < 0 || memberStart <= legalStart {
-		t.Fatalf("legal links must render immediately before the member profile section: %s", body)
+	if strings.Contains(body, `data-sidebar-legal`) || strings.Contains(body, `aria-label="Legal"`) {
+		t.Fatalf("shell sidebar must not render legal links: %s", body)
 	}
 	for _, roleLabel := range []string{">Member<", ">Admin<"} {
 		if strings.Contains(body, roleLabel) {
@@ -532,6 +527,11 @@ func TestUIShellRemovesCollapsedLabelsFromLoggedOutSidebar(t *testing.T) {
 	}
 	if strings.Contains(string(css), `.wide-only { transition: opacity`) || strings.Contains(string(css), `.wide-only { opacity: 0`) {
 		t.Fatalf("collapsed labels must be removed from layout instead of hidden with opacity: %s", css)
+	}
+	for _, notWant := range []string{`data-sidebar-legal`, `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
+		if strings.Contains(body, notWant) {
+			t.Fatalf("logged-out sidebar still contains legal link %q: %s", notWant, body)
+		}
 	}
 }
 

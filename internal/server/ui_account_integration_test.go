@@ -85,9 +85,26 @@ func TestUISettingsPageUpdatesProfileAndPassword(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/settings", token.RawToken)
-	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added."} {
+	for _, want := range []string{"Settings", "Display name", "Email", "Password login", "On", "Current password", "New password", "Passkeys", "Saved passkeys", "Add a passkey", "Passkey label", "Enter current password", "Required before changing passkeys.", "Continue", "Add passkey", "No passkeys added.", "Legal", "Review the terms, privacy notice, and security policy for trackslash.", `aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("settings body missing %q: %s", want, body)
+		}
+	}
+	if got := strings.Count(body, `aria-label="Legal"`); got != 1 {
+		t.Fatalf("settings legal navigation count = %d, want 1: %s", got, body)
+	}
+	sidebarStart := strings.Index(body, `<aside id="app-sidebar"`)
+	if sidebarStart < 0 {
+		t.Fatalf("settings body missing sidebar: %s", body)
+	}
+	sidebarEnd := strings.Index(body[sidebarStart:], `</aside>`)
+	if sidebarEnd < 0 {
+		t.Fatalf("settings body has unterminated sidebar: %s", body)
+	}
+	sidebar := body[sidebarStart : sidebarStart+sidebarEnd]
+	for _, notWant := range []string{`aria-label="Legal"`, `href="/terms"`, `href="/privacy"`, `href="/security"`} {
+		if strings.Contains(sidebar, notWant) {
+			t.Fatalf("settings sidebar still contains legal link %q: %s", notWant, sidebar)
 		}
 	}
 	if strings.Contains(body, "Disable password login") || strings.Contains(body, "Enable password login") {
