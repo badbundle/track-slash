@@ -736,6 +736,47 @@ type ListSubIssuesForIssueParams struct {
 	Limit         int
 }
 
+type SubIssueProgress struct {
+	Total     int
+	Completed int
+}
+
+func (s *Store) ListSubIssueProgress(ctx context.Context, parentIssueIDs []uuid.UUID) (map[uuid.UUID]SubIssueProgress, error) {
+	out := make(map[uuid.UUID]SubIssueProgress, len(parentIssueIDs))
+	if len(parentIssueIDs) == 0 {
+		return out, nil
+	}
+
+	rows, err := s.db.Query(ctx, `
+		SELECT parent_issue_id,
+		       COUNT(*)::int,
+		       COUNT(*) FILTER (WHERE status IN ('done', 'closed'))::int
+		FROM issues
+		WHERE parent_issue_id = ANY($1) AND deleted_at IS NULL
+		GROUP BY parent_issue_id
+	`, parentIssueIDs)
+	if err != nil {
+		// Defensive: aggregate query failures require a database/runtime fault.
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var parentIssueID uuid.UUID
+		var progress SubIssueProgress
+		if err := rows.Scan(&parentIssueID, &progress.Total, &progress.Completed); err != nil {
+			// Defensive: selected columns match the aggregate result fields.
+			return nil, err
+		}
+		out[parentIssueID] = progress
+	}
+	if err := rows.Err(); err != nil {
+		// Defensive: post-scan failures require a database/runtime fault.
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIssueParams) ([]model.Issue, bool, error) {
 	var parentIssueID *uuid.UUID
 	if err := s.db.QueryRow(ctx, `

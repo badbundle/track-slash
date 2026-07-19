@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -218,6 +219,52 @@ func TestSubIssueValidationAndSprintRules(t *testing.T) {
 	_, err = env.store.UpdateIssue(env.ctx, child.ID, store.UpdateIssueParams{SprintID: &sp.ID})
 	if !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("assign child to sprint err = %v, want ErrConflict", err)
+	}
+}
+
+func TestListSubIssueProgress(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+
+	empty, err := env.store.ListSubIssueProgress(env.ctx, nil)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty progress = %+v, %v", empty, err)
+	}
+
+	parent := mustCreateIssue(t, env, "progress parent")
+	withoutChildren := mustCreateIssue(t, env, "empty parent")
+	children := make([]model.Issue, 4)
+	for i := range children {
+		children[i], err = env.store.CreateSubIssue(env.ctx, store.CreateSubIssueParams{
+			ParentIssueID: parent.ID,
+			Title:         fmt.Sprintf("progress child %d", i+1),
+		})
+		if err != nil {
+			t.Fatalf("CreateSubIssue %d: %v", i+1, err)
+		}
+	}
+	done := model.StatusDone
+	if _, err := env.store.UpdateIssue(env.ctx, children[1].ID, store.UpdateIssueParams{Status: &done}); err != nil {
+		t.Fatalf("complete child: %v", err)
+	}
+	closed := model.StatusClosed
+	reason := model.CloseReasonDuplicate
+	if _, err := env.store.UpdateIssue(env.ctx, children[2].ID, store.UpdateIssueParams{Status: &closed, CloseReason: &reason}); err != nil {
+		t.Fatalf("close child: %v", err)
+	}
+	if err := env.store.DeleteIssue(env.ctx, children[3].ID); err != nil {
+		t.Fatalf("delete child: %v", err)
+	}
+
+	progress, err := env.store.ListSubIssueProgress(env.ctx, []uuid.UUID{parent.ID, withoutChildren.ID})
+	if err != nil {
+		t.Fatalf("ListSubIssueProgress: %v", err)
+	}
+	if got := progress[parent.ID]; got != (store.SubIssueProgress{Total: 3, Completed: 2}) {
+		t.Fatalf("parent progress = %+v, want 2/3", got)
+	}
+	if _, ok := progress[withoutChildren.ID]; ok {
+		t.Fatalf("empty parent unexpectedly returned progress: %+v", progress)
 	}
 }
 
