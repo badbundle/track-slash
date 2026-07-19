@@ -48,7 +48,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Rows And Notices
 
-- `issue-summary-row`: responsive issue list row content accepting an issue. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward.
+- `issue-summary-row`: responsive issue list row content accepting a `uiIssueItem`. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward. When `SubIssueProgress.Total` is non-zero, it also shows the shared compact completed/total ring used on sprint cards.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
 - Context detail row: issue detail uses a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open action that opens the integrated issue Context manager and pushes its URL. Project About does not render context; project context is a top-level tab.
 

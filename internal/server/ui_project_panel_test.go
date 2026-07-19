@@ -403,7 +403,7 @@ func TestUISprintHistoryIssuePageRendersSnapshotIssues(t *testing.T) {
 	data := uiProjectSprintHistoryIssuePageData{
 		Project:   project,
 		Sprint:    sprint,
-		Issues:    []model.Issue{issue},
+		Issues:    []uiIssueItem{{Issue: issue, Project: project}},
 		NextHXGet: "/bradley/projects/TRACK/sprints/sprint-7/history/issues?cursor=next",
 	}
 	var buf bytes.Buffer

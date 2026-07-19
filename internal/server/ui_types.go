@@ -129,7 +129,7 @@ type uiSprintDescriptionData struct {
 type uiPlannedSprint struct {
 	Project             model.Project
 	Sprint              model.Sprint
-	Issues              []model.Issue
+	Issues              []uiIssueItem
 	HasMore             bool
 	AttachmentCount     int
 	DescriptionExpanded bool
@@ -247,7 +247,7 @@ type uiIssueControlsData struct {
 }
 
 type uiProjectAllIssuePageData struct {
-	Issues    []model.Issue
+	Issues    []uiIssueItem
 	NextHXGet string
 }
 
@@ -500,7 +500,7 @@ type uiProjectPanelData struct {
 	PlannedSprintIssueForm          uiSprintIssueFormData
 	PlannedSprintAttachments        []model.SprintAttachment
 	PlannedSprintAttachmentsHasMore bool
-	AllIssues                       []model.Issue
+	AllIssues                       []uiIssueItem
 	AllIssuePage                    uiProjectAllIssuePageData
 	AllControls                     uiIssueControlsData
 	SprintHistoryPage               uiProjectSprintHistoryPageData
@@ -568,7 +568,7 @@ type uiProjectSprintHistoryPageData struct {
 type uiProjectSprintHistoryIssuePageData struct {
 	Project   model.Project
 	Sprint    model.Sprint
-	Issues    []model.Issue
+	Issues    []uiIssueItem
 	NextHXGet string
 }
 

@@ -206,6 +206,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"tagDotClass":                    uiTagDotClass,
 	"issueVisibleTags":               uiIssueVisibleTags,
 	"issueHiddenTagCount":            uiIssueHiddenTagCount,
+	"issueItem":                      uiIssueItemFromIssue,
 	"issueAttachmentIcon":            uiIssueAttachmentIcon,
 	"tokenTime":                      uiTokenTime,
 }).ParseFS(uiTemplateFS, "templates/*.html"))
