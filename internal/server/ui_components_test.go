@@ -400,13 +400,20 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`height: 100dvh`,
 		`.modal-panel { max-height: calc(100vh - 3rem); max-height: calc(100dvh - 3rem); }`,
 		`overflow-x-hidden overflow-y-auto`,
-		"#sidebar-toggle:checked ~ .app-shell > aside",
+		`data-sidebar-collapse-toggle`,
+		`aria-label="Collapse sidebar"`,
+		`aria-controls="app-sidebar" aria-expanded="true"`,
+		`data-sidebar-collapse-icon data-lucide="panel-left-close"`,
 		`html[data-sidebar-collapsed] .app-shell > aside`,
 		`html[data-sidebar-collapsed] .app-shell .wide-only`,
-		`#sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }`,
+		`html[data-sidebar-collapsed] .app-shell .wide-only { display: none; }`,
 		`track-slash.sidebar.collapsed`,
 		`document.documentElement.toggleAttribute("data-sidebar-collapsed", collapsed)`,
-		`sidebarToggle.addEventListener("change"`,
+		`sidebarToggle.setAttribute("aria-expanded", collapsed ? "false" : "true")`,
+		`sidebarToggle.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar")`,
+		`icon.setAttribute("data-lucide", collapsed ? "panel-left-open" : "panel-left-close")`,
+		`sidebarToggle.addEventListener("click"`,
+		`const collapsed = !document.documentElement.hasAttribute("data-sidebar-collapsed")`,
 		`[data-member-menu] { bottom: 0.5rem; left: calc(100% + 0.5rem); right: auto; width: 12rem; }`,
 		`overflow-visible border-r`,
 		`data-member-summary`,
@@ -438,8 +445,8 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	if strings.Contains(body[mobileStateStart:mobileStateEnd], `localStorage`) {
 		t.Fatalf("mobile drawer state must not share desktop collapse persistence: %s", body[mobileStateStart:mobileStateEnd])
 	}
-	if strings.Contains(body, "#sidebar-toggle:checked ~ .app-shell aside { width") {
-		t.Fatalf("sidebar collapse selector targets nested asides: %s", body)
+	if strings.Contains(body, `id="sidebar-toggle"`) || strings.Contains(body, "#sidebar-toggle") {
+		t.Fatalf("shell retains the hidden-checkbox sidebar toggle: %s", body)
 	}
 	if strings.Contains(body, "data-main-view") {
 		t.Fatalf("shell still contains legacy sidebar state markers: %s", body)
@@ -538,12 +545,13 @@ func TestUIShellRemovesCollapsedLabelsFromLoggedOutSidebar(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
+		`data-sidebar-collapse-toggle aria-label="Collapse sidebar"`,
 		`<a data-nav-link href="/login" aria-label="Sign in"`,
 		`<a data-nav-link href="/signup" aria-label="Create account"`,
 		`<span class="wide-only font-medium">Sign in</span>`,
 		`<span class="wide-only font-medium">Create account</span>`,
-		`#sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }`,
-		`#sidebar-toggle:checked ~ .app-shell [data-nav-link] { justify-content: center; gap: 0; }`,
+		`html[data-sidebar-collapsed] .app-shell .wide-only { display: none; }`,
+		`html[data-sidebar-collapsed] .app-shell [data-nav-link] { justify-content: center; gap: 0; }`,
 	} {
 		if !strings.Contains(body+string(css), want) {
 			t.Fatalf("logged-out sidebar missing collapsed-label behavior %q: %s", want, body)
@@ -594,7 +602,7 @@ func TestUIShellProvidesAccessibleIconTooltips(t *testing.T) {
 	}
 	body := strings.Join([]string{buf.String(), string(css), string(appJS), string(projectPanel), string(projectsPanel)}, "\n")
 	for _, want := range []string{
-		`aria-label="Toggle sidebar"`,
+		`aria-label="Collapse sidebar"`,
 		`aria-label="Me"`,
 		`aria-label="Projects"`,
 		`aria-label="Account menu"`,
@@ -629,7 +637,8 @@ func TestUIShellProvidesAccessibleIconTooltips(t *testing.T) {
 		}
 	}
 	for _, forbidden := range []string{
-		`title="Toggle sidebar"`,
+		`title="Collapse sidebar"`,
+		`title="Expand sidebar"`,
 		`title="Account menu"`,
 		`title="New project"`,
 		`title="{{if .Favorite}}Unfavorite project`,

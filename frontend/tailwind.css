@@ -11,22 +11,14 @@ html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; tran
 @media (min-width: 768px) {
   [data-mobile-sidebar],
   html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; height: auto; transform: none; }
-  html[data-sidebar-collapsed] .app-shell > aside,
-  #sidebar-toggle:checked ~ .app-shell > aside { width: 4.25rem; }
-  html[data-sidebar-collapsed] .app-shell .wide-only,
-  #sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }
-  html[data-sidebar-collapsed] .app-shell .sidebar-head,
-  #sidebar-toggle:checked ~ .app-shell .sidebar-head { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
-  html[data-sidebar-collapsed] .app-shell [data-nav-link],
-  #sidebar-toggle:checked ~ .app-shell [data-nav-link] { justify-content: center; gap: 0; }
-  html[data-sidebar-collapsed] .app-shell [data-sidebar-action],
-  #sidebar-toggle:checked ~ .app-shell [data-sidebar-action] { justify-content: center; gap: 0; }
-  html[data-sidebar-collapsed] .app-shell [data-sidebar-favorite],
-  #sidebar-toggle:checked ~ .app-shell [data-sidebar-favorite] { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
-  html[data-sidebar-collapsed] .app-shell [data-member-summary],
-  #sidebar-toggle:checked ~ .app-shell [data-member-summary] { justify-content: center; gap: 0; padding-left: 0.25rem; padding-right: 0.25rem; }
-  html[data-sidebar-collapsed] .app-shell [data-member-menu],
-  #sidebar-toggle:checked ~ .app-shell [data-member-menu] { bottom: 0.5rem; left: calc(100% + 0.5rem); right: auto; width: 12rem; }
+  html[data-sidebar-collapsed] .app-shell > aside { width: 4.25rem; }
+  html[data-sidebar-collapsed] .app-shell .wide-only { display: none; }
+  html[data-sidebar-collapsed] .app-shell .sidebar-head { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
+  html[data-sidebar-collapsed] .app-shell [data-nav-link] { justify-content: center; gap: 0; }
+  html[data-sidebar-collapsed] .app-shell [data-sidebar-action] { justify-content: center; gap: 0; }
+  html[data-sidebar-collapsed] .app-shell [data-sidebar-favorite] { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
+  html[data-sidebar-collapsed] .app-shell [data-member-summary] { justify-content: center; gap: 0; padding-left: 0.25rem; padding-right: 0.25rem; }
+  html[data-sidebar-collapsed] .app-shell [data-member-menu] { bottom: 0.5rem; left: calc(100% + 0.5rem); right: auto; width: 12rem; }
 }
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
