@@ -14,7 +14,7 @@ html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; tran
   html[data-sidebar-collapsed] .app-shell > aside,
   #sidebar-toggle:checked ~ .app-shell > aside { width: 4.25rem; }
   html[data-sidebar-collapsed] .app-shell .wide-only,
-  #sidebar-toggle:checked ~ .app-shell .wide-only { opacity: 0; pointer-events: none; }
+  #sidebar-toggle:checked ~ .app-shell .wide-only { display: none; }
   html[data-sidebar-collapsed] .app-shell .sidebar-head,
   #sidebar-toggle:checked ~ .app-shell .sidebar-head { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
   html[data-sidebar-collapsed] .app-shell [data-nav-link],
@@ -25,22 +25,11 @@ html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; tran
   #sidebar-toggle:checked ~ .app-shell [data-sidebar-favorite] { justify-content: center; gap: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
   html[data-sidebar-collapsed] .app-shell [data-sidebar-legal],
   #sidebar-toggle:checked ~ .app-shell [data-sidebar-legal] { display: none; }
-  html[data-sidebar-collapsed] .app-shell [data-nav-link] .wide-only,
-  html[data-sidebar-collapsed] .app-shell .sidebar-head .wide-only,
-  html[data-sidebar-collapsed] .app-shell [data-sidebar-action] .wide-only,
-  html[data-sidebar-collapsed] .app-shell [data-sidebar-favorite] .wide-only,
-  html[data-sidebar-collapsed] .app-shell [data-member-label],
-  #sidebar-toggle:checked ~ .app-shell [data-nav-link] .wide-only,
-  #sidebar-toggle:checked ~ .app-shell .sidebar-head .wide-only,
-  #sidebar-toggle:checked ~ .app-shell [data-sidebar-action] .wide-only,
-  #sidebar-toggle:checked ~ .app-shell [data-sidebar-favorite] .wide-only,
-  #sidebar-toggle:checked ~ .app-shell [data-member-label] { width: 0; overflow: hidden; }
   html[data-sidebar-collapsed] .app-shell [data-member-summary],
   #sidebar-toggle:checked ~ .app-shell [data-member-summary] { justify-content: center; gap: 0; padding-left: 0.25rem; padding-right: 0.25rem; }
   html[data-sidebar-collapsed] .app-shell [data-member-menu],
   #sidebar-toggle:checked ~ .app-shell [data-member-menu] { bottom: 0.5rem; left: calc(100% + 0.5rem); right: auto; width: 12rem; }
 }
-.wide-only { transition: opacity 120ms ease; }
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
 .modal-panel { max-height: calc(100vh - 3rem); max-height: calc(100dvh - 3rem); }
