@@ -137,6 +137,8 @@ func (s *Server) Router() http.Handler {
 		}))
 	}
 
+	r.Use(redirectUITrailingSlash)
+
 	if s.devReload {
 		r.Get(devReloadPath, s.devReloadEvents)
 	}
