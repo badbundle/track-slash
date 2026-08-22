@@ -62,6 +62,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Get("/tokens", s.uiTokensPage)
 		r.Post("/tokens", s.uiCreateToken)
 		r.Post("/tokens/{id}/revoke", s.uiRevokeToken)
+		// Not under /tokens/{id}/, where a token id is the only thing that may
+		// follow: a static segment there would take precedence over the param.
+		r.Post("/token-sessions/revoke", s.uiRevokeSessionTokens)
 		r.Get("/users/{id}/profile-image/content", s.uiGetUserProfileImageContent)
 		r.Get("/users/{id}/profile-image/thumbnail/content", s.uiGetUserProfileImageThumbnailContent)
 		if s.hub != nil {

@@ -747,9 +747,13 @@ type uiNewIssuePanelData struct {
 
 type uiTokenPanelData struct {
 	CSRFToken string
-	Tokens    []model.AuthToken
-	Error     string
-	Created   string
+	// Tokens holds API tokens only. Web sessions are numerous, short-lived, and
+	// their names carry no information, so listing them one by one buried the
+	// tokens people actually manage.
+	Tokens         []model.AuthToken
+	ActiveSessions int
+	Error          string
+	Created        string
 }
 
 type uiSettingsPanelData struct {

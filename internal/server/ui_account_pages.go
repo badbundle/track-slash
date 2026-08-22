@@ -150,19 +150,59 @@ func (s *Server) uiRevokeToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderUITokens(w http.ResponseWriter, r *http.Request, message, created string) {
-	tokens, err := s.store.ListAuthTokens(r.Context(), currentUser(r).ID)
+	all, err := s.store.ListAuthTokens(r.Context(), currentUser(r).ID)
 	if err != nil {
 		writeUIInternalError(w, "ui tokens list auth tokens", err)
 		return
 	}
+	tokens, activeSessions := uiPartitionAuthTokens(all)
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
 		writeUIInternalError(w, "ui tokens visible projects", err)
 		return
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User:       currentUser(r),
-		Projects:   projects,
-		TokenPanel: &uiTokenPanelData{CSRFToken: uiSessionCSRFToken(r), Tokens: tokens, Error: message, Created: created},
+		User:     currentUser(r),
+		Projects: projects,
+		TokenPanel: &uiTokenPanelData{
+			CSRFToken:      uiSessionCSRFToken(r),
+			Tokens:         tokens,
+			ActiveSessions: activeSessions,
+			Error:          message,
+			Created:        created,
+		},
 	})
+}
+
+// uiPartitionAuthTokens keeps API tokens for the per-row list and reduces web
+// sessions to a live count. Sessions are numerous and their names carry no
+// information, so a row each buried the tokens people actually manage.
+func uiPartitionAuthTokens(all []model.AuthToken) ([]model.AuthToken, int) {
+	apiTokens := make([]model.AuthToken, 0, len(all))
+	activeSessions := 0
+	for _, token := range all {
+		if token.Kind == model.AuthTokenKindSession {
+			if token.RevokedAt == nil {
+				activeSessions++
+			}
+			continue
+		}
+		apiTokens = append(apiTokens, token)
+	}
+	return apiTokens, activeSessions
+}
+
+func (s *Server) uiRevokeSessionTokens(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.store.RevokeSessionAuthTokensForUser(r.Context(), currentUser(r).ID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	// The action does what it says, so it ends the session that invoked it too.
+	s.clearUISessionCookie(w, r)
+	if isHTMXRequest(r) {
+		w.Header().Set("HX-Redirect", "/login")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
