@@ -137,6 +137,7 @@ func (s *Server) Router() http.Handler {
 		}))
 	}
 
+	r.Use(serveHEADAsGET)
 	r.Use(redirectUITrailingSlash)
 
 	// chi pushes these into any sub-router that has none of its own, so the

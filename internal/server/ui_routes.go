@@ -7,9 +7,9 @@ import (
 )
 
 func (s *Server) mountUIRoutes(r chi.Router) {
-	staticFiles := http.StripPrefix("/static/", uiStaticFileServer())
-	r.Method(http.MethodGet, "/static/*", staticFiles)
-	r.Method(http.MethodHead, "/static/*", staticFiles)
+	r.Method(http.MethodGet, "/static/*", http.StripPrefix("/static/", uiStaticFileServer()))
+	// Uptime monitors probe the root with HEAD and must not be sent through the
+	// signed-out redirect, so this route stays exempt from the HEAD rewrite.
 	r.Head("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Get("/service-worker.js", s.uiServiceWorker)
 	r.Get("/terms", s.uiTermsPage)
