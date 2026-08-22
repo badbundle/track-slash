@@ -7,7 +7,9 @@ import (
 )
 
 func (s *Server) mountUIRoutes(r chi.Router) {
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServerFS(uiStaticFS)))
+	staticFiles := http.StripPrefix("/static/", uiStaticFileServer())
+	r.Method(http.MethodGet, "/static/*", staticFiles)
+	r.Method(http.MethodHead, "/static/*", staticFiles)
 	r.Head("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Get("/service-worker.js", s.uiServiceWorker)
 	r.Get("/terms", s.uiTermsPage)
