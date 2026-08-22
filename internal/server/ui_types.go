@@ -42,6 +42,7 @@ type uiShellData struct {
 	TagManager        *uiTagManagerData
 	TokenPanel        *uiTokenPanelData
 	SettingsPanel     *uiSettingsPanelData
+	ErrorPanel        *uiErrorPanelData
 }
 
 type uiSidebarState struct {
