@@ -18,6 +18,9 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 	// fallback, so both are served.
 	r.Get("/.well-known/security.txt", s.uiSecurityTxt)
 	r.Get("/security.txt", s.uiSecurityTxt)
+	r.Get("/.well-known/change-password", s.uiChangePassword)
+	r.Get("/.well-known/passkey-endpoints", s.uiPasskeyEndpoints)
+	r.Get("/robots.txt", s.uiRobotsTxt)
 	r.Get("/terms", s.uiTermsPage)
 	r.Get("/privacy", s.uiPrivacyPage)
 	r.Get("/security", s.uiSecurityPage)
