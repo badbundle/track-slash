@@ -19,6 +19,20 @@ import (
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
+// corsAllowedMethods must cover every method the router answers. go-chi/cors
+// aborts a preflight whose requested method is absent, which silently makes the
+// route unreachable from any cross-origin browser client. HEAD is included even
+// though no route registers it, because serveHEADAsGET answers it everywhere.
+var corsAllowedMethods = []string{
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodOptions,
+}
+
 type Server struct {
 	store                *store.Store
 	hub                  *realtime.Hub
@@ -129,7 +143,7 @@ func (s *Server) Router() http.Handler {
 	if len(s.corsAllowedOrigins) > 0 {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   s.corsAllowedOrigins,
-			AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+			AllowedMethods:   corsAllowedMethods,
 			AllowedHeaders:   []string{"Authorization", "Content-Type", "Accept", "If-Match", "Last-Event-ID", "MCP-Protocol-Version", "Mcp-Session-Id"},
 			ExposedHeaders:   []string{"X-Request-ID", "Mcp-Session-Id"},
 			AllowCredentials: false,
