@@ -11,7 +11,7 @@ import (
 )
 
 func (s *Server) uiTokensPage(w http.ResponseWriter, r *http.Request) {
-	s.renderUITokens(w, r, "", "")
+	s.renderUITokens(w, r, "", s.takeUITokenRevealCookie(w, r))
 }
 
 func (s *Server) uiRealtime(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +118,14 @@ func (s *Server) uiCreateToken(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		s.renderUITokens(w, r, "Unable to create token.", "")
+		return
+	}
+	// Post/Redirect/Get: answering 200 to a form post meant a browser reload
+	// re-submitted it and silently created a second token. An htmx post never
+	// becomes the browser's current address, so it has nothing to replay.
+	if !isHTMXRequest(r) {
+		s.setUITokenRevealCookie(w, r, created.RawToken)
+		http.Redirect(w, r, uiTokenRevealPath, http.StatusSeeOther)
 		return
 	}
 	s.renderUITokens(w, r, "", created.RawToken)

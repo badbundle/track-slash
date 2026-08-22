@@ -44,8 +44,19 @@ func TestUITokensPageCreatesAndRevokesToken(t *testing.T) {
 	})
 	defer res.Body.Close()
 	body = readBody(t, res)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("create token code = %d body = %s", res.StatusCode, body)
+	// Post/Redirect/Get, so a reload cannot create a second token.
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/tokens" {
+		t.Fatalf("create token code = %d location = %q body = %s", res.StatusCode, res.Header.Get("Location"), body)
+	}
+	reveal := findUICookieOrNil(res.Cookies(), uiTokenRevealCookieNameForTest)
+	if reveal == nil {
+		t.Fatalf("create token set no reveal cookie: %+v", res.Cookies())
+	}
+	revealed := e.uiGetWithCookies(t, "/tokens", token, reveal)
+	body = readBody(t, revealed)
+	revealed.Body.Close()
+	if revealed.StatusCode != http.StatusOK {
+		t.Fatalf("tokens page after create code = %d body = %s", revealed.StatusCode, body)
 	}
 	if !strings.Contains(body, "Copy this token now.") {
 		t.Fatalf("body missing created token notice: %s", body)

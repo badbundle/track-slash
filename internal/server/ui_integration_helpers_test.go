@@ -29,8 +29,9 @@ func createAssignedIssueForUI(t *testing.T, e *httpEnv, title string, assigneeID
 }
 
 const (
-	uiCookieNameForTest        = "track_slash_ui_token"
-	uiPreAuthCookieNameForTest = "track_slash_login_csrf"
+	uiCookieNameForTest            = "track_slash_ui_token"
+	uiPreAuthCookieNameForTest     = "track_slash_login_csrf"
+	uiTokenRevealCookieNameForTest = "track_slash_token_reveal"
 )
 
 func uiCSRFTokenForTest(purpose, secret string) string {
@@ -242,4 +243,36 @@ func (e *httpEnv) mustProjectMemberToken(t *testing.T, label string) (model.User
 		t.Fatalf("GrantProjectAccess: %v", err)
 	}
 	return user, token
+}
+
+// uiGetWithCookies performs an authenticated GET carrying extra cookies, which
+// a browser would have picked up from a preceding response.
+func (e *httpEnv) uiGetWithCookies(t *testing.T, path, token string, extra ...*http.Cookie) *http.Response {
+	t.Helper()
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodGet, e.ts.URL+path, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: uiCookieNameForTest, Value: token, Path: "/"})
+	}
+	for _, cookie := range extra {
+		req.AddCookie(cookie)
+	}
+	client := *e.ts.Client()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	return res
+}
+
+func findUICookieOrNil(cookies []*http.Cookie, name string) *http.Cookie {
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
 }
