@@ -31,6 +31,8 @@ export TRACKSLASH_TOKEN='<your-token>'
 
 The MCP endpoint is `https://<host>/mcp`. For a local instance, use `http://localhost:8080/mcp`.
 
+trackslash authenticates MCP with the API token above, not OAuth, and serves no OAuth discovery documents. Commands that start an OAuth flow, such as `claude mcp add --transport http`, will fail; use the token-carrying commands below.
+
 ### Codex
 
 ```sh
