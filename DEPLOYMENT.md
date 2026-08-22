@@ -78,6 +78,8 @@ TRACK_SLASH_SESSION_TTL=168h
 
 The value uses Go duration syntax and must be positive. Session activity does not extend the deadline; idle expiry is not currently applied. API tokens remain distinct and do not expire unless an expiry is explicitly supplied when they are created.
 
+Web sessions older than three years are revoked automatically. The sweep runs inside PostgreSQL, on a trigger that rides the existing token-usage write, so there is no scheduler to deploy. It claims at most one run per hour through the `auth_token_sweeps` row, revokes at most 1000 sessions per run, and never touches API tokens or the session making the request.
+
 Browser mutations use CSRF tokens bound to either the pre-login flow or the authenticated session, plus exact-origin checks when browsers send `Origin`, `Referer`, or Fetch Metadata. Treat sibling subdomains as untrusted: `same-site` requests are rejected unless they are also `same-origin`. Keep `TRACK_SLASH_PUBLIC_ORIGIN` set to the single canonical browser origin in production, and do not route alternate sibling origins to the UI. Bearer-authenticated API and MCP requests do not use browser CSRF tokens.
 
 ### Browser push notifications
