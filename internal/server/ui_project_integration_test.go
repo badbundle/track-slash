@@ -368,7 +368,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 			t.Fatalf("member page missing %q: %s", want, pageBody)
 		}
 	}
-	candidatesPath := membersPath + "/candidates"
+	candidatesPath := e.projectPath() + "/member-candidates"
 	for _, want := range []string{
 		`name="username" value=""`,
 		`hx-get="` + candidatesPath + `"`,
@@ -414,7 +414,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	accessForm := url.Values{"is_public": {"on"}, "public_issue_creation": {"on"}}
-	res = e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/access", e.authToken, strings.NewReader(accessForm.Encode()))
+	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-access", e.authToken, strings.NewReader(accessForm.Encode()))
 	body = readBody(t, res)
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK || !strings.Contains(body, `name="is_public" checked`) || !strings.Contains(body, `name="public_issue_creation" checked`) {
@@ -452,14 +452,14 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	blocked, _ := e.mustUserToken(t, "ui-project-blocked")
-	invalidBlockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks", e.authToken, strings.NewReader(url.Values{"username": {""}}.Encode()))
+	invalidBlockResponse := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-blocks", e.authToken, strings.NewReader(url.Values{"username": {""}}.Encode()))
 	invalidBlockBody := readBody(t, invalidBlockResponse)
 	invalidBlockResponse.Body.Close()
 	if invalidBlockResponse.StatusCode != http.StatusOK || !strings.Contains(invalidBlockBody, "Enter an exact existing username.") || !strings.Contains(invalidBlockBody, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 grid`) {
 		t.Fatalf("invalid block should keep modal open, code = %d body = %s", invalidBlockResponse.StatusCode, invalidBlockBody)
 	}
 	blockForm := url.Values{"username": {blocked.Username}}
-	blockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks", e.authToken, strings.NewReader(blockForm.Encode()))
+	blockResponse := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-blocks", e.authToken, strings.NewReader(blockForm.Encode()))
 	blockBody := readBody(t, blockResponse)
 	blockResponse.Body.Close()
 	if blockResponse.StatusCode != http.StatusOK || !strings.Contains(blockBody, "@"+blocked.Username) || !strings.Contains(blockBody, "Unblock") {
@@ -468,7 +468,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	if !strings.Contains(blockBody, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 hidden`) {
 		t.Fatalf("successful block should close modal: %s", blockBody)
 	}
-	unblockResponse := e.uiDoNoRedirect(t, http.MethodPost, membersPath+"/blocks/"+blocked.Username+"/delete", e.authToken, nil)
+	unblockResponse := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-blocks/"+blocked.Username+"/delete", e.authToken, nil)
 	unblockBody := readBody(t, unblockResponse)
 	unblockResponse.Body.Close()
 	if unblockResponse.StatusCode != http.StatusOK || strings.Contains(unblockBody, ">Unblock</button>") {

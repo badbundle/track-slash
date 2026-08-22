@@ -156,13 +156,16 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/projects/{key}/github/connections/{connectionID}/disconnect", s.uiDisconnectGitHubRepository)
 		r.Get("/{owner}/projects/{key}/members", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPage(w, r, "members") })
 		r.Get("/{owner}/projects/{key}/members/panel", func(w http.ResponseWriter, r *http.Request) { s.uiProjectWorkPanel(w, r, "members") })
-		r.Get("/{owner}/projects/{key}/members/candidates", s.uiProjectMemberCandidates)
 		r.Post("/{owner}/projects/{key}/members", s.uiAddProjectMember)
+		// Nothing but a username may follow /members/: chi resolves a static
+		// segment before a param one, so a collection-level action here would
+		// permanently shadow the member of the same name.
 		r.Post("/{owner}/projects/{key}/members/{username}", s.uiUpdateProjectMember)
 		r.Post("/{owner}/projects/{key}/members/{username}/delete", s.uiDeleteProjectMember)
-		r.Post("/{owner}/projects/{key}/members/access", s.uiUpdateProjectAccess)
-		r.Post("/{owner}/projects/{key}/members/blocks", s.uiBlockProjectUser)
-		r.Post("/{owner}/projects/{key}/members/blocks/{username}/delete", s.uiUnblockProjectUser)
+		r.Get("/{owner}/projects/{key}/member-candidates", s.uiProjectMemberCandidates)
+		r.Post("/{owner}/projects/{key}/member-access", s.uiUpdateProjectAccess)
+		r.Post("/{owner}/projects/{key}/member-blocks", s.uiBlockProjectUser)
+		r.Post("/{owner}/projects/{key}/member-blocks/{username}/delete", s.uiUnblockProjectUser)
 		r.Get("/{owner}/projects/{key}/description/edit", s.uiProjectWriteHandler(s.uiEditProjectDescription))
 		r.Post("/{owner}/projects/{key}/description", s.uiProjectWriteHandler(s.uiUpdateProjectDescription))
 		r.Post("/{owner}/projects/{key}/attachments", s.uiProjectWriteHandler(s.uiCreateProjectAttachment))
