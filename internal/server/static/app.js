@@ -279,7 +279,6 @@
     const contentUrl = `${uploadUrl}/${encodeURIComponent(ref)}/content`;
     const inlineUrl = `${contentUrl}?inline=1`;
     const deleteUrl = `${uploadUrl}/${encodeURIComponent(ref)}`;
-    const hxDeleteUrl = `${contentUrl.replace(/\/content$/, "")}/delete`;
     const isImage = safeInlineImage(object.content_type);
     const icon = isImage ? "image" : "paperclip";
     const markdown = attachmentMarkdownSnippet(object);
@@ -307,7 +306,7 @@
         <a href="${escapeHTML(contentUrl)}" aria-label="Download attachment" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
           <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
         </a>
-        <button type="button" data-attachment-remove data-attachment-delete-url="${escapeHTML(deleteUrl)}" aria-label="Remove attachment" hx-post="${escapeHTML(hxDeleteUrl)}" hx-target="#main" hx-push-url="false" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
+        <button type="button" data-attachment-remove data-attachment-delete-url="${escapeHTML(deleteUrl)}" aria-label="Remove attachment" class="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
           <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
         </button>
       </div>
