@@ -12,6 +12,12 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 	// signed-out redirect, so this route stays exempt from the HEAD rewrite.
 	r.Head("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	r.Get("/service-worker.js", s.uiServiceWorker)
+	r.Get("/favicon.ico", s.uiFavicon)
+	r.Get("/manifest.webmanifest", s.uiWebAppManifest)
+	// RFC 9116 defines the well-known location and keeps the top-level path as a
+	// fallback, so both are served.
+	r.Get("/.well-known/security.txt", s.uiSecurityTxt)
+	r.Get("/security.txt", s.uiSecurityTxt)
 	r.Get("/terms", s.uiTermsPage)
 	r.Get("/privacy", s.uiPrivacyPage)
 	r.Get("/security", s.uiSecurityPage)
