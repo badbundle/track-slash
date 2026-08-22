@@ -1,5 +1,10 @@
 {{define "shell-main"}}
     <main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 dark:bg-slate-950">
+      {{template "shell-main-content" .}}
+    </main>
+{{end}}
+
+{{define "shell-main-content"}}
       {{if .ErrorPanel}}
       {{template "error-panel" .ErrorPanel}}
       {{else if .WorkPanel}}
@@ -32,5 +37,4 @@
         <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">No accessible work found.</p>
       </section>
       {{end}}
-    </main>
 {{end}}

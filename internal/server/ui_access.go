@@ -108,7 +108,21 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 		Projects:        favorites,
 		ActiveProjectID: activeProjectID,
 	}
-	renderUITemplate(w, status, "shell", data)
+	renderUITemplate(w, status, uiShellTemplateName(r), data)
+}
+
+// uiShellTemplateName picks the whole document or just the content that belongs
+// inside #main.
+//
+// Every htmx control in the app targets a sub-element, and #main is a sibling of
+// the sidebar inside .app-shell. Answering an htmx request with the whole
+// document makes htmx swap the header, the sidebar, and a nested #main into the
+// existing #main, so the user sees two sidebars side by side.
+func uiShellTemplateName(r *http.Request) string {
+	if isHTMXRequest(r) {
+		return "shell-main-content"
+	}
+	return "shell"
 }
 
 func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
