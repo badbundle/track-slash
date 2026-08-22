@@ -245,7 +245,14 @@ func (s *Server) uiBuildProjectsPanel(ctx context.Context, user model.User) (*ui
 }
 
 func (s *Server) uiBuildOwnerProjectsPanel(ctx context.Context, user model.User, username string) (*uiProjectsPanelData, error) {
-	owner, err := s.store.GetUserByUsername(ctx, username)
+	// A malformed owner segment is plain user input. Without normalizing first,
+	// GetUserByUsername returns a bare validation error that writeUIStoreError
+	// cannot map, so the route answered 500 and logged an internal error.
+	normalized, err := store.NormalizeUsername(username)
+	if err != nil {
+		return nil, errUIBadRequest
+	}
+	owner, err := s.store.GetUserByUsername(ctx, normalized)
 	if err != nil {
 		return nil, err
 	}
