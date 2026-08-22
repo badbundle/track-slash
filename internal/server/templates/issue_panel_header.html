@@ -7,7 +7,7 @@
           {{template "priority-badge" .Issue.Priority}}
         </div>
         {{if .EditTitle}}
-        <form method="post" action="{{issueTitle .Issue}}" hx-post="{{issueTitle .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2">
+        <form method="post" action="{{issueTitle .Issue}}" hx-post="{{issueTitle .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2">{{template "csrf-field" $.CSRFToken}}
           <div class="min-w-0">
             <div class="flex min-w-0 flex-wrap items-center gap-2">
               <input name="title" value="{{.TitleInput}}" autofocus aria-label="Issue title" class="min-h-11 min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-2xl sm:text-3xl font-semibold tracking-normal text-slate-950 outline-none ring-indigo-500 [field-sizing:content] focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
@@ -67,7 +67,7 @@
             <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
           </summary>
           <div class="absolute right-0 top-11 z-20 w-48 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-            <form method="post" action="{{issueDelete .Issue}}" hx-post="{{issueDelete .Issue}}" hx-target="#main" hx-push-url="{{.BackHref}}" hx-confirm="Delete this issue? You can undo it from the next screen.">
+            <form method="post" action="{{issueDelete .Issue}}" hx-post="{{issueDelete .Issue}}" hx-target="#main" hx-push-url="{{.BackHref}}" hx-confirm="Delete this issue? You can undo it from the next screen.">{{template "csrf-field" $.CSRFToken}}
               <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-rose-500 dark:text-rose-300 dark:hover:bg-rose-950/40">
                 <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                 <span>Delete issue</span>

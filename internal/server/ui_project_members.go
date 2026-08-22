@@ -24,6 +24,7 @@ func uiProjectMemberAutocomplete(panel *uiProjectPanelData) uiAutocompleteEditDa
 		})
 	}
 	data := uiAutocompleteEditData{
+		CSRFToken:      panel.CSRFToken,
 		ID:             "project-member-user",
 		Label:          "User",
 		Name:           "username",
@@ -66,6 +67,7 @@ func (s *Server) uiProjectMemberCandidates(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "autocomplete-options", uiProjectMemberAutocomplete(&uiProjectPanelData{
+		CSRFToken:        uiSessionCSRFToken(r),
 		Project:          project,
 		MemberInput:      input,
 		MemberCandidates: candidates,

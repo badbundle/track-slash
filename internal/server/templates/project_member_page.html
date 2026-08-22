@@ -13,7 +13,7 @@
     <div class="mt-5 grid gap-6">
       <section>
         <h3 class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Public access</h3>
-        <form method="post" action="{{projectAccess .Project}}" hx-post="{{projectAccess .Project}}" hx-target="#main" hx-push-url="false" class="mt-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+        <form method="post" action="{{projectAccess .Project}}" hx-post="{{projectAccess .Project}}" hx-target="#main" hx-push-url="false" class="mt-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">{{template "csrf-field" $.CSRFToken}}
           <label class="flex items-start gap-3">
             <input type="checkbox" name="is_public" {{if .AccessSettings.IsPublic}}checked{{end}} class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
             <span>
@@ -54,14 +54,14 @@
             <span class="inline-flex w-fit items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200">Owner</span>
             {{else}}
             <div class="flex items-center gap-2">
-              <form method="post" action="{{projectMember $.Project .Username}}" hx-post="{{projectMember $.Project .Username}}" hx-target="#main" hx-push-url="false" class="flex items-center gap-2">
+              <form method="post" action="{{projectMember $.Project .Username}}" hx-post="{{projectMember $.Project .Username}}" hx-target="#main" hx-push-url="false" class="flex items-center gap-2">{{template "csrf-field" $.CSRFToken}}
                 <select name="role" aria-label="Role for @{{.Username}}" class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
                   <option value="member" {{if eq .Role "member"}}selected{{end}}>Member</option>
                   <option value="readonly" {{if eq .Role "readonly"}}selected{{end}}>Readonly</option>
                 </select>
                 <button type="submit" aria-label="Save role for @{{.Username}}" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"><i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i></button>
               </form>
-              <form method="post" action="{{projectMemberDelete $.Project .Username}}" hx-post="{{projectMemberDelete $.Project .Username}}" hx-target="#main" hx-push-url="false" hx-confirm="Remove @{{.Username}} from this project?">
+              <form method="post" action="{{projectMemberDelete $.Project .Username}}" hx-post="{{projectMemberDelete $.Project .Username}}" hx-target="#main" hx-push-url="false" hx-confirm="Remove @{{.Username}} from this project?">{{template "csrf-field" $.CSRFToken}}
                 <button type="submit" aria-label="Remove @{{.Username}}" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"><i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i></button>
               </form>
             </div>
@@ -72,7 +72,7 @@
       </section>
 
       {{template "modal-open" (projectMemberCreateModal .)}}
-        <form method="post" action="{{projectMembers .Project}}" hx-post="{{projectMembers .Project}}" hx-target="#main" hx-push-url="false" data-search data-search-collapsible data-project-search class="mt-4 space-y-3">
+        <form method="post" action="{{projectMembers .Project}}" hx-post="{{projectMembers .Project}}" hx-target="#main" hx-push-url="false" data-search data-search-collapsible data-project-search class="mt-4 space-y-3">{{template "csrf-field" $.CSRFToken}}
           {{template "autocomplete-input" (projectMemberAutocomplete .)}}
           {{template "autocomplete-options" (projectMemberAutocomplete .)}}
           {{if .MemberError}}<p class="text-sm text-rose-700 dark:text-rose-300">{{.MemberError}}</p>{{end}}
@@ -111,7 +111,7 @@
                 <p class="truncate text-xs text-slate-500 dark:text-slate-400">@{{.Username}}</p>
               </div>
             </div>
-            <form method="post" action="{{projectBlockDelete $.Project .Username}}" hx-post="{{projectBlockDelete $.Project .Username}}" hx-target="#main" hx-push-url="false">
+            <form method="post" action="{{projectBlockDelete $.Project .Username}}" hx-post="{{projectBlockDelete $.Project .Username}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
               <button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2.5 text-sm text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"><i data-lucide="user-check" class="h-4 w-4" aria-hidden="true"></i>Unblock</button>
             </form>
           </div>
@@ -121,7 +121,7 @@
       </section>
 
       {{template "modal-open" (projectBlockCreateModal .)}}
-        <form method="post" action="{{projectBlocks .Project}}" hx-post="{{projectBlocks .Project}}" hx-target="#main" hx-push-url="false" class="mt-4">
+        <form method="post" action="{{projectBlocks .Project}}" hx-post="{{projectBlocks .Project}}" hx-target="#main" hx-push-url="false" class="mt-4">{{template "csrf-field" $.CSRFToken}}
           <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="project-block-username">Exact username</label>
           <input id="project-block-username" name="username" value="{{.BlockInput}}" autocomplete="off" placeholder="@username" autofocus class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
           {{if .BlockError}}<p class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{.BlockError}}</p>{{end}}

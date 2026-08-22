@@ -72,6 +72,7 @@ type uiProjectIconData struct {
 }
 
 type uiImagePickerData struct {
+	CSRFToken    string
 	Modal        uiModalData
 	Label        string
 	ThumbnailURL string
@@ -85,10 +86,11 @@ type uiImagePickerData struct {
 }
 
 type uiProjectFavoriteData struct {
-	Project  model.Project
-	View     string
-	Favorite bool
-	Sidebar  uiSidebarFavoritesData
+	CSRFToken string
+	Project   model.Project
+	View      string
+	Favorite  bool
+	Sidebar   uiSidebarFavoritesData
 }
 
 type uiBreadcrumbData struct {
@@ -294,6 +296,7 @@ type uiContextManagerItem struct {
 }
 
 type uiContextManagerData struct {
+	CSRFToken          string
 	Mode               string
 	Action             string
 	Project            model.Project
@@ -340,6 +343,7 @@ type uiAutocompleteOption struct {
 }
 
 type uiOptionDropdownData struct {
+	CSRFToken    string
 	Action       string
 	HXTarget     string
 	HXPushURL    string
@@ -361,6 +365,7 @@ type uiOptionDropdownOption struct {
 }
 
 type uiAutocompleteEditData struct {
+	CSRFToken         string
 	ID                string
 	Label             string
 	Action            string
@@ -409,8 +414,9 @@ type uiModalBadge struct {
 }
 
 type uiIssueDeleteNotice struct {
-	Issue    model.Issue
-	CanWrite bool
+	CSRFToken string
+	Issue     model.Issue
+	CanWrite  bool
 }
 
 type uiTabBarData struct {
@@ -446,6 +452,7 @@ type uiWorkPanelData struct {
 }
 
 type uiProjectPanelData struct {
+	CSRFToken                       string
 	Project                         model.Project
 	View                            string
 	Anonymous                       bool
@@ -581,13 +588,15 @@ type uiProjectChangelogPageData struct {
 }
 
 type uiDeletedIssuesPanelData struct {
-	Project  model.Project
-	Issues   []model.Issue
-	HasMore  bool
-	CanWrite bool
+	CSRFToken string
+	Project   model.Project
+	Issues    []model.Issue
+	HasMore   bool
+	CanWrite  bool
 }
 
 type uiDeletedIssuePanelData struct {
+	CSRFToken string
 	Issue     model.Issue
 	Project   model.Project
 	CanWrite  bool
@@ -596,6 +605,7 @@ type uiDeletedIssuePanelData struct {
 }
 
 type uiIssuePanelData struct {
+	CSRFToken          string
 	Issue              model.Issue
 	Project            model.Project
 	CanWrite           bool
@@ -677,6 +687,7 @@ type uiGitHubIssueLink struct {
 }
 
 type uiTagManagerData struct {
+	CSRFToken   string
 	Mode        string
 	Project     model.Project
 	Issue       model.Issue
@@ -705,6 +716,7 @@ type uiProjectsPanelData struct {
 }
 
 type uiNewProjectPanelData struct {
+	CSRFToken   string
 	Error       string
 	Key         string
 	Name        string
@@ -712,6 +724,7 @@ type uiNewProjectPanelData struct {
 }
 
 type uiNewIssuePanelData struct {
+	CSRFToken         string
 	Project           model.Project
 	HasProject        bool
 	ProjectScoped     bool
@@ -740,6 +753,7 @@ type uiTokenPanelData struct {
 }
 
 type uiSettingsPanelData struct {
+	CSRFToken       string
 	User            model.User
 	ProfileError    string
 	ProfileSaved    bool

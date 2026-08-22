@@ -31,7 +31,7 @@
       <div class="divide-y divide-slate-100 dark:divide-slate-800">
         {{range .Tags}}
         {{if and (not $.HasIssue) (eq $.EditTagID .ID)}}
-        <form method="post" action="{{projectTag $.Project .}}" hx-post="{{projectTag $.Project .}}" hx-target="#main" hx-push-url="false" class="grid gap-3 px-4 py-3">
+        <form method="post" action="{{projectTag $.Project .}}" hx-post="{{projectTag $.Project .}}" hx-target="#main" hx-push-url="false" class="grid gap-3 px-4 py-3">{{template "csrf-field" $.CSRFToken}}
           <input name="name" value="{{$.EditName}}" autofocus class="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
           <div class="flex flex-wrap items-center gap-1.5">
             {{range tagColors}}
@@ -60,7 +60,7 @@
           </div>
           {{if $.CanWrite}}
           {{if $.HasIssue}}
-          <form method="post" action="{{issueTagDelete $.Issue .}}" hx-post="{{issueTagDelete $.Issue .}}" hx-target="#main" hx-push-url="false">
+          <form method="post" action="{{issueTagDelete $.Issue .}}" hx-post="{{issueTagDelete $.Issue .}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
             <button type="submit" aria-label="Remove tag" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
               <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
             </button>
@@ -70,7 +70,7 @@
             <a href="{{projectTag $.Project .}}/edit" hx-get="{{projectTag $.Project .}}/edit" hx-target="#main" hx-push-url="false" aria-label="Edit tag" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
               <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
             </a>
-            <form method="post" action="{{projectTagDelete $.Project .}}" hx-post="{{projectTagDelete $.Project .}}" hx-target="#main" hx-push-url="false">
+            <form method="post" action="{{projectTagDelete $.Project .}}" hx-post="{{projectTagDelete $.Project .}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
               <button type="submit" aria-label="Delete tag" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
                 <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
               </button>
@@ -93,7 +93,7 @@
         <a href="{{projectTags .Project}}" hx-get="{{projectTags .Project}}" hx-target="#main" hx-push-url="{{projectTags .Project}}" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-indigo-700 dark:text-slate-300 dark:hover:text-indigo-200"><i data-lucide="tags" class="h-4 w-4" aria-hidden="true"></i>Manage project tags</a>
       </div>
       {{template "modal-open" (tagAttachModal .)}}
-        <form method="post" action="{{issueTags .Issue}}" hx-post="{{issueTags .Issue}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-3">
+        <form method="post" action="{{issueTags .Issue}}" hx-post="{{issueTags .Issue}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-3">{{template "csrf-field" $.CSRFToken}}
           <select name="tag" class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <option value="">Choose tag</option>
             {{range .Available}}<option value="{{.Name}}" {{if eq $.AttachInput .Name}}selected{{end}}>{{.DisplayName}}</option>{{end}}
@@ -107,7 +107,7 @@
       {{template "modal-close" .}}
       {{else}}
       {{template "modal-open" (tagCreateModal .)}}
-        <form method="post" action="{{projectTags .Project}}" hx-post="{{projectTags .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-3">
+        <form method="post" action="{{projectTags .Project}}" hx-post="{{projectTags .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-3">{{template "csrf-field" $.CSRFToken}}
           <input name="name" value="{{.NameInput}}" placeholder="#Customer Beta" autofocus class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
           <div class="flex flex-wrap items-center gap-1.5">
             {{range tagColors}}

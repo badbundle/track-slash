@@ -82,7 +82,7 @@ func (s *Server) uiNewProjectPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiNewProjectPanel(w http.ResponseWriter, r *http.Request) {
-	renderUITemplate(w, http.StatusOK, "new-project-panel", uiNewProjectPanelData{})
+	renderUITemplate(w, http.StatusOK, "new-project-panel", uiNewProjectPanelData{CSRFToken: uiSessionCSRFToken(r)})
 }
 
 func (s *Server) uiCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +150,7 @@ func (s *Server) uiNewIssueProjectOptions(w http.ResponseWriter, r *http.Request
 		return
 	}
 	data := uiNewIssueProjectAutocomplete(&uiNewIssuePanelData{
+		CSRFToken:         uiSessionCSRFToken(r),
 		ProjectInput:      input.ProjectInput,
 		ProjectOptions:    uiFilterNewIssueProjects(projects, input.ProjectInput),
 		ProjectSearchOpen: strings.TrimSpace(input.ProjectInput) != "",
@@ -417,6 +418,7 @@ func (s *Server) renderUINewProject(w http.ResponseWriter, r *http.Request, stat
 		User:     currentUser(r),
 		Projects: projects,
 		NewProjectPanel: &uiNewProjectPanelData{
+			CSRFToken:   uiSessionCSRFToken(r),
 			Error:       message,
 			Key:         key,
 			Name:        name,

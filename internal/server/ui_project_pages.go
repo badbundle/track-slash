@@ -96,9 +96,10 @@ func (s *Server) uiToggleProjectFavorite(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "project-favorite-toggle-response", uiProjectFavoriteData{
-		Project:  project,
-		View:     view,
-		Favorite: !favorite,
+		CSRFToken: uiSessionCSRFToken(r),
+		Project:   project,
+		View:      view,
+		Favorite:  !favorite,
 		Sidebar: uiSidebarFavoritesData{
 			Projects:        favorites,
 			ActiveProjectID: project.ID,
@@ -353,6 +354,7 @@ func (s *Server) uiIssueItemsWithSubIssueProgress(ctx context.Context, issues []
 }
 
 func (s *Server) uiBuildNewIssuePanel(ctx context.Context, r *http.Request, input uiNewIssuePanelData) (*uiNewIssuePanelData, error) {
+	input.CSRFToken = uiSessionCSRFToken(r)
 	user := currentUser(r)
 	projects, err := s.uiIssueCreatableProjects(ctx, user)
 	if err != nil {
@@ -456,6 +458,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	}
 
 	panel := &uiProjectPanelData{
+		CSRFToken:                  uiSessionCSRFToken(r),
 		Project:                    project,
 		View:                       view,
 		Anonymous:                  currentUser(r).ID == uuid.Nil,
@@ -938,10 +941,11 @@ func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request,
 		return nil, err
 	}
 	return &uiDeletedIssuesPanelData{
-		Project:  project,
-		Issues:   deleted,
-		HasMore:  hasMore,
-		CanWrite: permissions.CanWrite,
+		CSRFToken: uiSessionCSRFToken(r),
+		Project:   project,
+		Issues:    deleted,
+		HasMore:   hasMore,
+		CanWrite:  permissions.CanWrite,
 	}, nil
 }
 
@@ -958,6 +962,7 @@ func (s *Server) uiBuildDeletedIssuePanel(ctx context.Context, r *http.Request, 
 		return nil, err
 	}
 	return &uiDeletedIssuePanelData{
+		CSRFToken: uiSessionCSRFToken(r),
 		Issue:     issue,
 		Project:   project,
 		CanWrite:  permissions.CanWrite,

@@ -16,7 +16,7 @@
 
       {{if .NewSprint}}
       {{template "modal-open" (newSprintCreateModal .)}}
-        <form method="post" action="{{projectSprints .Project}}" hx-post="{{projectSprints .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3">
+        <form method="post" action="{{projectSprints .Project}}" hx-post="{{projectSprints .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3">{{template "csrf-field" $.CSRFToken}}
           <div class="grid gap-3 md:grid-cols-2">
             <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Name
               <input name="name" value="{{.NewSprintForm.NameInput}}" autofocus class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
@@ -65,12 +65,12 @@
             </div>
             <div class="flex max-w-[9rem] shrink-0 flex-wrap items-center justify-end gap-2 justify-self-end sm:max-w-none">
               {{if $item.HasMore}}<span class="text-xs text-slate-500 dark:text-slate-400">Showing first 200</span>{{end}}
-              {{if $.CanWrite}}<form method="post" action="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-post="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">
+              {{if $.CanWrite}}<form method="post" action="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-post="{{projectSprintMoveUp $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
                 <button type="submit" aria-label="Move sprint up" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="arrow-up" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
               </form>
-              <form method="post" action="{{projectSprintMoveDown $.Project $item.Sprint}}" hx-post="{{projectSprintMoveDown $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">
+              <form method="post" action="{{projectSprintMoveDown $.Project $item.Sprint}}" hx-post="{{projectSprintMoveDown $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
                 <button type="submit" aria-label="Move sprint down" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                   <i data-lucide="arrow-down" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
@@ -81,12 +81,12 @@
               <button type="button" aria-label="Edit sprint" hx-get="{{projectSprintEdit $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
                 <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
               </button>
-              <form method="post" action="{{projectSprintActivate $.Project $item.Sprint}}" hx-post="{{projectSprintActivate $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">
+              <form method="post" action="{{projectSprintActivate $.Project $item.Sprint}}" hx-post="{{projectSprintActivate $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
                 <button type="submit" aria-label="Activate sprint" class="grid h-8 w-8 place-items-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950 dark:focus:ring-offset-slate-900">
                   <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
               </form>
-              <form method="post" action="{{projectSprintDelete $.Project $item.Sprint}}" hx-post="{{projectSprintDelete $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" hx-confirm="Delete this planned sprint? Issues will return to the backlog.">
+              <form method="post" action="{{projectSprintDelete $.Project $item.Sprint}}" hx-post="{{projectSprintDelete $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" hx-confirm="Delete this planned sprint? Issues will return to the backlog.">{{template "csrf-field" $.CSRFToken}}
                 <button type="submit" aria-label="Delete sprint" class="grid h-8 w-8 place-items-center rounded-md border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:border-rose-900 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:focus:ring-offset-slate-900">
                   <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
@@ -98,7 +98,7 @@
           {{end}}
 
           {{if and (eq $.PlannedSprintActionID $item.Sprint.ID) (eq $.PlannedSprintAction "edit")}}
-          <form method="post" action="{{projectSprint $.Project $item.Sprint}}" hx-post="{{projectSprint $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid gap-3 border-t border-slate-100 px-4 py-4 dark:border-slate-800">
+          <form method="post" action="{{projectSprint $.Project $item.Sprint}}" hx-post="{{projectSprint $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="grid gap-3 border-t border-slate-100 px-4 py-4 dark:border-slate-800">{{template "csrf-field" $.CSRFToken}}
             <div class="grid gap-3 md:grid-cols-2">
               <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Name
                 <input name="name" value="{{$.PlannedSprintForm.NameInput}}" autofocus class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
@@ -130,7 +130,7 @@
           </form>
           {{else if and (eq $.PlannedSprintActionID $item.Sprint.ID) (eq $.PlannedSprintAction "add-issue")}}
           {{template "modal-open" (plannedSprintIssueCreateModal $ $item.Sprint)}}
-          <form method="post" action="{{projectSprintIssues $.Project $item.Sprint}}" hx-post="{{projectSprintIssues $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="mt-4">
+          <form method="post" action="{{projectSprintIssues $.Project $item.Sprint}}" hx-post="{{projectSprintIssues $.Project $item.Sprint}}" hx-target="#main" hx-push-url="false" class="mt-4">{{template "csrf-field" $.CSRFToken}}
             <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Issue</label>
             <input name="issue" value="{{$.PlannedSprintIssueForm.IssueInput}}" autofocus placeholder="{{$.Project.Key}}-12" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             <div class="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">

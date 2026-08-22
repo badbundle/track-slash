@@ -218,10 +218,11 @@ func uiProjectInitial(name, key string) string {
 	return strings.ToUpper(string([]rune(source)[0]))
 }
 
-func uiProfileImagePicker(user model.User) uiImagePickerData {
+func uiProfileImagePicker(user model.User, csrfToken string) uiImagePickerData {
 	avatar := uiUserAvatar(user, "")
 	hasImage := user.ProfileImageThumbnailObjectID != nil
 	return uiImagePickerData{
+		CSRFToken: csrfToken,
 		Modal: uiModalData{
 			ID:               "profile-image-picker",
 			Title:            "Profile image",
@@ -241,10 +242,11 @@ func uiProfileImagePicker(user model.User) uiImagePickerData {
 	}
 }
 
-func uiProjectImagePicker(project model.Project) uiImagePickerData {
+func uiProjectImagePicker(project model.Project, csrfToken string) uiImagePickerData {
 	icon := uiProjectIcon(project, "")
 	hasImage := project.ImageThumbnailObjectID != nil
 	return uiImagePickerData{
+		CSRFToken: csrfToken,
 		Modal: uiModalData{
 			ID:               "project-image-picker",
 			Title:            "Project image",
@@ -768,6 +770,7 @@ func uiIssueStatusDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
 		})
 	}
 	return uiOptionDropdownData{
+		CSRFToken:    panel.CSRFToken,
 		Action:       uiIssueStatusPath(panel.Issue),
 		HXTarget:     "#main",
 		HXPushURL:    "false",
@@ -841,6 +844,7 @@ func uiIssueCloseReasonDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
 		})
 	}
 	return uiOptionDropdownData{
+		CSRFToken:    panel.CSRFToken,
 		Action:       uiIssueCloseReasonPath(panel.Issue),
 		HXTarget:     "#main",
 		HXPushURL:    "false",

@@ -85,6 +85,7 @@ func (s *Server) renderUISettings(w http.ResponseWriter, r *http.Request, user m
 		User:     user,
 		Projects: projects,
 		SettingsPanel: &uiSettingsPanelData{
+			CSRFToken:       uiSessionCSRFToken(r),
 			User:            user,
 			ProfileError:    profileError,
 			ProfileSaved:    profileSaved,
