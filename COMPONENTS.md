@@ -53,6 +53,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 - `issue-summary-row`: responsive issue list row content accepting a `uiIssueItem`. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward. When `SubIssueProgress.Total` is non-zero, it also shows the shared compact completed/total ring used on sprint cards.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
+- Shell responses: `renderUIShell` renders the whole document for a navigation and only `shell-main-content` for an htmx request. Every htmx control targets a sub-element, and `#main` is a sibling of the sidebar inside `.app-shell`, so answering htmx with a document swaps a second header, sidebar, and `#main` into the existing `#main`. Add new whole-page panels to `shell-main-content`, never to the `shell-main` wrapper.
 - `error-panel`: shell-hosted 404 and 405 page backed by `uiErrorPanelData` (status, title, message). Rendered through `renderUIShell` so signed-in visitors keep their sidebar; add new whole-page error states here rather than writing bare `http.Error` responses on portal routes.
 - Context detail row: issue detail uses a Details-sidebar row labeled `Context`, a `count-badge`, and a compact book-open action that opens the integrated issue Context manager and pushes its URL. Project About does not render context; project context is a top-level tab.
 
