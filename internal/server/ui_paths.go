@@ -97,8 +97,12 @@ func uiProjectMembersPanelPath(project model.Project) string {
 	return uiProjectMembersPath(project) + "/panel"
 }
 
+// Everything below /members/ is addressed by username. chi resolves a static
+// segment before a param one, so any collection-level action parked in that
+// namespace would permanently capture the member of the same name. Those actions
+// live beside /members instead.
 func uiProjectMemberCandidatesPath(project model.Project) string {
-	return uiProjectMembersPath(project) + "/candidates"
+	return uiProjectPath(project) + "/member-candidates"
 }
 
 func uiProjectMemberPath(project model.Project, username string) string {
@@ -110,11 +114,11 @@ func uiProjectMemberDeletePath(project model.Project, username string) string {
 }
 
 func uiProjectAccessPath(project model.Project) string {
-	return uiProjectMembersPath(project) + "/access"
+	return uiProjectPath(project) + "/member-access"
 }
 
 func uiProjectBlocksPath(project model.Project) string {
-	return uiProjectMembersPath(project) + "/blocks"
+	return uiProjectPath(project) + "/member-blocks"
 }
 
 func uiProjectBlockDeletePath(project model.Project, username string) string {
