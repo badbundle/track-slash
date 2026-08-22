@@ -170,6 +170,20 @@ func (s *Store) RevokeAuthTokenForUser(ctx context.Context, userID, id uuid.UUID
 	return nil
 }
 
+// RevokeSessionAuthTokensForUser revokes every live web session belonging to a
+// user and reports how many it revoked. API tokens are long-lived by design and
+// are never touched.
+func (s *Store) RevokeSessionAuthTokensForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE auth_tokens SET revoked_at = now()
+		WHERE user_id = $1 AND kind = $2 AND revoked_at IS NULL
+	`, userID, model.AuthTokenKindSession)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func generateToken() (string, error) {
 	b := make([]byte, rawTokenBytes)
 	if _, err := rand.Read(b); err != nil {

@@ -1002,3 +1002,81 @@ func mustLookupProject(t *testing.T, err error) {
 		t.Fatalf("lookup project: %v", err)
 	}
 }
+
+// Revoking web sessions must be a partition of the token list: every live
+// session goes, every API token stays, and already-revoked rows are not
+// re-stamped.
+func TestRevokeSessionAuthTokensForUser(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	user, err := env.store.CreateUser(env.ctx, "sessions-"+uniqueProjectKey(t)+"@example.com", "Sessions")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	other, err := env.store.CreateUser(env.ctx, "other-"+uniqueProjectKey(t)+"@example.com", "Other")
+	if err != nil {
+		t.Fatalf("CreateUser other: %v", err)
+	}
+
+	newToken := func(userID uuid.UUID, kind model.AuthTokenKind, name string) model.AuthToken {
+		t.Helper()
+		created, err := env.store.CreateAuthToken(env.ctx, store.CreateAuthTokenParams{UserID: userID, Kind: kind, Name: name})
+		if err != nil {
+			t.Fatalf("CreateAuthToken %s: %v", name, err)
+		}
+		return created.Token
+	}
+
+	liveSession := newToken(user.ID, model.AuthTokenKindSession, "live")
+	staleSession := newToken(user.ID, model.AuthTokenKindSession, "stale")
+	apiToken := newToken(user.ID, model.AuthTokenKindAPI, "deploy")
+	otherSession := newToken(other.ID, model.AuthTokenKindSession, "someone else")
+
+	if err := env.store.RevokeAuthTokenForUser(env.ctx, user.ID, staleSession.ID); err != nil {
+		t.Fatalf("RevokeAuthTokenForUser: %v", err)
+	}
+
+	revoked, err := env.store.RevokeSessionAuthTokensForUser(env.ctx, user.ID)
+	if err != nil {
+		t.Fatalf("RevokeSessionAuthTokensForUser: %v", err)
+	}
+	if revoked != 1 {
+		t.Fatalf("revoked = %d, want 1 (the already-revoked session must not count again)", revoked)
+	}
+
+	tokens, err := env.store.ListAuthTokens(env.ctx, user.ID)
+	if err != nil {
+		t.Fatalf("ListAuthTokens: %v", err)
+	}
+	for _, token := range tokens {
+		switch token.ID {
+		case liveSession.ID, staleSession.ID:
+			if token.RevokedAt == nil {
+				t.Fatalf("session %q survived: %+v", token.Name, token)
+			}
+		case apiToken.ID:
+			if token.RevokedAt != nil {
+				t.Fatalf("API token was revoked: %+v", token)
+			}
+		}
+	}
+
+	otherTokens, err := env.store.ListAuthTokens(env.ctx, other.ID)
+	if err != nil {
+		t.Fatalf("ListAuthTokens other: %v", err)
+	}
+	for _, token := range otherTokens {
+		if token.ID == otherSession.ID && token.RevokedAt != nil {
+			t.Fatalf("another user's session was revoked: %+v", token)
+		}
+	}
+
+	// A second sweep has nothing left to do.
+	again, err := env.store.RevokeSessionAuthTokensForUser(env.ctx, user.ID)
+	if err != nil {
+		t.Fatalf("second sweep: %v", err)
+	}
+	if again != 0 {
+		t.Fatalf("second sweep revoked = %d, want 0", again)
+	}
+}
