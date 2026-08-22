@@ -1,6 +1,8 @@
 {{define "shell-main"}}
     <main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 dark:bg-slate-950">
-      {{if .WorkPanel}}
+      {{if .ErrorPanel}}
+      {{template "error-panel" .ErrorPanel}}
+      {{else if .WorkPanel}}
       {{template "work-panel" .WorkPanel}}
       {{else if .ProjectsPanel}}
       {{template "projects-panel" .ProjectsPanel}}

@@ -139,6 +139,12 @@ func (s *Server) Router() http.Handler {
 
 	r.Use(redirectUITrailingSlash)
 
+	// chi pushes these into any sub-router that has none of its own, so the
+	// /api/v1 sub-router sets JSON responders explicitly to avoid answering
+	// JSON clients with HTML.
+	r.NotFound(s.uiOptionalAuth(s.uiNotFound))
+	r.MethodNotAllowed(s.uiOptionalAuth(s.uiMethodNotAllowed))
+
 	if s.devReload {
 		r.Get(devReloadPath, s.devReloadEvents)
 	}
@@ -146,6 +152,9 @@ func (s *Server) Router() http.Handler {
 	s.mountUIRoutes(r)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.NotFound(apiNotFound)
+		r.MethodNotAllowed(apiMethodNotAllowed)
+
 		r.Get("/healthz", s.healthz)
 		r.Post("/accounts", s.authIPRateLimited(s.createAccount))
 		r.Post("/accounts/passkey/options", s.authIPRateLimited(s.createPasskeyAccountOptions))
