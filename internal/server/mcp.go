@@ -405,7 +405,7 @@ func (s *Server) mountMCPRoutes(r chi.Router) {
 		SessionTimeout: 30 * time.Minute,
 	})
 	authenticated := mcpauth.RequireBearerToken(s.verifyMCPBearerToken, nil)(handler)
-	r.Handle("/mcp", s.mcpOriginMiddleware(authenticated))
+	r.Handle("/mcp", s.mcpOriginMiddleware(mcpBearerChallengeMiddleware(authenticated)))
 }
 
 func (s *Server) mcpOriginMiddleware(next http.Handler) http.Handler {
