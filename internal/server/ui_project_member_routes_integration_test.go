@@ -134,7 +134,7 @@ func TestUIProjectMemberPageUsesTheRelocatedActionPaths(t *testing.T) {
 		e.projectPath() + "/members/candidates",
 	} {
 		if strings.Contains(page, unwanted) {
-			t.Fatalf("member page still uses the shadowed path %q", unwanted)
+			t.Fatalf("member page still uses the captured path %q", unwanted)
 		}
 	}
 }
