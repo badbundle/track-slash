@@ -431,8 +431,32 @@ func (s *Server) uiIssueLinkTargetIdentifier(ctx context.Context, issueID uuid.U
 }
 
 func redirectUILogin(w http.ResponseWriter, r *http.Request) {
-	next := url.QueryEscape(safeUINext(r.URL.RequestURI()))
-	http.Redirect(w, r, "/login?next="+next, http.StatusSeeOther)
+	target := "/login?next=" + url.QueryEscape(uiLoginNext(r))
+	if isHTMXRequest(r) {
+		// htmx follows a 303 transparently and swaps the login document into
+		// #main, which is a sibling of the sidebar inside .app-shell, so the
+		// login card renders inside the app shell while the URL bar still
+		// shows the old page. HX-Redirect makes the browser navigate instead.
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// uiLoginNext picks the address to return to after signing in. For an htmx
+// request the request URI is a panel fragment such as /me/panel, which would
+// leave the user staring at a fragment rendered as a whole page, so the
+// browser's own address is preferred when htmx reports it.
+func uiLoginNext(r *http.Request) string {
+	if isHTMXRequest(r) {
+		if current := strings.TrimSpace(r.Header.Get("HX-Current-URL")); current != "" {
+			if parsed, err := url.Parse(current); err == nil && parsed.Path != "" {
+				return safeUINext(parsed.RequestURI())
+			}
+		}
+	}
+	return safeUINext(r.URL.RequestURI())
 }
 
 func isHTMXRequest(r *http.Request) bool {
