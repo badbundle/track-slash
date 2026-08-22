@@ -293,6 +293,7 @@ func (s *Server) uiBuildProjectTagManager(ctx context.Context, r *http.Request, 
 		return nil, err
 	}
 	return &uiTagManagerData{
+		CSRFToken:  uiSessionCSRFToken(r),
 		Mode:       "project",
 		Project:    project,
 		CanWrite:   permissions.CanWrite,
@@ -329,6 +330,7 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 		return nil, err
 	}
 	return &uiTagManagerData{
+		CSRFToken: uiSessionCSRFToken(r),
 		Mode:      "issue",
 		Project:   project,
 		Issue:     issue,

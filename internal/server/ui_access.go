@@ -352,7 +352,7 @@ func (s *Server) uiDeletedIssueNotice(ctx context.Context, r *http.Request, owne
 	if err != nil {
 		return nil, err
 	}
-	return &uiIssueDeleteNotice{Issue: issue, CanWrite: permissions.CanWrite}, nil
+	return &uiIssueDeleteNotice{CSRFToken: uiSessionCSRFToken(r), Issue: issue, CanWrite: permissions.CanWrite}, nil
 }
 
 func (s *Server) uiIssueLinkFromRoute(w http.ResponseWriter, r *http.Request, issue model.Issue) (model.IssueLink, bool) {

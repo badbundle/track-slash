@@ -272,6 +272,7 @@ func uiIssueReporterAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData
 
 func uiIssueMemberAutocomplete(panel *uiIssuePanelData, label, action, name, value, placeholder, saveLabel, cancelLabel, message string) uiAutocompleteEditData {
 	return uiAutocompleteEditData{
+		CSRFToken:   panel.CSRFToken,
 		Label:       label,
 		Action:      action,
 		PanelPath:   uiIssuePanelPath(panel.Issue),
@@ -289,6 +290,7 @@ func uiIssueMemberAutocomplete(panel *uiIssuePanelData, label, action, name, val
 
 func uiIssueSprintAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
 	return uiAutocompleteEditData{
+		CSRFToken:   panel.CSRFToken,
 		Label:       "Sprint",
 		Action:      uiIssueSprintPath(panel.Issue),
 		PanelPath:   uiIssuePanelPath(panel.Issue),
@@ -306,6 +308,7 @@ func uiIssueSprintAutocomplete(panel *uiIssuePanelData) uiAutocompleteEditData {
 
 func uiNewIssueProjectAutocomplete(panel *uiNewIssuePanelData) uiAutocompleteEditData {
 	return uiAutocompleteEditData{
+		CSRFToken:         panel.CSRFToken,
 		ID:                "issue-project",
 		Label:             "Project",
 		Name:              "project",
@@ -543,6 +546,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 
 	backHref, backHXGet, backLabel := uiIssueBackLink(project, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
+		CSRFToken:          uiSessionCSRFToken(r),
 		Issue:              issue,
 		Project:            project,
 		CanWrite:           permissions.CanWrite,

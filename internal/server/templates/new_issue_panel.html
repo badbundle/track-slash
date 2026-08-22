@@ -35,7 +35,7 @@
         {{end}}
       </form>
 
-      <form id="new-issue-form" method="post" action="{{issues}}" hx-post="{{issues}}" hx-target="#main" hx-push-url="false" class="mt-4">
+      <form id="new-issue-form" method="post" action="{{issues}}" hx-post="{{issues}}" hx-target="#main" hx-push-url="false" class="mt-4">{{template "csrf-field" $.CSRFToken}}
       {{if .ProjectScoped}}<input type="hidden" name="project_scoped" value="true">{{end}}
       <input type="hidden" name="project_id" value="{{.ProjectID}}">
       <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-title">Title</label>

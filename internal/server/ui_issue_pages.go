@@ -95,7 +95,7 @@ func (s *Server) uiDeleteIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uiSetHXPushURL(w, r, backHref)
-	s.renderUIIssueBackTarget(w, r, panel, &uiIssueDeleteNotice{Issue: issue, CanWrite: true})
+	s.renderUIIssueBackTarget(w, r, panel, &uiIssueDeleteNotice{CSRFToken: uiSessionCSRFToken(r), Issue: issue, CanWrite: true})
 }
 
 func (s *Server) uiRestoreIssue(w http.ResponseWriter, r *http.Request) {

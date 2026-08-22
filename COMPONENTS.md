@@ -36,6 +36,7 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 
 ## Forms
 
+- `csrf-field`: hidden `csrf_token` input. Every form with `method="post"` must include it as `{{template "csrf-field" $.CSRFToken}}`, which means the data passed to that template needs a `CSRFToken` field populated from `uiSessionCSRFToken(r)`. `TestEveryPostFormRendersACSRFField` fails the build if a posting form omits it, and `TestRenderedPagesCarryAPopulatedCSRFToken` fails if a construction site leaves it empty.
 - `option-dropdown`: expanded dropdown/listbox for choosing one option and submitting immediately. Backed by `uiOptionDropdownData`; use for compact enum-like changes such as issue status and close reason.
 - `autocomplete-input` and `autocomplete-options`: shared search/autofill building blocks backed by `uiAutocompleteEditData` and `uiAutocompleteOption`. Supports local option filtering, optional hidden target values, addressable option containers, collapsible suggestions, and optional debounced HTMX refresh on input for server-filtered suggestions.
 - `autocomplete-edit`: search-style edit row with suggestions and save/cancel actions. Use for member, sprint, and similar lookup fields.

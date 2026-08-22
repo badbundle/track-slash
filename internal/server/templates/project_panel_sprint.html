@@ -26,7 +26,7 @@
           <button type="button" aria-label="Edit sprint" hx-get="{{projectSprintEdit .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
           </button>
-          <form method="post" action="{{projectSprintComplete .Project .ActiveSprint}}" hx-post="{{projectSprintComplete .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" hx-confirm="Complete this sprint? Open issues move to the next planned sprint or backlog.">
+          <form method="post" action="{{projectSprintComplete .Project .ActiveSprint}}" hx-post="{{projectSprintComplete .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" hx-confirm="Complete this sprint? Open issues move to the next planned sprint or backlog.">{{template "csrf-field" $.CSRFToken}}
             <button type="submit" aria-label="Complete sprint" class="grid h-8 w-8 place-items-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950 dark:focus:ring-offset-slate-900">
               <i data-lucide="check-check" class="h-4 w-4" aria-hidden="true"></i>
             </button>
@@ -40,7 +40,7 @@
       </div>
       {{end}}
       {{if and .ActiveSprint (eq .ActiveSprintAction "edit")}}
-      <form method="post" action="{{projectSprint .Project .ActiveSprint}}" hx-post="{{projectSprint .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+      <form method="post" action="{{projectSprint .Project .ActiveSprint}}" hx-post="{{projectSprint .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4 grid gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">{{template "csrf-field" $.CSRFToken}}
         <div class="grid gap-3 md:grid-cols-2">
           <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Name
             <input name="name" value="{{.ActiveSprintForm.NameInput}}" autofocus class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
@@ -72,7 +72,7 @@
       </form>
       {{else if and .ActiveSprint (eq .ActiveSprintAction "add-issue")}}
       {{template "modal-open" (activeSprintIssueCreateModal .)}}
-      <form method="post" action="{{projectSprintIssues .Project .ActiveSprint}}" hx-post="{{projectSprintIssues .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4">
+      <form method="post" action="{{projectSprintIssues .Project .ActiveSprint}}" hx-post="{{projectSprintIssues .Project .ActiveSprint}}" hx-target="#main" hx-push-url="false" class="mt-4">{{template "csrf-field" $.CSRFToken}}
         <label class="block text-xs font-medium text-slate-500 dark:text-slate-400">Issue</label>
         <input name="issue" value="{{.ActiveSprintIssueForm.IssueInput}}" autofocus placeholder="{{.Project.Key}}-12" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
         <div class="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">

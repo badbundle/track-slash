@@ -347,7 +347,8 @@ func (s *Server) renderUIProjectContextManager(w http.ResponseWriter, r *http.Re
 		return
 	}
 	projectPanel := &uiProjectPanelData{
-		Project: panel.Project, View: "context", Favorite: favorite,
+		CSRFToken: uiSessionCSRFToken(r),
+		Project:   panel.Project, View: "context", Favorite: favorite,
 		ProjectTabs: uiProjectTabs(panel.Project, "context", nil), ContextManager: panel,
 	}
 	if isHTMXRequest(r) {
@@ -444,11 +445,12 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 		items = append(items, uiContextManagerItemFromSummary(contextItem))
 	}
 	return &uiContextManagerData{
-		Mode:     "project",
-		Project:  project,
-		CanWrite: permissions.CanWrite,
-		Items:    items,
-		HasMore:  hasMore,
+		CSRFToken: uiSessionCSRFToken(r),
+		Mode:      "project",
+		Project:   project,
+		CanWrite:  permissions.CanWrite,
+		Items:     items,
+		HasMore:   hasMore,
 	}, nil
 }
 
@@ -561,6 +563,7 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 		items = append(items, uiContextManagerItemFromContext(contextItem))
 	}
 	return &uiContextManagerData{
+		CSRFToken:      uiSessionCSRFToken(r),
 		Mode:           "issue",
 		Project:        project,
 		Issue:          issue,

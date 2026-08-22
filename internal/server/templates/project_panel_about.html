@@ -3,7 +3,7 @@
     <div class="min-w-0 space-y-6">
       <section class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         {{if .EditProjectDescription}}
-        <form method="post" action="{{projectDescription .Project}}" hx-post="{{projectDescription .Project}}" hx-target="#main" hx-push-url="false">
+        <form method="post" action="{{projectDescription .Project}}" hx-post="{{projectDescription .Project}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
             <div class="flex items-center gap-2">
@@ -46,13 +46,13 @@
         {{if .GitHubConnections}}<div class="divide-y divide-slate-100 dark:divide-slate-800">
           {{range .GitHubConnections}}<div class="flex items-center gap-3 px-4 py-3">
             <div class="min-w-0 flex-1"><a href="{{.RepositoryURL}}" target="_blank" rel="noreferrer" class="truncate text-sm font-medium text-indigo-700 hover:underline dark:text-indigo-300">{{.FullName}}</a><p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{if .Private}}Private{{else}}Public{{end}} · validated {{template "local-time" (tokenTime .LastValidatedAt)}}</p></div>
-            {{if $.CanManageMembers}}<form method="post" action="{{projectGitHubDisconnect $.Project .}}" hx-post="{{projectGitHubDisconnect $.Project .}}" hx-target="#main" hx-push-url="false"><button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"><i data-lucide="unlink" class="h-3.5 w-3.5" aria-hidden="true"></i>Disconnect</button></form>{{end}}
+            {{if $.CanManageMembers}}<form method="post" action="{{projectGitHubDisconnect $.Project .}}" hx-post="{{projectGitHubDisconnect $.Project .}}" hx-target="#main" hx-push-url="false">{{template "csrf-field" $.CSRFToken}}<button type="submit" class="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800"><i data-lucide="unlink" class="h-3.5 w-3.5" aria-hidden="true"></i>Disconnect</button></form>{{end}}
           </div>{{end}}
         </div>{{else}}<p class="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">No GitHub repositories connected.</p>{{end}}
         {{if and .CanManageMembers (not .GitHubConfigured)}}<div class="border-t border-slate-100 px-4 py-3 dark:border-slate-800"><p class="text-sm text-slate-500 dark:text-slate-400">Set the server encryption key to enable repository connections.</p></div>{{end}}
         {{if and .CanManageMembers .GitHubConfigured}}
         {{template "modal-open" (projectGitHubConnectionModal .)}}
-          <form method="post" action="{{projectGitHubConnections .Project}}" hx-post="{{projectGitHubConnections .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-4">
+          <form method="post" action="{{projectGitHubConnections .Project}}" hx-post="{{projectGitHubConnections .Project}}" hx-target="#main" hx-push-url="false" class="mt-4 space-y-4">{{template "csrf-field" $.CSRFToken}}
             <div>
               <label for="project-github-repository" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Repository</label>
               <input id="project-github-repository" name="repository" value="{{.GitHubRepositoryInput}}" placeholder="owner/repository" autocomplete="off" autofocus class="mt-2 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
@@ -228,7 +228,7 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project image</dt>
             <dd class="mt-2 flex items-start gap-3">
               {{template "project-icon" (projectIcon .Project "grid h-12 w-12 shrink-0 place-items-center border border-slate-200 bg-slate-100 text-sm font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300")}}
-              {{if .CanWrite}}{{template "image-picker" (projectImagePicker .Project)}}{{end}}
+              {{if .CanWrite}}{{template "image-picker" (projectImagePicker .Project $.CSRFToken)}}{{end}}
             </dd>
           </div>
           <div>
