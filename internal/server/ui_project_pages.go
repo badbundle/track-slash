@@ -19,7 +19,21 @@ func (s *Server) uiProjectPage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	http.Redirect(w, r, uiProjectViewPath(project, "sprint"), http.StatusSeeOther)
+	uiRedirectPreservingQuery(w, r, uiProjectViewPath(project, "sprint"))
+}
+
+// uiRedirectPreservingQuery sends the browser to a canonical view without
+// dropping the filter and sort parameters it arrived with, so a bookmarked or
+// shared filtered URL does not land on the unfiltered view.
+func uiRedirectPreservingQuery(w http.ResponseWriter, r *http.Request, target string) {
+	if r.URL.RawQuery != "" {
+		separator := "?"
+		if strings.Contains(target, "?") {
+			separator = "&"
+		}
+		target += separator + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view string) {
@@ -143,7 +157,7 @@ func (s *Server) uiProjectLegacyBacklog(w http.ResponseWriter, r *http.Request, 
 	if panel {
 		target = uiProjectPanelPath(project, "all")
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	uiRedirectPreservingQuery(w, r, target)
 }
 
 func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
