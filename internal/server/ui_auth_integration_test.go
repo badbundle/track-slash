@@ -191,10 +191,14 @@ func TestUILogoutClearsCookie(t *testing.T) {
 		t.Fatalf("logout revoked non-session token: %v", err)
 	}
 
+	// Signing out without a session is a no-op, not a CSRF failure: there is
+	// nothing to destroy and nothing for an attacker to gain. Answering 403 here
+	// told visitors "CSRF validation failed." for a tab that had outlived its
+	// cookie, or a second click on Sign out.
 	res = e.uiDoNoRedirect(t, http.MethodPost, "/logout", "", nil)
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf("no-cookie logout code = %d", res.StatusCode)
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
+		t.Fatalf("no-cookie logout code = %d location = %q", res.StatusCode, res.Header.Get("Location"))
 	}
 }
 
