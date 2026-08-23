@@ -103,6 +103,31 @@ func (s *Server) uiSessionCSRFMiddleware(next http.Handler) http.Handler {
 	return s.uiCSRFMiddleware(uiSessionCSRFToken)(next)
 }
 
+// uiLogoutCSRFMiddleware enforces the session CSRF check only while there is a
+// session to protect.
+//
+// Signing out is the one unsafe route reachable without the auth middleware, so
+// it is the only one a browser can post to after its session cookie is gone.
+// uiSessionCSRFToken then derives nothing, the check fails on the expected side
+// rather than the supplied side, and the visitor is told "CSRF validation
+// failed." for the harmless act of signing out when already signed out. A tab
+// that outlives its cookie and a second click on Sign out both land here.
+//
+// With no cookie there is no session to destroy and nothing for an attacker to
+// gain, so the request proceeds and the handler sends the browser to /login.
+// A request that does carry a session is still checked: forcing a signed-in
+// user to sign out is a real, if minor, cross-site nuisance.
+func (s *Server) uiLogoutCSRFMiddleware(next http.Handler) http.Handler {
+	guarded := s.uiSessionCSRFMiddleware(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if uiSessionCSRFToken(r) == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		guarded.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) uiCSRFMiddleware(expectedToken func(*http.Request) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -33,7 +33,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 	r.With(s.uiPreAuthCSRFMiddleware).Post("/signup", s.authIPRateLimited(s.uiSignup))
 	r.With(s.uiPreAuthCSRFMiddleware).Post("/signup/passkey/options", s.authIPRateLimited(s.uiPasskeySignupOptions))
 	r.With(s.uiPreAuthCSRFMiddleware).Post("/signup/passkey", s.authIPRateLimited(s.uiPasskeySignup))
-	r.With(s.uiSessionCSRFMiddleware).Post("/logout", s.uiLogout)
+	r.With(s.uiLogoutCSRFMiddleware).Post("/logout", s.uiLogout)
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.uiAuthMiddleware)
