@@ -235,6 +235,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"statusOptions":                  uiStatusOptions,
 	"statusRow":                      uiStatusRowClass,
 	"statusSurface":                  uiStatusSurfaceClass,
+	"statusCard":                     uiStatusCardClass,
 	"statusValue":                    uiStatusValue,
 	"subIssueProgress":               uiSubIssueProgress,
 	"tagClass":                       uiTagClass,

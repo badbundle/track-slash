@@ -9,7 +9,7 @@
         {{if eq .Issue.Status "closed"}}{{template "close-reason-badge" .Issue.CloseReason}}{{end}}
       </div>
       <p class="mt-5 text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Deleted issue</p>
-      <h1 class="mt-2 text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">This issue has been deleted</h1>
+      <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">This issue has been deleted</h1>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</p>
       <div class="mx-auto my-6 h-px max-w-xs bg-slate-200 dark:bg-slate-800"></div>
       <p class="mx-auto max-w-md break-words text-lg font-semibold text-slate-950 dark:text-slate-100">{{.Issue.Title}}</p>

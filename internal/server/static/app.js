@@ -379,12 +379,12 @@
       return;
     }
     status.classList.add(
-      kind === "ok" ? "border-emerald-200" : "border-red-200",
-      kind === "ok" ? "bg-emerald-50" : "bg-red-50",
-      kind === "ok" ? "text-emerald-800" : "text-red-700",
-      kind === "ok" ? "dark:border-emerald-900" : "dark:border-red-900",
-      kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-red-950",
-      kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
+      kind === "ok" ? "border-emerald-200" : "border-rose-200",
+      kind === "ok" ? "bg-emerald-50" : "bg-rose-50",
+      kind === "ok" ? "text-emerald-800" : "text-rose-700",
+      kind === "ok" ? "dark:border-emerald-900" : "dark:border-rose-900",
+      kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-rose-950/40",
+      kind === "ok" ? "dark:text-emerald-200" : "dark:text-rose-200",
     );
   };
   const setPasswordLoginStatus = (panel, message, kind = "error") => {
@@ -397,12 +397,12 @@
       return;
     }
     status.classList.add(
-      kind === "ok" ? "border-emerald-200" : "border-red-200",
-      kind === "ok" ? "bg-emerald-50" : "bg-red-50",
-      kind === "ok" ? "text-emerald-800" : "text-red-700",
-      kind === "ok" ? "dark:border-emerald-900" : "dark:border-red-900",
-      kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-red-950",
-      kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
+      kind === "ok" ? "border-emerald-200" : "border-rose-200",
+      kind === "ok" ? "bg-emerald-50" : "bg-rose-50",
+      kind === "ok" ? "text-emerald-800" : "text-rose-700",
+      kind === "ok" ? "dark:border-emerald-900" : "dark:border-rose-900",
+      kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-rose-950/40",
+      kind === "ok" ? "dark:text-emerald-200" : "dark:text-rose-200",
     );
   };
   const setPasskeyBusy = (panel, busy) => {
@@ -532,12 +532,12 @@
     if (!status) return;
     status.textContent = message || "";
     status.classList.toggle("hidden", !message);
-    status.classList.toggle("border-red-200", !!message && error);
-    status.classList.toggle("bg-red-50", !!message && error);
-    status.classList.toggle("text-red-700", !!message && error);
-    status.classList.toggle("dark:border-red-900", !!message && error);
-    status.classList.toggle("dark:bg-red-950", !!message && error);
-    status.classList.toggle("dark:text-red-200", !!message && error);
+    status.classList.toggle("border-rose-200", !!message && error);
+    status.classList.toggle("bg-rose-50", !!message && error);
+    status.classList.toggle("text-rose-700", !!message && error);
+    status.classList.toggle("dark:border-rose-900", !!message && error);
+    status.classList.toggle("dark:bg-rose-950/40", !!message && error);
+    status.classList.toggle("dark:text-rose-200", !!message && error);
     status.classList.toggle("border-emerald-200", !!message && !error);
     status.classList.toggle("bg-emerald-50", !!message && !error);
     status.classList.toggle("text-emerald-800", !!message && !error);
@@ -1064,6 +1064,30 @@
     if (csrfToken) event.detail.headers["X-CSRF-Token"] = csrfToken;
   });
   document.body.addEventListener("submit", (event) => ensureCSRFFormToken(event.target), true);
+  // Requests that swap #main are page navigations; while any is in flight the
+  // brand progress bar shows. Counting the requests themselves keeps a fast
+  // second click from clearing the bar while the first request still runs.
+  const navRequests = new WeakSet();
+  let navRequestCount = 0;
+  const syncNavBusy = () => {
+    document.documentElement.toggleAttribute("data-nav-busy", navRequestCount > 0);
+  };
+  document.body.addEventListener("htmx:beforeRequest", (event) => {
+    const detail = event.detail || {};
+    if (detail.xhr && detail.target && detail.target.id === "main" && !navRequests.has(detail.xhr)) {
+      navRequests.add(detail.xhr);
+      navRequestCount += 1;
+      syncNavBusy();
+    }
+  });
+  document.body.addEventListener("htmx:afterRequest", (event) => {
+    const xhr = event.detail && event.detail.xhr;
+    if (xhr && navRequests.has(xhr)) {
+      navRequests.delete(xhr);
+      navRequestCount = Math.max(0, navRequestCount - 1);
+      syncNavBusy();
+    }
+  });
   document.body.addEventListener("htmx:beforeRequest", (event) => {
     hideAppTooltip();
     rememberIssueListControls(event.target);

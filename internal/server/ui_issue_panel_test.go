@@ -191,14 +191,14 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		`h-5 w-5`,
 		`h-3 w-3`,
 		`border-blue-300 bg-blue-50 text-blue-800`,
-		`bg-blue-50/45 dark:bg-blue-950/15`,
+		`bg-slate-50 bg-gradient-to-b from-blue-50/45 to-blue-50/45 dark:bg-slate-950 dark:from-blue-950/15 dark:to-blue-950/15`,
 		`bg-emerald-50/45 hover:bg-emerald-50`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("issue panel missing %q: %s", want, body)
 		}
 	}
-	if got := strings.Count(body, "bg-blue-50/45 dark:bg-blue-950/15"); got != 1 {
+	if got := strings.Count(body, "from-blue-50/45 to-blue-50/45"); got != 1 {
 		t.Fatalf("issue panel should tint the title card only, got %d matches: %s", got, body)
 	}
 	if strings.Contains(body, "⌘ + Enter to send") {

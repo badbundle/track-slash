@@ -1202,18 +1202,46 @@ func uiStatusRowClass(s model.Status) string {
 	}
 }
 
+// Status cards sit straight on the page, over the brand backdrop, so they
+// can't use the translucent row tints directly. Each lays the row tint as a
+// flat gradient over an opaque page-colour base: the card looks the same as it
+// did on the plain page, and the backdrop never shows through.
+const (
+	uiStatusCardTodoClass       = "bg-slate-50 bg-gradient-to-b from-slate-50/70 to-slate-50/70 dark:bg-slate-950 dark:from-slate-900/30 dark:to-slate-900/30"
+	uiStatusCardInProgressClass = "bg-slate-50 bg-gradient-to-b from-blue-50/45 to-blue-50/45 dark:bg-slate-950 dark:from-blue-950/15 dark:to-blue-950/15"
+	uiStatusCardDoneClass       = "bg-slate-50 bg-gradient-to-b from-emerald-50/45 to-emerald-50/45 dark:bg-slate-950 dark:from-emerald-950/15 dark:to-emerald-950/15"
+	uiStatusCardClosedClass     = "bg-slate-50 bg-gradient-to-b from-zinc-50/70 to-zinc-50/70 dark:bg-slate-950 dark:from-zinc-900/35 dark:to-zinc-900/35"
+)
+
 func uiStatusSurfaceClass(s model.Status) string {
 	switch s {
 	case model.StatusTodo:
-		return "bg-slate-50/70 dark:bg-slate-900/30"
+		return uiStatusCardTodoClass
 	case model.StatusInProgress:
-		return "bg-blue-50/45 dark:bg-blue-950/15"
+		return uiStatusCardInProgressClass
 	case model.StatusDone:
-		return "bg-emerald-50/45 dark:bg-emerald-950/15"
+		return uiStatusCardDoneClass
 	case model.StatusClosed:
-		return "bg-zinc-50/70 dark:bg-zinc-900/35"
+		return uiStatusCardClosedClass
 	default:
 		return "bg-white dark:bg-slate-900"
+	}
+}
+
+// uiStatusCardClass is uiStatusSurfaceClass plus the row hover tints, for
+// board cards that link to their issue.
+func uiStatusCardClass(s model.Status) string {
+	switch s {
+	case model.StatusTodo:
+		return uiStatusCardTodoClass + " hover:from-slate-100/80 hover:to-slate-100/80 dark:hover:from-slate-800/70 dark:hover:to-slate-800/70"
+	case model.StatusInProgress:
+		return uiStatusCardInProgressClass + " hover:from-blue-50 hover:to-blue-50 dark:hover:from-blue-950/30 dark:hover:to-blue-950/30"
+	case model.StatusDone:
+		return uiStatusCardDoneClass + " hover:from-emerald-50 hover:to-emerald-50 dark:hover:from-emerald-950/30 dark:hover:to-emerald-950/30"
+	case model.StatusClosed:
+		return uiStatusCardClosedClass + " hover:from-zinc-100/80 hover:to-zinc-100/80 dark:hover:from-zinc-800/70 dark:hover:to-zinc-800/70"
+	default:
+		return "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"
 	}
 }
 

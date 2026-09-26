@@ -12,10 +12,10 @@
           <input type="hidden" name="view" value="{{.View}}">
           <div class="flex min-w-0 items-start gap-2">
             <div class="min-w-0">
-              <input name="name" value="{{.ProjectNameInput}}" autofocus aria-label="Project name" class="min-h-10 min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-2xl font-semibold tracking-normal text-slate-950 outline-none ring-indigo-500 [field-sizing:content] focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              <input name="name" value="{{.ProjectNameInput}}" autofocus aria-label="Project name" class="min-h-10 min-w-0 max-w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-2xl font-semibold tracking-tight text-slate-950 outline-none ring-indigo-500 [field-sizing:content] focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
               {{if .ProjectNameError}}<p class="mt-1 text-xs text-rose-600 dark:text-rose-300">{{.ProjectNameError}}</p>{{end}}
             </div>
-            <button type="submit" aria-label="Save project name" class="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+            <button type="submit" aria-label="Save project name" class="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
               <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
             </button>
             <button type="button" aria-label="Cancel editing project name" hx-get="{{projectPanel .Project .View}}" hx-target="#main" hx-push-url="false" class="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
@@ -25,7 +25,7 @@
         </form>
         {{else}}
         <div class="mt-1 flex min-w-0 items-start gap-2">
-          <h1 class="min-w-0 truncate text-2xl font-semibold tracking-normal">{{.Project.Name}}</h1>
+          <h1 class="min-w-0 truncate text-2xl font-semibold tracking-tight">{{.Project.Name}}</h1>
           {{if not .Anonymous}}{{template "project-favorite-action" .}}{{end}}
           {{if .CanWrite}}<button type="button" aria-label="Edit project name" hx-get="{{projectNameEdit .Project}}?view={{.View}}" hx-target="#main" hx-push-url="false" class="mt-1 inline-grid h-7 w-7 shrink-0 align-middle place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
             <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>

@@ -6,23 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{.CSRFToken}}">
   <title>trackslash</title>
-  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-  <link rel="alternate icon" href="/favicon.ico" sizes="32x32">
-  <link rel="apple-touch-icon" href="/static/icon-192.png">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#4f46e5">
-  <link rel="stylesheet" href="/static/app.css">
+{{template "brand-head"}}
   <script src="/static/preload.js"></script>
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <script src="/static/htmx.min.js"></script>
   <script defer src="/static/lucide.min.js"></script>
 </head>
 <body data-authenticated="{{if .Anonymous}}false{{else}}true{{end}}" class="flex flex-col overflow-hidden bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
+{{template "brand-backdrop" "ambient"}}
+  <div data-nav-progress class="nav-progress" aria-hidden="true"></div>
   <header data-mobile-app-bar class="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
     <button type="button" data-mobile-sidebar-toggle aria-label="Open navigation" aria-controls="app-sidebar" aria-expanded="false" class="grid h-9 w-9 shrink-0 place-items-center rounded-md text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-slate-300 dark:hover:bg-slate-800">
       <i data-lucide="menu" class="h-4 w-4" aria-hidden="true"></i>
     </button>
-    <div class="min-w-0 truncate text-sm font-semibold">trackslash</div>
+    {{template "brand-mark"}}
   </header>
   <button type="button" data-mobile-sidebar-backdrop hidden aria-hidden="true" tabindex="-1" aria-label="Close navigation" class="fixed inset-0 z-30 bg-slate-950/40 md:hidden"></button>
   <div class="app-shell flex min-h-0 flex-1">
