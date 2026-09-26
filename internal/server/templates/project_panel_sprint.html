@@ -60,7 +60,7 @@
         {{template "description-attachment-list" (sprintAttachmentListData .Project .ActiveSprint .ActiveSprintDescription.Attachments .ActiveSprintDescription.AttachmentsHasMore true)}}
         {{if .ActiveSprintForm.Error}}<p class="text-xs text-rose-600 dark:text-rose-300">{{.ActiveSprintForm.Error}}</p>{{end}}
         <div class="flex flex-wrap items-center gap-2">
-          <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+          <button type="submit" aria-label="Save sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
             <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
             Save
           </button>
@@ -77,7 +77,7 @@
         <input name="issue" value="{{.ActiveSprintIssueForm.IssueInput}}" autofocus placeholder="{{.Project.Key}}-12" class="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
         <div class="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
           <button type="button" data-modal-close class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">Cancel</button>
-          <button type="submit" aria-label="Add issue to sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+          <button type="submit" aria-label="Add issue to sprint" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
             Add issue
           </button>
@@ -101,7 +101,7 @@
         {{if .Issues}}
         <div class="space-y-2">
           {{range .Issues}}
-          <article class="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800 {{statusRow .Issue.Status}}">
+          <article class="rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800 {{statusCard .Issue.Status}}">
             <a href="{{issueHref .Issue}}" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="{{issueHref .Issue}}" class="block">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex min-w-0 items-center gap-2">

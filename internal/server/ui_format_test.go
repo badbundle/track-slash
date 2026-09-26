@@ -182,16 +182,39 @@ func TestUIStatusSurfaceClass(t *testing.T) {
 		status model.Status
 		want   string
 	}{
-		{status: model.StatusTodo, want: "bg-slate-50/70 dark:bg-slate-900/30"},
-		{status: model.StatusInProgress, want: "bg-blue-50/45 dark:bg-blue-950/15"},
-		{status: model.StatusDone, want: "bg-emerald-50/45 dark:bg-emerald-950/15"},
-		{status: model.StatusClosed, want: "bg-zinc-50/70 dark:bg-zinc-900/35"},
+		{status: model.StatusTodo, want: "bg-slate-50 bg-gradient-to-b from-slate-50/70 to-slate-50/70 dark:bg-slate-950 dark:from-slate-900/30 dark:to-slate-900/30"},
+		{status: model.StatusInProgress, want: "bg-slate-50 bg-gradient-to-b from-blue-50/45 to-blue-50/45 dark:bg-slate-950 dark:from-blue-950/15 dark:to-blue-950/15"},
+		{status: model.StatusDone, want: "bg-slate-50 bg-gradient-to-b from-emerald-50/45 to-emerald-50/45 dark:bg-slate-950 dark:from-emerald-950/15 dark:to-emerald-950/15"},
+		{status: model.StatusClosed, want: "bg-slate-50 bg-gradient-to-b from-zinc-50/70 to-zinc-50/70 dark:bg-slate-950 dark:from-zinc-900/35 dark:to-zinc-900/35"},
 		{status: model.Status("custom"), want: "bg-white dark:bg-slate-900"},
 	}
 
 	for _, tt := range tests {
 		if got := uiStatusSurfaceClass(tt.status); got != tt.want {
 			t.Fatalf("uiStatusSurfaceClass(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+// Status cards sit on the brand backdrop, so every tinted variant needs an
+// opaque base colour under its translucent tint.
+func TestUIStatusCardClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status model.Status
+		want   string
+	}{
+		{status: model.StatusTodo, want: "bg-slate-50 bg-gradient-to-b from-slate-50/70 to-slate-50/70 dark:bg-slate-950 dark:from-slate-900/30 dark:to-slate-900/30 hover:from-slate-100/80 hover:to-slate-100/80 dark:hover:from-slate-800/70 dark:hover:to-slate-800/70"},
+		{status: model.StatusInProgress, want: "bg-slate-50 bg-gradient-to-b from-blue-50/45 to-blue-50/45 dark:bg-slate-950 dark:from-blue-950/15 dark:to-blue-950/15 hover:from-blue-50 hover:to-blue-50 dark:hover:from-blue-950/30 dark:hover:to-blue-950/30"},
+		{status: model.StatusDone, want: "bg-slate-50 bg-gradient-to-b from-emerald-50/45 to-emerald-50/45 dark:bg-slate-950 dark:from-emerald-950/15 dark:to-emerald-950/15 hover:from-emerald-50 hover:to-emerald-50 dark:hover:from-emerald-950/30 dark:hover:to-emerald-950/30"},
+		{status: model.StatusClosed, want: "bg-slate-50 bg-gradient-to-b from-zinc-50/70 to-zinc-50/70 dark:bg-slate-950 dark:from-zinc-900/35 dark:to-zinc-900/35 hover:from-zinc-100/80 hover:to-zinc-100/80 dark:hover:from-zinc-800/70 dark:hover:to-zinc-800/70"},
+		{status: model.Status("custom"), want: "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800/60"},
+	}
+
+	for _, tt := range tests {
+		if got := uiStatusCardClass(tt.status); got != tt.want {
+			t.Fatalf("uiStatusCardClass(%q) = %q, want %q", tt.status, got, tt.want)
 		}
 	}
 }

@@ -1,9 +1,8 @@
 {{/*
-  Signed-out auth pages share one branded shell: the animated backdrop, the
-  icon and wordmark, and the legal links. This is the one deliberate exception
-  to the app's no-hero, no-gradient rule; see "Login page" in DESIGN_CONTEXT.md.
-  Pass the page's CSRF token to auth-page-open, put the page body between the
-  two templates, and close with auth-page-close.
+  Signed-out auth pages share one branded shell: the full animated backdrop,
+  the icon and wordmark, and the legal links. See "Brand" and "Login page" in
+  DESIGN_CONTEXT.md. Pass the page's CSRF token to auth-page-open, put the page
+  body between the two templates, and close with auth-page-close.
 */}}
 {{define "auth-page-open"}}
 <!doctype html>
@@ -13,24 +12,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{.}}">
   <title>trackslash</title>
-  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-  <link rel="alternate icon" href="/favicon.ico" sizes="32x32">
-  <link rel="apple-touch-icon" href="/static/icon-192.png">
-  <meta name="theme-color" content="#4f46e5">
-  <link rel="stylesheet" href="/static/app.css">
+{{template "brand-head"}}
   <script defer src="/static/lucide.min.js"></script>
 </head>
 <body class="auth-page min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
-  <div data-auth-backdrop class="auth-backdrop" aria-hidden="true">
-    <div class="auth-backdrop-orb auth-backdrop-orb-indigo"></div>
-    <div class="auth-backdrop-orb auth-backdrop-orb-violet"></div>
-    <div class="auth-backdrop-orb auth-backdrop-orb-sky"></div>
-    <div class="auth-backdrop-orb auth-backdrop-orb-rose"></div>
-    <div class="auth-backdrop-glow"></div>
-    <div class="auth-backdrop-grid"></div>
-    <div class="auth-backdrop-slash auth-backdrop-slash-1"></div>
-    <div class="auth-backdrop-slash auth-backdrop-slash-2"></div>
-  </div>
+{{template "brand-backdrop" ""}}
   <main class="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
     <div class="w-full max-w-sm space-y-6">
       <div class="rounded-2xl border border-white/70 bg-white/90 p-6 shadow-xl shadow-indigo-950/10 ring-1 ring-slate-950/5 dark:border-white/10 dark:bg-slate-900/85 dark:shadow-black/40 dark:ring-white/5 sm:p-8">
@@ -56,7 +42,7 @@
           {{template "csrf-field" .CSRFToken}}
           <input type="hidden" name="next" value="{{.Next}}">
           {{if .Error}}
-          <div role="alert" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{{.Error}}</div>
+          <div role="alert" class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>
           {{end}}
           <div data-passkey-status class="hidden rounded-md border px-3 py-2 text-sm"></div>
           <button type="button" data-passkey-login class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 transition hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900">
@@ -95,7 +81,7 @@
           {{template "csrf-field" .CSRFToken}}
           <input type="hidden" name="next" value="{{.Next}}">
           {{if .Error}}
-          <div role="alert" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{{.Error}}</div>
+          <div role="alert" class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>
           {{end}}
           <div data-passkey-status class="hidden rounded-md border px-3 py-2 text-sm"></div>
           <div class="space-y-1.5">

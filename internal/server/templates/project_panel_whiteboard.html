@@ -34,7 +34,7 @@
       {{template "description-editor" (whiteboardEditor .)}}
       {{if .Error}}<p class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{.Error}}</p>{{end}}
       <div class="mt-4 flex items-center gap-2">
-        <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>Create page</button>
+        <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>Create page</button>
         <a href="{{whiteboardPages .Project}}" hx-get="{{projectPanel .Project "whiteboard"}}" hx-target="#main" hx-push-url="{{whiteboardPages .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>Cancel</a>
       </div>
     </form>
@@ -57,7 +57,7 @@
       {{template "description-editor" (whiteboardEditor .)}}
       {{if .Error}}<p class="mt-2 text-sm text-rose-700 dark:text-rose-300">{{.Error}}</p>{{end}}
       <div class="mt-4 flex items-center gap-2">
-        <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>Save</button>
+        <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>Save</button>
         <a href="{{whiteboardPage .Project .Active.Ref}}" hx-get="{{whiteboardPagePanel .Project .Active.Ref}}" hx-target="#main" hx-push-url="{{whiteboardPage .Project .Active.Ref}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>Cancel</a>
       </div>
     </form>
@@ -71,7 +71,7 @@
       <i data-lucide="presentation" class="mx-auto h-8 w-8 text-slate-400" aria-hidden="true"></i>
       <h2 class="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">No whiteboard pages yet</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Jot down notes and ideas about the project as Markdown pages.</p>
-      {{if .CanWrite}}<a href="{{whiteboardNew .Project}}" hx-get="{{whiteboardNew .Project}}" hx-target="#main" hx-push-url="{{whiteboardNew .Project}}" class="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New page</a>{{end}}
+      {{if .CanWrite}}<a href="{{whiteboardNew .Project}}" hx-get="{{whiteboardNew .Project}}" hx-target="#main" hx-push-url="{{whiteboardNew .Project}}" class="mt-4 inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New page</a>{{end}}
     </div>
     {{end}}
   </section>

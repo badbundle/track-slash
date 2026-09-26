@@ -496,8 +496,8 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 	signOut := menuHTML[signOutStart:]
 	for _, want := range []string{
-		`font-semibold text-red-600`,
-		`dark:text-red-400`,
+		`font-semibold text-rose-600`,
+		`dark:text-rose-300`,
 		`<i data-lucide="log-out" class="h-4 w-4" aria-hidden="true"></i>`,
 		`<span>Sign out</span>`,
 	} {
@@ -567,8 +567,9 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 	}
 	for _, want := range []string{
 		`.markdown-body { min-width: 0; overflow-wrap: anywhere; }`,
-		`.markdown-body h1 { font-size: 1.5rem; }`,
-		`.markdown-body h2 { font-size: 1.25rem; }`,
+		`.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { margin: 1rem 0 0.5rem; font-weight: 600; line-height: 1.25; color: rgb(15 23 42); }`,
+		`.markdown-body h1 { font-size: 1.5rem; letter-spacing: -0.025em; }`,
+		`.markdown-body h2 { font-size: 1.25rem; letter-spacing: -0.025em; }`,
 		`.markdown-body h3 { font-size: 1.125rem; }`,
 		`.markdown-body table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }`,
 		`.markdown-body table { display: block; max-width: 100%; overflow-x: auto; }`,
@@ -987,6 +988,9 @@ func TestUIRenderedPagesUseOnlySelfHostedExecutableAssets(t *testing.T) {
 		{name: "login", data: uiLoginData{}, want: []string{"/static/app.css", "/static/lucide.min.js", "/static/auth.js"}},
 		{name: "signup", data: uiSignupData{}, want: []string{"/static/app.css", "/static/lucide.min.js", "/static/auth.js"}},
 		{name: "shell", data: uiShellData{User: model.User{Username: "demo"}}, want: []string{"/static/app.css", "/static/preload.js", "/static/htmx.min.js", "/static/lucide.min.js", "/static/app.js"}},
+		{name: "oauth-consent", data: uiOAuthConsentData{ClientName: "Claude"}, want: []string{"/static/app.css", "/static/lucide.min.js", "/static/auth.js"}},
+		{name: "oauth-error", data: uiOAuthErrorData{Title: "Unknown client"}, want: []string{"/static/app.css", "/static/lucide.min.js", "/static/auth.js"}},
+		{name: "legal", data: uiLegalData{Title: "Terms"}, want: []string{"/static/app.css"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1006,6 +1010,91 @@ func TestUIRenderedPagesUseOnlySelfHostedExecutableAssets(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The app shell and the legal pages carry the login page's brand at a calmer
+// strength: the shared head links, the ambient backdrop, and the icon and
+// wordmark in their chrome. The shell also shows the navigation progress bar.
+func TestUIAppPagesCarryTheAmbientBrand(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name     string
+		template string
+		data     any
+		want     []string
+	}{
+		{name: "signed-in shell", template: "shell", data: uiShellData{User: model.User{Username: "demo"}}, want: []string{`<div data-nav-progress class="nav-progress" aria-hidden="true"></div>`}},
+		{name: "anonymous shell", template: "shell", data: uiShellData{Anonymous: true}, want: []string{`<div data-nav-progress class="nav-progress" aria-hidden="true"></div>`}},
+		{name: "legal", template: "legal", data: uiLegalData{Title: "Terms"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := uiTemplates.ExecuteTemplate(&buf, tt.template, tt.data); err != nil {
+				t.Fatalf("render %s: %v", tt.template, err)
+			}
+			body := buf.String()
+			for _, want := range append([]string{
+				`<link rel="icon" href="/static/icon.svg" type="image/svg+xml">`,
+				`<link rel="apple-touch-icon" href="/static/icon-192.png">`,
+				`<link rel="manifest" href="/manifest.webmanifest">`,
+				`<meta name="theme-color" content="#4f46e5">`,
+				`<div data-brand-backdrop class="brand-backdrop brand-backdrop-ambient" aria-hidden="true">`,
+				`<span data-brand-mark class="flex min-w-0 items-center gap-2.5">`,
+				`<img src="/static/icon.svg" alt="" width="28" height="28"`,
+				`<span class="truncate text-base font-semibold tracking-tight text-slate-950 dark:text-white">trackslash</span>`,
+			}, tt.want...) {
+				if !strings.Contains(body, want) {
+					t.Fatalf("%s missing %q", tt.name, want)
+				}
+			}
+			if strings.Contains(body, " style=") {
+				t.Fatalf("%s uses an inline style, which CSP forbids", tt.name)
+			}
+		})
+	}
+}
+
+// Cards that sit straight on the page must be opaque, or the brand backdrop
+// shows through them. #main itself stays transparent so the backdrop shows in
+// the gutters.
+func TestUIShellMainLetsTheBrandBackdropShowThrough(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
+		t.Fatalf("render shell: %v", err)
+	}
+	if !strings.Contains(buf.String(), `<main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">`) {
+		t.Fatalf("#main should have no background of its own: %s", buf.String())
+	}
+}
+
+// Only requests that swap #main are page navigations, and the bar counts each
+// in-flight request so an overlapping click cannot clear it early.
+func TestUIShellTracksNavigationProgress(t *testing.T) {
+	t.Parallel()
+
+	script, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	for _, want := range []string{
+		`document.documentElement.toggleAttribute("data-nav-busy", navRequestCount > 0);`,
+		`if (detail.xhr && detail.target && detail.target.id === "main" && !navRequests.has(detail.xhr)) {`,
+		`if (xhr && navRequests.has(xhr)) {`,
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Fatalf("app.js missing %q", want)
+		}
+	}
+	css, err := uiTemplateFS.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("read stylesheet: %v", err)
+	}
+	if !strings.Contains(string(css), "html[data-nav-busy] .nav-progress{opacity:1;transition-delay:.15s}") {
+		t.Fatal("stylesheet does not show the progress bar while a navigation is busy")
 	}
 }
 

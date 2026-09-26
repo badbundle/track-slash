@@ -269,7 +269,7 @@ func TestUIAccountPagesRenderTheirOwnSections(t *testing.T) {
 			if !strings.Contains(body, `<section data-sidebar-view="`+tt.view+`" class="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">`) {
 				t.Fatalf("%s missing the shared account page frame: %s", tt.path, body)
 			}
-			if !strings.Contains(body, `<h1 class="truncate text-2xl font-semibold tracking-normal">`+tt.title+`</h1>`) {
+			if !strings.Contains(body, `<h1 class="truncate text-2xl font-semibold tracking-tight">`+tt.title+`</h1>`) {
 				t.Fatalf("%s missing page title %q: %s", tt.path, tt.title, body)
 			}
 			for _, want := range tt.want {

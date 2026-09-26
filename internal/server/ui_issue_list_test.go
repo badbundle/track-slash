@@ -316,17 +316,22 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 	}
 	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
 
+	// Rows sit inside an opaque list card, so they use the translucent row tint.
+	// Standalone cards sit on the brand backdrop and need the opaque card tint.
+	const rowTint = "bg-emerald-50/45 hover:bg-emerald-50"
+	const cardTint = "bg-slate-50 bg-gradient-to-b from-emerald-50/45 to-emerald-50/45"
 	tests := []struct {
 		name       string
 		template   string
 		data       any
+		tint       string
 		hasBadge   bool
 		hasSummary bool
 	}{
-		{name: "project issue list", template: "issue-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
-		{name: "project inset issue list", template: "issue-list-inset", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
-		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, hasBadge: true, hasSummary: true},
-		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project, Assignee: &model.ProjectAssignee{ID: uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb"), Username: "ada", Name: "Ada Lovelace"}}}},
+		{name: "project issue list", template: "issue-list", data: []uiIssueItem{{Issue: issue, Project: project}}, tint: rowTint, hasBadge: true, hasSummary: true},
+		{name: "project inset issue list", template: "issue-list-inset", data: []uiIssueItem{{Issue: issue, Project: project}}, tint: rowTint, hasBadge: true, hasSummary: true},
+		{name: "work issue row list", template: "issue-row-list", data: []uiIssueItem{{Issue: issue, Project: project}}, tint: rowTint, hasBadge: true, hasSummary: true},
+		{name: "work issue card list", template: "issue-card-list", data: []uiIssueItem{{Issue: issue, Project: project, Assignee: &model.ProjectAssignee{ID: uuid.MustParse("23f14acb-6a57-4035-a046-33e93ffbd5bb"), Username: "ada", Name: "Ada Lovelace"}}}, tint: cardTint},
 	}
 
 	for _, tt := range tests {
@@ -338,7 +343,7 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 		for _, want := range []string{
 			"TRACK-7",
 			"inline-flex w-fit justify-self-start",
-			"bg-emerald-50/45 hover:bg-emerald-50",
+			tt.tint,
 			`aria-label="Priority P0"`,
 			"bg-red-600",
 			`aria-label="Due Jun 24, 2099"`,

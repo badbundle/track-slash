@@ -1,0 +1,38 @@
+{{/*
+  Brand building blocks shared by every full page: the head links, the animated
+  backdrop, and the icon + wordmark lockup. See "Brand" in DESIGN_CONTEXT.md.
+*/}}
+{{define "brand-head"}}
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="stylesheet" href="/static/app.css">
+{{end}}
+
+{{/*
+  The backdrop is pure CSS in frontend/tailwind.css. Pass "" for the full scene
+  behind a single centered card (login, signup, OAuth), or "ambient" for the
+  calmer version that sits behind the app shell and long-form pages.
+*/}}
+{{define "brand-backdrop"}}
+  <div data-brand-backdrop class="brand-backdrop{{with .}} brand-backdrop-{{.}}{{end}}" aria-hidden="true">
+    <div class="brand-backdrop-orb brand-backdrop-orb-indigo"></div>
+    <div class="brand-backdrop-orb brand-backdrop-orb-violet"></div>
+    <div class="brand-backdrop-orb brand-backdrop-orb-sky"></div>
+    <div class="brand-backdrop-orb brand-backdrop-orb-rose"></div>
+    <div class="brand-backdrop-glow"></div>
+    <div class="brand-backdrop-grid"></div>
+    <div class="brand-backdrop-slash brand-backdrop-slash-1"></div>
+    <div class="brand-backdrop-slash brand-backdrop-slash-2"></div>
+  </div>
+{{end}}
+
+{{/* The icon and wordmark at app-chrome size: sidebar, app bar, page headers. */}}
+{{define "brand-mark"}}
+<span data-brand-mark class="flex min-w-0 items-center gap-2.5">
+  <img src="/static/icon.svg" alt="" width="28" height="28" class="h-7 w-7 shrink-0 rounded-md shadow-sm shadow-indigo-600/30">
+  <span class="truncate text-base font-semibold tracking-tight text-slate-950 dark:text-white">trackslash</span>
+</span>
+{{end}}

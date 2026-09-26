@@ -12,9 +12,19 @@ Reusable server-rendered UI components live in `internal/server/templates/compon
 - `account-footer`: bordered page footer wrapping `legal-links`. Every account page (Profile, Login, Notifications, Tokens) ends with it; it takes no data.
 - `issue-list-controls`: collapsible shared status, priority, tag, assignee, sort, and direction controls for issue list views. Closed by default; summary shows active filter count plus current sort/direction. Sort uses dropdown options including due date; direction uses Asc/Desc dropdown options with arrow icons. Expects `uiIssueControlsData`; omit tag fields for cross-project lists and omit assignee fields for current-user scoped lists.
 
+## Brand
+
+Brand building blocks live in `internal/server/templates/brand.html`; see "Brand" in `DESIGN_CONTEXT.md`.
+
+- `brand-head`: the icon, apple-touch icon, manifest, theme colour, and stylesheet links. Every full-page document includes it inside `<head>`, so no page ships without the icon or the stylesheet.
+- `brand-backdrop`: the animated brand scene, a fixed, clipped, pointer-events-free layer at `z-index: -1` placed directly inside `<body>`. Pass `""` for the full scene behind a single centered card (auth and OAuth pages) or `"ambient"` for the calmer version behind the app shell and legal pages. Any surface that sits straight on the page must be opaque.
+- `brand-mark`: the 28px icon and `trackslash` wordmark lockup for page chrome (sidebar head, mobile app bar, legal header). Wrap it in a link where the chrome needs one; it takes no data.
+- Navigation progress: `shell.html` renders one `<div data-nav-progress class="nav-progress">` under `<body>`. `app.js` sets `data-nav-busy` on `<html>` while any htmx request targeting `#main` is in flight, and the stylesheet fades the bar in after a short delay.
+- `statusSurface` / `statusCard`: status tints for cards that sit straight on the page (the issue header, board cards). They lay the translucent `statusRow` tint over an opaque page-colour base; `statusCard` adds the row hover tint for linked cards. Use `statusRow` only for rows inside an opaque list card.
+
 ## Signed-out Auth Pages
 
-- `auth-page-open` and `auth-page-close` in `internal/server/templates/login.html`: the shared document shell for `login` and `signup`. Pass the page's CSRF token to `auth-page-open`; it renders the head, the animated `.auth-backdrop`, and opens the centered card with the icon and `trackslash` wordmark. Put the page body between the two templates; `auth-page-close` closes the card, adds `legal-links`, and loads `auth.js`. This shell is the documented exception to the no-gradient rule; see "Login page" in `DESIGN_CONTEXT.md`.
+- `auth-page-open` and `auth-page-close` in `internal/server/templates/login.html`: the shared document shell for `login`, `signup`, `oauth-consent`, and `oauth-error`. Pass the page's CSRF token (or `""` when the page has no form) to `auth-page-open`. It renders `brand-head`, the full `brand-backdrop`, and opens the centered card with the icon and `trackslash` wordmark, so page headings inside the card are `h2`. Put the page body between the two templates. `auth-page-close` closes the card, adds `legal-links`, and loads `auth.js`, which also renders the page's Lucide icons.
 - Login password disclosure: `<details data-password-login>` holds the username/password form below the primary passkey button. The server renders it `open` when the page carries a password-login error; `auth.js` opens it when WebAuthn is unavailable and focuses the username field whenever it opens.
 
 ## Controls

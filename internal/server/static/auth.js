@@ -11,12 +11,12 @@
       return;
     }
     status.classList.add(
-      kind === "ok" ? "border-emerald-200" : "border-red-200",
-      kind === "ok" ? "bg-emerald-50" : "bg-red-50",
-      kind === "ok" ? "text-emerald-800" : "text-red-700",
-      kind === "ok" ? "dark:border-emerald-900" : "dark:border-red-900",
-      kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-red-950",
-      kind === "ok" ? "dark:text-emerald-200" : "dark:text-red-200",
+      kind === "ok" ? "border-emerald-200" : "border-rose-200",
+      kind === "ok" ? "bg-emerald-50" : "bg-rose-50",
+      kind === "ok" ? "text-emerald-800" : "text-rose-700",
+      kind === "ok" ? "dark:border-emerald-900" : "dark:border-rose-900",
+      kind === "ok" ? "dark:bg-emerald-950" : "dark:bg-rose-950/40",
+      kind === "ok" ? "dark:text-emerald-200" : "dark:text-rose-200",
     );
   };
   const setBusy = (button, busy) => {

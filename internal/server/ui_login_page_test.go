@@ -143,7 +143,8 @@ func TestUILoginScriptOpensPasswordFormWithoutWebAuthn(t *testing.T) {
 }
 
 // CSP allows neither inline styles nor third-party assets, so the branded
-// backdrop must be plain markup styled by the self-hosted stylesheet.
+// backdrop must be plain markup styled by the self-hosted stylesheet. The OAuth
+// consent and error pages share the auth shell, so they carry the same brand.
 func TestUIAuthPagesRenderBrandingWithoutInlineStyles(t *testing.T) {
 	t.Parallel()
 
@@ -153,6 +154,8 @@ func TestUIAuthPagesRenderBrandingWithoutInlineStyles(t *testing.T) {
 	}{
 		{name: "login", data: uiLoginData{}},
 		{name: "signup", data: uiSignupData{}},
+		{name: "oauth-consent", data: uiOAuthConsentData{ClientName: "Claude"}},
+		{name: "oauth-error", data: uiOAuthErrorData{Title: "Unknown client"}},
 	} {
 		var buf bytes.Buffer
 		if err := uiTemplates.ExecuteTemplate(&buf, tt.name, tt.data); err != nil {
@@ -162,7 +165,10 @@ func TestUIAuthPagesRenderBrandingWithoutInlineStyles(t *testing.T) {
 		for _, want := range []string{
 			`<img src="/static/icon.svg" alt="" width="64" height="64"`,
 			`>trackslash</h1>`,
-			`<div data-auth-backdrop class="auth-backdrop" aria-hidden="true">`,
+			`<div data-brand-backdrop class="brand-backdrop" aria-hidden="true">`,
+			`<link rel="icon" href="/static/icon.svg" type="image/svg+xml">`,
+			`<meta name="theme-color" content="#4f46e5">`,
+			`<script src="/static/auth.js"></script>`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s missing %q: %s", tt.name, want, body)
@@ -176,8 +182,9 @@ func TestUIAuthPagesRenderBrandingWithoutInlineStyles(t *testing.T) {
 	}
 }
 
-// Every auth backdrop animation lives behind prefers-reduced-motion:
-// no-preference, so reduced-motion users get the same scene held still.
+// Every brand animation (the backdrop and the navigation progress sweep) lives
+// behind prefers-reduced-motion: no-preference, so reduced-motion users get the
+// same scene held still.
 func TestUIAuthBackdropAnimatesOnlyWithoutReducedMotion(t *testing.T) {
 	t.Parallel()
 
@@ -207,15 +214,17 @@ func TestUIAuthBackdropAnimatesOnlyWithoutReducedMotion(t *testing.T) {
 		inside.WriteString(rest[start:end])
 		rest = rest[end:]
 	}
-	for _, want := range []string{"animation:auth-orb-drift-a", "animation:auth-slash-sweep", "animation:auth-glow-breathe"} {
+	for _, want := range []string{"animation:brand-orb-drift-a", "animation:brand-slash-sweep", "animation:brand-glow-breathe", "animation:nav-progress-sweep", "animation:auth-fields-enter"} {
 		if !strings.Contains(inside.String(), want) {
 			t.Fatalf("stylesheet missing motion-gated %q", want)
 		}
 	}
-	if strings.Contains(outside.String(), "animation:auth-") {
-		t.Fatal("auth backdrop animates outside prefers-reduced-motion:no-preference")
+	for _, prefix := range []string{"animation:brand-", "animation:nav-progress", "animation:auth-"} {
+		if strings.Contains(outside.String(), prefix) {
+			t.Fatalf("%q animates outside prefers-reduced-motion:no-preference", prefix)
+		}
 	}
-	for _, want := range []string{".auth-backdrop{position:fixed;inset:0;z-index:0;overflow:hidden;contain:strict;pointer-events:none;"} {
+	for _, want := range []string{".brand-backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;contain:strict;pointer-events:none;"} {
 		if !strings.Contains(outside.String(), want) {
 			t.Fatalf("stylesheet missing %q", want)
 		}

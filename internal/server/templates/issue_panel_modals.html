@@ -15,7 +15,7 @@
       {{if .GitHubError}}<p class="text-sm text-rose-600 dark:text-rose-300">{{.GitHubError}}</p>{{end}}
       <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
         <button type="button" data-modal-close class="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800">Cancel</button>
-        <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-medium text-white hover:bg-indigo-500"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Link GitHub</button>
+        <button type="submit" class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500"><i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>Link GitHub</button>
       </div>
     </form>
   {{template "modal-close" .}}
@@ -63,7 +63,7 @@
               <i data-lucide="search" class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" aria-hidden="true"></i>
               <input name="tag" value="{{.TagInput}}" autocomplete="off" autofocus aria-label="Search tags" placeholder="Search tags" data-search-input class="w-full rounded-md border border-slate-200 bg-white py-2 pl-8 pr-2.5 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
             </div>
-            <button type="submit" aria-label="Attach tag" class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-indigo-600 text-white hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+            <button type="submit" aria-label="Attach tag" class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
               <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
             </button>
           </div>
