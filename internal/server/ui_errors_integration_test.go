@@ -101,3 +101,34 @@ func TestUINotFoundRendersAnonymouslyWithoutASession(t *testing.T) {
 		t.Fatalf("body missing the error panel: %s", body)
 	}
 }
+
+// A signed-in member who opens a missing project directly gets the branded
+// error page in their own shell. The same failure answered to htmx stays plain
+// text, since htmx does not swap error responses.
+func TestUIFailedPageLoadRendersTheSignedInErrorPage(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	user, token := e.mustProjectMemberToken(t, "ui-failed-page-load")
+	path := "/" + e.ownerUsername + "/projects/NOPE"
+
+	res := e.uiDoNoRedirectWithHeaders(t, http.MethodGet, path, token, nil, map[string]string{"Accept": "text/html,application/xhtml+xml"})
+	defer res.Body.Close()
+	body := readBody(t, res)
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("code = %d body = %s", res.StatusCode, body)
+	}
+	if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html", got)
+	}
+	for _, want := range []string{"Page not found", `id="main"`, `>@` + user.Username + `<`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q: %s", want, body)
+		}
+	}
+
+	htmx := e.uiDoNoRedirectWithHeaders(t, http.MethodGet, path, token, nil, map[string]string{"Accept": "text/html", "HX-Request": "true"})
+	defer htmx.Body.Close()
+	if htmxBody := readBody(t, htmx); htmx.StatusCode != http.StatusNotFound || htmxBody != "not found\n" {
+		t.Fatalf("htmx got %d %q, want the plain-text 404", htmx.StatusCode, htmxBody)
+	}
+}

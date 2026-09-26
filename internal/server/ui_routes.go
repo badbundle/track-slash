@@ -39,6 +39,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(s.uiAuthMiddleware)
 		r.Use(s.uiSessionCSRFMiddleware)
+		r.Use(s.uiErrorPages)
 		r.Get("/", s.uiHome)
 		r.Get("/me", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPage(w, r, "active") })
 		r.Get("/me/panel", func(w http.ResponseWriter, r *http.Request) { s.uiWorkPanel(w, r, "active") })

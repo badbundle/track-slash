@@ -132,3 +132,99 @@ func assertUIErrorShell(t *testing.T, rec *httptest.ResponseRecorder, wantTitle 
 		}
 	}
 }
+
+// A browser navigation that fails with one of the portal's plain-text errors
+// gets the branded error page with the same status, and none of the raw body.
+func TestUIErrorPagesBrandFailedPageLoads(t *testing.T) {
+	t.Parallel()
+	s := New(nil, nil, nil)
+
+	for _, tt := range []struct {
+		status int
+		title  string
+	}{
+		{status: http.StatusNotFound, title: "Page not found"},
+		{status: http.StatusForbidden, title: "No access"},
+		{status: http.StatusConflict, title: "Page changed"},
+		{status: http.StatusBadRequest, title: "Bad request"},
+		{status: http.StatusTooManyRequests, title: "Page could not load"},
+		{status: http.StatusInternalServerError, title: "Something went wrong"},
+	} {
+		handler := s.uiErrorPages(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "raw detail", tt.status)
+		}))
+		req := httptest.NewRequest(http.MethodGet, "/badbundle/projects/NOPE", nil)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != tt.status {
+			t.Fatalf("%d: status = %d", tt.status, rec.Code)
+		}
+		assertUIErrorShell(t, rec, tt.title)
+		if strings.Contains(rec.Body.String(), "raw detail") {
+			t.Fatalf("%d: error page leaked the plain-text body: %s", tt.status, rec.Body.String())
+		}
+	}
+}
+
+// Everything that is not a browser page navigation, and every response that
+// is not a plain-text error, passes through untouched.
+func TestUIErrorPagesLeaveOtherResponsesAlone(t *testing.T) {
+	t.Parallel()
+	s := New(nil, nil, nil)
+	const html = "text/html,application/xhtml+xml"
+	plainError := func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "raw detail", http.StatusNotFound) }
+
+	for _, tt := range []struct {
+		name     string
+		method   string
+		headers  map[string]string
+		handler  http.HandlerFunc
+		wantCode int
+		wantBody string
+	}{
+		{name: "htmx request", method: http.MethodGet, headers: map[string]string{"Accept": html, "HX-Request": "true"}, handler: plainError, wantCode: http.StatusNotFound, wantBody: "raw detail\n"},
+		{name: "fetch request", method: http.MethodGet, headers: map[string]string{"Accept": "*/*"}, handler: plainError, wantCode: http.StatusNotFound, wantBody: "raw detail\n"},
+		{name: "form post", method: http.MethodPost, headers: map[string]string{"Accept": html}, handler: plainError, wantCode: http.StatusNotFound, wantBody: "raw detail\n"},
+		{name: "page", method: http.MethodGet, headers: map[string]string{"Accept": html}, handler: func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("<p>ok</p>"))
+		}, wantCode: http.StatusOK, wantBody: "<p>ok</p>"},
+		{name: "html error", method: http.MethodGet, headers: map[string]string{"Accept": html}, handler: func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("<p>custom</p>"))
+		}, wantCode: http.StatusNotFound, wantBody: "<p>custom</p>"},
+		{name: "repeated header", method: http.MethodGet, headers: map[string]string{"Accept": html}, handler: func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusAccepted)
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("accepted"))
+		}, wantCode: http.StatusAccepted, wantBody: "accepted"},
+	} {
+		req := httptest.NewRequest(tt.method, "/badbundle/projects/NOPE", nil)
+		for key, value := range tt.headers {
+			req.Header.Set(key, value)
+		}
+		rec := httptest.NewRecorder()
+		s.uiErrorPages(tt.handler).ServeHTTP(rec, req)
+
+		if rec.Code != tt.wantCode || rec.Body.String() != tt.wantBody {
+			t.Fatalf("%s: got %d %q, want %d %q", tt.name, rec.Code, rec.Body.String(), tt.wantCode, tt.wantBody)
+		}
+	}
+}
+
+// Wrapping the writer must not hide Flush or Hijack from handlers that reach
+// them through http.ResponseController.
+func TestUIErrorPageWriterUnwrapsForResponseController(t *testing.T) {
+	t.Parallel()
+	rec := httptest.NewRecorder()
+
+	if err := http.NewResponseController(&uiErrorPageWriter{ResponseWriter: rec}).Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if !rec.Flushed {
+		t.Fatal("Flush did not reach the underlying writer")
+	}
+}
