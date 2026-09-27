@@ -197,18 +197,21 @@
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Visibility</dt>
             <dd class="mt-1">
-              {{template "project-visibility-badge" .AccessSettings.IsPublic}}
+              {{template "access-badge" (projectVisibilityBadge .AccessSettings.IsPublic)}}
               <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{{if .AccessSettings.IsPublic}}Anyone can view this project, even without signing in.{{else}}Only members can view this project.{{end}}</p>
             </dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Issue creation</dt>
-            <dd class="mt-1 text-slate-900 dark:text-slate-100">{{if .AccessSettings.PublicIssueCreation}}Any signed-in user{{else}}Members only{{end}}</dd>
+            <dd class="mt-1">
+              {{template "access-badge" (projectIssueCreationBadge .AccessSettings.PublicIssueCreation)}}
+              <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{{if .AccessSettings.PublicIssueCreation}}Anyone signed in can open issues.{{else}}Only members can open issues.{{end}}</p>
+            </dd>
           </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Sprints</dt>
-            <dd class="mt-1" data-project-sprint-mode="{{if .Project.SprintsEnabled}}enabled{{else}}disabled{{end}}">
-              <span class="text-slate-900 dark:text-slate-100">{{if .Project.SprintsEnabled}}Enabled{{else}}Disabled{{end}}</span>
+            <dd class="mt-1">
+              {{template "access-badge" (projectSprintModeBadge .Project.SprintsEnabled)}}
               <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{{if .Project.SprintsEnabled}}Work runs sprint by sprint.{{else}}Issues are picked up one at a time.{{end}}</p>
             </dd>
           </div>

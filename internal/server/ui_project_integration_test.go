@@ -385,12 +385,12 @@ func TestUIProjectAboutShowsAccessSettings(t *testing.T) {
 	manageLink := `href="` + membersPath + `" aria-label="Manage project access" hx-get="` + membersPath + `" hx-target="#main" hx-push-url="` + membersPath + `"`
 
 	privateBody := e.uiGet(t, e.projectPath()+"/about", e.authToken)
-	for _, want := range []string{"Access", `data-project-visibility="private"`, `data-lucide="lock"`, ">Private<", "Only members can view this project.", "Issue creation", "Members only", manageLink, `data-lucide="settings-2"`} {
+	for _, want := range []string{"Access", `data-project-visibility="private"`, `data-lucide="lock"`, ">Private<", "Only members can view this project.", "Issue creation", `data-project-issue-creation="members"`, `data-lucide="user-round-check"`, ">Members only<", "Only members can open issues.", manageLink, `data-lucide="settings-2"`} {
 		if !strings.Contains(privateBody, want) {
 			t.Fatalf("private project about missing %q: %s", want, privateBody)
 		}
 	}
-	for _, notWant := range []string{`data-project-visibility="public"`, "Any signed-in user"} {
+	for _, notWant := range []string{`data-project-visibility="public"`, `data-project-issue-creation="public"`, "Any signed-in user"} {
 		if strings.Contains(privateBody, notWant) {
 			t.Fatalf("private project about rendered %q: %s", notWant, privateBody)
 		}
@@ -423,7 +423,7 @@ func TestUIProjectAboutShowsAccessSettings(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("anonymous public about code = %d body = %s", res.StatusCode, anonymousBody)
 	}
-	for _, want := range []string{`data-project-visibility="public"`, "Any signed-in user"} {
+	for _, want := range []string{`data-project-visibility="public"`, `data-project-issue-creation="public"`, `data-lucide="users"`, ">Any signed-in user<", "Anyone signed in can open issues."} {
 		if !strings.Contains(anonymousBody, want) {
 			t.Fatalf("anonymous public about missing %q: %s", want, anonymousBody)
 		}

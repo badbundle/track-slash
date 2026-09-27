@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"html/template"
 	"strings"
 	"time"
 	"unicode"
@@ -214,6 +215,39 @@ func uiProjectIcon(project model.Project, class string) uiProjectIconData {
 		out.ThumbnailURL = uiProjectImageThumbnailContentPath(project) + "?v=" + project.ImageThumbnailObjectID.String()
 	}
 	return out
+}
+
+// uiAccessBadge is one project access setting rendered by the access-badge
+// component. The open or on state is tinted and the restricted or off state is
+// neutral, so the About Access rows read as a set. Attr is the setting's data
+// hook, such as data-project-visibility, so tests and scripts can read the
+// state without parsing copy.
+type uiAccessBadge struct {
+	Attr   template.HTMLAttr
+	Icon   string
+	Label  string
+	Tinted bool
+}
+
+func uiProjectVisibilityBadge(isPublic bool) uiAccessBadge {
+	if isPublic {
+		return uiAccessBadge{Attr: `data-project-visibility="public"`, Icon: "globe", Label: "Public", Tinted: true}
+	}
+	return uiAccessBadge{Attr: `data-project-visibility="private"`, Icon: "lock", Label: "Private"}
+}
+
+func uiProjectIssueCreationBadge(publicIssueCreation bool) uiAccessBadge {
+	if publicIssueCreation {
+		return uiAccessBadge{Attr: `data-project-issue-creation="public"`, Icon: "users", Label: "Any signed-in user", Tinted: true}
+	}
+	return uiAccessBadge{Attr: `data-project-issue-creation="members"`, Icon: "user-round-check", Label: "Members only"}
+}
+
+func uiProjectSprintModeBadge(sprintsEnabled bool) uiAccessBadge {
+	if sprintsEnabled {
+		return uiAccessBadge{Attr: `data-project-sprint-mode="enabled"`, Icon: "person-standing", Label: "Enabled", Tinted: true}
+	}
+	return uiAccessBadge{Attr: `data-project-sprint-mode="disabled"`, Icon: "list-checks", Label: "Disabled"}
 }
 
 func uiProjectInitial(name, key string) string {

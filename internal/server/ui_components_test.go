@@ -35,6 +35,56 @@ func TestUIPriorityBadgeRendersFilledCircle(t *testing.T) {
 	}
 }
 
+func TestUIAccessBadgeRendersEachSettingState(t *testing.T) {
+	t.Parallel()
+
+	const (
+		tinted  = "border-emerald-200 bg-emerald-50 text-emerald-700"
+		neutral = "border-slate-300 bg-white text-slate-700"
+	)
+	for _, tc := range []struct {
+		name  string
+		badge uiAccessBadge
+		hook  string
+		icon  string
+		label string
+		tone  string
+	}{
+		{name: "public", badge: uiProjectVisibilityBadge(true), hook: `data-project-visibility="public"`, icon: "globe", label: "Public", tone: tinted},
+		{name: "private", badge: uiProjectVisibilityBadge(false), hook: `data-project-visibility="private"`, icon: "lock", label: "Private", tone: neutral},
+		{name: "public issue creation", badge: uiProjectIssueCreationBadge(true), hook: `data-project-issue-creation="public"`, icon: "users", label: "Any signed-in user", tone: tinted},
+		{name: "members-only issue creation", badge: uiProjectIssueCreationBadge(false), hook: `data-project-issue-creation="members"`, icon: "user-round-check", label: "Members only", tone: neutral},
+		{name: "sprints enabled", badge: uiProjectSprintModeBadge(true), hook: `data-project-sprint-mode="enabled"`, icon: "person-standing", label: "Enabled", tone: tinted},
+		{name: "sprints disabled", badge: uiProjectSprintModeBadge(false), hook: `data-project-sprint-mode="disabled"`, icon: "list-checks", label: "Disabled", tone: neutral},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var buf bytes.Buffer
+			if err := uiTemplates.ExecuteTemplate(&buf, "access-badge", tc.badge); err != nil {
+				t.Fatalf("ExecuteTemplate: %v", err)
+			}
+			body := buf.String()
+			for _, want := range []string{
+				`<span ` + tc.hook + ` class="inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border`,
+				tc.tone,
+				`<i data-lucide="` + tc.icon + `" class="h-3.5 w-3.5" aria-hidden="true"></i>` + tc.label + `</span>`,
+			} {
+				if !strings.Contains(body, want) {
+					t.Fatalf("access badge missing %q: %s", want, body)
+				}
+			}
+			other := tinted
+			if tc.tone == tinted {
+				other = neutral
+			}
+			if strings.Contains(body, other) {
+				t.Fatalf("access badge mixes tinted and neutral tones: %s", body)
+			}
+		})
+	}
+}
+
 func TestUISprintRefBadgePreservesCanonicalReference(t *testing.T) {
 	t.Parallel()
 

@@ -263,12 +263,12 @@ func TestUIProjectWithoutSprintsLandsOnAll(t *testing.T) {
 	}
 
 	about := e.uiGet(t, e.projectPath()+"/about", e.authToken)
-	if !strings.Contains(about, `data-project-sprint-mode="disabled"`) || !strings.Contains(about, "Issues are picked up one at a time.") {
+	if !strings.Contains(about, `<span data-project-sprint-mode="disabled"`) || !strings.Contains(about, `data-lucide="list-checks"`) || !strings.Contains(about, ">Disabled<") || !strings.Contains(about, "Issues are picked up one at a time.") {
 		t.Fatal("About Access card does not show sprints as disabled")
 	}
 	e.mustSetFixtureSprintsEnabled(t, true)
 	about = e.uiGet(t, e.projectPath()+"/about", e.authToken)
-	if !strings.Contains(about, `data-project-sprint-mode="enabled"`) || !strings.Contains(about, "Work runs sprint by sprint.") {
+	if !strings.Contains(about, `<span data-project-sprint-mode="enabled"`) || !strings.Contains(about, `data-lucide="person-standing"`) || !strings.Contains(about, ">Enabled<") || !strings.Contains(about, "Work runs sprint by sprint.") {
 		t.Fatal("About Access card does not show sprints as enabled")
 	}
 }
