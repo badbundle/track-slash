@@ -46,6 +46,7 @@ Brand building blocks live in `internal/server/templates/brand.html`; see "Brand
 - `priority-badge`: circular P0-P4 priority marker.
 - `tag-badge`: compact hashtag badge for `model.IssueTag`, using `DisplayName` and `tagClass .Color`.
 - `issue-due-badge`: due-date badge with overdue/today/future styling.
+- `issue-sprint-badge`: 20px indigo square with a visible `S`, from a `model.Sprint`. It marks an issue that is in a sprint. The `S` is `aria-hidden`; the shared app tooltip (`data-tooltip`) and a screen-reader label both read `In sprint-N · Name (status)`. It carries `data-issue-sprint-badge="sprint-N"`. It isn't interactive, so it can sit inside a row link.
 
 ## Avatars
 
@@ -69,7 +70,7 @@ Brand building blocks live in `internal/server/templates/brand.html`; see "Brand
 
 ## Rows And Notices
 
-- `issue-summary-row`: responsive issue list row content accepting a `uiIssueItem`. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward. When `SubIssueProgress.Total` is non-zero, it also shows the shared compact completed/total ring used on sprint cards.
+- `issue-summary-row`: responsive issue list row content accepting a `uiIssueItem`. It stacks key/priority, title/tags, and due/status metadata on mobile, then restores the compact four-column row from `sm` upward. When `SubIssueProgress.Total` is non-zero, it also shows the shared compact completed/total ring used on sprint cards. When `SprintBadge` is set, it shows `issue-sprint-badge` after the due badge. Only lists that are not already grouped by sprint set it.
 - `issue-delete-notice`: restore notice shown after deleting an issue.
 - Shell responses: `renderUIShell` renders the whole document for a navigation and only `shell-main-content` for an htmx request. Every htmx control targets a sub-element, and `#main` is a sibling of the sidebar inside `.app-shell`, so answering htmx with a document swaps a second header, sidebar, and `#main` into the existing `#main`. Add new whole-page panels to `shell-main-content`, never to the `shell-main` wrapper.
 - `error-panel`: shell-hosted error page backed by `uiErrorPanelData` (status, title, message), with copy from `uiErrorPageFor`. Rendered through `renderUIShell` so signed-in visitors keep their sidebar. Unmatched URLs get it from `uiNotFound`. In the signed-in route group, the `uiErrorPages` middleware turns any plain-text 4xx/5xx (`writeUIStoreError`, `http.Error`) answered to a browser page navigation (a `GET` that accepts `text/html` and isn't htmx) into this page with the same status; htmx, fetch, image, and websocket requests keep the plain-text body. Add new whole-page error states here rather than hand-rolling error markup.

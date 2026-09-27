@@ -116,6 +116,10 @@ type uiIssueItem struct {
 	// CompletedAt is set where a list shows when the issue was last completed
 	// (moved to Done or Closed).
 	CompletedAt *time.Time
+	// SprintBadge is set where a list marks which sprint each issue is in:
+	// the project All list in sprint mode. Views already grouped by sprint
+	// leave it nil.
+	SprintBadge *model.Sprint
 }
 
 // uiRangeOption is one choice in a range-control: a segmented set of links

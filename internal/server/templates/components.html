@@ -363,6 +363,10 @@
 
 {{define "local-time"}}{{if .Valid}}<time datetime="{{.Datetime}}" data-local-time title="{{.Fallback}}">{{.Fallback}}</time>{{else}}-{{end}}{{end}}
 
+{{define "issue-sprint-badge"}}
+<span data-issue-sprint-badge="{{.Ref}}" data-tooltip="In {{.Ref}} · {{.Name}} ({{.Status}})" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded border border-indigo-200 bg-indigo-50 text-[11px] font-bold leading-none text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200"><span aria-hidden="true">S</span><span class="sr-only">In {{.Ref}} · {{.Name}} ({{.Status}})</span></span>
+{{end}}
+
 {{define "issue-summary-row"}}
 <span data-issue-summary-row class="grid min-w-0 gap-2 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
   <span class="flex min-w-0 items-center gap-2 sm:contents">
@@ -389,6 +393,7 @@
     </span>
     {{end}}
     {{template "issue-due-badge" .Issue}}
+    {{with .SprintBadge}}{{template "issue-sprint-badge" .}}{{end}}
     {{if .CompletedAt}}<span data-completed-at class="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"><span class="sr-only">Completed </span>{{template "local-time" (tokenTime .CompletedAt)}}</span>{{end}}
     {{template "status-badge" .Issue.Status}}
     {{if eq .Issue.Status "closed"}}{{template "close-reason-badge" .Issue.CloseReason}}{{end}}

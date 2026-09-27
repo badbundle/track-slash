@@ -185,6 +185,40 @@ type SprintsCursor struct {
 	ID           uuid.UUID  `json:"i"`
 }
 
+// ListSprintsByID returns the project's live sprints among ids, keyed by ID,
+// so a list can label many issues with their sprints in one query. Deleted
+// sprints and sprints from other projects are left out.
+func (s *Store) ListSprintsByID(ctx context.Context, projectID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]model.Sprint, error) {
+	out := make(map[uuid.UUID]model.Sprint, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT id, project_id, number, name, goal, status, planned_order, start_date, end_date,
+		       completed_at, created_at, updated_at
+		FROM sprints
+		WHERE project_id = $1 AND id = ANY($2) AND deleted_at IS NULL
+	`, projectID, ids)
+	if err != nil {
+		// Defensive: query failures require a database/runtime fault.
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		sprint, err := scanSprint(rows)
+		if err != nil {
+			// Defensive: selected columns match scanSprint's fields.
+			return nil, err
+		}
+		out[sprint.ID] = sprint
+	}
+	if err := rows.Err(); err != nil {
+		// Defensive: post-scan failures require a database/runtime fault.
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *Store) ListSprints(ctx context.Context, p ListSprintsParams) ([]model.Sprint, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
