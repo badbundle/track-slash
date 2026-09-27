@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -1336,4 +1337,28 @@ func TestMCPAttachmentAndResourceRoundTrip(t *testing.T) {
 	mcpCall(t, e, session, "track_delete_project_context", map[string]any{
 		"owner": e.ownerUsername, "key": e.projKey, "context": secondContext.Ref,
 	})
+}
+
+// The MCP endpoint reads a whole request body into memory, so it is capped.
+func TestMCPRequestBodyIsBounded(t *testing.T) {
+	t.Parallel()
+	e := newMCPHTTPEnv(t, nil)
+	payload := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"track_get_me","arguments":{"pad":"` +
+		strings.Repeat("a", 3<<20) + `"}}}`
+	req, err := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+"/mcp", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+e.authToken)
+	res, err := e.ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST /mcp: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode < 400 || strings.Contains(string(body), `"user"`) {
+		t.Fatalf("oversized MCP request = %d: %.200s", res.StatusCode, body)
+	}
 }

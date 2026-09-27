@@ -174,14 +174,26 @@ func (s *Server) streamStorageObjectContent(w http.ResponseWriter, r *http.Reque
 	}
 	defer body.Close()
 
-	w.Header().Set("Content-Type", object.ContentType)
+	// Uploads are served from the app's own origin, so only the safe inline
+	// image types keep their declared type. Anything else goes out as opaque
+	// bytes in a sandbox with no script or style, so a file declared as script
+	// or a page cannot be loaded as one from here.
+	contentType := "application/octet-stream"
+	disposition := "attachment"
+	if storageObjectSafeInlineImage(object) {
+		contentType = object.ContentType
+		if inline {
+			disposition = "inline"
+		}
+	}
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(object.ByteSize, 10))
 	w.Header().Set("ETag", `"`+object.SHA256+`"`)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	disposition := "attachment"
-	if inline && storageObjectSafeInlineImage(object) {
-		disposition = "inline"
-	}
+	// Added beside the site-wide policy, not in place of it: a browser
+	// enforces every policy it is given, so this only narrows it.
+	w.Header().Add("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": object.Filename}))
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, body)

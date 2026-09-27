@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -153,11 +154,14 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !s.allowAuthIdentifier(w, req.Username) {
+	if s.passwordLoginBlocked(w, req.Username) {
 		return
 	}
 	u, err := s.store.AuthenticatePassword(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, store.ErrUnauthorized) {
+			s.notePasswordLoginFailure(req.Username)
+		}
 		writeStoreError(w, err)
 		return
 	}

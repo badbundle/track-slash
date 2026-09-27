@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -77,7 +78,25 @@ func issuePriorityOrDefault(priority model.IssuePriority) model.IssuePriority {
 	return priority
 }
 
+// MaxIssueDescriptionRunes matches the limit on project context and
+// whiteboard bodies. A description is rendered on every view of its issue,
+// including anonymous views of a public project.
+const MaxIssueDescriptionRunes = 100_000
+
+// ErrIssueDescriptionTooLong rejects a description over MaxIssueDescriptionRunes.
+var ErrIssueDescriptionTooLong = fmt.Errorf("description max 100000 chars: %w", ErrConflict)
+
+func validateIssueDescription(description string) error {
+	if utf8.RuneCountInString(description) > MaxIssueDescriptionRunes {
+		return ErrIssueDescriptionTooLong
+	}
+	return nil
+}
+
 func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Issue, error) {
+	if err := validateIssueDescription(p.Description); err != nil {
+		return model.Issue{}, err
+	}
 	var out model.Issue
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var (
@@ -161,6 +180,9 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 }
 
 func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (model.Issue, error) {
+	if err := validateIssueDescription(p.Description); err != nil {
+		return model.Issue{}, err
+	}
 	var out model.Issue
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var (
@@ -866,6 +888,11 @@ type UpdateIssueParams struct {
 }
 
 func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssueParams) (model.Issue, error) {
+	if p.Description != nil {
+		if err := validateIssueDescription(*p.Description); err != nil {
+			return model.Issue{}, err
+		}
+	}
 	sets := []string{}
 	args := []any{}
 	i := 1

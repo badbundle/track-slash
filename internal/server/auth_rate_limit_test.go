@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -53,16 +54,74 @@ func TestFixedWindowLimiterExhaustionAndRecovery(t *testing.T) {
 func TestFixedWindowLimiterBoundsEntries(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
-	limiter := newFixedWindowLimiter(2, time.Minute, 1, func() time.Time { return now })
-	if allowed, _ := limiter.allow("first"); !allowed {
-		t.Fatal("first key denied")
+	limiter := newFixedWindowLimiter(2, time.Minute, 2, func() time.Time { return now })
+	for _, key := range []string{"first", "first"} {
+		if allowed, _ := limiter.allow(key); !allowed {
+			t.Fatalf("%s denied", key)
+		}
 	}
-	if allowed, retry := limiter.allow("second"); allowed || retry != time.Minute {
-		t.Fatalf("capacity = allowed %v retry %v, want false/1m", allowed, retry)
+	now = now.Add(time.Second)
+	if allowed, _ := limiter.allow("second"); !allowed {
+		t.Fatal("second key denied")
 	}
-	now = now.Add(time.Minute)
-	if allowed, retry := limiter.allow("second"); !allowed || retry != 0 {
-		t.Fatalf("capacity recovery = allowed %v retry %v, want true/0", allowed, retry)
+	// A full table makes room by dropping the entry closest to expiry rather
+	// than refusing every new key.
+	now = now.Add(time.Second)
+	if allowed, retry := limiter.allow("third"); !allowed || retry != 0 {
+		t.Fatalf("new key at capacity = allowed %v retry %v, want true/0", allowed, retry)
+	}
+	if len(limiter.entries) != 2 {
+		t.Fatalf("entries = %d, want capacity 2", len(limiter.entries))
+	}
+	if blocked, _ := limiter.blocked("first"); blocked {
+		t.Fatal("the evicted, exhausted key is still blocked")
+	}
+	if allowed, _ := limiter.allow("second"); !allowed {
+		t.Fatal("a younger key was evicted instead of the oldest")
+	}
+	// Expired entries are cleared before anything live is evicted.
+	now = now.Add(2 * time.Minute)
+	if allowed, _ := limiter.allow("fourth"); !allowed || len(limiter.entries) != 1 {
+		t.Fatalf("after expiry allowed %v entries %d, want true/1", allowed, len(limiter.entries))
+	}
+}
+
+// Keys are stored as fixed-size digests, so a huge username or client ID costs
+// the table no more than a short one.
+func TestFixedWindowLimiterStoresDigests(t *testing.T) {
+	t.Parallel()
+	limiter := newFixedWindowLimiter(1, time.Minute, 10, time.Now)
+	huge := strings.Repeat("x", 1<<20)
+	limiter.allow(huge)
+	for key := range limiter.entries {
+		if len(key) != 32 {
+			t.Fatalf("stored key length = %d, want a 32-character digest", len(key))
+		}
+	}
+	if blocked, _ := limiter.blocked(huge); !blocked {
+		t.Fatal("digest lookup missed the key it stored")
+	}
+}
+
+// Password sign-in spends a username's budget only on failures, so an
+// account's own successful sign-ins never lock it out.
+func TestPasswordLoginBudgetCountsFailuresOnly(t *testing.T) {
+	t.Parallel()
+	srv := NewWithOptions(nil, nil, Options{AuthRateLimit: AuthRateLimitOptions{IdentifierAttempts: 2, IdentifierWindow: time.Minute}})
+	for range 5 {
+		if srv.passwordLoginBlocked(httptest.NewRecorder(), "User") {
+			t.Fatal("checking the budget spent it")
+		}
+	}
+	srv.notePasswordLoginFailure(" user ")
+	srv.notePasswordLoginFailure("USER")
+	rec := httptest.NewRecorder()
+	if !srv.passwordLoginBlocked(rec, "user") || rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("after two failures blocked code = %d, want 429", rec.Code)
+	}
+	// Sign-up attempts for the same name spend a separate budget.
+	if !srv.allowAuthIdentifier(httptest.NewRecorder(), "user") {
+		t.Fatal("password failures spent the sign-up budget")
 	}
 }
 
@@ -125,7 +184,8 @@ func TestClientIPUsesImmediatePeer(t *testing.T) {
 		want   string
 	}{
 		{remote: "192.0.2.10:1234", want: "192.0.2.10"},
-		{remote: "[2001:db8::1]:443", want: "2001:db8::1"},
+		// IPv6 is budgeted by /64, which one host is routinely given.
+		{remote: "[2001:db8::1]:443", want: "2001:db8::/64"},
 		{remote: "192.0.2.11", want: "192.0.2.11"},
 		{remote: "local-peer", want: "local-peer"},
 		{remote: "", want: "unknown"},
@@ -151,7 +211,9 @@ func TestClientIPUsesForwardedChainFromTrustedPeer(t *testing.T) {
 	}{
 		{name: "direct client", remote: "192.0.2.10:1234", forwarded: "203.0.113.50", want: "203.0.113.50"},
 		{name: "trusted chain", remote: "192.0.2.10:1234", forwarded: "203.0.113.50, 192.0.2.20", want: "203.0.113.50"},
-		{name: "IPv6 chain", remote: "192.0.2.10:1234", forwarded: "2001:db8:2::1, 2001:db8:1::20", want: "2001:db8:2::1"},
+		{name: "IPv6 chain", remote: "192.0.2.10:1234", forwarded: "2001:db8:2::1, 2001:db8:1::20", want: "2001:db8:2::/64"},
+		{name: "IPv6 neighbours share a budget", remote: "192.0.2.10:1234", forwarded: "2001:db8:2::ffff", want: "2001:db8:2::/64"},
+		{name: "separate header lines", remote: "192.0.2.10:1234", forwarded: "203.0.113.50\n198.51.100.99", want: "198.51.100.99"},
 		{name: "invalid chain", remote: "192.0.2.10:1234", forwarded: "not-an-ip", want: "192.0.2.10"},
 		{name: "missing chain", remote: "192.0.2.10:1234", want: "192.0.2.10"},
 		{name: "only trusted hops", remote: "192.0.2.10:1234", forwarded: "192.0.2.20", want: "192.0.2.10"},
@@ -162,7 +224,10 @@ func TestClientIPUsesForwardedChainFromTrustedPeer(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.RemoteAddr = tt.remote
 			if tt.forwarded != "" {
-				req.Header.Set("X-Forwarded-For", tt.forwarded)
+				// A newline stands for a separate header line.
+				for _, line := range strings.Split(tt.forwarded, "\n") {
+					req.Header.Add("X-Forwarded-For", line)
+				}
 			}
 			if got := clientIP(req, trusted); got != tt.want {
 				t.Fatalf("clientIP(%q, %q) = %q, want %q", tt.remote, tt.forwarded, got, tt.want)

@@ -61,3 +61,17 @@ func TestDecodeJSON(t *testing.T) {
 		}
 	})
 }
+
+// A JSON body is read only up to maxJSONBodyBytes; past that the decode fails
+// instead of streaming the rest into memory.
+func TestDecodeJSONBoundsTheBody(t *testing.T) {
+	var v map[string]string
+	within := `{"k":"` + strings.Repeat("a", 1000) + `"}`
+	if err := decodeJSON(httptest.NewRequest(http.MethodPost, "/", strings.NewReader(within)), &v); err != nil {
+		t.Fatalf("small body: %v", err)
+	}
+	oversized := `{"k":"` + strings.Repeat("a", maxJSONBodyBytes) + `"}`
+	if err := decodeJSON(httptest.NewRequest(http.MethodPost, "/", strings.NewReader(oversized)), &v); err == nil {
+		t.Fatal("an oversized body decoded")
+	}
+}
