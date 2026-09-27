@@ -126,6 +126,12 @@ Frontend dependencies are pinned in `package-lock.json`. Generated CSS and JavaS
 
 The [deployment notes](DEPLOYMENT.md) document the current container image, migration job, origin and proxy settings, session limits, development-preview terms flag, request limits, and object-storage configuration. Treat them as an evolving operator reference, not a production support commitment.
 
+## Issue tracking
+
+Bugs, feature requests, and planned work for trackslash are tracked in trackslash itself: the [`TRACK` project](https://trackslash.com/badbundle/projects/TRACK), owned by `badbundle`, on the development preview at trackslash.com. It is the source of truth for what's open, in progress, and done. GitHub Issues is not used.
+
+The project is public: anyone can read it, and anyone signed in to the preview can file an issue. Coding agents can read and update it through the preview's MCP server at `https://trackslash.com/mcp`; see [Connect a coding agent with MCP](#connect-a-coding-agent-with-mcp). Issues are referred to by their ref, such as `TRACK-45`.
+
 ## Security and legal
 
 - Report vulnerabilities through the [security policy](SECURITY.md), published for the preview at [trackslash.com/security](https://trackslash.com/security), not a public issue.
@@ -135,7 +141,3 @@ The [deployment notes](DEPLOYMENT.md) document the current container image, migr
 ## License
 
 [MIT](LICENSE)
-
-## Issue tracking
-
-Issues are tracked in the public [trackslash development preview](https://trackslash.com/badbundle/projects/TRACK), not GitHub Issues.
