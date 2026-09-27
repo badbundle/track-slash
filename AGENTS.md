@@ -7,6 +7,7 @@ Read `DESIGN_CONTEXT.md` before making frontend or product-layout decisions. It 
 Read `STORAGE.md` before changing object storage, attachment, image, or file-upload behavior. It documents the metadata/backend split and local storage contract.
 Read `ATTACHMENTS.md` before changing issue attachments, description Markdown rendering, `object-N` references, or attachment UI behavior.
 Read `OAUTH.md` before changing OAuth connectors, the `/oauth/*` endpoints, the discovery documents, MCP bearer authentication, or the `auth_tokens` kinds.
+Read `SECURITY_MODEL.md` before changing permissions, authentication, project access modes, comment visibility, notifications or realtime. It records who can see what, the rules every surface follows, and the trade-offs accepted on purpose.
 
 ## Issues
 

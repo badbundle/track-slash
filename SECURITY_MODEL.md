@@ -1,0 +1,104 @@
+# Security model
+
+What each kind of user can reach, the rules every surface follows, and the
+trade-offs trackslash accepts on purpose. Read this before changing permissions,
+authentication, project access, comments, notifications or realtime. Report a
+vulnerability as [SECURITY.md](SECURITY.md) describes, never in a public issue.
+
+## Who can see what
+
+`ProjectPermissionsForUser` in `internal/store/permissions.go` is the single
+source of a user's rights in a project.
+
+| Who | Reads | Writes |
+| --- | --- | --- |
+| Site admin, project owner | Everything | Everything, including members, access and deleting the project |
+| Member | Everything, including members-only comments and deleted issues | Issues, comments, sprints, context, whiteboard |
+| Read-only member | Everything, including members-only comments and deleted issues | Nothing |
+| Public viewer (`public`, `public_issues`) | Live issues and their shared comments | Files issues in `public_issues` only |
+| Help-desk reporter (non-member of a `helpdesk` project) | Only issues they reported, as a `ReporterIssue`, and their shared comments | Files issues (title and description) and replies |
+| Blocked user | Nothing: 403 everywhere in the project | Nothing |
+
+- **Help-desk reporters get no project-level read at all.** Only the reporter
+  paths open (see `helpdesk.go`). Every route that names an issue goes through
+  `issueRouteAccess`, which answers another reporter's issue exactly as it would
+  a missing one.
+- **Members-only data stays with members.** That covers members-only comments,
+  block history, deleted issues and the files only they hold, the changelog
+  about them, and deleted comments' previews. Members-only comments never reach
+  anyone else, whether through the API, MCP, the UI, the changelog, push
+  notifications or realtime.
+- **Emails are never shown outside the account itself.** Member lists, pickers,
+  comment authors and the reporter view name people by display name or
+  username. Member search matches emails only for someone who manages members.
+
+## Rules every surface follows
+
+- **REST, MCP and the UI apply the same check for the same action.** A new route
+  or tool resolves its entity through the existing helpers (`issueFromRoute`,
+  `mcpIssue`, `uiIssueFromRoute`, `projectFromRoute`, and so on) and then checks
+  the right permission on the project that entity belongs to.
+- **Something the caller may not see is missing, not forbidden.** This applies to
+  a hidden comment and to another reporter's issue.
+- **Credentials are the account's own.** A connector (OAuth) token cannot read
+  or change tokens, email, password, password login, passkeys, saved GitHub
+  tokens, or site-admin account administration. See [OAUTH.md](OAUTH.md).
+- **Guesses are budgeted.** Password sign-in, password changes, reauthentication
+  and OAuth client authentication share per-address and per-identifier failure
+  budgets (`auth_rate_limit.go`).
+- **Uploads are inert.** Only safe raster images are served inline and with
+  their own type. Everything else is sent as an octet-stream download with a
+  sandbox CSP.
+
+## Accepted trade-offs
+
+These are known and left as they are. Change one only with that in mind.
+
+- **Existence can be probed.** A signed-in outsider gets 403 for a private
+  project or issue that exists and 404 for one that does not.
+  `/{owner}/projects` answers 404 for an unknown username. Project keys and
+  usernames are not secrets. Help-desk reporters are the exception: another
+  reporter's issue is always 404.
+- **Help-desk refs reveal counts.** Issue numbers run per project and comment
+  numbers per issue. A reporter's own refs therefore show roughly how many
+  issues the project has, and gaps show that members-only comments exist. Refs
+  have to stay stable and shareable.
+- **Public projects list their members.** Anyone who can read a project can
+  list its members' usernames, names and roles over REST and MCP, though only
+  managers see the members page. Usernames already appear on issues.
+- **GitHub metadata follows the project's visibility.** If a public project
+  connects a private repository, its readers see the repository name and the
+  linked branch and pull request titles.
+- **Images are stored as uploaded,** metadata included.
+- **Session cookies do not use the `__Host-` prefix.** They are HttpOnly,
+  SameSite=Lax, Secure over https and have no Domain. Renaming them would sign
+  everyone out.
+- **Ending sessions leaves API tokens and connectors alive.** "Sign out
+  everywhere" and a password change end web sessions only. API tokens and
+  connected apps are listed on Tokens and ended there.
+- **Creating a token or registering a connector needs no reauthentication,**
+  and the token can outlive the session that made it.
+- **Passkey sign-count regressions are recorded, not refused.** Synced passkeys
+  report zero.
+- **Emails are not verified.** Setting an email another account holds fails
+  with a conflict, which tells the caller that the email is registered.
+  `trackd -create-admin-token` will not promote an existing non-admin who holds
+  the email unless `-promote-existing` is passed.
+- **Storage object JSON names its backend, bucket and key.** These are
+  locations, not credentials.
+- **Realtime access is checked once, on subscribe.** Events carry only IDs, and
+  every refetch checks access again. Changes to access, blocks or membership,
+  and deleting a user, disconnect every client so it has to reauthorize. A token
+  revoked mid-connection keeps its socket until it reconnects. With several
+  replicas, a disconnect reaches only the replica that handled the change.
+- **Rate limits live in each process,** so several replicas multiply the
+  budgets.
+- **Anyone can spend a username's sign-in budget.** Ten failed password
+  attempts in five minutes hold up that account's password sign-in for the rest
+  of the window, though passkey sign-in still works. This is the cost of a
+  per-account budget against distributed guessing.
+- **The changelog keeps edit history.** The before and after previews of an
+  edited issue or comment stay visible to whoever can read the changelog.
+- **Blocks do not apply to site admins.**
+- **In public projects, comments are shared by default,** as they always were.
+  Help desks default to members-only.
