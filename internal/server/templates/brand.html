@@ -1,5 +1,5 @@
 {{/*
-  Brand building blocks shared by every full page: the head links, the animated
+  Brand building blocks shared by every full page: the head links, the
   backdrop, and the icon + wordmark lockup. See "Brand" in DESIGN_CONTEXT.md.
 */}}
 {{define "brand-head"}}
@@ -12,9 +12,10 @@
 {{end}}
 
 {{/*
-  The backdrop is pure CSS in frontend/tailwind.css. Pass "" for the full scene
-  behind a single centered card (login, signup, OAuth), or "ambient" for the
-  calmer version that sits behind the app shell and long-form pages.
+  The backdrop is pure CSS in frontend/tailwind.css. Pass "" for the full,
+  animated scene behind a single centered card (login, signup, OAuth), or
+  "ambient" for the still, calmer version that sits behind the app shell and
+  long-form pages.
 */}}
 {{define "brand-backdrop"}}
   <div data-brand-backdrop class="brand-backdrop{{with .}} brand-backdrop-{{.}}{{end}}" aria-hidden="true">

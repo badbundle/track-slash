@@ -297,27 +297,25 @@ html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; tran
   .brand-backdrop-slash { background: linear-gradient(90deg, transparent, rgb(99 102 241 / 0.14) 45%, rgb(165 180 252 / 0.22) 50%, rgb(99 102 241 / 0.14) 55%, transparent); }
 }
 /*
-  The ambient variant keeps the same scene but quieter, because it sits behind
-  dense work pages for hours rather than behind one card for a few seconds. The
-  orbs are dimmer, the card halo is dropped, the grid fades out below the page
-  header, and the beams pass less often. Opaque cards and chrome cover most of
-  it, so the brand shows in the gutters and empty space around the content.
+  The ambient variant keeps the grid and colour of the scene but holds it
+  still, because it sits behind dense work pages for hours rather than behind
+  one card for a few seconds. Motion is kept for the sign-in pages only. The
+  orbs are dimmer, and the card halo and the beams are dropped (a beam that
+  never moves reads as a stray stripe). The grid fades out below the page
+  header. Opaque cards and chrome cover most of it, so the brand shows in the
+  gutters and empty space around the content.
 */
+.brand-backdrop-ambient > * { animation: none; will-change: auto; }
 .brand-backdrop-ambient .brand-backdrop-orb { opacity: 0.5; }
-.brand-backdrop-ambient .brand-backdrop-glow { display: none; }
+.brand-backdrop-ambient .brand-backdrop-glow,
+.brand-backdrop-ambient .brand-backdrop-slash { display: none; }
 .brand-backdrop-ambient .brand-backdrop-grid {
   opacity: 0.45;
   -webkit-mask-image: radial-gradient(ellipse 90% 45% at 60% 0%, #000 10%, transparent 70%);
   mask-image: radial-gradient(ellipse 90% 45% at 60% 0%, #000 10%, transparent 70%);
 }
-.brand-backdrop-ambient .brand-backdrop-slash { background: linear-gradient(90deg, transparent, rgb(99 102 241 / 0.08) 45%, rgb(129 140 248 / 0.14) 50%, rgb(99 102 241 / 0.08) 55%, transparent); }
-@media (prefers-reduced-motion: no-preference) {
-  .brand-backdrop-ambient .brand-backdrop-slash { animation-duration: 24s; }
-  .brand-backdrop-ambient .brand-backdrop-slash-2 { animation-delay: -12s; }
-}
 @media (prefers-color-scheme: dark) {
   .brand-backdrop-ambient .brand-backdrop-orb { opacity: 0.6; }
-  .brand-backdrop-ambient .brand-backdrop-slash { background: linear-gradient(90deg, transparent, rgb(99 102 241 / 0.08) 45%, rgb(165 180 252 / 0.12) 50%, rgb(99 102 241 / 0.08) 55%, transparent); }
 }
 
 /*

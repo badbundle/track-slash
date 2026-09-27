@@ -1176,7 +1176,7 @@ func TestUIRenderedPagesUseOnlySelfHostedExecutableAssets(t *testing.T) {
 }
 
 // The app shell and the legal pages carry the login page's brand at a calmer
-// strength: the shared head links, the ambient backdrop, and the icon and
+// strength: the shared head links, the still ambient backdrop, and the icon and
 // wordmark in their chrome. The shell also shows the navigation progress bar.
 func TestUIAppPagesCarryTheAmbientBrand(t *testing.T) {
 	t.Parallel()

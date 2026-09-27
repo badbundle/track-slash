@@ -184,7 +184,9 @@ func TestUIAuthPagesRenderBrandingWithoutInlineStyles(t *testing.T) {
 
 // Every brand animation (the backdrop and the navigation progress sweep) lives
 // behind prefers-reduced-motion: no-preference, so reduced-motion users get the
-// same scene held still.
+// same scene held still. The ambient backdrop behind the app and legal pages
+// never moves: it cancels the scene's animations and hides the beams, and no
+// motion-gated rule turns them back on.
 func TestUIAuthBackdropAnimatesOnlyWithoutReducedMotion(t *testing.T) {
 	t.Parallel()
 
@@ -224,9 +226,16 @@ func TestUIAuthBackdropAnimatesOnlyWithoutReducedMotion(t *testing.T) {
 			t.Fatalf("%q animates outside prefers-reduced-motion:no-preference", prefix)
 		}
 	}
-	for _, want := range []string{".brand-backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;contain:strict;pointer-events:none;"} {
+	for _, want := range []string{
+		".brand-backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;contain:strict;pointer-events:none;",
+		".brand-backdrop-ambient>*{animation:none;will-change:auto}",
+		".brand-backdrop-ambient .brand-backdrop-glow,.brand-backdrop-ambient .brand-backdrop-slash{display:none}",
+	} {
 		if !strings.Contains(outside.String(), want) {
 			t.Fatalf("stylesheet missing %q", want)
 		}
+	}
+	if strings.Contains(inside.String(), ".brand-backdrop-ambient") {
+		t.Fatalf("a motion-gated rule targets the ambient backdrop, which should stay still")
 	}
 }
