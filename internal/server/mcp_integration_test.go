@@ -528,7 +528,7 @@ func TestMCPPublicProjectAccessAndBlocks(t *testing.T) {
 		t.Fatalf("legacy project access = %+v", legacy)
 	}
 	if out := mcpCallExpectError(t, e, ownerSession, "track_update_project_access", map[string]any{
-		"owner": e.ownerUsername, "key": e.projKey, "access_mode": "helpdesk",
+		"owner": e.ownerUsername, "key": e.projKey, "access_mode": "everyone",
 	}); true {
 		requireMCPErrorCode(t, out, "conflict")
 	}

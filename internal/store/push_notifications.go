@@ -724,7 +724,13 @@ func (s *Store) PreparePushNotificationDelivery(ctx context.Context, delivery Pu
 		}
 		return PushNotificationPayload{}, false, err
 	}
-	if !permissions.CanRead {
+	// A help-desk reporter hears about the issue they filed, but not about its
+	// due date, which only members see.
+	reporter := !permissions.CanRead && permissions.CanFollowIssue(user, issue)
+	if !permissions.CanRead && !reporter {
+		return PushNotificationPayload{}, false, nil
+	}
+	if reporter && delivery.Category == PushNotificationDueDateChanges {
 		return PushNotificationPayload{}, false, nil
 	}
 	project, err := s.GetProject(ctx, issue.ProjectID)

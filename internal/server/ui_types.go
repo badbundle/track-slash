@@ -35,6 +35,7 @@ type uiShellData struct {
 	ProjectsPanel     *uiProjectsPanelData
 	NewProjectPanel   *uiNewProjectPanelData
 	NewIssuePanel     *uiNewIssuePanelData
+	HelpDeskPanel     *uiHelpDeskPanelData
 	ProjectPanel      *uiProjectPanelData
 	DeletedPanel      *uiDeletedIssuesPanelData
 	DeletedIssuePanel *uiDeletedIssuePanelData
@@ -711,24 +712,26 @@ type uiIssuePanelData struct {
 	CommentVisibilityChoice bool
 	CommentVisibility       model.CommentVisibility
 	CommentEditVisibility   model.CommentVisibility
-	Links                   []uiIssueLinkItem
-	LinksHasMore            bool
-	AddLink                 bool
-	EditLinkID              uuid.UUID
-	LinkTarget              string
-	LinkRelation            string
-	LinkError               string
-	Contexts                []model.ProjectContext
-	ContextsHasMore         bool
-	EditTags                bool
-	TagModalAttached        []model.IssueTag
-	TagModalAvailable       []model.IssueTag
-	TagInput                string
-	TagError                string
-	BackHref                string
-	BackHXGet               string
-	BackLabel               string
-	DeleteNotice            *uiIssueDeleteNotice
+	// HelpDesk names the reporter as the one a shared comment reaches.
+	HelpDesk          bool
+	Links             []uiIssueLinkItem
+	LinksHasMore      bool
+	AddLink           bool
+	EditLinkID        uuid.UUID
+	LinkTarget        string
+	LinkRelation      string
+	LinkError         string
+	Contexts          []model.ProjectContext
+	ContextsHasMore   bool
+	EditTags          bool
+	TagModalAttached  []model.IssueTag
+	TagModalAvailable []model.IssueTag
+	TagInput          string
+	TagError          string
+	BackHref          string
+	BackHXGet         string
+	BackLabel         string
+	DeleteNotice      *uiIssueDeleteNotice
 	// SidebarRecents is set when an htmx navigation opens the issue. The panel
 	// then also swaps the sidebar's Recents list out of band, because htmx
 	// leaves the sidebar in place.
@@ -901,4 +904,42 @@ type uiNotificationPanelData struct {
 	PushPublicKey   string
 	PushPreferences model.PushNotificationPreferences
 	PushDeviceCount int
+}
+
+// uiHelpDeskPanelData is a help-desk reporter's view of a project: the form to
+// file an issue, the list of issues they filed, or one of those issues. It
+// carries nothing the reporter may not see.
+type uiHelpDeskPanelData struct {
+	CSRFToken string
+	// View is "new", "issues" or "issue".
+	View    string
+	Project model.Project
+
+	Title       string
+	Description string
+	Error       string
+
+	Issues        []model.ReporterIssue
+	IssuesHasMore bool
+
+	Issue            model.ReporterIssue
+	DescriptionHTML  template.HTML
+	Comments         []uiHelpDeskComment
+	CommentsHasMore  bool
+	CommentBody      string
+	CommentError     string
+	EditCommentID    uuid.UUID
+	CommentEditBody  string
+	CommentEditError string
+}
+
+// uiHelpDeskComment is a shared comment as a reporter sees it: the author's
+// display name, never their email.
+type uiHelpDeskComment struct {
+	Comment                             model.Comment
+	BodyHTML                            template.HTML
+	AuthorID                            uuid.UUID
+	AuthorName                          string
+	AuthorProfileImageThumbnailObjectID *uuid.UUID
+	FromReporter                        bool
 }

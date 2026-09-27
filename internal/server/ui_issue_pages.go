@@ -12,6 +12,9 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !deleted && s.uiServeHelpDeskIssue(w, r, issue) {
+		return
+	}
 	if deleted {
 		panel, err := s.uiBuildDeletedIssuePanel(r.Context(), r, issue)
 		if err != nil {
@@ -58,6 +61,9 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 	issue, deleted, ok := s.uiIssueFromRouteIncludingDeleted(w, r)
 	if !ok {
+		return
+	}
+	if !deleted && s.uiServeHelpDeskIssue(w, r, issue) {
 		return
 	}
 	if deleted {
@@ -640,4 +646,19 @@ func (s *Server) uiUpdateIssueSprint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+// uiServeHelpDeskIssue answers the issue page with the reporter's view when
+// the issue's help-desk reporter asks for it, and reports whether it did.
+func (s *Server) uiServeHelpDeskIssue(w http.ResponseWriter, r *http.Request, issue model.Issue) bool {
+	follows, err := s.uiFollowedIssue(r.Context(), currentUser(r), issue)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return true
+	}
+	if !follows {
+		return false
+	}
+	s.uiRenderHelpDeskIssue(w, r, issue, nil)
+	return true
 }

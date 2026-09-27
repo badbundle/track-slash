@@ -193,7 +193,7 @@ func (s *Store) GetProjectAccessSettings(ctx context.Context, projectID uuid.UUI
 }
 
 // ErrInvalidProjectAccessMode rejects a mode the project cannot be put in.
-var ErrInvalidProjectAccessMode = fmt.Errorf("access mode must be private, public or public_issues: %w", ErrConflict)
+var ErrInvalidProjectAccessMode = fmt.Errorf("access mode must be private, public, public_issues or helpdesk: %w", ErrConflict)
 
 func (s *Store) UpdateProjectAccessMode(ctx context.Context, projectID uuid.UUID, mode model.ProjectAccessMode) (model.ProjectAccessSettings, error) {
 	if !mode.Valid() {
@@ -607,7 +607,11 @@ type ProjectPermissions struct {
 	CanReadMembersOnly bool
 	CanWrite           bool
 	CanCreateIssues    bool
-	CanManageMembers   bool
+	// HelpDeskReporter is a signed-in non-member of a help desk: they may file
+	// issues and follow the ones they reported, and nothing else. CanRead
+	// stays false, so every project route keeps refusing them.
+	HelpDeskReporter bool
+	CanManageMembers bool
 	// CanDelete covers deleting the project itself, which is a stronger
 	// authority than editing its contents: write members may delete issues,
 	// sprints, and context, but only the owner or a site admin may remove the
@@ -662,7 +666,14 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 	permissions.CanReadMembersOnly = permissions.Role.Valid()
 	permissions.CanWrite = permissions.Role == model.ProjectMemberRoleMember
 	permissions.CanCreateIssues = permissions.CanWrite || (user.ID != uuid.Nil && permissions.Role == "" && accessMode.OutsideIssueCreation())
+	permissions.HelpDeskReporter = user.ID != uuid.Nil && permissions.Role == "" && accessMode == model.ProjectAccessHelpDesk
 	return permissions, nil
+}
+
+// CanFollowIssue reports whether a help-desk reporter may see the issue: only
+// one they reported.
+func (p ProjectPermissions) CanFollowIssue(user model.User, issue model.Issue) bool {
+	return p.HelpDeskReporter && issue.ReporterID != nil && *issue.ReporterID == user.ID
 }
 
 func (s *Store) UserCanAccessProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {

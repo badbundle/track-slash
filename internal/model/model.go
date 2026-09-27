@@ -321,6 +321,74 @@ type ProjectMember struct {
 	CreatedAt                     time.Time         `json:"created_at"`
 }
 
+// ReporterStatus is an issue's status as its help-desk reporter sees it: done
+// and closed are both closed, so the reporter never learns why.
+type ReporterStatus string
+
+const (
+	ReporterStatusOpen       ReporterStatus = "open"
+	ReporterStatusInProgress ReporterStatus = "in_progress"
+	ReporterStatusClosed     ReporterStatus = "closed"
+)
+
+func NewReporterStatus(status Status) ReporterStatus {
+	switch {
+	case status == StatusInProgress:
+		return ReporterStatusInProgress
+	case status.CountsAsDone():
+		return ReporterStatusClosed
+	default:
+		return ReporterStatusOpen
+	}
+}
+
+// Label is the status's name on the reporter's pages.
+func (s ReporterStatus) Label() string {
+	switch s {
+	case ReporterStatusInProgress:
+		return "In progress"
+	case ReporterStatusClosed:
+		return "Closed"
+	default:
+		return "Open"
+	}
+}
+
+// ReporterIssue is all a help-desk reporter may see of an issue they filed.
+// Priority, assignee, tags, sprint, due date, close reason, links, sub-issues
+// and history stay with the project's members.
+type ReporterIssue struct {
+	ID            uuid.UUID      `json:"id"`
+	ProjectID     uuid.UUID      `json:"project_id"`
+	OwnerUsername string         `json:"owner_username"`
+	ProjectKey    string         `json:"project_key"`
+	Number        int            `json:"number"`
+	Identifier    string         `json:"identifier"`
+	Title         string         `json:"title"`
+	Description   string         `json:"description"`
+	Status        ReporterStatus `json:"status"`
+	ReporterID    *uuid.UUID     `json:"reporter_id,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	UpdatedAt     time.Time      `json:"updated_at"`
+}
+
+func NewReporterIssue(issue Issue) ReporterIssue {
+	return ReporterIssue{
+		ID:            issue.ID,
+		ProjectID:     issue.ProjectID,
+		OwnerUsername: issue.OwnerUsername,
+		ProjectKey:    issue.ProjectKey,
+		Number:        issue.Number,
+		Identifier:    issue.Identifier,
+		Title:         issue.Title,
+		Description:   issue.Description,
+		Status:        NewReporterStatus(issue.Status),
+		ReporterID:    issue.ReporterID,
+		CreatedAt:     issue.CreatedAt,
+		UpdatedAt:     issue.UpdatedAt,
+	}
+}
+
 type ProjectMemberCandidate struct {
 	ID                            uuid.UUID  `json:"id"`
 	Username                      string     `json:"username"`
@@ -341,14 +409,13 @@ const (
 	// anyone signed in.
 	ProjectAccessPublicIssues ProjectAccessMode = "public_issues"
 	// ProjectAccessHelpDesk keeps the project private but lets anyone signed in
-	// file issues and follow their own. It is not selectable until the
-	// reporter experience lands (TRACK-92), so Valid rejects it.
+	// file issues and follow the ones they filed, and nothing else.
 	ProjectAccessHelpDesk ProjectAccessMode = "helpdesk"
 )
 
 func (m ProjectAccessMode) Valid() bool {
 	switch m {
-	case ProjectAccessPrivate, ProjectAccessPublic, ProjectAccessPublicIssues:
+	case ProjectAccessPrivate, ProjectAccessPublic, ProjectAccessPublicIssues, ProjectAccessHelpDesk:
 		return true
 	}
 	return false
@@ -361,7 +428,7 @@ func (m ProjectAccessMode) PublicRead() bool {
 
 // OutsideIssueCreation reports whether a signed-in non-member may file issues.
 func (m ProjectAccessMode) OutsideIssueCreation() bool {
-	return m == ProjectAccessPublicIssues
+	return m == ProjectAccessPublicIssues || m == ProjectAccessHelpDesk
 }
 
 // Label is the mode's name in the UI and the changelog.
@@ -371,6 +438,8 @@ func (m ProjectAccessMode) Label() string {
 		return "Public"
 	case ProjectAccessPublicIssues:
 		return "Public, open to issues"
+	case ProjectAccessHelpDesk:
+		return "Help desk"
 	default:
 		return "Private"
 	}
@@ -378,7 +447,8 @@ func (m ProjectAccessMode) Label() string {
 
 // ProjectAccessModeFromFlags maps the legacy is_public and
 // public_issue_creation pair onto a mode. Issue creation without public read
-// was never allowed, so it falls back to private as it always did.
+// was never allowed, so it falls back to private as it always did; a help desk
+// can only be chosen by name.
 func ProjectAccessModeFromFlags(isPublic, publicIssueCreation bool) ProjectAccessMode {
 	switch {
 	case isPublic && publicIssueCreation:

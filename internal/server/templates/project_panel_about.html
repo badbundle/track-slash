@@ -235,7 +235,12 @@
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Issue creation</dt>
             <dd class="mt-1">
               {{template "access-badge" (projectIssueCreationBadge .AccessSettings.PublicIssueCreation)}}
+              {{if eq .AccessSettings.AccessMode "helpdesk"}}
+              <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Anyone signed in can open issues from the help desk link, and follow only the ones they opened.</p>
+              <a data-helpdesk-link href="{{projectIssueNew .Project}}" class="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200"><i data-lucide="link" class="h-3.5 w-3.5" aria-hidden="true"></i>Help desk link</a>
+              {{else}}
               <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">{{if .AccessSettings.PublicIssueCreation}}Anyone signed in can open issues.{{else}}Only members can open issues.{{end}}</p>
+              {{end}}
             </dd>
           </div>
           <div>

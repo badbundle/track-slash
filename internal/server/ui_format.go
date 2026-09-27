@@ -148,6 +148,8 @@ func uiUserAvatar(value any, class string) uiUserAvatarData {
 			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
 		}
 		return uiUserAvatarFields(v.ID, v.Name, v.Username, "", v.ProfileImageThumbnailObjectID, class)
+	case uiHelpDeskComment:
+		return uiUserAvatarFields(v.AuthorID, v.AuthorName, "", "", v.AuthorProfileImageThumbnailObjectID, class)
 	case uiIssueCommentItem:
 		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, v.AuthorEmail, v.AuthorProfileImageThumbnailObjectID, class)
 	case *uiIssueCommentItem:
@@ -249,6 +251,7 @@ func uiProjectAccessModeOptions() []uiProjectAccessModeOption {
 		{Mode: model.ProjectAccessPrivate, Label: model.ProjectAccessPrivate.Label(), Description: "Only members can view this project and open issues."},
 		{Mode: model.ProjectAccessPublic, Label: model.ProjectAccessPublic.Label(), Description: "Anyone can view this project without becoming a member. Only members can open issues."},
 		{Mode: model.ProjectAccessPublicIssues, Label: model.ProjectAccessPublicIssues.Label(), Description: "Anyone can view this project, and anyone signed in can open issues. They cannot edit them afterward."},
+		{Mode: model.ProjectAccessHelpDesk, Label: model.ProjectAccessHelpDesk.Label(), Description: "Only members can view this project, but anyone signed in can open issues from its new-issue link and follow the ones they opened: the status, the comments you share with them, and their replies."},
 	}
 }
 
@@ -875,6 +878,34 @@ func uiStatusClass(s model.Status) string {
 		return "border-zinc-300 bg-zinc-100 text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
 	default:
 		return "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+	}
+}
+
+type uiCommentVisibilityChoice struct {
+	Selected    model.CommentVisibility
+	SharedLabel string
+}
+
+// uiCommentVisibilityChoiceFor names who a shared comment reaches: in a help
+// desk that is the issue's reporter, elsewhere everyone who can read it.
+func uiCommentVisibilityChoiceFor(selected model.CommentVisibility, helpDesk bool) uiCommentVisibilityChoice {
+	label := "Everyone who can see the issue"
+	if helpDesk {
+		label = "Shared with the reporter"
+	}
+	return uiCommentVisibilityChoice{Selected: selected, SharedLabel: label}
+}
+
+// uiReporterStatusClass colours a help-desk reporter's status like the member
+// status it stands for.
+func uiReporterStatusClass(s model.ReporterStatus) string {
+	switch s {
+	case model.ReporterStatusInProgress:
+		return uiStatusClass(model.StatusInProgress)
+	case model.ReporterStatusClosed:
+		return uiStatusClass(model.StatusDone)
+	default:
+		return uiStatusClass(model.StatusTodo)
 	}
 }
 

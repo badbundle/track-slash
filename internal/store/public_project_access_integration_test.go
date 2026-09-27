@@ -157,7 +157,7 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 		t.Fatalf("unblocked permissions = %+v, %v", permissions, err)
 	}
 
-	for _, mode := range []model.ProjectAccessMode{"", "helpdesk", "everyone"} {
+	for _, mode := range []model.ProjectAccessMode{"", "members", "everyone"} {
 		if _, err := env.store.UpdateProjectAccessMode(env.ctx, project.ID, mode); !errors.Is(err, store.ErrInvalidProjectAccessMode) {
 			t.Fatalf("UpdateProjectAccessMode(%q) err = %v, want ErrInvalidProjectAccessMode", mode, err)
 		}

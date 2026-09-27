@@ -2,8 +2,11 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestInsightRange(t *testing.T) {
@@ -78,7 +81,8 @@ func TestProjectAccessMode(t *testing.T) {
 		{ProjectAccessPrivate, true, false, false, "Private"},
 		{ProjectAccessPublic, true, true, false, "Public"},
 		{ProjectAccessPublicIssues, true, true, true, "Public, open to issues"},
-		{"helpdesk", false, false, false, "Private"},
+		{ProjectAccessHelpDesk, true, false, true, "Help desk"},
+		{"everyone", false, false, false, "Private"},
 		{"", false, false, false, "Private"},
 	}
 	for _, tc := range cases {
@@ -141,6 +145,53 @@ func TestCommentVisibility(t *testing.T) {
 	} {
 		if got := DefaultCommentVisibility(mode); got != want {
 			t.Fatalf("DefaultCommentVisibility(%q) = %q, want %q", mode, got, want)
+		}
+	}
+}
+
+func TestReporterIssue(t *testing.T) {
+	t.Parallel()
+	for status, want := range map[Status]ReporterStatus{
+		StatusTodo:       ReporterStatusOpen,
+		StatusInProgress: ReporterStatusInProgress,
+		StatusDone:       ReporterStatusClosed,
+		StatusClosed:     ReporterStatusClosed,
+		"":               ReporterStatusOpen,
+	} {
+		if got := NewReporterStatus(status); got != want {
+			t.Fatalf("NewReporterStatus(%q) = %q, want %q", status, got, want)
+		}
+	}
+	for status, want := range map[ReporterStatus]string{
+		ReporterStatusOpen:       "Open",
+		ReporterStatusInProgress: "In progress",
+		ReporterStatusClosed:     "Closed",
+	} {
+		if got := status.Label(); got != want {
+			t.Fatalf("%q.Label() = %q, want %q", status, got, want)
+		}
+	}
+
+	reporterID := uuid.New()
+	reason := CloseReasonWontDo
+	due := DateFromTime(time.Now())
+	issue := Issue{
+		ID: uuid.New(), ProjectID: uuid.New(), OwnerUsername: "owner", ProjectKey: "HELP", Number: 3, Identifier: "HELP-3",
+		Title: "Broken", Description: "Details", Status: StatusClosed, CloseReason: &reason, Priority: PriorityP0,
+		AssigneeID: &reporterID, ReporterID: &reporterID, DueDate: &due, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	got := NewReporterIssue(issue)
+	if got.ID != issue.ID || got.Identifier != "HELP-3" || got.Title != "Broken" || got.Description != "Details" ||
+		got.Status != ReporterStatusClosed || got.ReporterID != &reporterID || !got.CreatedAt.Equal(issue.CreatedAt) {
+		t.Fatalf("NewReporterIssue = %+v", got)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, hidden := range []string{"priority", "assignee_id", "close_reason", "due_date", "sprint_id", "parent_issue_id", "tags"} {
+		if strings.Contains(string(raw), `"`+hidden+`"`) {
+			t.Fatalf("reporter issue JSON carries %s: %s", hidden, raw)
 		}
 	}
 }

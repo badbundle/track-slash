@@ -62,7 +62,7 @@ func TestHTTPPublicProjectAccessIssueCreationAndBlocks(t *testing.T) {
 		t.Fatalf("disabled public issue creation code = %d body = %s", code, body)
 	}
 
-	for _, invalid := range []string{"", "helpdesk", "everyone"} {
+	for _, invalid := range []string{"", "members", "everyone"} {
 		code, body = e.do(t, http.MethodPatch, accessPath, map[string]any{"access_mode": invalid, "is_public": true})
 		if code != http.StatusBadRequest {
 			t.Fatalf("access_mode=%q code = %d body = %s", invalid, code, body)

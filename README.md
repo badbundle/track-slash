@@ -13,6 +13,7 @@ trackslash is a fast, self-hostable issue tracker built as a single Go applicati
 - Keeps project and issue context, plus free-form project whiteboard notes, addressable from the UI, HTTP API, and MCP.
 - Exposes MCP tools, resources, and prompts for issue work, planning, context, attachments, users, and tokens.
 - Supports project membership, read-only roles, public project views, passkeys, password login, and API tokens.
+- Runs a project as a help desk if you want: it stays private, anyone signed in can file issues through its link and follow only the ones they filed, and members choose which comments to share with them.
 - Streams realtime changes through PostgreSQL-backed events.
 - Stores attachments locally or in S3-compatible object storage.
 - Ships as one Go application plus PostgreSQL, with frontend assets and migrations embedded in the production image.

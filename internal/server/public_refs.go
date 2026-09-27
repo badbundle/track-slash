@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -108,20 +109,40 @@ func (s *Server) projectFromRoute(w http.ResponseWriter, r *http.Request) (model
 }
 
 func (s *Server) issueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
+	issue, _, ok := s.issueWithAccessFromRoute(w, r)
+	return issue, ok
+}
+
+// issueWithAccessFromRoute resolves the route's issue after issueRouteAccess,
+// returning the permissions that check read so handlers need not repeat it.
+func (s *Server) issueWithAccessFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, store.ProjectPermissions, bool) {
 	owner, ok := normalizeOwnerParam(w, r)
 	if !ok {
-		return model.Issue{}, false
+		return model.Issue{}, store.ProjectPermissions{}, false
 	}
 	ref, ok := parseIssueRefParam(w, r)
 	if !ok {
-		return model.Issue{}, false
+		return model.Issue{}, store.ProjectPermissions{}, false
 	}
 	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
 	if err != nil {
 		writeStoreError(w, err)
-		return model.Issue{}, false
+		return model.Issue{}, store.ProjectPermissions{}, false
 	}
-	return issue, true
+	permissions, err := s.issueRouteAccess(r.Context(), currentUser(r), issue)
+	if err != nil {
+		writeIssueRouteError(w, err)
+		return model.Issue{}, store.ProjectPermissions{}, false
+	}
+	return issue, permissions, true
+}
+
+func writeIssueRouteError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errIssueRouteForbidden) {
+		writeForbidden(w)
+		return
+	}
+	writeStoreError(w, err)
 }
 
 func (s *Server) deletedIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
@@ -136,6 +157,10 @@ func (s *Server) deletedIssueFromRoute(w http.ResponseWriter, r *http.Request) (
 	issue, err := s.store.GetDeletedIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
 	if err != nil {
 		writeStoreError(w, err)
+		return model.Issue{}, false
+	}
+	if _, err := s.deletedIssueRouteAccess(r.Context(), currentUser(r), issue); err != nil {
+		writeIssueRouteError(w, err)
 		return model.Issue{}, false
 	}
 	return issue, true

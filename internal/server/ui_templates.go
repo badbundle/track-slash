@@ -141,6 +141,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"canEditIssueSprint":             uiCanEditIssueSprint,
 	"projectIssues":                  uiProjectIssuesPath,
 	"projectIssueNew":                uiProjectIssueNewPath,
+	"projectReportedIssues":          uiProjectReportedIssuesPath,
 	"projectIssueNewPanel":           uiProjectIssueNewPanelPath,
 	"projectName":                    uiProjectNamePath,
 	"projectNameEdit":                uiProjectNameEditPath,
@@ -235,6 +236,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"sprintHistoryDateRange":         uiSprintHistoryDateRange,
 	"sprintLabel":                    uiSprintLabel,
 	"statusClass":                    uiStatusClass,
+	"reporterStatusClass":            uiReporterStatusClass,
+	"commentVisibilityChoice":        uiCommentVisibilityChoiceFor,
 	"statusLabel":                    uiStatusLabel,
 	"statusOptions":                  uiStatusOptions,
 	"statusRow":                      uiStatusRowClass,
@@ -273,7 +276,7 @@ func writeUIStoreError(w http.ResponseWriter, err error) {
 		http.Error(w, "not found", http.StatusNotFound)
 	case errors.Is(err, store.ErrConflict):
 		http.Error(w, "conflict", http.StatusConflict)
-	case errors.Is(err, errUIForbidden):
+	case errors.Is(err, errUIForbidden), errors.Is(err, errIssueRouteForbidden):
 		http.Error(w, "forbidden", http.StatusForbidden)
 	default:
 		writeUIInternalError(w, "ui store", err)
