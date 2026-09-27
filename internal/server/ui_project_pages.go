@@ -575,6 +575,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 
 	switch view {
 	case "about":
+		panel.ViewerAccess = uiProjectViewerAccessFor(currentUser(r), project, permissions)
 		panel.GitHubConfigured = s.githubIntegration != nil
 		panel.GitHubConnections, err = s.store.ListGitHubConnections(ctx, projectID)
 		if err != nil {

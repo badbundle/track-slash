@@ -374,6 +374,119 @@ func TestUIProjectAboutStats(t *testing.T) {
 	}
 }
 
+func TestUIProjectAboutShowsViewerAccess(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	aboutPath := e.projectPath() + "/about"
+
+	admin, err := e.store.CreateOrUpdateAdminUser(e.ctx, "ui-about-viewer-admin-"+uuid.NewString()+"@example.com", "Other Admin")
+	if err != nil {
+		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	adminToken, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{UserID: admin.ID, Kind: model.AuthTokenKindAPI, Name: "test"})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+	member, memberToken := e.mustUserToken(t, "ui-about-viewer-member")
+	readonly, readonlyToken := e.mustUserToken(t, "ui-about-viewer-readonly")
+	outsider, outsiderToken := e.mustUserToken(t, "ui-about-viewer-outsider")
+	for user, role := range map[uuid.UUID]model.ProjectMemberRole{member.ID: model.ProjectMemberRoleMember, readonly.ID: model.ProjectMemberRoleReadonly} {
+		if _, err := e.store.SetProjectMemberRole(e.ctx, e.projectID, user, role); err != nil {
+			t.Fatalf("SetProjectMemberRole %s: %v", role, err)
+		}
+	}
+
+	type viewer struct {
+		name    string
+		user    model.User
+		token   string
+		role    string
+		allowed []string
+		hint    string
+	}
+	all := []string{"view", "create-issues", "edit", "manage", "delete"}
+	check := func(t *testing.T, v viewer) {
+		t.Helper()
+		var body string
+		if v.token == "" {
+			res := e.uiDoNoRedirect(t, http.MethodGet, aboutPath, "", nil)
+			body = readBody(t, res)
+			res.Body.Close()
+			if res.StatusCode != http.StatusOK {
+				t.Fatalf("%s: about code = %d body = %s", v.name, res.StatusCode, body)
+			}
+		} else {
+			body = e.uiGet(t, aboutPath, v.token)
+		}
+		start := strings.Index(body, `<section data-project-viewer-access`)
+		if start < 0 || start > strings.Index(body, `>Access</h2>`) {
+			t.Fatalf("%s: Your access card missing or not above Access: %s", v.name, body)
+		}
+		card := body[start:]
+		card = card[:strings.Index(card, "</section>")]
+		for _, want := range []string{">Your access<", `data-project-role="` + v.role + `"`, v.hint} {
+			if !strings.Contains(card, want) {
+				t.Fatalf("%s: Your access card missing %q: %s", v.name, want, card)
+			}
+		}
+
+		// The card must agree with the permissions every handler enforces.
+		permissions, err := e.store.ProjectPermissionsForUser(e.ctx, v.user, e.projectID)
+		if err != nil {
+			t.Fatalf("%s: ProjectPermissionsForUser: %v", v.name, err)
+		}
+		enforced := map[string]bool{
+			"view":          permissions.CanRead,
+			"create-issues": permissions.CanCreateIssues,
+			"edit":          permissions.CanWrite,
+			"manage":        permissions.CanManageMembers,
+			"delete":        permissions.CanDelete,
+		}
+		for _, key := range all {
+			allowed := false
+			for _, k := range v.allowed {
+				allowed = allowed || k == key
+			}
+			if enforced[key] != allowed {
+				t.Fatalf("%s: expected %s allowed=%t but the store enforces %t", v.name, key, allowed, enforced[key])
+			}
+			row := fmt.Sprintf(`data-project-permission="%s" data-allowed="%t"`, key, allowed)
+			if !strings.Contains(card, row) {
+				t.Fatalf("%s: Your access card missing %q: %s", v.name, row, card)
+			}
+			label := "Not allowed: "
+			if allowed {
+				label = "Allowed: "
+			}
+			if !strings.Contains(card, `<span class="sr-only">`+label+`</span>`) {
+				t.Fatalf("%s: Your access card missing screen-reader state %q: %s", v.name, label, card)
+			}
+		}
+	}
+
+	owner := model.User{ID: e.adminID, IsAdmin: true}
+	for _, v := range []viewer{
+		{name: "owner", user: owner, token: e.authToken, role: "owner", allowed: all, hint: "You own this project."},
+		{name: "site admin", user: admin, token: adminToken.RawToken, role: "admin", allowed: all, hint: "Site admins have full access to every project."},
+		{name: "member", user: member, token: memberToken, role: "member", allowed: []string{"view", "create-issues", "edit"}, hint: "Only @" + e.ownerUsername + " can manage access or delete it."},
+		{name: "read-only member", user: readonly, token: readonlyToken, role: "readonly", allowed: []string{"view"}, hint: "Ask @" + e.ownerUsername + " for member access to make changes."},
+	} {
+		check(t, v)
+	}
+
+	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+		t.Fatalf("UpdateProjectAccessSettings public: %v", err)
+	}
+	check(t, viewer{name: "non-member", user: outsider, token: outsiderToken, role: "none", allowed: []string{"view"}, hint: "This project is public, so you can view it."})
+	check(t, viewer{name: "signed out", role: "signed-out", allowed: []string{"view"}, hint: `<a href="/login?next=` + url.QueryEscape(aboutPath) + `" class="font-medium text-indigo-700 hover:underline dark:text-indigo-300">Sign in</a> if you are a member of this project.`})
+
+	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true, PublicIssueCreation: true}); err != nil {
+		t.Fatalf("UpdateProjectAccessSettings public issue creation: %v", err)
+	}
+	check(t, viewer{name: "non-member with public issue creation", user: outsider, token: outsiderToken, role: "none", allowed: []string{"view", "create-issues"}, hint: "This project is public, so you can view it and open issues."})
+	check(t, viewer{name: "signed out with public issue creation", role: "signed-out", allowed: []string{"view"}, hint: `<a href="/login?next=` + url.QueryEscape(e.projectPath()+"/issues/new") + `" class="font-medium text-indigo-700 hover:underline dark:text-indigo-300">Sign in</a> to create issues.`})
+}
+
 func TestUIProjectAboutShowsAccessSettings(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)

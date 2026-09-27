@@ -505,6 +505,7 @@ type uiProjectPanelData struct {
 	MembersPage                     bool
 	Members                         []model.ProjectMember
 	AccessSettings                  model.ProjectAccessSettings
+	ViewerAccess                    uiProjectViewerAccess
 	AccessError                     string
 	SprintModeLocked                bool
 	SprintModeError                 string
