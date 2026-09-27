@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/google/uuid"
@@ -31,14 +33,18 @@ type uiIssueTitleParts struct {
 	Trailing string
 }
 
+// uiIssueTitlePartsForDisplay splits a title before its final word, so the
+// edit action can wrap together with that word instead of a lone character.
 func uiIssueTitlePartsForDisplay(title string) uiIssueTitleParts {
-	runes := []rune(title)
-	if len(runes) == 0 {
-		return uiIssueTitleParts{}
+	trimmed := strings.TrimRightFunc(title, unicode.IsSpace)
+	split := 0
+	if i := strings.LastIndexFunc(trimmed, unicode.IsSpace); i >= 0 {
+		_, size := utf8.DecodeRuneInString(trimmed[i:])
+		split = i + size
 	}
 	return uiIssueTitleParts{
-		Leading:  string(runes[:len(runes)-1]),
-		Trailing: string(runes[len(runes)-1]),
+		Leading:  title[:split],
+		Trailing: title[split:],
 	}
 }
 

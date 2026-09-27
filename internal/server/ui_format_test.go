@@ -18,7 +18,12 @@ func TestUIIssueTitlePartsForDisplay(t *testing.T) {
 	}{
 		{title: "", want: uiIssueTitleParts{}},
 		{title: "A", want: uiIssueTitleParts{Trailing: "A"}},
-		{title: "Responsive title界", want: uiIssueTitleParts{Leading: "Responsive title", Trailing: "界"}},
+		{title: "Supercalifragilistic", want: uiIssueTitleParts{Trailing: "Supercalifragilistic"}},
+		{title: "Responsive title界", want: uiIssueTitleParts{Leading: "Responsive ", Trailing: "title界"}},
+		{title: "Fix front-end layout", want: uiIssueTitleParts{Leading: "Fix front-end ", Trailing: "layout"}},
+		{title: "Tidy the  gaps", want: uiIssueTitleParts{Leading: "Tidy the  ", Trailing: "gaps"}},
+		{title: "Trailing space ", want: uiIssueTitleParts{Leading: "Trailing ", Trailing: "space "}},
+		{title: "Ideographic　space", want: uiIssueTitleParts{Leading: "Ideographic　", Trailing: "space"}},
 	} {
 		if got := uiIssueTitlePartsForDisplay(tc.title); got != tc.want {
 			t.Fatalf("uiIssueTitlePartsForDisplay(%q) = %+v, want %+v", tc.title, got, tc.want)

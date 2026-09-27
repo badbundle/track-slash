@@ -329,7 +329,8 @@ func TestUIIssuePanelKeepsTitleEditActionAttached(t *testing.T) {
 		trailing string
 	}{
 		{name: "short", title: "A", trailing: "A"},
-		{name: "long", title: "A deliberately long issue title that can wrap naturally before its final character界", leading: "A deliberately long issue title that can wrap naturally before its final character", trailing: "界"},
+		{name: "single long word", title: "https://example.com/a/very/long/path/without/any/spaces", trailing: "https://example.com/a/very/long/path/without/any/spaces"},
+		{name: "wrapped", title: "A deliberately long issue title that wraps naturally before its final word界", leading: "A deliberately long issue title that wraps naturally before its final ", trailing: "word界"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -358,16 +359,21 @@ func TestUIIssuePanelKeepsTitleEditActionAttached(t *testing.T) {
 			}
 
 			body := buf.String()
-			tail := `<span data-issue-title-tail class="inline-flex items-center whitespace-nowrap align-middle"><span>` + tc.trailing + `</span><button type="button" aria-label="Edit title"`
-			if !strings.Contains(body, tc.leading+tail) {
-				t.Fatalf("issue title does not keep its final character and edit action together: %s", body)
+			// The final word and the action share one inline-block that cannot
+			// wrap between them. Only the word itself may break, and only when it
+			// is too long for a line.
+			tail := `<span data-issue-title-tail class="inline-block max-w-full whitespace-nowrap"><span class="whitespace-normal">` + tc.trailing + `</span><button type="button" aria-label="Edit title"`
+			if !strings.Contains(body, `aria-label="`+tc.title+`">`+tc.leading+tail) {
+				t.Fatalf("issue title does not keep its final word and edit action together: %s", body)
 			}
 			for _, want := range []string{
 				`class="mt-2 min-w-0 break-words text-2xl sm:text-3xl`,
 				`hx-get="/bradley/issues/TRACK-7/title/edit"`,
 				`hx-target="#main"`,
 				`hx-push-url="false"`,
-				`class="ml-2 grid h-7 w-7 shrink-0`,
+				// Negative margins keep the 28px button inside the title's line
+				// box, so the final line is no taller than the others.
+				`class="-my-1 ml-2 inline-grid h-7 w-7 place-items-center rounded-md align-middle`,
 			} {
 				if !strings.Contains(body, want) {
 					t.Fatalf("attached title action missing %q: %s", want, body)
