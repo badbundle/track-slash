@@ -193,6 +193,19 @@ func (s *Server) uiRequireProjectAccess(ctx context.Context, user model.User, pr
 	return nil
 }
 
+// uiRequireDeletedIssueAccess admits project members to deleted issues. A
+// public project's readers see its live issues, not the ones taken down.
+func (s *Server) uiRequireDeletedIssueAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
+	permissions, err := s.uiProjectPermissions(ctx, user, projectID)
+	if err != nil {
+		return err
+	}
+	if !permissions.CanReadMembersOnly {
+		return errUIForbidden
+	}
+	return nil
+}
+
 func (s *Server) uiRequireProjectWriteAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
 	ok, err := s.store.UserCanWriteProject(ctx, user, projectID)
 	if err != nil {
@@ -488,6 +501,16 @@ func (s *Server) uiCommentFromRoute(w http.ResponseWriter, r *http.Request, issu
 	comment, err := s.store.GetCommentForIssueByNumber(r.Context(), issue.ID, number)
 	if err != nil {
 		writeUIStoreError(w, err)
+		return model.Comment{}, false
+	}
+	// A comment the caller cannot see is missing, not forbidden.
+	permissions, err := s.uiProjectPermissions(r.Context(), currentUser(r), issue.ProjectID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Comment{}, false
+	}
+	if !commentVisibleTo(permissions, comment) {
+		writeUIStoreError(w, store.ErrNotFound)
 		return model.Comment{}, false
 	}
 	return comment, true

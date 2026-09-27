@@ -1069,7 +1069,7 @@ func (s *Server) uiMarkIssueSprints(ctx context.Context, project model.Project, 
 }
 
 func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request, projectID uuid.UUID) (*uiDeletedIssuesPanelData, error) {
-	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
+	if err := s.uiRequireDeletedIssueAccess(ctx, currentUser(r), projectID); err != nil {
 		return nil, err
 	}
 	project, err := s.store.GetProject(ctx, projectID)
@@ -1097,7 +1097,7 @@ func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request,
 }
 
 func (s *Server) uiBuildDeletedIssuePanel(ctx context.Context, r *http.Request, issue model.Issue) (*uiDeletedIssuePanelData, error) {
-	if err := s.uiRequireProjectAccess(ctx, currentUser(r), issue.ProjectID); err != nil {
+	if err := s.uiRequireDeletedIssueAccess(ctx, currentUser(r), issue.ProjectID); err != nil {
 		return nil, err
 	}
 	project, err := s.store.GetProject(ctx, issue.ProjectID)

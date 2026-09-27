@@ -300,7 +300,6 @@ type uiIssueCommentItem struct {
 	AuthorID                            uuid.UUID
 	AuthorUsername                      string
 	AuthorName                          string
-	AuthorEmail                         string
 	AuthorProfileImageThumbnailObjectID *uuid.UUID
 	CanEdit                             bool
 	MembersOnly                         bool

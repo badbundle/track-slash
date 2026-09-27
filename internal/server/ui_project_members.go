@@ -166,6 +166,7 @@ func (s *Server) uiDeleteProjectMember(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
+	s.disconnectRealtimeClients()
 	panel, err := s.uiBuildProjectMemberPanel(r.Context(), r, project, "", model.ProjectMemberRoleMember, "")
 	if err != nil {
 		writeUIStoreError(w, err)

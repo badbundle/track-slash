@@ -36,6 +36,7 @@ func main() {
 	adminEmail := flag.String("email", "", "email for -create-admin-token")
 	adminName := flag.String("name", "", "name for -create-admin-token")
 	adminTokenName := flag.String("token-name", "bootstrap", "token name for -create-admin-token")
+	promoteExisting := flag.Bool("promote-existing", false, "with -create-admin-token, make the existing non-admin account that holds -email an admin (emails are not verified, so check who holds it first)")
 	generateVAPIDKeys := flag.Bool("generate-vapid-keys", false, "generate a Web Push VAPID key pair and exit")
 	flag.Parse()
 	if *generateVAPIDKeys {
@@ -86,7 +87,7 @@ func main() {
 
 	st := store.New(pool)
 	if *createAdmin {
-		if err := createAdminToken(ctx, st, *adminEmail, *adminName, *adminTokenName); err != nil {
+		if err := createAdminToken(ctx, st, *adminEmail, *adminName, *adminTokenName, *promoteExisting); err != nil {
 			log.Fatalf("create admin token: %v", err)
 		}
 		return
@@ -171,7 +172,7 @@ func main() {
 	log.Println("bye")
 }
 
-func createAdminToken(ctx context.Context, st *store.Store, email, name, tokenName string) error {
+func createAdminToken(ctx context.Context, st *store.Store, email, name, tokenName string, promoteExisting bool) error {
 	email = strings.TrimSpace(email)
 	name = strings.TrimSpace(name)
 	tokenName = strings.TrimSpace(tokenName)
@@ -185,6 +186,12 @@ func createAdminToken(ctx context.Context, st *store.Store, email, name, tokenNa
 		return errors.New("-token-name is required with -create-admin-token")
 	}
 	u, err := st.CreateOrUpdateAdminUser(ctx, email, name)
+	if errors.Is(err, store.ErrEmailBelongsToNonAdmin) {
+		if !promoteExisting {
+			return fmt.Errorf("%w; emails are not verified, so check who holds it, then rerun with -promote-existing to make that account an admin", err)
+		}
+		u, err = st.PromoteUserToAdminByEmail(ctx, email)
+	}
 	if err != nil {
 		return err
 	}

@@ -339,17 +339,13 @@ func uiNewIssueProjectAutocomplete(panel *uiNewIssuePanelData) uiAutocompleteEdi
 	}
 }
 
+// uiMemberAutocompleteOptions labels members by name and username only. A
+// member's email is theirs, not the project's, as the REST and MCP member
+// lists already treat it.
 func uiMemberAutocompleteOptions(users []model.User) []uiAutocompleteOption {
 	options := make([]uiAutocompleteOption, 0, len(users))
 	for _, user := range users {
 		label := strings.TrimSpace(user.Name)
-		if user.Email != "" {
-			if label == "" {
-				label = user.Email
-			} else {
-				label += " - " + user.Email
-			}
-		}
 		if label == "" {
 			label = "@" + user.Username
 		}
@@ -499,7 +495,6 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		if author != nil {
 			item.AuthorUsername = author.Username
 			item.AuthorName = author.Name
-			item.AuthorEmail = author.Email
 			item.AuthorProfileImageThumbnailObjectID = author.ProfileImageThumbnailObjectID
 		}
 		commentItems = append(commentItems, item)

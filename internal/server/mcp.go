@@ -1243,6 +1243,7 @@ func (s *Server) mcpRevokeProjectMember(ctx context.Context, req *mcp.CallToolRe
 	if err := s.store.RevokeProjectAccess(ctx, project.ID, user.ID); err != nil {
 		return nil, err
 	}
+	s.disconnectRealtimeClients()
 	return mcpOK(), nil
 }
 
@@ -1392,10 +1393,15 @@ func (s *Server) mcpSearchProjectMembers(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, validationError(err.Error())
 	}
+	permissions, err := s.mcpReadPermissions(ctx, auth, project.ID)
+	if err != nil {
+		return nil, err
+	}
 	users, err := s.store.SearchProjectMembers(ctx, store.SearchProjectMembersParams{
-		ProjectID: project.ID,
-		Query:     input.Query,
-		Limit:     limit,
+		ProjectID:  project.ID,
+		Query:      input.Query,
+		Limit:      limit,
+		MatchEmail: permissions.CanManageMembers,
 	})
 	if err != nil {
 		return nil, err
@@ -1772,6 +1778,14 @@ func (s *Server) mcpListDeletedIssues(ctx context.Context, req *mcp.CallToolRequ
 	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
 	if err != nil {
 		return nil, err
+	}
+	permissions, err := s.mcpReadPermissions(ctx, auth, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	// Deleted issues are for members, not everyone who can read the project.
+	if !permissions.CanReadMembersOnly {
+		return nil, errMCPForbidden
 	}
 	limit, err := mcpLimit(input.Limit)
 	if err != nil {
@@ -3410,7 +3424,12 @@ func (s *Server) mcpObject(ctx context.Context, auth authContext, input mcpObjec
 	if err != nil {
 		return model.Project{}, model.StorageObject{}, err
 	}
-	object, err := s.store.GetStorageObjectByProjectNumber(ctx, project.ID, number)
+	permissions, err := s.mcpReadPermissions(ctx, auth, project.ID)
+	if err != nil {
+		return model.Project{}, model.StorageObject{}, err
+	}
+	// Deleted issues, and the files only they hold, are for members.
+	object, err := s.store.GetVisibleStorageObjectByProjectNumber(ctx, project.ID, number, !permissions.CanReadMembersOnly)
 	if err != nil {
 		return model.Project{}, model.StorageObject{}, err
 	}
@@ -3457,7 +3476,13 @@ func (s *Server) mcpListObjects(ctx context.Context, req *mcp.CallToolRequest, i
 		}
 		cursor = &c
 	}
-	objects, hasMore, err := s.store.ListStorageObjects(ctx, store.ListStorageObjectsParams{ProjectID: project.ID, Cursor: cursor, Limit: limit})
+	permissions, err := s.mcpReadPermissions(ctx, auth, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	objects, hasMore, err := s.store.ListStorageObjects(ctx, store.ListStorageObjectsParams{
+		ProjectID: project.ID, Cursor: cursor, Limit: limit, HideDeletedIssueObjects: !permissions.CanReadMembersOnly,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -4001,6 +4026,7 @@ func (s *Server) mcpDeleteUser(ctx context.Context, req *mcp.CallToolRequest, in
 	if err := s.store.DeleteUser(ctx, id); err != nil {
 		return nil, err
 	}
+	s.disconnectRealtimeClients()
 	return mcpOK(), nil
 }
 

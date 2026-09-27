@@ -265,7 +265,13 @@ func (s *Server) listDeletedIssues(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
+		return
+	}
+	// Deleted issues are for members, not everyone who can read the project.
+	if !permissions.CanReadMembersOnly {
+		writeForbidden(w)
 		return
 	}
 

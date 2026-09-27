@@ -151,12 +151,12 @@ func uiUserAvatar(value any, class string) uiUserAvatarData {
 	case uiHelpDeskComment:
 		return uiUserAvatarFields(v.AuthorID, v.AuthorName, "", "", v.AuthorProfileImageThumbnailObjectID, class)
 	case uiIssueCommentItem:
-		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, v.AuthorEmail, v.AuthorProfileImageThumbnailObjectID, class)
+		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, "", v.AuthorProfileImageThumbnailObjectID, class)
 	case *uiIssueCommentItem:
 		if v == nil {
 			return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
 		}
-		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, v.AuthorEmail, v.AuthorProfileImageThumbnailObjectID, class)
+		return uiUserAvatarFields(v.AuthorID, v.AuthorName, v.AuthorUsername, "", v.AuthorProfileImageThumbnailObjectID, class)
 	default:
 		return uiUserAvatarFields(uuid.Nil, "", "", "", nil, class)
 	}

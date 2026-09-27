@@ -38,8 +38,9 @@ type ListProjectChangelogParams struct {
 	ProjectID uuid.UUID
 	Cursor    *ProjectChangelogCursor
 	Limit     int
-	// IncludeMembersOnly adds entries about members-only comments. Leave it
-	// false for a reader who is not a project member.
+	// IncludeMembersOnly adds entries a project member may see and no one
+	// else: about members-only comments, blocks, deleted issues and deleted
+	// comments. Leave it false for a reader who is not a project member.
 	IncludeMembersOnly bool
 }
 
@@ -112,7 +113,21 @@ func (s *Store) ListProjectChangelog(ctx context.Context, p ListProjectChangelog
 		       u.username, u.name, u.profile_image_thumbnail_object_id
 		FROM project_changelog_entries e
 		LEFT JOIN users u ON u.id = e.actor_id
-		WHERE e.project_id = $1 AND (NOT e.members_only OR $2)
+		WHERE e.project_id = $1
+		  AND (
+		      $2
+		      -- Besides members-only entries, a reader who is not a member
+		      -- does not see the history of deleted issues, nor the preview a
+		      -- deleted comment leaves behind.
+		      OR (
+		          NOT e.members_only
+		          AND NOT (e.entity = 'comment' AND e.op = 'delete')
+		          AND (
+		              e.issue_id IS NULL
+		              OR EXISTS (SELECT 1 FROM issues i WHERE i.id = e.issue_id AND i.deleted_at IS NULL)
+		          )
+		      )
+		  )
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)

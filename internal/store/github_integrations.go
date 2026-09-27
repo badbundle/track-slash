@@ -194,6 +194,29 @@ func (s *Store) GetGitHubConnectionSecret(ctx context.Context, id uuid.UUID) (Gi
 		FROM github_repository_connections c
 		LEFT JOIN github_credentials g ON g.id = c.credential_id
 		WHERE c.id = $1 AND c.disabled_at IS NULL
+		  -- A saved token is its owner's, lent to the project while they can
+		  -- work in it. Once they leave, are blocked or are deleted, the
+		  -- connection has no token until someone reconnects it.
+		  AND (
+		      c.credential_id IS NULL
+		      OR EXISTS (
+		          SELECT 1
+		          FROM users u
+		          JOIN projects p ON p.id = c.project_id
+		          WHERE u.id = g.user_id AND u.deleted_at IS NULL
+		            AND (
+		                u.is_admin OR p.owner_id = u.id
+		                OR EXISTS (
+		                    SELECT 1 FROM project_members pm
+		                    WHERE pm.project_id = p.id AND pm.user_id = u.id AND pm.role = 'member'
+		                )
+		            )
+		            AND NOT EXISTS (
+		                SELECT 1 FROM project_user_blocks b
+		                WHERE b.project_id = p.id AND b.user_id = u.id
+		            )
+		      )
+		  )
 	`, id).Scan(
 		&out.Connection.ID, &out.Connection.ProjectID, &out.Connection.RepositoryID,
 		&out.Connection.RepositoryOwner, &out.Connection.RepositoryName, &out.Connection.RepositoryURL,
