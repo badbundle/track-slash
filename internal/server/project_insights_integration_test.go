@@ -113,7 +113,7 @@ func TestProjectInsightsAPI(t *testing.T) {
 		t.Fatalf("non-member insights code = %d", code)
 	}
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings: %v", err)
 	}
 	if code, body := e.doUnauth(t, http.MethodGet, path+"?range=2w", nil); code != http.StatusOK {
@@ -252,7 +252,7 @@ func TestUIProjectInsightsPage(t *testing.T) {
 		t.Fatalf("private insights for outsider code = %d", res.StatusCode)
 	}
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings: %v", err)
 	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, path, "", nil)

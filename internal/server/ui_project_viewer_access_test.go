@@ -57,7 +57,7 @@ func TestUIProjectViewerAccessForEachViewer(t *testing.T) {
 		{
 			name:        "non-member reader",
 			user:        signedIn,
-			permissions: store.ProjectPermissions{IsPublic: true, CanRead: true},
+			permissions: store.ProjectPermissions{AccessMode: model.ProjectAccessPublic, CanRead: true},
 			role:        uiAccessBadge{Attr: `data-project-role="none"`, Icon: "user", Label: "Not a member"},
 			summary:     "This project is public, so you can view it.",
 			hint:        "Ask @bradley to add you as a member to make changes.",
@@ -65,14 +65,14 @@ func TestUIProjectViewerAccessForEachViewer(t *testing.T) {
 		{
 			name:        "non-member issue creator",
 			user:        signedIn,
-			permissions: store.ProjectPermissions{IsPublic: true, PublicIssueCreation: true, CanRead: true, CanCreateIssues: true},
+			permissions: store.ProjectPermissions{AccessMode: model.ProjectAccessPublicIssues, CanRead: true, CanCreateIssues: true},
 			role:        uiAccessBadge{Attr: `data-project-role="none"`, Icon: "user", Label: "Not a member"},
 			summary:     "This project is public, so you can view it and open issues.",
 			hint:        "Ask @bradley to add you as a member to make changes.",
 		},
 		{
 			name:        "signed out",
-			permissions: store.ProjectPermissions{IsPublic: true, CanRead: true},
+			permissions: store.ProjectPermissions{AccessMode: model.ProjectAccessPublic, CanRead: true},
 			role:        uiAccessBadge{Attr: `data-project-role="signed-out"`, Icon: "user-x", Label: "Signed out"},
 			summary:     "You are viewing this public project without signing in.",
 			signInNext:  "/bradley/projects/TRACK/about",
@@ -80,7 +80,7 @@ func TestUIProjectViewerAccessForEachViewer(t *testing.T) {
 		},
 		{
 			name:        "signed out with public issue creation",
-			permissions: store.ProjectPermissions{IsPublic: true, PublicIssueCreation: true, CanRead: true},
+			permissions: store.ProjectPermissions{AccessMode: model.ProjectAccessPublicIssues, CanRead: true},
 			role:        uiAccessBadge{Attr: `data-project-role="signed-out"`, Icon: "user-x", Label: "Signed out"},
 			summary:     "You are viewing this public project without signing in.",
 			signInNext:  "/bradley/projects/TRACK/issues/new",

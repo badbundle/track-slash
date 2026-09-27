@@ -41,7 +41,7 @@ func (e *httpEnv) mustWhiteboardPage(t *testing.T, title, body string) model.Whi
 
 func (e *httpEnv) makeProjectPublic(t *testing.T) {
 	t.Helper()
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings: %v", err)
 	}
 }

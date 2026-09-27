@@ -1084,7 +1084,7 @@ func issueProjectReporterExists(ctx context.Context, tx pgx.Tx, projectID, userI
 			  AND (
 			      p.owner_id = u.id
 			      OR pm.role = 'member'
-			      OR (pm.user_id IS NULL AND p.is_public AND p.public_issue_creation)
+			      OR (pm.user_id IS NULL AND p.access_mode = 'public_issues')
 			  )
 		)
 	`, projectID, userID).Scan(&ok)

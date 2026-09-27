@@ -75,7 +75,7 @@ func (s *Store) ListRecentIssues(ctx context.Context, user model.User, limit int
 		              WHERE b.project_id = p.id AND b.user_id = $1
 		          )
 		          AND (
-		              p.is_public
+		              p.access_mode IN ('public', 'public_issues')
 		              OR EXISTS (
 		                  SELECT 1 FROM project_members pm
 		                  WHERE pm.project_id = p.id AND pm.user_id = $1

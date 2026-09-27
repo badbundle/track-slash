@@ -176,60 +176,51 @@ func (s *Store) RevokeProjectAccess(ctx context.Context, projectID, userID uuid.
 }
 
 func (s *Store) GetProjectAccessSettings(ctx context.Context, projectID uuid.UUID) (model.ProjectAccessSettings, error) {
-	var out model.ProjectAccessSettings
+	var mode model.ProjectAccessMode
 	err := s.db.QueryRow(ctx, `
-		SELECT p.is_public, p.public_issue_creation
+		SELECT p.access_mode
 		FROM projects p
 		JOIN users owner ON owner.id = p.owner_id
 		WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
-	`, projectID).Scan(&out.IsPublic, &out.PublicIssueCreation)
+	`, projectID).Scan(&mode)
 	if err != nil {
 		if isNoRows(err) {
 			return model.ProjectAccessSettings{}, ErrNotFound
 		}
 		return model.ProjectAccessSettings{}, err
 	}
-	return out, nil
+	return model.NewProjectAccessSettings(mode), nil
 }
 
-func (s *Store) UpdateProjectAccessSettings(ctx context.Context, projectID uuid.UUID, settings model.ProjectAccessSettings) (model.ProjectAccessSettings, error) {
-	if !settings.IsPublic {
-		settings.PublicIssueCreation = false
+// ErrInvalidProjectAccessMode rejects a mode the project cannot be put in.
+var ErrInvalidProjectAccessMode = fmt.Errorf("access mode must be private, public or public_issues: %w", ErrConflict)
+
+func (s *Store) UpdateProjectAccessMode(ctx context.Context, projectID uuid.UUID, mode model.ProjectAccessMode) (model.ProjectAccessSettings, error) {
+	if !mode.Valid() {
+		return model.ProjectAccessSettings{}, ErrInvalidProjectAccessMode
 	}
-	var out model.ProjectAccessSettings
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var projectKey, projectName string
-		var before model.ProjectAccessSettings
+		var before model.ProjectAccessMode
 		if err := tx.QueryRow(ctx, `
-			SELECT p.key, p.name, p.is_public, p.public_issue_creation
+			SELECT p.key, p.name, p.access_mode
 			FROM projects p
 			JOIN users owner ON owner.id = p.owner_id
 			WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
 			FOR UPDATE OF p
-		`, projectID).Scan(&projectKey, &projectName, &before.IsPublic, &before.PublicIssueCreation); err != nil {
+		`, projectID).Scan(&projectKey, &projectName, &before); err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
 			}
 			return err
 		}
-		if before == settings {
-			out = before
+		if before == mode {
 			return nil
 		}
-		if err := tx.QueryRow(ctx, `
-			UPDATE projects
-			SET is_public = $2, public_issue_creation = $3, updated_at = now()
-			WHERE id = $1
-			RETURNING is_public, public_issue_creation
-		`, projectID, settings.IsPublic, settings.PublicIssueCreation).Scan(&out.IsPublic, &out.PublicIssueCreation); err != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE projects SET access_mode = $2, updated_at = now() WHERE id = $1
+		`, projectID, mode); err != nil {
 			return err
-		}
-		changes := make([]model.ProjectChangelogChange, 0, 2)
-		if before.IsPublic != out.IsPublic {
-			changes = append(changes, model.ProjectChangelogChange{Field: "is_public", Label: "Public access", From: fmt.Sprintf("%t", before.IsPublic), To: fmt.Sprintf("%t", out.IsPublic)})
-		}
-		if before.PublicIssueCreation != out.PublicIssueCreation {
-			changes = append(changes, model.ProjectChangelogChange{Field: "public_issue_creation", Label: "Public issue creation", From: fmt.Sprintf("%t", before.PublicIssueCreation), To: fmt.Sprintf("%t", out.PublicIssueCreation)})
 		}
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 			ProjectID:   projectID,
@@ -238,14 +229,16 @@ func (s *Store) UpdateProjectAccessSettings(ctx context.Context, projectID uuid.
 			EntityID:    projectID,
 			TargetRef:   projectKey,
 			TargetTitle: projectName,
-			Summary:     fmt.Sprintf("Updated public access for project %s", projectKey),
-			Details:     model.ProjectChangelogDetails{Changes: changes},
+			Summary:     fmt.Sprintf("Updated access for project %s", projectKey),
+			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+				{Field: "access_mode", Label: "Access", From: before.Label(), To: mode.Label()},
+			}},
 		})
 	})
 	if err != nil {
 		return model.ProjectAccessSettings{}, err
 	}
-	return out, nil
+	return model.NewProjectAccessSettings(mode), nil
 }
 
 func (s *Store) BlockProjectUser(ctx context.Context, projectID, userID, createdByID uuid.UUID) (model.ProjectUserBlock, error) {
@@ -604,15 +597,14 @@ func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvail
 }
 
 type ProjectPermissions struct {
-	Role                model.ProjectMemberRole
-	IsOwner             bool
-	IsPublic            bool
-	PublicIssueCreation bool
-	IsBlocked           bool
-	CanRead             bool
-	CanWrite            bool
-	CanCreateIssues     bool
-	CanManageMembers    bool
+	Role             model.ProjectMemberRole
+	IsOwner          bool
+	AccessMode       model.ProjectAccessMode
+	IsBlocked        bool
+	CanRead          bool
+	CanWrite         bool
+	CanCreateIssues  bool
+	CanManageMembers bool
 	// CanDelete covers deleting the project itself, which is a stronger
 	// authority than editing its contents: write members may delete issues,
 	// sprints, and context, but only the owner or a site admin may remove the
@@ -623,9 +615,10 @@ type ProjectPermissions struct {
 func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, projectID uuid.UUID) (ProjectPermissions, error) {
 	var ownerID uuid.UUID
 	var role string
-	var isPublic, publicIssueCreation, isBlocked bool
+	var accessMode model.ProjectAccessMode
+	var isBlocked bool
 	err := s.db.QueryRow(ctx, `
-		SELECT p.owner_id, p.is_public, p.public_issue_creation,
+		SELECT p.owner_id, p.access_mode,
 		       COALESCE(pm.role::text, ''), EXISTS (
 		           SELECT 1 FROM project_user_blocks b
 		           WHERE b.project_id = p.id AND b.user_id = $2
@@ -634,7 +627,7 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 		JOIN users owner ON owner.id = p.owner_id
 		LEFT JOIN project_members pm ON pm.project_id = p.id AND pm.user_id = $2
 		WHERE p.id = $1 AND p.deleted_at IS NULL AND owner.deleted_at IS NULL
-	`, projectID, user.ID).Scan(&ownerID, &isPublic, &publicIssueCreation, &role, &isBlocked)
+	`, projectID, user.ID).Scan(&ownerID, &accessMode, &role, &isBlocked)
 	if err != nil {
 		if isNoRows(err) {
 			return ProjectPermissions{}, ErrNotFound
@@ -642,11 +635,10 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 		return ProjectPermissions{}, err
 	}
 	permissions := ProjectPermissions{
-		Role:                model.ProjectMemberRole(role),
-		IsOwner:             ownerID == user.ID,
-		IsPublic:            isPublic,
-		PublicIssueCreation: publicIssueCreation,
-		IsBlocked:           isBlocked,
+		Role:       model.ProjectMemberRole(role),
+		IsOwner:    ownerID == user.ID,
+		AccessMode: accessMode,
+		IsBlocked:  isBlocked,
 	}
 	if user.IsAdmin || permissions.IsOwner {
 		permissions.CanRead = true
@@ -662,9 +654,9 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 	if permissions.IsBlocked {
 		return permissions, nil
 	}
-	permissions.CanRead = permissions.Role.Valid() || isPublic
+	permissions.CanRead = permissions.Role.Valid() || accessMode.PublicRead()
 	permissions.CanWrite = permissions.Role == model.ProjectMemberRoleMember
-	permissions.CanCreateIssues = permissions.CanWrite || (user.ID != uuid.Nil && permissions.Role == "" && isPublic && publicIssueCreation)
+	permissions.CanCreateIssues = permissions.CanWrite || (user.ID != uuid.Nil && permissions.Role == "" && accessMode.OutsideIssueCreation())
 	return permissions, nil
 }
 

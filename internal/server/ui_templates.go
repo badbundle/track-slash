@@ -215,6 +215,7 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"projectIcon":                    uiProjectIcon,
 	"projectVisibilityBadge":         uiProjectVisibilityBadge,
 	"projectIssueCreationBadge":      uiProjectIssueCreationBadge,
+	"projectAccessModeOptions":       uiProjectAccessModeOptions,
 	"projectSprintModeBadge":         uiProjectSprintModeBadge,
 	"projectImagePicker":             uiProjectImagePicker,
 	"projectGitHubConnectionModal":   uiProjectGitHubConnectionModal,

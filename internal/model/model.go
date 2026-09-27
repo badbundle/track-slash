@@ -328,9 +328,79 @@ type ProjectMemberCandidate struct {
 	ProfileImageThumbnailObjectID *uuid.UUID `json:"profile_image_thumbnail_object_id,omitempty"`
 }
 
+// ProjectAccessMode says who outside a project's members can see it and file
+// issues in it. Members, the owner and admins are unaffected by the mode.
+type ProjectAccessMode string
+
+const (
+	// ProjectAccessPrivate limits the project to its members.
+	ProjectAccessPrivate ProjectAccessMode = "private"
+	// ProjectAccessPublic lets anyone, signed in or not, read the project.
+	ProjectAccessPublic ProjectAccessMode = "public"
+	// ProjectAccessPublicIssues is ProjectAccessPublic plus issue filing by
+	// anyone signed in.
+	ProjectAccessPublicIssues ProjectAccessMode = "public_issues"
+)
+
+func (m ProjectAccessMode) Valid() bool {
+	switch m {
+	case ProjectAccessPrivate, ProjectAccessPublic, ProjectAccessPublicIssues:
+		return true
+	}
+	return false
+}
+
+// PublicRead reports whether anyone may read the project without being a member.
+func (m ProjectAccessMode) PublicRead() bool {
+	return m == ProjectAccessPublic || m == ProjectAccessPublicIssues
+}
+
+// OutsideIssueCreation reports whether a signed-in non-member may file issues.
+func (m ProjectAccessMode) OutsideIssueCreation() bool {
+	return m == ProjectAccessPublicIssues
+}
+
+// Label is the mode's name in the UI and the changelog.
+func (m ProjectAccessMode) Label() string {
+	switch m {
+	case ProjectAccessPublic:
+		return "Public"
+	case ProjectAccessPublicIssues:
+		return "Public, open to issues"
+	default:
+		return "Private"
+	}
+}
+
+// ProjectAccessModeFromFlags maps the legacy is_public and
+// public_issue_creation pair onto a mode. Issue creation without public read
+// was never allowed, so it falls back to private as it always did.
+func ProjectAccessModeFromFlags(isPublic, publicIssueCreation bool) ProjectAccessMode {
+	switch {
+	case isPublic && publicIssueCreation:
+		return ProjectAccessPublicIssues
+	case isPublic:
+		return ProjectAccessPublic
+	default:
+		return ProjectAccessPrivate
+	}
+}
+
+// ProjectAccessSettings is a project's access mode. IsPublic and
+// PublicIssueCreation are derived from it for clients written before the mode
+// replaced them.
 type ProjectAccessSettings struct {
-	IsPublic            bool `json:"is_public"`
-	PublicIssueCreation bool `json:"public_issue_creation"`
+	AccessMode          ProjectAccessMode `json:"access_mode"`
+	IsPublic            bool              `json:"is_public"`
+	PublicIssueCreation bool              `json:"public_issue_creation"`
+}
+
+func NewProjectAccessSettings(mode ProjectAccessMode) ProjectAccessSettings {
+	return ProjectAccessSettings{
+		AccessMode:          mode,
+		IsPublic:            mode.PublicRead(),
+		PublicIssueCreation: mode.OutsideIssueCreation(),
+	}
 }
 
 type ProjectUserBlock struct {

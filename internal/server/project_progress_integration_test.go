@@ -167,7 +167,7 @@ func TestProjectProgressAPI(t *testing.T) {
 	if code, _ := e.doWithToken(t, deniedToken, http.MethodGet, path, nil); code != http.StatusForbidden {
 		t.Fatalf("non-member progress code = %d", code)
 	}
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings: %v", err)
 	}
 	if code, body := e.doUnauth(t, http.MethodGet, path, nil); code != http.StatusOK {

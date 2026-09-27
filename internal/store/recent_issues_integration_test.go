@@ -155,7 +155,7 @@ func TestListRecentIssuesLeavesOutIssuesTheUserCannotRead(t *testing.T) {
 		}
 	}
 	for _, project := range []model.Project{public, blocked} {
-		if _, err := env.store.UpdateProjectAccessSettings(env.ctx, project.ID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+		if _, err := env.store.UpdateProjectAccessMode(env.ctx, project.ID, model.ProjectAccessPublic); err != nil {
 			t.Fatalf("UpdateProjectAccessSettings %s: %v", project.Name, err)
 		}
 	}

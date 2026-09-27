@@ -34,7 +34,7 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 	}
 
 	settings, err := env.store.GetProjectAccessSettings(env.ctx, project.ID)
-	if err != nil || settings.IsPublic || settings.PublicIssueCreation {
+	if err != nil || settings.AccessMode != model.ProjectAccessPrivate || settings.IsPublic || settings.PublicIssueCreation {
 		t.Fatalf("default access settings = %+v, %v", settings, err)
 	}
 	for name, user := range map[string]model.User{"anonymous": {}, "outsider": outsider} {
@@ -44,11 +44,8 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 		}
 	}
 
-	settings, err = env.store.UpdateProjectAccessSettings(env.ctx, project.ID, model.ProjectAccessSettings{
-		IsPublic:            true,
-		PublicIssueCreation: true,
-	})
-	if err != nil || !settings.IsPublic || !settings.PublicIssueCreation {
+	settings, err = env.store.UpdateProjectAccessMode(env.ctx, project.ID, model.ProjectAccessPublicIssues)
+	if err != nil || settings.AccessMode != model.ProjectAccessPublicIssues || !settings.IsPublic || !settings.PublicIssueCreation {
 		t.Fatalf("updated access settings = %+v, %v", settings, err)
 	}
 	anonymousPermissions, err := env.store.ProjectPermissionsForUser(env.ctx, model.User{}, project.ID)
@@ -76,17 +73,20 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 	}); err != nil || issue.ReporterID == nil || *issue.ReporterID != outsider.ID {
 		t.Fatalf("CreateIssue public reporter = %+v, %v", issue, err)
 	}
-	if unchanged, err := env.store.UpdateProjectAccessSettings(env.ctx, project.ID, settings); err != nil || unchanged != settings {
+	if unchanged, err := env.store.UpdateProjectAccessMode(env.ctx, project.ID, settings.AccessMode); err != nil || unchanged != settings {
 		t.Fatalf("idempotent access update = %+v, %v", unchanged, err)
 	}
-	if single, err := env.store.UpdateProjectAccessSettings(env.ctx, project.ID, model.ProjectAccessSettings{IsPublic: true}); err != nil || !single.IsPublic || single.PublicIssueCreation {
-		t.Fatalf("single-field access update = %+v, %v", single, err)
+	if public, err := env.store.UpdateProjectAccessMode(env.ctx, project.ID, model.ProjectAccessPublic); err != nil || !public.IsPublic || public.PublicIssueCreation {
+		t.Fatalf("public access update = %+v, %v", public, err)
 	}
 	entries, _, err := env.store.ListProjectChangelog(env.ctx, store.ListProjectChangelogParams{ProjectID: project.ID, Limit: 1})
-	if err != nil || len(entries) != 1 || len(entries[0].Details.Changes) != 1 || entries[0].Details.Changes[0].Field != "public_issue_creation" {
-		t.Fatalf("single-field access changelog = %+v, %v", entries, err)
+	if err != nil || len(entries) != 1 || len(entries[0].Details.Changes) != 1 {
+		t.Fatalf("access changelog = %+v, %v", entries, err)
 	}
-	if settings, err = env.store.UpdateProjectAccessSettings(env.ctx, project.ID, model.ProjectAccessSettings{IsPublic: true, PublicIssueCreation: true}); err != nil {
+	if change := entries[0].Details.Changes[0]; change.Field != "access_mode" || change.From != "Public, open to issues" || change.To != "Public" {
+		t.Fatalf("access changelog change = %+v", change)
+	}
+	if settings, err = env.store.UpdateProjectAccessMode(env.ctx, project.ID, model.ProjectAccessPublicIssues); err != nil {
 		t.Fatalf("restore public issue creation: %v", err)
 	}
 
@@ -157,17 +157,19 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 		t.Fatalf("unblocked permissions = %+v, %v", permissions, err)
 	}
 
-	settings, err = env.store.UpdateProjectAccessSettings(env.ctx, project.ID, model.ProjectAccessSettings{
-		IsPublic:            false,
-		PublicIssueCreation: true,
-	})
-	if err != nil || settings.IsPublic || settings.PublicIssueCreation {
-		t.Fatalf("private normalization settings = %+v, %v", settings, err)
+	for _, mode := range []model.ProjectAccessMode{"", "helpdesk", "everyone"} {
+		if _, err := env.store.UpdateProjectAccessMode(env.ctx, project.ID, mode); !errors.Is(err, store.ErrInvalidProjectAccessMode) {
+			t.Fatalf("UpdateProjectAccessMode(%q) err = %v, want ErrInvalidProjectAccessMode", mode, err)
+		}
+	}
+	settings, err = env.store.UpdateProjectAccessMode(env.ctx, project.ID, model.ProjectAccessPrivate)
+	if err != nil || settings.AccessMode != model.ProjectAccessPrivate || settings.IsPublic || settings.PublicIssueCreation {
+		t.Fatalf("private access settings = %+v, %v", settings, err)
 	}
 	if _, err := env.store.GetProjectAccessSettings(env.ctx, uuid.New()); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing access settings err = %v, want ErrNotFound", err)
 	}
-	if _, err := env.store.UpdateProjectAccessSettings(env.ctx, uuid.New(), model.ProjectAccessSettings{IsPublic: true}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := env.store.UpdateProjectAccessMode(env.ctx, uuid.New(), model.ProjectAccessPublic); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing access update err = %v, want ErrNotFound", err)
 	}
 	if _, err := env.store.BlockProjectUser(env.ctx, uuid.New(), outsider.ID, owner.ID); !errors.Is(err, store.ErrNotFound) {

@@ -135,7 +135,7 @@ func TestUISidebarRecentsSkipSignedOutVisitors(t *testing.T) {
 	t.Parallel()
 	e := newHTTPEnv(t)
 	issue := e.mustCreateIssue(t, "Public work")
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings: %v", err)
 	}
 

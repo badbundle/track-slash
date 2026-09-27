@@ -63,7 +63,7 @@ func TestUIProjectMemberCollectionActionsMovedOutOfTheUsernameNamespace(t *testi
 	outsider := e.mustUserNamed(t, "outsider-user")
 
 	res := e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-access", e.authToken,
-		strings.NewReader("is_public=on&public_issue_creation=on"))
+		strings.NewReader("access_mode=public_issues"))
 	body := readBody(t, res)
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK {

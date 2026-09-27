@@ -362,7 +362,7 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 	if p.VisibleToUser != nil {
 		args = append(args, *p.VisibleToUser)
 		q += fmt.Sprintf(` AND (
-			projects.is_public
+			projects.access_mode IN ('public', 'public_issues')
 			OR projects.owner_id = $%d
 			OR EXISTS (
 				SELECT 1 FROM project_members pm
@@ -399,8 +399,7 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 				  AND pm.role = 'member'
 			)
 			OR (
-				projects.is_public
-				AND projects.public_issue_creation
+				projects.access_mode = 'public_issues'
 				AND NOT EXISTS (
 					SELECT 1 FROM project_members pm
 					WHERE pm.project_id = projects.id AND pm.user_id = $%d

@@ -31,7 +31,7 @@ func TestUIProjectContextHeaderMatchesOtherProjectViews(t *testing.T) {
 		}
 	}
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings: %v", err)
 	}
 	for _, view := range views {

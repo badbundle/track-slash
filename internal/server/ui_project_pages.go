@@ -485,7 +485,7 @@ func uiApplyProjectHeaderAccess(panel *uiProjectPanelData, user model.User, perm
 	panel.Anonymous = user.ID == uuid.Nil
 	panel.CanWrite = permissions.CanWrite
 	panel.CanCreateIssues = permissions.CanCreateIssues
-	panel.PublicIssueCreationEnabled = permissions.IsPublic && permissions.PublicIssueCreation && !permissions.IsBlocked
+	panel.PublicIssueCreationEnabled = permissions.AccessMode.OutsideIssueCreation() && !permissions.IsBlocked
 	panel.CanManageMembers = permissions.CanManageMembers
 	panel.CanDeleteProject = permissions.CanDelete
 	panel.OwnerCrumb = user.ID != panel.Project.OwnerID
@@ -547,12 +547,9 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		DeleteNotice:         deleteNotice,
 	}
 	uiApplyProjectHeaderAccess(panel, currentUser(r), permissions)
-	// The permissions lookup already read both access columns, so About and
-	// Members render them without a second round trip.
-	panel.AccessSettings = model.ProjectAccessSettings{
-		IsPublic:            permissions.IsPublic,
-		PublicIssueCreation: permissions.PublicIssueCreation,
-	}
+	// The permissions lookup already read the access mode, so About and
+	// Members render it without a second round trip.
+	panel.AccessSettings = model.NewProjectAccessSettings(permissions.AccessMode)
 	if view == "all" {
 		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
 		if err != nil {
