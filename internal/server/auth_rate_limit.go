@@ -139,6 +139,24 @@ func (s *Server) authIPRateLimited(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// allowAuthIP spends one attempt from the request's IP budget, answering 429
+// when it is gone, for handlers that rate-limit only some of their requests.
+func (s *Server) allowAuthIP(w http.ResponseWriter, r *http.Request) bool {
+	allowed, retryAfter := s.authLimiter.byIP.allow(clientIP(r, s.trustedProxyCIDRs))
+	if !allowed {
+		writeAuthRateLimit(w, retryAfter)
+		return false
+	}
+	return true
+}
+
+// authIdentifierAllowed spends one attempt from an identifier's budget, for
+// callers that answer without an http.ResponseWriter.
+func (s *Server) authIdentifierAllowed(identifier string) bool {
+	allowed, _ := s.authLimiter.byIdentifier.allow(strings.ToLower(strings.TrimSpace(identifier)))
+	return allowed
+}
+
 func (s *Server) authAccountRateLimited(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.allowAuthIdentifier(w, currentUser(r).ID.String()) {

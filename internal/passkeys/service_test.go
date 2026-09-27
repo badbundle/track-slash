@@ -155,6 +155,15 @@ func TestBeginCeremoniesIntegration(t *testing.T) {
 		t.Fatalf("add options = %+v", add)
 	}
 
+	// Another account cannot finish this user's add ceremony, even holding its
+	// ID, and the attempt spends the ceremony.
+	if _, err := svc.FinishAdd(ctx, req, uuid.New(), add.CeremonyID, []byte(`{}`)); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("FinishAdd by another user err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := svc.FinishAdd(ctx, req, user.ID, add.CeremonyID, []byte(`{}`)); err == nil {
+		t.Fatal("FinishAdd reused a spent ceremony")
+	}
+
 	reauth, err := svc.BeginReauth(ctx, req, user)
 	if err != nil {
 		t.Fatalf("BeginReauth: %v", err)

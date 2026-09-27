@@ -199,12 +199,15 @@ func (s *Service) BeginAdd(ctx context.Context, r *http.Request, p AddOptionsPar
 	return CreationOptions{CeremonyID: id, PublicKey: creation.Response, Mediation: creation.Mediation}, nil
 }
 
-func (s *Service) FinishAdd(ctx context.Context, r *http.Request, ceremonyID uuid.UUID, response []byte) (model.PasskeyCredential, error) {
+// FinishAdd completes adding a passkey to userID's account. The ceremony must
+// have been begun by that same user: a ceremony ID alone never lets one
+// account attach a credential to another.
+func (s *Service) FinishAdd(ctx context.Context, r *http.Request, userID, ceremonyID uuid.UUID, response []byte) (model.PasskeyCredential, error) {
 	rp, session, err := s.consumeSession(ctx, r, ceremonyID, store.PasskeyCeremonyAdd)
 	if err != nil {
 		return model.PasskeyCredential{}, err
 	}
-	if session.UserID == nil {
+	if session.UserID == nil || *session.UserID != userID {
 		return model.PasskeyCredential{}, store.ErrUnauthorized
 	}
 	appUser, err := s.store.GetUser(ctx, *session.UserID)

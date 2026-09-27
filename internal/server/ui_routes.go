@@ -61,7 +61,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/settings/profile", s.uiUpdateProfile)
 		r.Post("/settings/profile-image", s.uiUpdateProfileImage)
 		r.Post("/settings/profile-image/delete", s.uiDeleteProfileImage)
-		r.Post("/settings/password", s.uiUpdatePassword)
+		r.Post("/settings/password", s.authIPRateLimited(s.authAccountRateLimited(s.uiUpdatePassword)))
 		r.Post("/settings/password-login", s.uiUpdatePasswordLogin)
 		r.Post("/settings/push/preferences", s.uiUpdatePushNotificationPreferences)
 		r.Get("/settings/push/subscription", s.uiPushSubscriptionState)

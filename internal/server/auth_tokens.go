@@ -36,6 +36,12 @@ func (s *Server) updateMySettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := currentAuth(r)
+	changingPassword := req.CurrentPassword != "" || req.NewPassword != ""
+	// The email identifies the account and the password signs in to it, so
+	// neither is a connector's to change.
+	if (req.Email != nil || changingPassword) && !requireFirstPartyToken(w, r) {
+		return
+	}
 	changed := false
 	user := auth.User
 	if req.Name != nil || req.Email != nil {
@@ -72,7 +78,16 @@ func (s *Server) updateMySettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		// Checking the current password is a guess like any sign-in, so it
+		// spends the same budget as reauthentication.
+		if !s.allowAuthIP(w, r) || !s.allowAuthIdentifier(w, auth.User.ID.String()) {
+			return
+		}
 		if err := s.store.ChangePassword(r.Context(), auth.User.ID, req.CurrentPassword, req.NewPassword); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		if _, err := s.store.RevokeSessionAuthTokensForUserExcept(r.Context(), auth.User.ID, keptSessionTokenID(auth)); err != nil {
 			writeStoreError(w, err)
 			return
 		}

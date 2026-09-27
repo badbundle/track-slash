@@ -387,6 +387,9 @@ func (s *Store) RevokePasskeyCredentialForUser(ctx context.Context, userID, id u
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockUserCredentials(ctx, tx, userID); err != nil {
+		return err
+	}
 
 	var exists bool
 	if err := tx.QueryRow(ctx, `

@@ -114,6 +114,19 @@ func (s *Store) HasPasswordCredential(ctx context.Context, userID uuid.UUID) (bo
 	return ok, nil
 }
 
+// lockUserCredentials serialises changes to a user's sign-in methods. Turning
+// off password login and revoking a passkey each check that another way to
+// sign in remains; without the lock two of them racing could each see the
+// other's credential and together leave the account with none.
+func lockUserCredentials(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	var locked uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&locked)
+	if isNoRows(err) {
+		return ErrNotFound
+	}
+	return err
+}
+
 type passwordLoginQuerier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
@@ -129,6 +142,9 @@ func (s *Store) SetPasswordLoginEnabled(ctx context.Context, userID uuid.UUID, e
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	if err := lockUserCredentials(ctx, tx, userID); err != nil {
+		return model.PasswordLoginState{}, err
+	}
 	state, err := passwordLoginState(ctx, tx, userID)
 	if err != nil {
 		return model.PasswordLoginState{}, err

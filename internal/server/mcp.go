@@ -43,6 +43,7 @@ var (
 	errMCPForbidden     = mcpAppError{Code: "forbidden", Message: "forbidden"}
 	errMCPUnauthorized  = mcpAppError{Code: "unauthorized", Message: "unauthorized"}
 	errMCPStorageAbsent = mcpAppError{Code: "unavailable", Message: "object storage unavailable"}
+	errMCPRateLimited   = mcpAppError{Code: "rate_limited", Message: "too many authentication attempts"}
 )
 
 type mcpProjectInput struct {
@@ -378,8 +379,10 @@ type mcpSearchMembersInput struct {
 	Query string `json:"query,omitempty"`
 }
 
+// IDs are strings on the wire: a uuid.UUID field would be described to clients
+// as an array of bytes, which no client sends.
 type mcpUserInput struct {
-	ID uuid.UUID `json:"id"`
+	ID string `json:"id" jsonschema:"user id (UUID)"`
 }
 
 type mcpCreateUserInput struct {
@@ -402,16 +405,16 @@ type mcpCreateTokenInput struct {
 }
 
 type mcpCreateUserTokenInput struct {
-	UserID uuid.UUID `json:"user_id"`
+	UserID string `json:"user_id" jsonschema:"user id (UUID)"`
 	mcpCreateTokenInput
 }
 
 type mcpTokenInput struct {
-	ID uuid.UUID `json:"id"`
+	ID string `json:"id" jsonschema:"token id (UUID)"`
 }
 
 type mcpListUserTokensInput struct {
-	UserID uuid.UUID `json:"user_id"`
+	UserID string `json:"user_id" jsonschema:"user id (UUID)"`
 }
 
 func (s *Server) mountMCPRoutes(r chi.Router) {
@@ -957,6 +960,14 @@ func mcpOptionalUUID(raw *string, field string) (*uuid.UUID, error) {
 	return &id, nil
 }
 
+func mcpRequiredUUID(raw, field string) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return uuid.Nil, validationError(field + " must be a UUID")
+	}
+	return id, nil
+}
+
 func mcpUUIDs(raw []string, field string) ([]uuid.UUID, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -1003,6 +1014,14 @@ func (s *Server) mcpUpdateMySettings(ctx context.Context, req *mcp.CallToolReque
 	if err != nil {
 		return nil, err
 	}
+	changingPassword := input.CurrentPassword != "" || input.NewPassword != ""
+	if input.Email != nil || changingPassword {
+		// The email identifies the account and the password signs in to it,
+		// so neither is a connector's to change.
+		if err := requireMCPFirstPartyToken(auth); err != nil {
+			return nil, err
+		}
+	}
 	changed := false
 	user := auth.User
 	if input.Name != nil || input.Email != nil {
@@ -1033,7 +1052,13 @@ func (s *Server) mcpUpdateMySettings(ctx context.Context, req *mcp.CallToolReque
 		if err := store.ValidatePassword(input.NewPassword); err != nil {
 			return nil, validationError(err.Error())
 		}
+		if !s.authIdentifierAllowed(auth.User.ID.String()) {
+			return nil, errMCPRateLimited
+		}
 		if err := s.store.ChangePassword(ctx, auth.User.ID, input.CurrentPassword, input.NewPassword); err != nil {
+			return nil, err
+		}
+		if _, err := s.store.RevokeSessionAuthTokensForUserExcept(ctx, auth.User.ID, keptSessionTokenID(auth)); err != nil {
 			return nil, err
 		}
 		changed = true
@@ -3852,6 +3877,9 @@ func (s *Server) mcpCreateUser(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
+	if err := requireMCPFirstPartyToken(auth); err != nil {
+		return nil, err
+	}
 	if err := s.requireMCPAdmin(auth); err != nil {
 		return nil, err
 	}
@@ -3883,6 +3911,9 @@ func (s *Server) mcpCreateUser(ctx context.Context, req *mcp.CallToolRequest, in
 func (s *Server) mcpListUsers(ctx context.Context, req *mcp.CallToolRequest, input mcpPageInput) (mcpToolOutput, error) {
 	ctx, auth, err := s.mcpAuth(ctx, req)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireMCPFirstPartyToken(auth); err != nil {
 		return nil, err
 	}
 	if err := s.requireMCPAdmin(auth); err != nil {
@@ -3918,10 +3949,17 @@ func (s *Server) mcpGetUser(ctx context.Context, req *mcp.CallToolRequest, input
 	if err != nil {
 		return nil, err
 	}
+	if err := requireMCPFirstPartyToken(auth); err != nil {
+		return nil, err
+	}
 	if err := s.requireMCPAdmin(auth); err != nil {
 		return nil, err
 	}
-	user, err := s.store.GetUser(ctx, input.ID)
+	id, err := mcpRequiredUUID(input.ID, "id")
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.store.GetUser(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -3933,10 +3971,17 @@ func (s *Server) mcpDeleteUser(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
+	if err := requireMCPFirstPartyToken(auth); err != nil {
+		return nil, err
+	}
 	if err := s.requireMCPAdmin(auth); err != nil {
 		return nil, err
 	}
-	if err := s.store.DeleteUser(ctx, input.ID); err != nil {
+	id, err := mcpRequiredUUID(input.ID, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.DeleteUser(ctx, id); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -3984,7 +4029,11 @@ func (s *Server) mcpRevokeMyToken(ctx context.Context, req *mcp.CallToolRequest,
 	if err := requireMCPFirstPartyToken(auth); err != nil {
 		return nil, err
 	}
-	if err := s.store.RevokeAuthTokenForUser(ctx, auth.User.ID, input.ID); err != nil {
+	id, err := mcpRequiredUUID(input.ID, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.RevokeAuthTokenForUser(ctx, auth.User.ID, id); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil
@@ -4001,11 +4050,15 @@ func (s *Server) mcpCreateUserToken(ctx context.Context, req *mcp.CallToolReques
 	if err := s.requireMCPAdmin(auth); err != nil {
 		return nil, err
 	}
+	userID, err := mcpRequiredUUID(input.UserID, "user_id")
+	if err != nil {
+		return nil, err
+	}
 	name, kind, err := validateMCPTokenInput(input.Name, input.Kind, input.ExpiresAt)
 	if err != nil {
 		return nil, err
 	}
-	created, err := s.store.CreateAuthToken(ctx, store.CreateAuthTokenParams{UserID: input.UserID, Kind: kind, Name: name, ExpiresAt: s.authTokenExpiry(kind, input.ExpiresAt)})
+	created, err := s.store.CreateAuthToken(ctx, store.CreateAuthTokenParams{UserID: userID, Kind: kind, Name: name, ExpiresAt: s.authTokenExpiry(kind, input.ExpiresAt)})
 	if err != nil {
 		return nil, err
 	}
@@ -4023,7 +4076,11 @@ func (s *Server) mcpListUserTokens(ctx context.Context, req *mcp.CallToolRequest
 	if err := s.requireMCPAdmin(auth); err != nil {
 		return nil, err
 	}
-	tokens, err := s.store.ListAuthTokens(ctx, input.UserID)
+	userID, err := mcpRequiredUUID(input.UserID, "user_id")
+	if err != nil {
+		return nil, err
+	}
+	tokens, err := s.store.ListAuthTokens(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -4041,7 +4098,11 @@ func (s *Server) mcpRevokeToken(ctx context.Context, req *mcp.CallToolRequest, i
 	if err := s.requireMCPAdmin(auth); err != nil {
 		return nil, err
 	}
-	if err := s.store.RevokeAuthToken(ctx, input.ID); err != nil {
+	id, err := mcpRequiredUUID(input.ID, "id")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.RevokeAuthToken(ctx, id); err != nil {
 		return nil, err
 	}
 	return mcpOK(), nil

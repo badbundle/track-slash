@@ -115,6 +115,16 @@ func (s *Store) CreateAccount(ctx context.Context, p CreateAccountParams) (model
 	return u, nil
 }
 
+// timingDecoyPasswordHash is a bcrypt hash at the default cost that no
+// password is expected to match; see AuthenticatePassword.
+var timingDecoyPasswordHash = func() []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte("timing decoy, never a password"), bcrypt.DefaultCost)
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}()
+
 func (s *Store) AuthenticatePassword(ctx context.Context, username, password string) (model.User, error) {
 	normalized, err := NormalizeUsername(username)
 	if err != nil {
@@ -143,6 +153,10 @@ func (s *Store) AuthenticatePassword(ctx context.Context, username, password str
 	)
 	if err != nil {
 		if isNoRows(err) {
+			// Spend a comparison anyway, so an unknown username costs the
+			// same time as a wrong password and response times do not tell
+			// which usernames exist.
+			_ = bcrypt.CompareHashAndPassword(timingDecoyPasswordHash, []byte(password))
 			return model.User{}, ErrUnauthorized
 		}
 		return model.User{}, err

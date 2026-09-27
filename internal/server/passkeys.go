@@ -229,7 +229,7 @@ func (s *Server) createMyPasskey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	cred, err := s.passkeyOptions().FinishAdd(r.Context(), r, req.CeremonyID, req.Credential)
+	cred, err := s.passkeyOptions().FinishAdd(r.Context(), r, currentUser(r).ID, req.CeremonyID, req.Credential)
 	if err != nil {
 		writePasskeyError(w, err)
 		return
