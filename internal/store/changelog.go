@@ -38,6 +38,9 @@ type ListProjectChangelogParams struct {
 	ProjectID uuid.UUID
 	Cursor    *ProjectChangelogCursor
 	Limit     int
+	// IncludeMembersOnly adds entries about members-only comments. Leave it
+	// false for a reader who is not a project member.
+	IncludeMembersOnly bool
 }
 
 type appendProjectChangelogParams struct {
@@ -50,6 +53,7 @@ type appendProjectChangelogParams struct {
 	TargetRef     string
 	TargetTitle   string
 	Summary       string
+	MembersOnly   bool
 	Details       model.ProjectChangelogDetails
 }
 
@@ -69,7 +73,7 @@ func scanProjectChangelogEntry(row changelogScanner) (model.ProjectChangelogEntr
 	var details []byte
 	err := row.Scan(
 		&out.ID, &out.ProjectID, &actorID, &out.Entity, &out.Op, &out.EntityID, &out.IssueID, &out.ParentIssueID,
-		&out.TargetRef, &out.TargetTitle, &out.Summary, &details, &out.Version, &out.CreatedAt,
+		&out.TargetRef, &out.TargetTitle, &out.Summary, &details, &out.MembersOnly, &out.Version, &out.CreatedAt,
 		&actorUsername, &actorName, &actorThumbnailID,
 	)
 	if err != nil {
@@ -101,14 +105,14 @@ func (s *Store) ListProjectChangelog(ctx context.Context, p ListProjectChangelog
 	if _, err := s.GetProject(ctx, p.ProjectID); err != nil {
 		return nil, false, err
 	}
-	args := []any{p.ProjectID}
+	args := []any{p.ProjectID, p.IncludeMembersOnly}
 	q := `
 		SELECT e.id, e.project_id, e.actor_id, e.entity, e.op, e.entity_id, e.issue_id, e.parent_issue_id,
-		       e.target_ref, e.target_title, e.summary, e.details, e.version, e.created_at,
+		       e.target_ref, e.target_title, e.summary, e.details, e.members_only, e.version, e.created_at,
 		       u.username, u.name, u.profile_image_thumbnail_object_id
 		FROM project_changelog_entries e
 		LEFT JOIN users u ON u.id = e.actor_id
-		WHERE e.project_id = $1
+		WHERE e.project_id = $1 AND (NOT e.members_only OR $2)
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
@@ -153,11 +157,11 @@ func appendProjectChangelog(ctx context.Context, q changelogQueryer, p appendPro
 	return q.QueryRow(ctx, `
 		INSERT INTO project_changelog_entries (
 			project_id, actor_id, entity, op, entity_id, issue_id, parent_issue_id,
-			target_ref, target_title, summary, details
+			target_ref, target_title, summary, details, members_only
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id
-	`, p.ProjectID, actorFromContext(ctx), p.Entity, p.Op, p.EntityID, p.IssueID, p.ParentIssueID, p.TargetRef, p.TargetTitle, p.Summary, details).Scan(&id)
+	`, p.ProjectID, actorFromContext(ctx), p.Entity, p.Op, p.EntityID, p.IssueID, p.ParentIssueID, p.TargetRef, p.TargetTitle, p.Summary, details, p.MembersOnly).Scan(&id)
 }
 
 func changelogChange(field, label, from, to string) model.ProjectChangelogChange {

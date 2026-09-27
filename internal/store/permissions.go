@@ -597,14 +597,17 @@ func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvail
 }
 
 type ProjectPermissions struct {
-	Role             model.ProjectMemberRole
-	IsOwner          bool
-	AccessMode       model.ProjectAccessMode
-	IsBlocked        bool
-	CanRead          bool
-	CanWrite         bool
-	CanCreateIssues  bool
-	CanManageMembers bool
+	Role       model.ProjectMemberRole
+	IsOwner    bool
+	AccessMode model.ProjectAccessMode
+	IsBlocked  bool
+	CanRead    bool
+	// CanReadMembersOnly covers members-only comments: the owner, members,
+	// read-only members and admins, never a public viewer.
+	CanReadMembersOnly bool
+	CanWrite           bool
+	CanCreateIssues    bool
+	CanManageMembers   bool
 	// CanDelete covers deleting the project itself, which is a stronger
 	// authority than editing its contents: write members may delete issues,
 	// sprints, and context, but only the owner or a site admin may remove the
@@ -642,6 +645,7 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 	}
 	if user.IsAdmin || permissions.IsOwner {
 		permissions.CanRead = true
+		permissions.CanReadMembersOnly = true
 		permissions.CanWrite = true
 		permissions.CanCreateIssues = true
 		permissions.CanManageMembers = true
@@ -655,6 +659,7 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 		return permissions, nil
 	}
 	permissions.CanRead = permissions.Role.Valid() || accessMode.PublicRead()
+	permissions.CanReadMembersOnly = permissions.Role.Valid()
 	permissions.CanWrite = permissions.Role == model.ProjectMemberRoleMember
 	permissions.CanCreateIssues = permissions.CanWrite || (user.ID != uuid.Nil && permissions.Role == "" && accessMode.OutsideIssueCreation())
 	return permissions, nil

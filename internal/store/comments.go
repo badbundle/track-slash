@@ -17,13 +17,23 @@ type CreateCommentParams struct {
 	IssueID  uuid.UUID
 	AuthorID uuid.UUID
 	Body     string
+	// Visibility defaults to the project's DefaultCommentVisibility when empty.
+	Visibility model.CommentVisibility
 }
 
 type UpdateCommentParams struct {
 	ID       uuid.UUID
 	AuthorID uuid.UUID
 	Body     string
+	// Visibility leaves the comment's visibility unchanged when nil.
+	Visibility *model.CommentVisibility
 }
+
+// ErrInvalidCommentVisibility rejects a visibility other than shared or members.
+var ErrInvalidCommentVisibility = fmt.Errorf("visibility must be shared or members: %w", ErrConflict)
+
+// commentColumns is the column list scanComment reads, in order.
+const commentColumns = `id, issue_id, number, author_id, body, visibility, created_at, updated_at`
 
 type DeleteCommentParams struct {
 	ID       uuid.UUID
@@ -36,7 +46,7 @@ type commentScanner interface {
 
 func scanComment(row commentScanner) (model.Comment, error) {
 	var out model.Comment
-	err := row.Scan(&out.ID, &out.IssueID, &out.Number, &out.AuthorID, &out.Body, &out.CreatedAt, &out.UpdatedAt)
+	err := row.Scan(&out.ID, &out.IssueID, &out.Number, &out.AuthorID, &out.Body, &out.Visibility, &out.CreatedAt, &out.UpdatedAt)
 	if err != nil {
 		return model.Comment{}, err
 	}
@@ -49,26 +59,34 @@ func scanComment(row commentScanner) (model.Comment, error) {
 }
 
 func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model.Comment, error) {
+	if p.Visibility != "" && !p.Visibility.Valid() {
+		return model.Comment{}, ErrInvalidCommentVisibility
+	}
 	var out model.Comment
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		var number int
+		var accessMode model.ProjectAccessMode
 		if err := tx.QueryRow(ctx, `
-			SELECT next_comment_number
-			FROM issues
-			WHERE id = $1 AND deleted_at IS NULL
-			FOR UPDATE
-		`, p.IssueID).Scan(&number); err != nil {
+			SELECT i.next_comment_number, p.access_mode
+			FROM issues i
+			JOIN projects p ON p.id = i.project_id
+			WHERE i.id = $1 AND i.deleted_at IS NULL
+			FOR UPDATE OF i
+		`, p.IssueID).Scan(&number, &accessMode); err != nil {
 			if isNoRows(err) {
 				return fmt.Errorf("issue not found: %w", ErrNotFound)
 			}
 			return err
 		}
+		visibility := p.Visibility
+		if visibility == "" {
+			visibility = model.DefaultCommentVisibility(accessMode)
+		}
 		var err error
 		out, err = scanComment(tx.QueryRow(ctx, `
-			INSERT INTO comments (issue_id, number, author_id, body)
-			VALUES ($1, $2, $3, $4)
-			RETURNING id, issue_id, number, author_id, body, created_at, updated_at
-		`, p.IssueID, number, p.AuthorID, p.Body))
+			INSERT INTO comments (issue_id, number, author_id, body, visibility)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING `+commentColumns, p.IssueID, number, p.AuthorID, p.Body, visibility))
 		if err != nil {
 			return err
 		}
@@ -90,6 +108,7 @@ func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model
 				Preview:          changelogPreview(out.Body),
 				PushNotification: pushNotificationChangelogData(nil, pushMentionUsernames(out.Body)),
 			},
+			MembersOnly: out.Visibility == model.CommentVisibilityMembers,
 		}); err != nil {
 			return err
 		}
@@ -116,10 +135,7 @@ func (s *Store) CreateComment(ctx context.Context, p CreateCommentParams) (model
 }
 
 func (s *Store) GetComment(ctx context.Context, id uuid.UUID) (model.Comment, error) {
-	const q = `
-		SELECT id, issue_id, number, author_id, body, created_at, updated_at
-		FROM comments WHERE id = $1
-	`
+	const q = `SELECT ` + commentColumns + ` FROM comments WHERE id = $1`
 	out, err := scanComment(s.db.QueryRow(ctx, q, id))
 	if err != nil {
 		if isNoRows(err) {
@@ -132,11 +148,7 @@ func (s *Store) GetComment(ctx context.Context, id uuid.UUID) (model.Comment, er
 }
 
 func (s *Store) GetCommentForIssueByNumber(ctx context.Context, issueID uuid.UUID, number int) (model.Comment, error) {
-	const q = `
-		SELECT id, issue_id, number, author_id, body, created_at, updated_at
-		FROM comments
-		WHERE issue_id = $1 AND number = $2
-	`
+	const q = `SELECT ` + commentColumns + ` FROM comments WHERE issue_id = $1 AND number = $2`
 	out, err := scanComment(s.db.QueryRow(ctx, q, issueID, number))
 	if err != nil {
 		if isNoRows(err) {
@@ -157,6 +169,9 @@ type ListCommentsForIssueParams struct {
 	Cursor      *CommentsCursor
 	Limit       int
 	NewestFirst bool
+	// IncludeMembersOnly adds members-only comments. Leave it false for a
+	// reader who is not a project member.
+	IncludeMembersOnly bool
 }
 
 func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssueParams) ([]model.Comment, bool, error) {
@@ -169,11 +184,11 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 		return nil, false, err
 	}
 
-	args := []any{p.IssueID}
+	args := []any{p.IssueID, p.IncludeMembersOnly}
 	q := `
-		SELECT c.id, c.issue_id, c.number, c.author_id, c.body, c.created_at, c.updated_at
+		SELECT c.id, c.issue_id, c.number, c.author_id, c.body, c.visibility, c.created_at, c.updated_at
 		FROM comments c
-		WHERE c.issue_id = $1
+		WHERE c.issue_id = $1 AND (c.visibility = 'shared' OR $2)
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
@@ -218,10 +233,13 @@ func (s *Store) ListCommentsForIssue(ctx context.Context, p ListCommentsForIssue
 }
 
 func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model.Comment, error) {
+	if p.Visibility != nil && !p.Visibility.Valid() {
+		return model.Comment{}, ErrInvalidCommentVisibility
+	}
 	var out model.Comment
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		before, err := scanComment(tx.QueryRow(ctx, `
-			SELECT id, issue_id, number, author_id, body, created_at, updated_at
+			SELECT `+commentColumns+`
 			FROM comments
 			WHERE id = $1 AND author_id = $2
 			FOR UPDATE
@@ -232,23 +250,49 @@ func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model
 			}
 			return err
 		}
-		if before.Body == p.Body {
+		visibility := before.Visibility
+		if p.Visibility != nil {
+			visibility = *p.Visibility
+		}
+		if before.Body == p.Body && before.Visibility == visibility {
 			out = before
 			return nil
 		}
+		// Only a body change counts as an edit; changing who can see the
+		// comment leaves its edited time alone.
 		out, err = scanComment(tx.QueryRow(ctx, `
 			UPDATE comments
 			SET body = $3,
-				updated_at = GREATEST(clock_timestamp(), created_at + interval '1 microsecond')
+				visibility = $4,
+				updated_at = CASE WHEN body = $3 THEN updated_at
+					ELSE GREATEST(clock_timestamp(), created_at + interval '1 microsecond') END
 			WHERE id = $1 AND author_id = $2
-			RETURNING id, issue_id, number, author_id, body, created_at, updated_at
-		`, p.ID, p.AuthorID, p.Body))
+			RETURNING `+commentColumns, p.ID, p.AuthorID, p.Body, visibility))
 		if err != nil {
 			return err
 		}
 		issue, err := getIssueForChangelog(ctx, tx, out.IssueID, false)
 		if err != nil {
 			return err
+		}
+		membersOnly := out.Visibility == model.CommentVisibilityMembers
+		if before.Visibility != out.Visibility {
+			// Earlier entries carry the comment's body preview, so they
+			// follow its new visibility.
+			if _, err := tx.Exec(ctx, `
+				UPDATE project_changelog_entries
+				SET members_only = $2
+				WHERE entity = 'comment' AND entity_id = $1 AND members_only <> $2
+			`, out.ID, membersOnly); err != nil {
+				return err
+			}
+		}
+		var changes []model.ProjectChangelogChange
+		changes = changelogAppendChange(changes, "body", "Comment", changelogPreview(before.Body), changelogPreview(out.Body))
+		changes = changelogAppendChange(changes, "visibility", "Visibility", before.Visibility.Label(), out.Visibility.Label())
+		summary := fmt.Sprintf("Edited comment on %s", issue.Identifier)
+		if before.Body == out.Body {
+			summary = fmt.Sprintf("Changed comment visibility on %s", issue.Identifier)
 		}
 		targetRef, targetTitle := changelogTarget(issue)
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
@@ -259,10 +303,9 @@ func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model
 			IssueID:     &issue.ID,
 			TargetRef:   targetRef,
 			TargetTitle: targetTitle,
-			Summary:     fmt.Sprintf("Edited comment on %s", issue.Identifier),
-			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
-				changelogChange("body", "Comment", changelogPreview(before.Body), changelogPreview(out.Body)),
-			}},
+			Summary:     summary,
+			Details:     model.ProjectChangelogDetails{Changes: changes},
+			MembersOnly: membersOnly,
 		})
 	})
 	if err != nil {
@@ -279,7 +322,7 @@ func (s *Store) UpdateComment(ctx context.Context, p UpdateCommentParams) (model
 func (s *Store) DeleteComment(ctx context.Context, p DeleteCommentParams) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		before, err := scanComment(tx.QueryRow(ctx, `
-			SELECT id, issue_id, number, author_id, body, created_at, updated_at
+			SELECT `+commentColumns+`
 			FROM comments
 			WHERE id = $1 AND author_id = $2
 			FOR UPDATE
@@ -313,6 +356,7 @@ func (s *Store) DeleteComment(ctx context.Context, p DeleteCommentParams) error 
 			TargetTitle: targetTitle,
 			Summary:     fmt.Sprintf("Deleted comment on %s", issue.Identifier),
 			Details:     model.ProjectChangelogDetails{Preview: changelogPreview(before.Body)},
+			MembersOnly: before.Visibility == model.CommentVisibilityMembers,
 		})
 	})
 }

@@ -717,14 +717,14 @@ func (s *Store) PreparePushNotificationDelivery(ctx context.Context, delivery Pu
 	if issue.ProjectID != delivery.ProjectID {
 		return PushNotificationPayload{}, false, nil
 	}
-	canRead, err := s.UserCanAccessProject(ctx, user, issue.ProjectID)
+	permissions, err := s.ProjectPermissionsForUser(ctx, user, issue.ProjectID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return PushNotificationPayload{}, false, nil
 		}
 		return PushNotificationPayload{}, false, err
 	}
-	if !canRead {
+	if !permissions.CanRead {
 		return PushNotificationPayload{}, false, nil
 	}
 	project, err := s.GetProject(ctx, issue.ProjectID)
@@ -736,17 +736,24 @@ func (s *Store) PreparePushNotificationDelivery(ctx context.Context, delivery Pu
 	}
 	var actorUsername string
 	var detailsRaw []byte
+	var membersOnly bool
 	err = s.db.QueryRow(ctx, `
-		SELECT COALESCE(u.username, ''), c.details
+		SELECT COALESCE(u.username, ''), c.details, c.members_only
 		FROM project_changelog_entries c
 		LEFT JOIN users u ON u.id = c.actor_id AND u.deleted_at IS NULL
 		WHERE c.id = $1 AND c.project_id = $2 AND c.issue_id = $3
-	`, delivery.ChangelogID, delivery.ProjectID, delivery.IssueID).Scan(&actorUsername, &detailsRaw)
+	`, delivery.ChangelogID, delivery.ProjectID, delivery.IssueID).Scan(&actorUsername, &detailsRaw, &membersOnly)
 	if err != nil {
 		if isNoRows(err) {
 			return PushNotificationPayload{}, false, nil
 		}
 		return PushNotificationPayload{}, false, err
+	}
+	// A members-only comment, including one that mentions the recipient, is
+	// not announced to someone who cannot read it. The flag is read at
+	// delivery, so a comment made members-only after posting is covered too.
+	if membersOnly && !permissions.CanReadMembersOnly {
+		return PushNotificationPayload{}, false, nil
 	}
 	var details model.ProjectChangelogDetails
 	if err := json.Unmarshal(detailsRaw, &details); err != nil {

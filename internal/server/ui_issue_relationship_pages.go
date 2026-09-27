@@ -225,14 +225,21 @@ func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 		s.renderUIIssuePanelWithCommentError(w, r, issue.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")
 		return
 	}
+	// A form without the choice (a private project) takes the default.
+	visibility := model.CommentVisibility(r.Form.Get("visibility"))
+	if visibility != "" && !visibility.Valid() {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
 	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
 		writeUIStoreError(w, err)
 		return
 	}
 	if _, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
-		IssueID:  issue.ID,
-		AuthorID: currentUser(r).ID,
-		Body:     body,
+		IssueID:    issue.ID,
+		AuthorID:   currentUser(r).ID,
+		Body:       body,
+		Visibility: visibility,
 	}); err != nil {
 		writeUIStoreError(w, err)
 		return
@@ -270,6 +277,7 @@ func (s *Server) uiEditComment(w http.ResponseWriter, r *http.Request) {
 	}
 	panel.EditCommentID = comment.ID
 	panel.CommentEditBody = comment.Body
+	panel.CommentEditVisibility = comment.Visibility
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -300,11 +308,17 @@ func (s *Server) uiUpdateComment(w http.ResponseWriter, r *http.Request) {
 		s.renderUIIssuePanelWithCommentEditError(w, r, issue.ID, comment.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")
 		return
 	}
-	updated, err := s.store.UpdateComment(r.Context(), store.UpdateCommentParams{
-		ID:       comment.ID,
-		AuthorID: user.ID,
-		Body:     body,
-	})
+	params := store.UpdateCommentParams{ID: comment.ID, AuthorID: user.ID, Body: body}
+	// A form without the choice (a private project) keeps the visibility.
+	if raw := r.Form.Get("visibility"); raw != "" {
+		visibility := model.CommentVisibility(raw)
+		if !visibility.Valid() {
+			writeUIStoreError(w, errUIBadRequest)
+			return
+		}
+		params.Visibility = &visibility
+	}
+	updated, err := s.store.UpdateComment(r.Context(), params)
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			s.renderUIIssuePanelWithCommentEditError(w, r, issue.ID, comment.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")

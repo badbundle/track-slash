@@ -14,23 +14,30 @@ import (
 // the listener without allowing it to diverge silently.
 type Hub struct {
 	mu      sync.RWMutex
-	topics  map[string]map[*Client]struct{}
+	topics  map[string]map[*Client]TopicAccess
 	dropped atomic.Uint64
 }
 
 func NewHub() *Hub {
-	return &Hub{topics: make(map[string]map[*Client]struct{})}
+	return &Hub{topics: make(map[string]map[*Client]TopicAccess)}
 }
 
+// Subscribe joins the client to a topic without members-only access.
 func (h *Hub) Subscribe(c *Client, topic string) {
+	h.SubscribeWithAccess(c, topic, TopicAccess{})
+}
+
+// SubscribeWithAccess joins the client to a topic with the access its
+// authorizer granted. Subscribing again replaces the earlier access.
+func (h *Hub) SubscribeWithAccess(c *Client, topic string, access TopicAccess) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	set, ok := h.topics[topic]
 	if !ok {
-		set = make(map[*Client]struct{})
+		set = make(map[*Client]TopicAccess)
 		h.topics[topic] = set
 	}
-	set[c] = struct{}{}
+	set[c] = access
 }
 
 func (h *Hub) Unsubscribe(c *Client, topic string) {
@@ -70,7 +77,10 @@ func (h *Hub) Publish(ev Event) {
 	h.mu.RLock()
 	seen := make(map[*Client]struct{})
 	for _, t := range topics {
-		for c := range h.topics[t] {
+		for c, access := range h.topics[t] {
+			if ev.MembersOnly && !access.MembersOnly {
+				continue
+			}
 			if _, dup := seen[c]; dup {
 				continue
 			}

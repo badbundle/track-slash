@@ -302,6 +302,7 @@ type uiIssueCommentItem struct {
 	AuthorEmail                         string
 	AuthorProfileImageThumbnailObjectID *uuid.UUID
 	CanEdit                             bool
+	MembersOnly                         bool
 }
 
 type uiIssueLinkItem struct {
@@ -705,24 +706,29 @@ type uiIssuePanelData struct {
 	EditCommentID      uuid.UUID
 	CommentEditBody    string
 	CommentEditError   string
-	Links              []uiIssueLinkItem
-	LinksHasMore       bool
-	AddLink            bool
-	EditLinkID         uuid.UUID
-	LinkTarget         string
-	LinkRelation       string
-	LinkError          string
-	Contexts           []model.ProjectContext
-	ContextsHasMore    bool
-	EditTags           bool
-	TagModalAttached   []model.IssueTag
-	TagModalAvailable  []model.IssueTag
-	TagInput           string
-	TagError           string
-	BackHref           string
-	BackHXGet          string
-	BackLabel          string
-	DeleteNotice       *uiIssueDeleteNotice
+	// CommentVisibilityChoice offers the shared/members-only choice. It is
+	// only worth asking where someone other than a member can read issues.
+	CommentVisibilityChoice bool
+	CommentVisibility       model.CommentVisibility
+	CommentEditVisibility   model.CommentVisibility
+	Links                   []uiIssueLinkItem
+	LinksHasMore            bool
+	AddLink                 bool
+	EditLinkID              uuid.UUID
+	LinkTarget              string
+	LinkRelation            string
+	LinkError               string
+	Contexts                []model.ProjectContext
+	ContextsHasMore         bool
+	EditTags                bool
+	TagModalAttached        []model.IssueTag
+	TagModalAvailable       []model.IssueTag
+	TagInput                string
+	TagError                string
+	BackHref                string
+	BackHXGet               string
+	BackLabel               string
+	DeleteNotice            *uiIssueDeleteNotice
 	// SidebarRecents is set when an htmx navigation opens the issue. The panel
 	// then also swaps the sidebar's Recents list out of band, because htmx
 	// leaves the sidebar in place.

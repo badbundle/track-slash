@@ -11,7 +11,8 @@ func (s *Server) listProjectChangelog(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -30,9 +31,10 @@ func (s *Server) listProjectChangelog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entries, hasMore, err := s.store.ListProjectChangelog(r.Context(), store.ListProjectChangelogParams{
-		ProjectID: project.ID,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:          project.ID,
+		Cursor:             cursor,
+		Limit:              limit,
+		IncludeMembersOnly: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)

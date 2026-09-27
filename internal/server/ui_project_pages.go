@@ -970,10 +970,15 @@ func (s *Server) uiBuildProjectChangelogPage(ctx context.Context, r *http.Reques
 		}
 		cursor = &c
 	}
+	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), project.ID)
+	if err != nil {
+		return uiProjectChangelogPageData{}, err
+	}
 	entries, hasMore, err := s.store.ListProjectChangelog(ctx, store.ListProjectChangelogParams{
-		ProjectID: project.ID,
-		Cursor:    cursor,
-		Limit:     DefaultLimit,
+		ProjectID:          project.ID,
+		Cursor:             cursor,
+		Limit:              DefaultLimit,
+		IncludeMembersOnly: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return uiProjectChangelogPageData{}, err

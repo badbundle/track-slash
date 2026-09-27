@@ -340,6 +340,10 @@ const (
 	// ProjectAccessPublicIssues is ProjectAccessPublic plus issue filing by
 	// anyone signed in.
 	ProjectAccessPublicIssues ProjectAccessMode = "public_issues"
+	// ProjectAccessHelpDesk keeps the project private but lets anyone signed in
+	// file issues and follow their own. It is not selectable until the
+	// reporter experience lands (TRACK-92), so Valid rejects it.
+	ProjectAccessHelpDesk ProjectAccessMode = "helpdesk"
 )
 
 func (m ProjectAccessMode) Valid() bool {
@@ -651,8 +655,11 @@ type ProjectChangelogEntry struct {
 	TargetTitle   string                  `json:"target_title,omitempty"`
 	Summary       string                  `json:"summary"`
 	Details       ProjectChangelogDetails `json:"details,omitempty"`
-	Version       int64                   `json:"version"`
-	CreatedAt     time.Time               `json:"created_at"`
+	// MembersOnly marks an entry about a members-only comment, which only
+	// readers who may see that comment receive.
+	MembersOnly bool      `json:"members_only"`
+	Version     int64     `json:"version"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type Project struct {
@@ -934,16 +941,51 @@ func CommentRef(number int) string {
 	return fmt.Sprintf("comment-%d", number)
 }
 
+// CommentVisibility says who may read a comment besides project members.
+type CommentVisibility string
+
+const (
+	// CommentVisibilityShared comments are visible to everyone who can read
+	// the issue: public viewers, and in a help desk the reporter.
+	CommentVisibilityShared CommentVisibility = "shared"
+	// CommentVisibilityMembers comments are visible only to project members
+	// (the owner, members, read-only members) and site admins.
+	CommentVisibilityMembers CommentVisibility = "members"
+)
+
+func (v CommentVisibility) Valid() bool {
+	return v == CommentVisibilityShared || v == CommentVisibilityMembers
+}
+
+// Label is the visibility's name in the UI and the changelog.
+func (v CommentVisibility) Label() string {
+	if v == CommentVisibilityMembers {
+		return "Members only"
+	}
+	return "Shared"
+}
+
+// DefaultCommentVisibility is the visibility a new comment gets when its author
+// does not choose one. A help desk keeps comments to members unless shared on
+// purpose; elsewhere comments stay visible to every reader, as they always were.
+func DefaultCommentVisibility(mode ProjectAccessMode) CommentVisibility {
+	if mode == ProjectAccessHelpDesk {
+		return CommentVisibilityMembers
+	}
+	return CommentVisibilityShared
+}
+
 type Comment struct {
-	ID        uuid.UUID  `json:"id"`
-	IssueID   uuid.UUID  `json:"issue_id"`
-	Number    int        `json:"number"`
-	Ref       string     `json:"ref"`
-	AuthorID  uuid.UUID  `json:"author_id"`
-	Body      string     `json:"body"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	EditedAt  *time.Time `json:"edited_at"`
+	ID         uuid.UUID         `json:"id"`
+	IssueID    uuid.UUID         `json:"issue_id"`
+	Number     int               `json:"number"`
+	Ref        string            `json:"ref"`
+	AuthorID   uuid.UUID         `json:"author_id"`
+	Body       string            `json:"body"`
+	Visibility CommentVisibility `json:"visibility"`
+	CreatedAt  time.Time         `json:"created_at"`
+	UpdatedAt  time.Time         `json:"updated_at"`
+	EditedAt   *time.Time        `json:"edited_at"`
 }
 
 type Sprint struct {
