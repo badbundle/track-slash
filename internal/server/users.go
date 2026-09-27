@@ -122,5 +122,6 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	s.disconnectRealtimeClients()
 	w.WriteHeader(http.StatusNoContent)
 }

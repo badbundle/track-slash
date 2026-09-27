@@ -189,3 +189,63 @@ func TestGitHubCredentialLifecycleAcrossProjects(t *testing.T) {
 		t.Fatalf("second delete error = %v", err)
 	}
 }
+
+// A saved token is lent to a project only while its owner can still work in
+// it: leaving, being made read-only or being deleted takes it back.
+func TestGitHubConnectionSecretFollowsTheTokenOwner(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	username := "gh-lender-" + strings.ToLower(uniqueProjectKey(t))
+	lender, err := env.store.CreateUserProfile(env.ctx, username, username+"@example.com", "Lender")
+	if err != nil {
+		t.Fatalf("CreateUserProfile: %v", err)
+	}
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, lender.ID); err != nil {
+		t.Fatalf("GrantProjectAccess: %v", err)
+	}
+	credentialID := uuid.New()
+	if _, err := env.store.CreateGitHubCredential(env.ctx, store.CreateGitHubCredentialParams{
+		ID: credentialID, UserID: lender.ID, Name: "Personal", GitHubLogin: "lender",
+		TokenCiphertext: bytes.Repeat([]byte{3}, 24), TokenNonce: bytes.Repeat([]byte{4}, 12),
+	}); err != nil {
+		t.Fatalf("CreateGitHubCredential: %v", err)
+	}
+	connection, err := env.store.UpsertGitHubConnection(store.WithActor(env.ctx, lender.ID), store.UpsertGitHubConnectionParams{
+		ProjectID: env.projectID, RepositoryID: 601, RepositoryOwner: "acme", RepositoryName: "lent",
+		RepositoryURL: "https://github.com/acme/lent", CredentialID: &credentialID, CreatedByID: lender.ID,
+	})
+	if err != nil {
+		t.Fatalf("UpsertGitHubConnection: %v", err)
+	}
+	available := func(want bool) {
+		t.Helper()
+		_, err := env.store.GetGitHubConnectionSecret(env.ctx, connection.ID)
+		if want && err != nil {
+			t.Fatalf("GetGitHubConnectionSecret = %v, want the lent token", err)
+		}
+		if !want && !errors.Is(err, store.ErrNotFound) {
+			t.Fatalf("GetGitHubConnectionSecret = %v, want ErrNotFound", err)
+		}
+	}
+	available(true)
+	if _, err := env.store.SetProjectMemberRole(env.ctx, env.projectID, lender.ID, model.ProjectMemberRoleReadonly); err != nil {
+		t.Fatalf("SetProjectMemberRole readonly: %v", err)
+	}
+	available(false)
+	if _, err := env.store.SetProjectMemberRole(env.ctx, env.projectID, lender.ID, model.ProjectMemberRoleMember); err != nil {
+		t.Fatalf("SetProjectMemberRole member: %v", err)
+	}
+	available(true)
+	if err := env.store.RevokeProjectAccess(env.ctx, env.projectID, lender.ID); err != nil {
+		t.Fatalf("RevokeProjectAccess: %v", err)
+	}
+	available(false)
+	if _, err := env.store.GrantProjectAccess(env.ctx, env.projectID, lender.ID); err != nil {
+		t.Fatalf("GrantProjectAccess again: %v", err)
+	}
+	available(true)
+	if err := env.store.DeleteUser(env.ctx, lender.ID); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+	available(false)
+}

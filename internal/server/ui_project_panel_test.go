@@ -712,7 +712,7 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`id="issue-reporter" name="reporter" value="@grace"`,
 		`list="new-issue-members"`,
 		`<datalist id="new-issue-members">`,
-		`<option value="@ada">Ada Lovelace - ada@example.com</option>`,
+		`<option value="@ada">Ada Lovelace</option>`,
 		`aria-label="Cancel creating issue"`,
 		`href="/bradley/projects/TRACK/all"`,
 		`hx-get="/bradley/projects/TRACK/all/panel"`,

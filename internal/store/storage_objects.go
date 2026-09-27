@@ -48,7 +48,24 @@ type ListStorageObjectsParams struct {
 	ProjectID uuid.UUID
 	Cursor    *StorageObjectsCursor
 	Limit     int
+	// HideDeletedIssueObjects leaves out files attached only to deleted
+	// issues, which, like the issues themselves, are for project members.
+	HideDeletedIssueObjects bool
 }
+
+// hiddenDeletedIssueObject matches an object attached only to deleted issues,
+// when the bound flag asks for those to be hidden.
+const hiddenDeletedIssueObject = `(
+	%s
+	AND EXISTS (
+		SELECT 1 FROM issue_attachments ia JOIN issues i ON i.id = ia.issue_id
+		WHERE ia.storage_object_id = so.id AND i.deleted_at IS NOT NULL
+	)
+	AND NOT EXISTS (
+		SELECT 1 FROM issue_attachments ia JOIN issues i ON i.id = ia.issue_id
+		WHERE ia.storage_object_id = so.id AND i.deleted_at IS NULL
+	)
+)`
 
 type storageObjectScanner interface {
 	Scan(dest ...any) error
@@ -171,7 +188,14 @@ func (s *Store) CreateUserStorageObject(ctx context.Context, p CreateUserStorage
 }
 
 func (s *Store) GetStorageObjectByProjectNumber(ctx context.Context, projectID uuid.UUID, number int) (model.StorageObject, error) {
-	const q = `
+	return s.GetVisibleStorageObjectByProjectNumber(ctx, projectID, number, false)
+}
+
+// GetVisibleStorageObjectByProjectNumber is GetStorageObjectByProjectNumber
+// that, with hideDeletedIssueObjects, treats a file attached only to deleted
+// issues as missing.
+func (s *Store) GetVisibleStorageObjectByProjectNumber(ctx context.Context, projectID uuid.UUID, number int, hideDeletedIssueObjects bool) (model.StorageObject, error) {
+	q := `
 		SELECT so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 		       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
 		       so.created_at, so.updated_at, so.deleted_at
@@ -180,8 +204,9 @@ func (s *Store) GetStorageObjectByProjectNumber(ctx context.Context, projectID u
 		WHERE so.project_id = $1 AND so.number = $2 AND so.deleted_at IS NULL AND p.deleted_at IS NULL
 		  AND so.id IS DISTINCT FROM p.image_object_id
 		  AND so.id IS DISTINCT FROM p.image_thumbnail_object_id
+		  AND NOT ` + fmt.Sprintf(hiddenDeletedIssueObject, "$3") + `
 	`
-	out, err := scanStorageObject(s.db.QueryRow(ctx, q, projectID, number))
+	out, err := scanStorageObject(s.db.QueryRow(ctx, q, projectID, number, hideDeletedIssueObjects))
 	if err != nil {
 		if isNoRows(err) {
 			return model.StorageObject{}, ErrNotFound
@@ -195,7 +220,7 @@ func (s *Store) ListStorageObjects(ctx context.Context, p ListStorageObjectsPara
 	if _, err := s.GetProject(ctx, p.ProjectID); err != nil {
 		return nil, false, err
 	}
-	args := []any{p.ProjectID}
+	args := []any{p.ProjectID, p.HideDeletedIssueObjects}
 	q := `
 		SELECT so.id, so.project_id, so.number, so.owner_user_id, so.backend, so.bucket, so.object_key,
 		       so.filename, so.content_type, so.byte_size, so.sha256, so.created_by_id,
@@ -205,6 +230,7 @@ func (s *Store) ListStorageObjects(ctx context.Context, p ListStorageObjectsPara
 		WHERE so.project_id = $1 AND so.deleted_at IS NULL AND p.deleted_at IS NULL
 		  AND so.id IS DISTINCT FROM p.image_object_id
 		  AND so.id IS DISTINCT FROM p.image_thumbnail_object_id
+		  AND NOT ` + fmt.Sprintf(hiddenDeletedIssueObject, "$2") + `
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)

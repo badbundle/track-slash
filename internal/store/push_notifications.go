@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -484,8 +485,32 @@ func pushNotificationRecipients(ctx context.Context, tx pgx.Tx, event pushNotifi
 	for username := range mentionUsernames {
 		usernames = append(usernames, username)
 	}
+	// Anyone can write @name, so a mention notifies only people already part
+	// of the work: the project's owner and members, and the issue's reporter,
+	// assignee and commenters. Otherwise any account could push a notification
+	// to every user on the instance from a project of its own.
+	sort.Strings(usernames)
+	if len(usernames) > maxPushMentionsPerChange {
+		usernames = usernames[:maxPushMentionsPerChange]
+	}
 	if len(usernames) > 0 {
-		rows, err := tx.Query(ctx, `SELECT id, username FROM users WHERE username = ANY($1) AND deleted_at IS NULL`, usernames)
+		people := []uuid.UUID{}
+		for _, id := range []*uuid.UUID{event.ReporterID, event.AssigneeID} {
+			if id != nil {
+				people = append(people, *id)
+			}
+		}
+		rows, err := tx.Query(ctx, `
+			SELECT u.id, u.username
+			FROM users u
+			WHERE u.username = ANY($1) AND u.deleted_at IS NULL
+			  AND (
+			      EXISTS (SELECT 1 FROM projects p WHERE p.id = $2 AND p.owner_id = u.id)
+			      OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = $2 AND pm.user_id = u.id)
+			      OR u.id = ANY($3)
+			      OR EXISTS (SELECT 1 FROM comments c WHERE c.issue_id = $4 AND c.author_id = u.id)
+			  )
+		`, usernames, event.ProjectID, people, event.IssueID)
 		if err != nil {
 			return nil, err
 		}
@@ -546,6 +571,9 @@ func pushNotificationRecipients(ctx context.Context, tx pgx.Tx, event pushNotifi
 	}
 	return out, nil
 }
+
+// maxPushMentionsPerChange bounds how many mentions one change can notify.
+const maxPushMentionsPerChange = 50
 
 func pushMentionUsernames(raw string) []string {
 	matches := pushMentionPattern.FindAllStringSubmatch(raw, -1)
@@ -766,6 +794,16 @@ func (s *Store) PreparePushNotificationDelivery(ctx context.Context, delivery Pu
 		return PushNotificationPayload{}, false, err
 	}
 	body := pushNotificationBody(delivery.Category, actorUsername, details)
+	// A help-desk reporter sees open, in progress or closed, never the member
+	// statuses behind them: a move between two of those is news only when the
+	// reporter's own status changes, and it is told in their terms.
+	if reporter && delivery.Category == PushNotificationStatusChanges {
+		from, to := reporterStatusChange(details)
+		if from == to {
+			return PushNotificationPayload{}, false, nil
+		}
+		body = "Status changed to " + to.Label()
+	}
 	if issue.Title != "" {
 		body += " — " + issue.Title
 	}
@@ -824,6 +862,27 @@ func pushNotificationBody(category PushNotificationCategory, actorUsername strin
 	default:
 		return "Issue updated"
 	}
+}
+
+// reporterStatusChange reads a status change as a help-desk reporter sees it.
+func reporterStatusChange(details model.ProjectChangelogDetails) (model.ReporterStatus, model.ReporterStatus) {
+	for _, change := range details.Changes {
+		if change.Field == "status" {
+			return reporterStatusForLabel(change.From), reporterStatusForLabel(change.To)
+		}
+	}
+	return model.ReporterStatusOpen, model.ReporterStatusOpen
+}
+
+// reporterStatusForLabel maps a status as the changelog records it, by its
+// label, onto the reporter's view of it.
+func reporterStatusForLabel(label string) model.ReporterStatus {
+	for _, status := range []model.Status{model.StatusTodo, model.StatusInProgress, model.StatusDone, model.StatusClosed} {
+		if changelogStatusLabel(status) == label {
+			return model.NewReporterStatus(status)
+		}
+	}
+	return model.ReporterStatusOpen
 }
 
 func pushNotificationChangeValue(details model.ProjectChangelogDetails, field string) string {

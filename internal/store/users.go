@@ -89,6 +89,16 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (model.U
 	return u, nil
 }
 
+// ErrEmailBelongsToNonAdmin refuses to make an existing account an admin just
+// because it holds an email. Anyone can set their own email unverified, so an
+// operator bootstrapping an admin by email could otherwise promote a stranger
+// who had claimed it first.
+var ErrEmailBelongsToNonAdmin = fmt.Errorf("that email belongs to an existing account that is not an admin: %w", ErrConflict)
+
+// CreateOrUpdateAdminUser creates an admin with this email, or refreshes the
+// admin who already has it. An existing non-admin with the email is refused
+// with ErrEmailBelongsToNonAdmin; PromoteUserToAdminByEmail does that on
+// purpose.
 func (s *Store) CreateOrUpdateAdminUser(ctx context.Context, email, name string) (model.User, error) {
 	username := UsernameFromEmail(email)
 	const q = `
@@ -96,10 +106,32 @@ func (s *Store) CreateOrUpdateAdminUser(ctx context.Context, email, name string)
 		VALUES ($1, $2, $3, true)
 		ON CONFLICT (email) DO UPDATE
 		SET username = EXCLUDED.username, name = EXCLUDED.name, is_admin = true, deleted_at = NULL
+		WHERE users.is_admin
 		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
 	`
 	u, err := scanUser(s.db.QueryRow(ctx, q, username, email, name))
 	if err != nil {
+		if isNoRows(err) {
+			return model.User{}, ErrEmailBelongsToNonAdmin
+		}
+		return model.User{}, err
+	}
+	return u, nil
+}
+
+// PromoteUserToAdminByEmail makes the live account with this email an admin,
+// keeping its username and name. It is for an operator who has checked who
+// holds the email.
+func (s *Store) PromoteUserToAdminByEmail(ctx context.Context, email string) (model.User, error) {
+	u, err := scanUser(s.db.QueryRow(ctx, `
+		UPDATE users SET is_admin = true
+		WHERE email = $1 AND deleted_at IS NULL
+		RETURNING id, username, COALESCE(email, ''), name, is_admin, created_at, profile_image_object_id, profile_image_thumbnail_object_id
+	`, email))
+	if err != nil {
+		if isNoRows(err) {
+			return model.User{}, ErrNotFound
+		}
 		return model.User{}, err
 	}
 	return u, nil

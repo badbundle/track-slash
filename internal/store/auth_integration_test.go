@@ -870,9 +870,10 @@ func TestSearchProjectMembers(t *testing.T) {
 	}
 
 	byEmail, err := env.store.SearchProjectMembers(env.ctx, store.SearchProjectMembersParams{
-		ProjectID: env.projectID,
-		Query:     grace.Email,
-		Limit:     10,
+		ProjectID:  env.projectID,
+		Query:      grace.Email,
+		Limit:      10,
+		MatchEmail: true,
 	})
 	if err != nil {
 		t.Fatalf("SearchProjectMembers email: %v", err)

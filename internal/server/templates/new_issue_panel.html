@@ -88,7 +88,7 @@
       {{if not .PublicSubmission}}
       <datalist id="new-issue-members">
         {{range .MemberOptions}}
-        <option value="@{{.Username}}">{{if .Name}}{{.Name}}{{else}}@{{.Username}}{{end}}{{if .Email}} - {{.Email}}{{end}}</option>
+        <option value="@{{.Username}}">{{if .Name}}{{.Name}}{{else}}@{{.Username}}{{end}}</option>
         {{end}}
       </datalist>
       {{end}}

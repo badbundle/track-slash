@@ -112,7 +112,8 @@ func (s *Server) listStorageObjects(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -130,9 +131,10 @@ func (s *Server) listStorageObjects(w http.ResponseWriter, r *http.Request) {
 		cursor = &c
 	}
 	out, hasMore, err := s.store.ListStorageObjects(r.Context(), store.ListStorageObjectsParams{
-		ProjectID: project.ID,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:               project.ID,
+		Cursor:                  cursor,
+		Limit:                   limit,
+		HideDeletedIssueObjects: !permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -245,14 +247,16 @@ func (s *Server) storageObjectFromRoute(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return model.Project{}, model.StorageObject{}, false
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return model.Project{}, model.StorageObject{}, false
 	}
 	number, ok := parseTypedRefParam(w, r, "objectRef", "object")
 	if !ok {
 		return model.Project{}, model.StorageObject{}, false
 	}
-	object, err := s.store.GetStorageObjectByProjectNumber(r.Context(), project.ID, number)
+	// Deleted issues, and the files only they hold, are for members.
+	object, err := s.store.GetVisibleStorageObjectByProjectNumber(r.Context(), project.ID, number, !permissions.CanReadMembersOnly)
 	if err != nil {
 		writeStoreError(w, err)
 		return model.Project{}, model.StorageObject{}, false

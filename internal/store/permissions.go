@@ -320,6 +320,9 @@ func (s *Store) BlockProjectUser(ctx context.Context, projectID, userID, created
 			TargetRef:   projectKey,
 			TargetTitle: projectName,
 			Summary:     fmt.Sprintf("Blocked @%s from project %s", out.Username, projectKey),
+			// Who is blocked is for the project's members, like the block
+			// list itself, not for anyone who can read the changelog.
+			MembersOnly: true,
 		})
 	})
 	if err != nil {
@@ -357,6 +360,9 @@ func (s *Store) UnblockProjectUser(ctx context.Context, projectID, userID uuid.U
 			TargetRef:   projectKey,
 			TargetTitle: projectName,
 			Summary:     fmt.Sprintf("Unblocked @%s from project %s", username, projectKey),
+			// Who is blocked is for the project's members, like the block
+			// list itself, not for anyone who can read the changelog.
+			MembersOnly: true,
 		})
 	})
 }
@@ -483,13 +489,18 @@ type SearchProjectMembersParams struct {
 	Query        string
 	Limit        int
 	WritableOnly bool
+	// MatchEmail also matches members' emails. Set it only for someone who
+	// manages the project's members: for anyone else, which members a query
+	// returns would spell out their addresses a character at a time, though
+	// no email is ever in the response.
+	MatchEmail bool
 }
 
 func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembersParams) ([]model.User, error) {
 	if _, err := s.GetProject(ctx, p.ProjectID); err != nil {
 		return nil, err
 	}
-	query := strings.ToLower(strings.TrimSpace(p.Query))
+	query := likePattern(p.Query)
 	q := `
 		SELECT u.id, u.username, COALESCE(u.email, ''), u.name, u.is_admin, u.created_at,
 		       u.profile_image_object_id, u.profile_image_thumbnail_object_id
@@ -507,12 +518,12 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 		      $2 = ''
 		      OR lower(u.name) LIKE '%' || $2 || '%'
 		      OR lower(u.username) LIKE '%' || $2 || '%'
-		      OR lower(COALESCE(u.email, '')) LIKE '%' || $2 || '%'
+		      OR ($4 AND lower(COALESCE(u.email, '')) LIKE '%' || $2 || '%')
 		  )
 		ORDER BY lower(u.name) ASC, lower(u.username) ASC, u.id ASC
 		LIMIT $3
 	`
-	rows, err := s.db.Query(ctx, q, p.ProjectID, query, p.Limit)
+	rows, err := s.db.Query(ctx, q, p.ProjectID, query, p.Limit, p.MatchEmail)
 	if err != nil {
 		return nil, err
 	}
@@ -527,6 +538,12 @@ func (s *Store) SearchProjectMembers(ctx context.Context, p SearchProjectMembers
 		out = append(out, u)
 	}
 	return out, rows.Err()
+}
+
+// likePattern lowercases a search term and escapes LIKE's wildcards, so "%"
+// and "_" in a query match themselves rather than anything.
+func likePattern(query string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(strings.TrimSpace(query)))
 }
 
 type SearchAvailableProjectMembersParams struct {
@@ -552,7 +569,7 @@ func (s *Store) SearchAvailableProjectMembers(ctx context.Context, p SearchAvail
 	if !ProjectMemberCandidateQueryReady(p.Query) {
 		return []model.ProjectMemberCandidate{}, nil
 	}
-	query := strings.ToLower(strings.TrimSpace(p.Query))
+	query := likePattern(p.Query)
 	limit := min(p.Limit, ProjectMemberCandidateLimit)
 	rows, err := s.db.Query(ctx, `
 		SELECT u.id, u.username, u.name, u.profile_image_thumbnail_object_id

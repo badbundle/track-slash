@@ -59,11 +59,10 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 		Reporter:      &reporter,
 		CanEditSprint: true,
 		Comments: []uiIssueCommentItem{{
-			Comment:     model.Comment{ID: commentID, IssueID: issueID, Number: 2, Ref: "comment-2", AuthorID: userID, Body: "Looks **ready**.", CreatedAt: when, UpdatedAt: when},
-			BodyHTML:    `<p>Looks <strong>ready</strong>.</p>`,
-			AuthorName:  "Ada Lovelace",
-			AuthorEmail: "ada@example.com",
-			CanEdit:     true,
+			Comment:    model.Comment{ID: commentID, IssueID: issueID, Number: 2, Ref: "comment-2", AuthorID: userID, Body: "Looks **ready**.", CreatedAt: when, UpdatedAt: when},
+			BodyHTML:   `<p>Looks <strong>ready</strong>.</p>`,
+			AuthorName: "Ada Lovelace",
+			CanEdit:    true,
 		}},
 		Links: []uiIssueLinkItem{{
 			Link:        model.IssueLink{ID: linkID, ProjectID: projectID, Number: 4, Ref: "link-4", SourceID: issueID, TargetID: linkedID, LinkType: model.LinkTypeBlocks, CreatedAt: when, UpdatedAt: when},

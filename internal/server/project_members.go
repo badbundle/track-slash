@@ -79,6 +79,9 @@ func (s *Server) revokeProjectMember(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	// A removed member's open socket was authorized as a member; make it
+	// reauthorize, as blocking and access changes already do.
+	s.disconnectRealtimeClients()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -244,7 +247,8 @@ func (s *Server) searchProjectMembers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -253,9 +257,10 @@ func (s *Server) searchProjectMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	users, err := s.store.SearchProjectMembers(r.Context(), store.SearchProjectMembersParams{
-		ProjectID: project.ID,
-		Query:     r.URL.Query().Get("q"),
-		Limit:     limit,
+		ProjectID:  project.ID,
+		Query:      r.URL.Query().Get("q"),
+		Limit:      limit,
+		MatchEmail: permissions.CanManageMembers,
 	})
 	if err != nil {
 		writeStoreError(w, err)

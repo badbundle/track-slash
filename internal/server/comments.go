@@ -164,7 +164,12 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r)
-	if !canCommentOnIssue(permissions, user, issue) || !commentVisibleTo(permissions, comment) || comment.AuthorID != user.ID {
+	// A comment the caller cannot see is missing, as it is to getComment.
+	if !commentVisibleTo(permissions, comment) {
+		writeStoreError(w, store.ErrNotFound)
+		return
+	}
+	if !canCommentOnIssue(permissions, user, issue) || comment.AuthorID != user.ID {
 		writeForbidden(w)
 		return
 	}
@@ -191,7 +196,11 @@ func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r)
-	if !canCommentOnIssue(permissions, user, issue) || !commentVisibleTo(permissions, comment) || comment.AuthorID != user.ID {
+	if !commentVisibleTo(permissions, comment) {
+		writeStoreError(w, store.ErrNotFound)
+		return
+	}
+	if !canCommentOnIssue(permissions, user, issue) || comment.AuthorID != user.ID {
 		writeForbidden(w)
 		return
 	}
