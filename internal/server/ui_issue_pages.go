@@ -36,6 +36,12 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
+	if err := s.uiRecordIssueView(r, panel); err != nil {
+		// Defensive: the panel just loaded this issue, so recording fails only
+		// on a concurrent delete or a DB outage.
+		writeUIStoreError(w, err)
+		return
+	}
 	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
 	if err != nil {
 		writeUIInternalError(w, "ui issue visible projects", err)
@@ -44,7 +50,7 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
 		Projects:      projects,
-		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID},
+		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID, IssueID: panel.Issue.ID},
 		IssuePanel:    panel,
 	})
 }
@@ -65,6 +71,12 @@ func (s *Server) uiIssuePanel(w http.ResponseWriter, r *http.Request) {
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
 	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if err := s.uiRecordIssueView(r, panel); err != nil {
+		// Defensive: the panel just loaded this issue, so recording fails only
+		// on a concurrent delete or a DB outage.
 		writeUIStoreError(w, err)
 		return
 	}

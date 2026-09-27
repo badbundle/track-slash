@@ -9,6 +9,13 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 - Dense issue rows should reflow into stacked, readable metadata on narrow screens and return to the compact column layout at `sm` and above.
 - Keep primary tabs on one line. On narrow project pages, keep `Sprint`, `Planned`, and `All` visible (`In progress` and `All` when sprints are disabled) and move `Context`, `Whiteboard`, and `About` into the project overflow menu instead of wrapping or scrolling the tab bar. `Changelog` always lives in project overflow.
 
+## Sidebar
+
+- Below `Me` and `Projects`, the sidebar has two titled sections, each behind a divider: `Favorites` (favorited projects) and `Recents` (the ten issues the user opened most recently, newest first). Each has a small uppercase heading, and an empty section is not shown at all.
+- Recents rows are the issue key badge plus a one-line title. Opening an issue moves it to the top without duplicating it, and the list refreshes out of band on htmx navigation. The full title shows in the app tooltip only when it is cut off.
+- Recents history is stored per user on the server (the store keeps the 50 newest views), so it follows the user across devices. It never lists an issue the user can no longer read, and signed-out visitors have none.
+- The collapsed icon rail hides Recents entirely rather than squeezing issue keys into icons. On an issue page, the issue's Recents entry is the active destination; with the sidebar collapsed, the page's favorited project is highlighted instead.
+
 ## Brand
 
 - The login page's animated backdrop, icon and colours are the trackslash brand, and the user asked for that brand on every page, not just the front door. Every full page (app shell, login, signup, OAuth consent and error, legal pages) shares the `brand-head` links, a `brand-backdrop`, and the icon with the `trackslash` wordmark. Do not strip the backdrop from in-app pages to get back to a flat `slate-50` page.

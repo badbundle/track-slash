@@ -29,6 +29,7 @@ type uiShellData struct {
 	User              model.User
 	Projects          []model.Project
 	SidebarFavorites  uiSidebarFavoritesData
+	SidebarRecents    uiSidebarRecentsData
 	SidebarActive     uiSidebarState
 	WorkPanel         *uiWorkPanelData
 	ProjectsPanel     *uiProjectsPanelData
@@ -50,6 +51,17 @@ type uiShellData struct {
 type uiSidebarState struct {
 	View      string
 	ProjectID uuid.UUID
+	// IssueID is set on issue pages. When the issue is listed in Recents, that
+	// entry is the page's one active destination instead of its project.
+	IssueID uuid.UUID
+}
+
+// uiSidebarRecentsData is the sidebar's Recents list: the issues the signed-in
+// user opened most recently, newest first.
+type uiSidebarRecentsData struct {
+	Issues        []model.Issue
+	ActiveIssueID uuid.UUID
+	OOB           bool
 }
 
 type uiSidebarFavoritesData struct {
@@ -711,6 +723,10 @@ type uiIssuePanelData struct {
 	BackHXGet          string
 	BackLabel          string
 	DeleteNotice       *uiIssueDeleteNotice
+	// SidebarRecents is set when an htmx navigation opens the issue. The panel
+	// then also swaps the sidebar's Recents list out of band, because htmx
+	// leaves the sidebar in place.
+	SidebarRecents *uiSidebarRecentsData
 }
 
 type uiGitHubIssueLink struct {

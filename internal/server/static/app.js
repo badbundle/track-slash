@@ -100,10 +100,15 @@
     }
     return false;
   };
+  // A control that shows its own label can opt in to a tooltip for when that
+  // label is cut off, such as a long issue title in the sidebar's Recents.
+  const tooltipTextIsTruncated = (target) => target.hasAttribute("data-tooltip-when-truncated")
+    && Array.from(target.querySelectorAll("[data-tooltip-truncates]")).some((element) => element.scrollWidth > element.clientWidth);
   const closestTooltipTarget = (source) => source instanceof Element ? source.closest(tooltipSelector) : null;
   const tooltipTargetFor = (source) => {
     const target = closestTooltipTarget(source);
-    if (!target || target.hasAttribute("data-tooltip-disabled") || hasVisibleControlText(target)) return null;
+    if (!target || target.hasAttribute("data-tooltip-disabled")) return null;
+    if (hasVisibleControlText(target) && !tooltipTextIsTruncated(target)) return null;
     const label = (target.getAttribute("data-tooltip") || target.getAttribute("aria-label") || "").trim();
     return label ? { target, label } : null;
   };
@@ -850,6 +855,7 @@
     sidebarToggle.addEventListener("click", () => {
       const collapsed = !document.documentElement.hasAttribute("data-sidebar-collapsed");
       applySidebarCollapsed(collapsed);
+      syncSidebarActive();
       try {
         window.localStorage.setItem(sidebarStorageKey, collapsed ? "true" : "false");
       } catch (_) {}
@@ -1033,6 +1039,15 @@
   };
   const sidebarLinkForState = (state) => {
     if (!state || !state.dataset.sidebarView) return null;
+    // An issue page's Recents entry is its active destination while it is
+    // visible. The collapsed sidebar hides Recents, so the page's project
+    // takes over there.
+    if (state.dataset.sidebarIssueId) {
+      const recent = Array.from(links()).find((link) => (
+        link.dataset.sidebarIssueId === state.dataset.sidebarIssueId && link.getClientRects().length > 0
+      ));
+      if (recent) return recent;
+    }
     return Array.from(links()).find((link) => (
       link.dataset.sidebarView === state.dataset.sidebarView
       && link.dataset.sidebarProjectId === state.dataset.sidebarProjectId
