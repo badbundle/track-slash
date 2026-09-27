@@ -1027,6 +1027,11 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 	if err != nil {
 		return uiProjectAllIssuePageData{}, err
 	}
+	if project.SprintsEnabled {
+		if err := s.uiMarkIssueSprints(ctx, project, issueItems); err != nil {
+			return uiProjectAllIssuePageData{}, err
+		}
+	}
 	pageData := uiProjectAllIssuePageData{Issues: issueItems}
 	if hasMore {
 		last := issues[len(issues)-1]
@@ -1035,6 +1040,30 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 		pageData.NextHXGet = uiProjectAllPagePath(project, nextQuery)
 	}
 	return pageData, nil
+}
+
+// uiMarkIssueSprints sets SprintBadge on each item whose issue is in a
+// sprint, loading every sprint the page needs in one query.
+func (s *Server) uiMarkIssueSprints(ctx context.Context, project model.Project, items []uiIssueItem) error {
+	var sprintIDs []uuid.UUID
+	for _, item := range items {
+		if item.Issue.SprintID != nil {
+			sprintIDs = append(sprintIDs, *item.Issue.SprintID)
+		}
+	}
+	sprints, err := s.store.ListSprintsByID(ctx, project.ID, sprintIDs)
+	if err != nil {
+		// Defensive: the issues were just listed; failures require a DB outage.
+		return err
+	}
+	for i := range items {
+		if id := items[i].Issue.SprintID; id != nil {
+			if sprint, ok := sprints[*id]; ok {
+				items[i].SprintBadge = &sprint
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Server) uiBuildDeletedIssuesPanel(ctx context.Context, r *http.Request, projectID uuid.UUID) (*uiDeletedIssuesPanelData, error) {

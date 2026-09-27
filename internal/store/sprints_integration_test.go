@@ -159,6 +159,42 @@ func TestCreateAndGetSprint(t *testing.T) {
 	}
 }
 
+func TestListSprintsByIDReturnsLiveProjectSprints(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	first := mustCreateSprint(t, env, "First", date(2026, 6, 1), date(2026, 6, 14))
+	second := mustCreateSprint(t, env, "Second", date(2026, 6, 15), date(2026, 6, 28))
+	deleted := mustCreateSprint(t, env, "Deleted", date(2026, 7, 1), date(2026, 7, 14))
+	if err := env.store.DeleteSprint(env.ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteSprint: %v", err)
+	}
+	otherOwner, err := env.store.CreateOrUpdateAdminUser(env.ctx, "other-owner-"+uuid.NewString()+"@example.com", "Other Owner")
+	if err != nil {
+		t.Fatalf("CreateOrUpdateAdminUser: %v", err)
+	}
+	otherProject, err := env.store.CreateProjectForUser(env.ctx, otherOwner.ID, "Q"+uniqueDigits(time.Now().UnixNano(), 9), "other", "")
+	if err != nil {
+		t.Fatalf("CreateProjectForUser: %v", err)
+	}
+	other, err := env.store.CreateSprint(env.ctx, store.CreateSprintParams{ProjectID: otherProject.ID, Name: "Other"})
+	if err != nil {
+		t.Fatalf("CreateSprint other project: %v", err)
+	}
+
+	got, err := env.store.ListSprintsByID(env.ctx, env.projectID, []uuid.UUID{first.ID, second.ID, deleted.ID, other.ID, uuid.New()})
+	if err != nil {
+		t.Fatalf("ListSprintsByID: %v", err)
+	}
+	if len(got) != 2 || got[first.ID].Name != "First" || got[second.ID].Name != "Second" || got[second.ID].Ref != second.Ref {
+		t.Fatalf("ListSprintsByID = %+v, want only First and Second", got)
+	}
+
+	empty, err := env.store.ListSprintsByID(env.ctx, env.projectID, nil)
+	if err != nil || empty == nil || len(empty) != 0 {
+		t.Fatalf("ListSprintsByID(nil) = %+v, %v; want an empty map", empty, err)
+	}
+}
+
 func TestCreateSprintBadDateRange(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
