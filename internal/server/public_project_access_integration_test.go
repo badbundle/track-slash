@@ -33,7 +33,7 @@ func TestHTTPPublicProjectAccessIssueCreationAndBlocks(t *testing.T) {
 		t.Fatalf("enable public access code = %d body = %s", code, body)
 	}
 	settings := decode[model.ProjectAccessSettings](t, body)
-	if !settings.IsPublic || settings.PublicIssueCreation {
+	if settings.AccessMode != model.ProjectAccessPublic || !settings.IsPublic || settings.PublicIssueCreation {
 		t.Fatalf("public read settings = %+v", settings)
 	}
 	code, body = e.doUnauth(t, http.MethodGet, accessPath, nil)
@@ -62,12 +62,23 @@ func TestHTTPPublicProjectAccessIssueCreationAndBlocks(t *testing.T) {
 		t.Fatalf("disabled public issue creation code = %d body = %s", code, body)
 	}
 
+	for _, invalid := range []string{"", "helpdesk", "everyone"} {
+		code, body = e.do(t, http.MethodPatch, accessPath, map[string]any{"access_mode": invalid, "is_public": true})
+		if code != http.StatusBadRequest {
+			t.Fatalf("access_mode=%q code = %d body = %s", invalid, code, body)
+		}
+	}
+	// access_mode wins over the legacy pair when a client sends both.
 	code, body = e.do(t, http.MethodPatch, accessPath, map[string]any{
-		"is_public":             true,
-		"public_issue_creation": true,
+		"access_mode":           "public_issues",
+		"is_public":             false,
+		"public_issue_creation": false,
 	})
 	if code != http.StatusOK {
 		t.Fatalf("enable public issue creation code = %d body = %s", code, body)
+	}
+	if settings := decode[model.ProjectAccessSettings](t, body); settings.AccessMode != model.ProjectAccessPublicIssues || !settings.IsPublic || !settings.PublicIssueCreation {
+		t.Fatalf("public issue settings = %+v", settings)
 	}
 	code, body = e.doUnauth(t, http.MethodPost, e.projectIssuesPath(), map[string]any{"title": "anonymous"})
 	if code != http.StatusUnauthorized {

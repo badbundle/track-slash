@@ -521,11 +521,22 @@ func TestMCPPublicProjectAccessAndBlocks(t *testing.T) {
 	if defaults.IsPublic || defaults.PublicIssueCreation {
 		t.Fatalf("default project access = %+v", defaults)
 	}
+	legacyOut := mcpCall(t, e, ownerSession, "track_update_project_access", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "is_public": true,
+	})
+	if legacy := decodeMCPField[model.ProjectAccessSettings](t, legacyOut, "access"); legacy.AccessMode != model.ProjectAccessPublic || !legacy.IsPublic || legacy.PublicIssueCreation {
+		t.Fatalf("legacy project access = %+v", legacy)
+	}
+	if out := mcpCallExpectError(t, e, ownerSession, "track_update_project_access", map[string]any{
+		"owner": e.ownerUsername, "key": e.projKey, "access_mode": "helpdesk",
+	}); true {
+		requireMCPErrorCode(t, out, "conflict")
+	}
 	updatedOut := mcpCall(t, e, ownerSession, "track_update_project_access", map[string]any{
-		"owner": e.ownerUsername, "key": e.projKey, "is_public": true, "public_issue_creation": true,
+		"owner": e.ownerUsername, "key": e.projKey, "access_mode": "public_issues",
 	})
 	updated := decodeMCPField[model.ProjectAccessSettings](t, updatedOut, "access")
-	if !updated.IsPublic || !updated.PublicIssueCreation {
+	if updated.AccessMode != model.ProjectAccessPublicIssues || !updated.IsPublic || !updated.PublicIssueCreation {
 		t.Fatalf("updated project access = %+v", updated)
 	}
 	publicOut := mcpCall(t, e, outsiderSession, "track_get_project_access", projectArgs)

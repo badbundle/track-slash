@@ -66,6 +66,54 @@ func TestProjectMemberRoleValid(t *testing.T) {
 	}
 }
 
+func TestProjectAccessMode(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		mode       ProjectAccessMode
+		valid      bool
+		publicRead bool
+		issues     bool
+		label      string
+	}{
+		{ProjectAccessPrivate, true, false, false, "Private"},
+		{ProjectAccessPublic, true, true, false, "Public"},
+		{ProjectAccessPublicIssues, true, true, true, "Public, open to issues"},
+		{"helpdesk", false, false, false, "Private"},
+		{"", false, false, false, "Private"},
+	}
+	for _, tc := range cases {
+		if got := tc.mode.Valid(); got != tc.valid {
+			t.Fatalf("%q.Valid() = %v, want %v", tc.mode, got, tc.valid)
+		}
+		if got := tc.mode.PublicRead(); got != tc.publicRead {
+			t.Fatalf("%q.PublicRead() = %v, want %v", tc.mode, got, tc.publicRead)
+		}
+		if got := tc.mode.OutsideIssueCreation(); got != tc.issues {
+			t.Fatalf("%q.OutsideIssueCreation() = %v, want %v", tc.mode, got, tc.issues)
+		}
+		if got := tc.mode.Label(); got != tc.label {
+			t.Fatalf("%q.Label() = %q, want %q", tc.mode, got, tc.label)
+		}
+		settings := NewProjectAccessSettings(tc.mode)
+		if settings.AccessMode != tc.mode || settings.IsPublic != tc.publicRead || settings.PublicIssueCreation != tc.issues {
+			t.Fatalf("NewProjectAccessSettings(%q) = %+v", tc.mode, settings)
+		}
+	}
+	for _, tc := range []struct {
+		isPublic, issues bool
+		want             ProjectAccessMode
+	}{
+		{false, false, ProjectAccessPrivate},
+		{false, true, ProjectAccessPrivate},
+		{true, false, ProjectAccessPublic},
+		{true, true, ProjectAccessPublicIssues},
+	} {
+		if got := ProjectAccessModeFromFlags(tc.isPublic, tc.issues); got != tc.want {
+			t.Fatalf("ProjectAccessModeFromFlags(%v, %v) = %q, want %q", tc.isPublic, tc.issues, got, tc.want)
+		}
+	}
+}
+
 func TestStatusCountsAsDone(t *testing.T) {
 	cases := []struct {
 		in   Status

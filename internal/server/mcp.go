@@ -355,8 +355,9 @@ type mcpMemberInput struct {
 
 type mcpUpdateProjectAccessInput struct {
 	mcpProjectInput
-	IsPublic            bool `json:"is_public"`
-	PublicIssueCreation bool `json:"public_issue_creation"`
+	AccessMode          string `json:"access_mode,omitempty" jsonschema:"private (members only), public (anyone can read) or public_issues (anyone can read, anyone signed in can file issues); takes precedence over is_public and public_issue_creation"`
+	IsPublic            bool   `json:"is_public,omitempty" jsonschema:"legacy: use access_mode"`
+	PublicIssueCreation bool   `json:"public_issue_creation,omitempty" jsonschema:"legacy: use access_mode"`
 }
 
 type mcpUpdateProjectSprintModeInput struct {
@@ -489,8 +490,8 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_project_members", "List project members and roles.", readOnly, s.mcpListProjectMembers)
 	addMCPTool(srv, "track_grant_project_member", "Add a project member or update their role. Project owner or admin only.", write, s.mcpGrantProjectMember)
 	addMCPTool(srv, "track_revoke_project_member", "Remove a project member. Project owner or admin only.", write, s.mcpRevokeProjectMember)
-	addMCPTool(srv, "track_get_project_access", "Get public access settings for project.", readOnly, s.mcpGetProjectAccess)
-	addMCPTool(srv, "track_update_project_access", "Update public access settings. Project owner or admin only.", write, s.mcpUpdateProjectAccess)
+	addMCPTool(srv, "track_get_project_access", "Get project access mode: private, public or public_issues. is_public and public_issue_creation are derived from it.", readOnly, s.mcpGetProjectAccess)
+	addMCPTool(srv, "track_update_project_access", "Set project access mode. Project owner or admin only.", write, s.mcpUpdateProjectAccess)
 	addMCPTool(srv, "track_update_project_sprint_mode", "Enable or disable sprints for a project. Disabling fails while a sprint is active; planned and completed sprints are kept. Project owner or admin only.", write, s.mcpUpdateProjectSprintMode)
 	addMCPTool(srv, "track_list_project_blocks", "List users blocked from project. Project owner or admin only.", readOnly, s.mcpListProjectBlocks)
 	addMCPTool(srv, "track_block_project_user", "Block user from project. Project owner or admin only.", write, s.mcpBlockProjectUser)
@@ -1158,10 +1159,11 @@ func (s *Server) mcpUpdateProjectAccess(ctx context.Context, req *mcp.CallToolRe
 	if err := s.requireMCPProjectMemberManagement(ctx, auth, project.ID); err != nil {
 		return nil, err
 	}
-	settings, err := s.store.UpdateProjectAccessSettings(ctx, project.ID, model.ProjectAccessSettings{
-		IsPublic:            input.IsPublic,
-		PublicIssueCreation: input.PublicIssueCreation,
-	})
+	mode := model.ProjectAccessModeFromFlags(input.IsPublic, input.PublicIssueCreation)
+	if input.AccessMode != "" {
+		mode = model.ProjectAccessMode(input.AccessMode)
+	}
+	settings, err := s.store.UpdateProjectAccessMode(ctx, project.ID, mode)
 	if err != nil {
 		return nil, err
 	}

@@ -13,9 +13,20 @@ type projectMemberReq struct {
 	Role model.ProjectMemberRole `json:"role,omitempty"`
 }
 
+// projectAccessReq sets a project's access mode. is_public and
+// public_issue_creation are the pair the mode replaced, still accepted from
+// older clients; access_mode wins when both are sent.
 type projectAccessReq struct {
-	IsPublic            bool `json:"is_public"`
-	PublicIssueCreation bool `json:"public_issue_creation"`
+	AccessMode          *model.ProjectAccessMode `json:"access_mode,omitempty"`
+	IsPublic            bool                     `json:"is_public"`
+	PublicIssueCreation bool                     `json:"public_issue_creation"`
+}
+
+func (req projectAccessReq) mode() model.ProjectAccessMode {
+	if req.AccessMode != nil {
+		return *req.AccessMode
+	}
+	return model.ProjectAccessModeFromFlags(req.IsPublic, req.PublicIssueCreation)
 }
 
 func (s *Server) grantProjectMember(w http.ResponseWriter, r *http.Request) {
@@ -100,10 +111,12 @@ func (s *Server) updateProjectAccess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	settings, err := s.store.UpdateProjectAccessSettings(r.Context(), project.ID, model.ProjectAccessSettings{
-		IsPublic:            req.IsPublic,
-		PublicIssueCreation: req.PublicIssueCreation,
-	})
+	mode := req.mode()
+	if !mode.Valid() {
+		writeError(w, http.StatusBadRequest, store.ErrInvalidProjectAccessMode.Error())
+		return
+	}
+	settings, err := s.store.UpdateProjectAccessMode(r.Context(), project.ID, mode)
 	if err != nil {
 		writeStoreError(w, err)
 		return

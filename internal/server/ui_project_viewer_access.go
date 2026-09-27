@@ -41,7 +41,7 @@ func uiProjectViewerAccessFor(user model.User, project model.Project, permission
 	case user.ID == uuid.Nil:
 		access.Role = uiAccessBadge{Attr: `data-project-role="signed-out"`, Icon: "user-x", Label: "Signed out"}
 		access.RoleSummary = "You are viewing this public project without signing in."
-		if permissions.IsPublic && permissions.PublicIssueCreation {
+		if permissions.AccessMode.OutsideIssueCreation() {
 			access.SignInNext = uiProjectIssueNewPath(project)
 			access.Hint = " to create issues."
 		} else {

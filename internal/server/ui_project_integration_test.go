@@ -231,7 +231,7 @@ func TestUIOwnerProjectListingsAndBreadcrumbAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateProjectForUser public: %v", err)
 	}
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, publicProject.ID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, publicProject.ID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings public: %v", err)
 	}
 	deleted, err := e.store.CreateProjectForUser(e.ctx, e.adminID, uniqueProjectKey(t), "Owner deleted project", "")
@@ -476,13 +476,13 @@ func TestUIProjectAboutShowsViewerAccess(t *testing.T) {
 		check(t, v)
 	}
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings public: %v", err)
 	}
 	check(t, viewer{name: "non-member", user: outsider, token: outsiderToken, role: "none", allowed: []string{"view"}, hint: "This project is public, so you can view it."})
 	check(t, viewer{name: "signed out", role: "signed-out", allowed: []string{"view"}, hint: `<a href="/login?next=` + url.QueryEscape(aboutPath) + `" class="font-medium text-indigo-700 hover:underline dark:text-indigo-300">Sign in</a> if you are a member of this project.`})
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true, PublicIssueCreation: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublicIssues); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings public issue creation: %v", err)
 	}
 	check(t, viewer{name: "non-member with public issue creation", user: outsider, token: outsiderToken, role: "none", allowed: []string{"view", "create-issues"}, hint: "This project is public, so you can view it and open issues."})
@@ -516,7 +516,7 @@ func TestUIProjectAboutShowsAccessSettings(t *testing.T) {
 		t.Fatalf("readonly member should see visibility without the manage link: %s", readonlyBody)
 	}
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublic); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings public: %v", err)
 	}
 	publicBody := e.uiGet(t, e.projectPath()+"/about", e.authToken)
@@ -529,7 +529,7 @@ func TestUIProjectAboutShowsAccessSettings(t *testing.T) {
 		t.Fatalf("public project about still rendered private badge: %s", publicBody)
 	}
 
-	if _, err := e.store.UpdateProjectAccessSettings(e.ctx, e.projectID, model.ProjectAccessSettings{IsPublic: true, PublicIssueCreation: true}); err != nil {
+	if _, err := e.store.UpdateProjectAccessMode(e.ctx, e.projectID, model.ProjectAccessPublicIssues); err != nil {
 		t.Fatalf("UpdateProjectAccessSettings public issue creation: %v", err)
 	}
 	res := e.uiDoNoRedirect(t, http.MethodGet, e.projectPath()+"/about", "", nil)
@@ -563,7 +563,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 	}
 
 	pageBody := e.uiGet(t, membersPath, e.authToken)
-	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", "Public access", "Public read-only access", "Allow public issue creation", "Blocked users", "Exact username", `data-modal-open="project-member-create"`, `id="project-member-create" data-client-modal class="fixed inset-0 z-50 hidden`, `data-modal-open="project-block-create"`, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog"`} {
+	for _, want := range []string{"Project members", "Current access", "Add member", "Owner", "Search existing users", "Readonly", ">Access</h3>", `name="access_mode" value="private" checked`, `name="access_mode" value="public"`, `name="access_mode" value="public_issues"`, "Public, open to issues", "Blocked users", "Exact username", `data-modal-open="project-member-create"`, `id="project-member-create" data-client-modal class="fixed inset-0 z-50 hidden`, `data-modal-open="project-block-create"`, `id="project-block-create" data-client-modal class="fixed inset-0 z-50 hidden`, `role="dialog"`} {
 		if !strings.Contains(pageBody, want) {
 			t.Fatalf("member page missing %q: %s", want, pageBody)
 		}
@@ -624,15 +624,24 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 		t.Fatalf("successful member add should close modal: %s", body)
 	}
 
-	accessForm := url.Values{"is_public": {"on"}, "public_issue_creation": {"on"}}
+	for _, invalid := range []string{"", "helpdesk", "everyone"} {
+		accessForm := url.Values{"access_mode": {invalid}}
+		res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-access", e.authToken, strings.NewReader(accessForm.Encode()))
+		body = readBody(t, res)
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("access_mode=%q response code = %d body = %s", invalid, res.StatusCode, body)
+		}
+	}
+	accessForm := url.Values{"access_mode": {"public_issues"}}
 	res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-access", e.authToken, strings.NewReader(accessForm.Encode()))
 	body = readBody(t, res)
 	res.Body.Close()
-	if res.StatusCode != http.StatusOK || !strings.Contains(body, `name="is_public" checked`) || !strings.Contains(body, `name="public_issue_creation" checked`) {
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `value="public_issues" checked`) || strings.Contains(body, `value="private" checked`) {
 		t.Fatalf("update public access response code = %d body = %s", res.StatusCode, body)
 	}
 	settings, err := e.store.GetProjectAccessSettings(e.ctx, e.projectID)
-	if err != nil || !settings.IsPublic || !settings.PublicIssueCreation {
+	if err != nil || settings.AccessMode != model.ProjectAccessPublicIssues || !settings.IsPublic || !settings.PublicIssueCreation {
 		t.Fatalf("public access settings = %+v, %v", settings, err)
 	}
 

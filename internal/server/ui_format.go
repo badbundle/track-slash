@@ -236,6 +236,22 @@ func uiProjectVisibilityBadge(isPublic bool) uiAccessBadge {
 	return uiAccessBadge{Attr: `data-project-visibility="private"`, Icon: "lock", Label: "Private"}
 }
 
+type uiProjectAccessModeOption struct {
+	Mode        model.ProjectAccessMode
+	Label       string
+	Description string
+}
+
+// uiProjectAccessModeOptions are the choices on the members page, in order of
+// how far each opens the project.
+func uiProjectAccessModeOptions() []uiProjectAccessModeOption {
+	return []uiProjectAccessModeOption{
+		{Mode: model.ProjectAccessPrivate, Label: model.ProjectAccessPrivate.Label(), Description: "Only members can view this project and open issues."},
+		{Mode: model.ProjectAccessPublic, Label: model.ProjectAccessPublic.Label(), Description: "Anyone can view this project without becoming a member. Only members can open issues."},
+		{Mode: model.ProjectAccessPublicIssues, Label: model.ProjectAccessPublicIssues.Label(), Description: "Anyone can view this project, and anyone signed in can open issues. They cannot edit them afterward."},
+	}
+}
+
 func uiProjectIssueCreationBadge(publicIssueCreation bool) uiAccessBadge {
 	if publicIssueCreation {
 		return uiAccessBadge{Attr: `data-project-issue-creation="public"`, Icon: "users", Label: "Any signed-in user", Tinted: true}

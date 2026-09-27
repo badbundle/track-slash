@@ -187,10 +187,12 @@ func (s *Server) uiUpdateProjectAccess(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, errUIBadRequest)
 		return
 	}
-	_, err := s.store.UpdateProjectAccessSettings(r.Context(), project.ID, model.ProjectAccessSettings{
-		IsPublic:            r.Form.Get("is_public") == "on",
-		PublicIssueCreation: r.Form.Get("public_issue_creation") == "on",
-	})
+	mode := model.ProjectAccessMode(r.Form.Get("access_mode"))
+	if !mode.Valid() {
+		writeUIStoreError(w, errUIBadRequest)
+		return
+	}
+	_, err := s.store.UpdateProjectAccessMode(r.Context(), project.ID, mode)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return
