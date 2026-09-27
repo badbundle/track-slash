@@ -351,16 +351,28 @@ func (s *Server) uiProjectContextFromRoute(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) uiIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
+	issue, _, ok := s.uiIssueWithAccessFromRoute(w, r)
+	return issue, ok
+}
+
+// uiIssueWithAccessFromRoute resolves the route's issue after issueRouteAccess
+// and returns the permissions that check read.
+func (s *Server) uiIssueWithAccessFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, store.ProjectPermissions, bool) {
 	owner, ref, ok := uiIssueRouteOwnerRef(w, r)
 	if !ok {
-		return model.Issue{}, false
+		return model.Issue{}, store.ProjectPermissions{}, false
 	}
 	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
 	if err != nil {
 		writeUIStoreError(w, err)
-		return model.Issue{}, false
+		return model.Issue{}, store.ProjectPermissions{}, false
 	}
-	return issue, true
+	permissions, err := s.issueRouteAccess(r.Context(), currentUser(r), issue)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Issue{}, store.ProjectPermissions{}, false
+	}
+	return issue, permissions, true
 }
 
 func (s *Server) uiDeletedIssueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
@@ -370,6 +382,10 @@ func (s *Server) uiDeletedIssueFromRoute(w http.ResponseWriter, r *http.Request)
 	}
 	issue, err := s.store.GetDeletedIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
 	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Issue{}, false
+	}
+	if _, err := s.deletedIssueRouteAccess(r.Context(), currentUser(r), issue); err != nil {
 		writeUIStoreError(w, err)
 		return model.Issue{}, false
 	}
@@ -383,6 +399,10 @@ func (s *Server) uiIssueFromRouteIncludingDeleted(w http.ResponseWriter, r *http
 	}
 	issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
 	if err == nil {
+		if _, err := s.issueRouteAccess(r.Context(), currentUser(r), issue); err != nil {
+			writeUIStoreError(w, err)
+			return model.Issue{}, false, false
+		}
 		return issue, false, true
 	}
 	if !errors.Is(err, store.ErrNotFound) {
@@ -391,6 +411,10 @@ func (s *Server) uiIssueFromRouteIncludingDeleted(w http.ResponseWriter, r *http
 	}
 	issue, err = s.store.GetDeletedIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
 	if err != nil {
+		writeUIStoreError(w, err)
+		return model.Issue{}, false, false
+	}
+	if _, err := s.deletedIssueRouteAccess(r.Context(), currentUser(r), issue); err != nil {
 		writeUIStoreError(w, err)
 		return model.Issue{}, false, false
 	}

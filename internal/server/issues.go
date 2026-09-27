@@ -56,6 +56,11 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeForbidden(w)
 		return
 	}
+	reporter := !permissions.CanRead && permissions.HelpDeskReporter
+	if reporter && (req.Priority != nil || req.DueDate != nil) {
+		writeError(w, http.StatusBadRequest, helpDeskIssueFieldsError)
+		return
+	}
 	reporterID := req.ReporterID
 	if reporterID == nil {
 		id := currentUser(r).ID
@@ -78,7 +83,37 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	if reporter {
+		writeJSON(w, http.StatusCreated, model.NewReporterIssue(iss))
+		return
+	}
 	writeJSON(w, http.StatusCreated, iss)
+}
+
+// listReportedIssues is the issue list a help-desk reporter gets: only the
+// issues they reported, newest first, as they see them. Filters that would
+// need hidden fields are ignored.
+func (s *Server) listReportedIssues(w http.ResponseWriter, r *http.Request, project model.Project) {
+	limit, err := parseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var cursor *store.IssuesCursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		var c store.IssuesCursor
+		if err := decodeCursor(raw, &c); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		cursor = &c
+	}
+	issues, next, err := s.reportedIssuesPage(r.Context(), project.ID, currentUser(r).ID, cursor, limit)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writePage(w, issues, next)
 }
 
 func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +172,17 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, err := s.store.ProjectPermissionsForUser(r.Context(), currentUser(r), project.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	if !permissions.CanRead && permissions.HelpDeskReporter {
+		s.listReportedIssues(w, r, project)
+		return
+	}
+	if !permissions.CanRead {
+		writeForbidden(w)
 		return
 	}
 
@@ -336,14 +381,21 @@ func (s *Server) batchIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[key] = struct{}{}
 		iss, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+		if err == nil {
+			var permissions store.ProjectPermissions
+			// A help-desk reporter's view of another reporter's issue is
+			// missing, so it is skipped like one.
+			permissions, err = s.issueRouteAccess(r.Context(), currentUser(r), iss)
+			if err == nil && !permissions.CanRead {
+				writeForbidden(w)
+				return
+			}
+		}
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				continue
 			}
-			writeStoreError(w, err)
-			return
-		}
-		if !s.requireProjectAccess(w, r, iss.ProjectID) {
+			writeIssueRouteError(w, err)
 			return
 		}
 		out = append(out, iss)
@@ -352,11 +404,16 @@ func (s *Server) batchIssues(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getIssue(w http.ResponseWriter, r *http.Request) {
-	iss, ok := s.issueFromRoute(w, r)
+	iss, permissions, ok := s.issueWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, iss.ProjectID) {
+	if followsIssue(permissions, currentUser(r), iss) {
+		writeJSON(w, http.StatusOK, model.NewReporterIssue(iss))
+		return
+	}
+	if !permissions.CanRead {
+		writeForbidden(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, iss)

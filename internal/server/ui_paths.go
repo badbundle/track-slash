@@ -249,6 +249,11 @@ func uiProjectIssueNewPath(project model.Project) string {
 	return uiProjectIssuesPath(project) + "/new"
 }
 
+// uiProjectReportedIssuesPath lists the issues a help-desk reporter filed.
+func uiProjectReportedIssuesPath(project model.Project) string {
+	return uiProjectIssuesPath(project) + "/mine"
+}
+
 func uiProjectIssueNewPanelPath(project model.Project) string {
 	return uiProjectIssueNewPath(project) + "/panel"
 }
@@ -529,6 +534,8 @@ func uiIssueValue(v any) model.Issue {
 		if issue != nil {
 			return *issue
 		}
+	case model.ReporterIssue:
+		return model.Issue{ID: issue.ID, ProjectID: issue.ProjectID, OwnerUsername: issue.OwnerUsername, ProjectKey: issue.ProjectKey, Number: issue.Number, Identifier: issue.Identifier}
 	}
 	return model.Issue{}
 }

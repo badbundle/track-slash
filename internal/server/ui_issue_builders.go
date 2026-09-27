@@ -576,6 +576,7 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		Comments:                commentItems,
 		CommentsHasMore:         commentsHasMore,
 		CommentVisibilityChoice: permissions.AccessMode != model.ProjectAccessPrivate,
+		HelpDesk:                permissions.AccessMode == model.ProjectAccessHelpDesk,
 		CommentVisibility:       model.DefaultCommentVisibility(permissions.AccessMode),
 		Links:                   linkItems,
 		LinksHasMore:            linksHasMore,

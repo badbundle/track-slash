@@ -357,7 +357,7 @@ type mcpMemberInput struct {
 
 type mcpUpdateProjectAccessInput struct {
 	mcpProjectInput
-	AccessMode          string `json:"access_mode,omitempty" jsonschema:"private (members only), public (anyone can read) or public_issues (anyone can read, anyone signed in can file issues); takes precedence over is_public and public_issue_creation"`
+	AccessMode          string `json:"access_mode,omitempty" jsonschema:"private (members only), public (anyone can read), public_issues (anyone can read, anyone signed in can file issues) or helpdesk (private, but anyone signed in can file issues and follow the ones they filed); takes precedence over is_public and public_issue_creation"`
 	IsPublic            bool   `json:"is_public,omitempty" jsonschema:"legacy: use access_mode"`
 	PublicIssueCreation bool   `json:"public_issue_creation,omitempty" jsonschema:"legacy: use access_mode"`
 }
@@ -492,7 +492,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_project_members", "List project members and roles.", readOnly, s.mcpListProjectMembers)
 	addMCPTool(srv, "track_grant_project_member", "Add a project member or update their role. Project owner or admin only.", write, s.mcpGrantProjectMember)
 	addMCPTool(srv, "track_revoke_project_member", "Remove a project member. Project owner or admin only.", write, s.mcpRevokeProjectMember)
-	addMCPTool(srv, "track_get_project_access", "Get project access mode: private, public or public_issues. is_public and public_issue_creation are derived from it.", readOnly, s.mcpGetProjectAccess)
+	addMCPTool(srv, "track_get_project_access", "Get project access mode: private, public, public_issues or helpdesk. is_public and public_issue_creation are derived from it.", readOnly, s.mcpGetProjectAccess)
 	addMCPTool(srv, "track_update_project_access", "Set project access mode. Project owner or admin only.", write, s.mcpUpdateProjectAccess)
 	addMCPTool(srv, "track_update_project_sprint_mode", "Enable or disable sprints for a project. Disabling fails while a sprint is active; planned and completed sprints are kept. Project owner or admin only.", write, s.mcpUpdateProjectSprintMode)
 	addMCPTool(srv, "track_list_project_blocks", "List users blocked from project. Project owner or admin only.", readOnly, s.mcpListProjectBlocks)
@@ -506,11 +506,11 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_get_project_progress", "Get what a project is working on now: top-level issues in progress, highest priority first, and issues completed within a window (Done or Closed, including won't-do and duplicates), most recently completed first, each with completed_at.", readOnly, s.mcpGetProjectProgress)
 	addMCPTool(srv, "track_list_project_changelog", "List project changelog entries.", readOnly, s.mcpListProjectChangelog)
 
-	addMCPTool(srv, "track_create_issue", "Create issue in project.", write, s.mcpCreateIssue)
-	addMCPTool(srv, "track_list_issues", "List project issues.", readOnly, s.mcpListIssues)
+	addMCPTool(srv, "track_create_issue", "Create issue in project. In a help desk you are not a member of, only title and description are accepted and the issue comes back as its reporter sees it.", write, s.mcpCreateIssue)
+	addMCPTool(srv, "track_list_issues", "List project issues. In a help desk you are not a member of, lists only the issues you reported, newest first, as their reporter sees them; filters are ignored.", readOnly, s.mcpListIssues)
 	addMCPTool(srv, "track_list_deleted_issues", "List deleted project issues.", readOnly, s.mcpListDeletedIssues)
 	addMCPTool(srv, "track_batch_get_issues", "Get visible issues by refs.", readOnly, s.mcpBatchIssues)
-	addMCPTool(srv, "track_get_issue", "Get issue by ref.", readOnly, s.mcpGetIssue)
+	addMCPTool(srv, "track_get_issue", "Get issue by ref. The help-desk reporter of an issue gets only its title, description, status (open, in_progress or closed) and times.", readOnly, s.mcpGetIssue)
 	addMCPTool(srv, "track_update_issue", "Update issue fields.", write, s.mcpUpdateIssue)
 	addMCPTool(srv, "track_delete_issue", "Soft-delete issue.", write, s.mcpDeleteIssue)
 	addMCPTool(srv, "track_restore_issue", "Restore deleted issue.", write, s.mcpRestoreIssue)
@@ -812,6 +812,20 @@ func (s *Server) mcpProject(ctx context.Context, auth authContext, input mcpProj
 	return project, nil
 }
 
+// mcpProjectForIssueCreation resolves a project without checking read access,
+// which requireMCPProjectIssueCreation decides instead.
+func (s *Server) mcpProjectForIssueCreation(ctx context.Context, input mcpProjectInput) (model.Project, error) {
+	owner, err := normalizeMCPOwner(input.Owner)
+	if err != nil {
+		return model.Project{}, err
+	}
+	key, err := normalizeMCPProjectKey(input.Key)
+	if err != nil {
+		return model.Project{}, err
+	}
+	return s.store.GetProjectByOwnerKey(ctx, owner, key)
+}
+
 func (s *Server) mcpIssue(ctx context.Context, auth authContext, input mcpIssueInput) (model.Issue, error) {
 	owner, err := normalizeMCPOwner(input.Owner)
 	if err != nil {
@@ -825,10 +839,47 @@ func (s *Server) mcpIssue(ctx context.Context, auth authContext, input mcpIssueI
 	if err != nil {
 		return model.Issue{}, err
 	}
-	if err := s.requireMCPProjectAccess(ctx, auth, issue.ProjectID); err != nil {
+	permissions, err := s.mcpIssueAccess(ctx, auth, issue)
+	if err != nil {
 		return model.Issue{}, err
 	}
+	if !permissions.CanRead {
+		return model.Issue{}, errMCPForbidden
+	}
 	return issue, nil
+}
+
+// mcpFollowedIssue resolves an issue for the tools a help-desk reporter may
+// also use on their own issue, returning the permissions to tell the two apart.
+func (s *Server) mcpFollowedIssue(ctx context.Context, auth authContext, input mcpIssueInput) (model.Issue, store.ProjectPermissions, error) {
+	owner, err := normalizeMCPOwner(input.Owner)
+	if err != nil {
+		return model.Issue{}, store.ProjectPermissions{}, err
+	}
+	ref, err := parseIssueRef(input.Issue)
+	if err != nil {
+		return model.Issue{}, store.ProjectPermissions{}, validationError(err.Error())
+	}
+	issue, err := s.store.GetIssueByOwnerKeyNumber(ctx, owner, ref.ProjectKey, ref.Number)
+	if err != nil {
+		return model.Issue{}, store.ProjectPermissions{}, err
+	}
+	permissions, err := s.mcpIssueAccess(ctx, auth, issue)
+	if err != nil {
+		return model.Issue{}, store.ProjectPermissions{}, err
+	}
+	if !permissions.CanRead && !followsIssue(permissions, auth.User, issue) {
+		return model.Issue{}, store.ProjectPermissions{}, errMCPForbidden
+	}
+	return issue, permissions, nil
+}
+
+func (s *Server) mcpIssueAccess(ctx context.Context, auth authContext, issue model.Issue) (store.ProjectPermissions, error) {
+	permissions, err := s.issueRouteAccess(ctx, auth.User, issue)
+	if errors.Is(err, errIssueRouteForbidden) {
+		return store.ProjectPermissions{}, errMCPForbidden
+	}
+	return permissions, err
 }
 
 func (s *Server) mcpDeletedIssue(ctx context.Context, auth authContext, input mcpIssueInput) (model.Issue, error) {
@@ -844,8 +895,15 @@ func (s *Server) mcpDeletedIssue(ctx context.Context, auth authContext, input mc
 	if err != nil {
 		return model.Issue{}, err
 	}
-	if err := s.requireMCPProjectAccess(ctx, auth, issue.ProjectID); err != nil {
+	permissions, err := s.deletedIssueRouteAccess(ctx, auth.User, issue)
+	if errors.Is(err, errIssueRouteForbidden) {
+		return model.Issue{}, errMCPForbidden
+	}
+	if err != nil {
 		return model.Issue{}, err
+	}
+	if !permissions.CanRead {
+		return model.Issue{}, errMCPForbidden
 	}
 	return issue, nil
 }
@@ -1450,13 +1508,19 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
-	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	// Filing needs no read access: a help-desk reporter may file into a
+	// project they cannot otherwise see.
+	project, err := s.mcpProjectForIssueCreation(ctx, input.mcpProjectInput)
 	if err != nil {
 		return nil, err
 	}
 	permissions, err := s.requireMCPProjectIssueCreation(ctx, auth, project.ID)
 	if err != nil {
 		return nil, err
+	}
+	reporter := !permissions.CanRead && permissions.HelpDeskReporter
+	if reporter && (input.Priority != nil || input.DueDate != nil) {
+		return nil, validationError(helpDeskIssueFieldsError)
 	}
 	title, err := validateMCPTitle(input.Title)
 	if err != nil {
@@ -1492,6 +1556,9 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	})
 	if err != nil {
 		return nil, err
+	}
+	if reporter {
+		return mcpToolOutput{"issue": model.NewReporterIssue(issue)}, nil
 	}
 	return mcpToolOutput{"issue": issue}, nil
 }
@@ -1548,9 +1615,16 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
-	project, err := s.mcpProject(ctx, auth, input.mcpProjectInput)
+	project, err := s.mcpProjectForIssueCreation(ctx, input.mcpProjectInput)
 	if err != nil {
 		return nil, err
+	}
+	permissions, err := s.store.ProjectPermissionsForUser(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !permissions.CanRead && !permissions.HelpDeskReporter {
+		return nil, errMCPForbidden
 	}
 	limit, err := mcpLimit(input.Limit)
 	if err != nil {
@@ -1563,6 +1637,14 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 			return nil, validationError(err.Error())
 		}
 		cursor = &c
+	}
+	if !permissions.CanRead {
+		// A help-desk reporter lists only the issues they reported.
+		issues, next, err := s.reportedIssuesPage(ctx, project.ID, auth.User.ID, cursor, limit)
+		if err != nil {
+			return nil, err
+		}
+		return mcpPageOut(issues, next), nil
 	}
 	assigneeIDs, err := mcpUUIDs(input.AssigneeIDs, "assignee_ids")
 	if err != nil {
@@ -1744,13 +1826,19 @@ func (s *Server) mcpBatchIssues(ctx context.Context, req *mcp.CallToolRequest, i
 		}
 		seen[key] = struct{}{}
 		issue, err := s.store.GetIssueByOwnerKeyNumber(ctx, owner, ref.ProjectKey, ref.Number)
+		if err == nil {
+			var permissions store.ProjectPermissions
+			// A help-desk reporter's view of another reporter's issue is
+			// missing, so it is skipped like one.
+			permissions, err = s.mcpIssueAccess(ctx, auth, issue)
+			if err == nil && !permissions.CanRead {
+				return nil, errMCPForbidden
+			}
+		}
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				continue
 			}
-			return nil, err
-		}
-		if err := s.requireMCPProjectAccess(ctx, auth, issue.ProjectID); err != nil {
 			return nil, err
 		}
 		out = append(out, issue)
@@ -1763,9 +1851,12 @@ func (s *Server) mcpGetIssue(ctx context.Context, req *mcp.CallToolRequest, inpu
 	if err != nil {
 		return nil, err
 	}
-	issue, err := s.mcpIssue(ctx, auth, input)
+	issue, permissions, err := s.mcpFollowedIssue(ctx, auth, input)
 	if err != nil {
 		return nil, err
+	}
+	if !permissions.CanRead {
+		return mcpToolOutput{"issue": model.NewReporterIssue(issue)}, nil
 	}
 	return mcpToolOutput{"issue": issue}, nil
 }
@@ -1894,27 +1985,34 @@ func validateMCPCommentBody(raw string) (string, error) {
 	return body, nil
 }
 
-func (s *Server) mcpComment(ctx context.Context, auth authContext, input mcpCommentInput) (model.Issue, model.Comment, error) {
-	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
+// mcpComment resolves a comment the caller may see: on an issue they can read,
+// or, for a help-desk reporter, on their own issue.
+func (s *Server) mcpComment(ctx context.Context, auth authContext, input mcpCommentInput) (model.Issue, store.ProjectPermissions, model.Comment, error) {
+	issue, permissions, err := s.mcpFollowedIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
-		return model.Issue{}, model.Comment{}, err
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, err
 	}
 	number, err := mcpTypedRef(input.Comment, "comment")
 	if err != nil {
-		return model.Issue{}, model.Comment{}, err
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, err
 	}
 	comment, err := s.store.GetCommentForIssueByNumber(ctx, issue.ID, number)
 	if err != nil {
-		return model.Issue{}, model.Comment{}, err
-	}
-	permissions, err := s.mcpReadPermissions(ctx, auth, issue.ProjectID)
-	if err != nil {
-		return model.Issue{}, model.Comment{}, err
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, err
 	}
 	if !commentVisibleTo(permissions, comment) {
-		return model.Issue{}, model.Comment{}, store.ErrNotFound
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, store.ErrNotFound
 	}
-	return issue, comment, nil
+	return issue, permissions, comment, nil
+}
+
+// mcpRequireCommentAuthor lets the author of a comment change it: a project
+// writer, or a help-desk reporter on their own issue.
+func mcpRequireCommentAuthor(auth authContext, permissions store.ProjectPermissions, issue model.Issue, comment model.Comment) error {
+	if !canCommentOnIssue(permissions, auth.User, issue) || comment.AuthorID != auth.User.ID {
+		return errMCPForbidden
+	}
+	return nil
 }
 
 func mcpCommentVisibility(raw string) (model.CommentVisibility, error) {
@@ -1930,12 +2028,12 @@ func (s *Server) mcpCreateComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
+	issue, permissions, err := s.mcpFollowedIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
-		return nil, err
+	if !canCommentOnIssue(permissions, auth.User, issue) {
+		return nil, errMCPForbidden
 	}
 	body, err := validateMCPCommentBody(input.Body)
 	if err != nil {
@@ -1944,6 +2042,13 @@ func (s *Server) mcpCreateComment(ctx context.Context, req *mcp.CallToolRequest,
 	visibility, err := mcpCommentVisibility(input.Visibility)
 	if err != nil {
 		return nil, err
+	}
+	// A reporter's replies are always visible to them.
+	if followsIssue(permissions, auth.User, issue) {
+		if visibility == model.CommentVisibilityMembers {
+			return nil, validationError(reporterCommentVisibilityError)
+		}
+		visibility = model.CommentVisibilityShared
 	}
 	comment, err := s.store.CreateComment(ctx, store.CreateCommentParams{IssueID: issue.ID, AuthorID: auth.User.ID, Body: body, Visibility: visibility})
 	if err != nil {
@@ -1957,7 +2062,7 @@ func (s *Server) mcpListComments(ctx context.Context, req *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, err
 	}
-	issue, err := s.mcpIssue(ctx, auth, input.mcpIssueInput)
+	issue, permissions, err := s.mcpFollowedIssue(ctx, auth, input.mcpIssueInput)
 	if err != nil {
 		return nil, err
 	}
@@ -1972,10 +2077,6 @@ func (s *Server) mcpListComments(ctx context.Context, req *mcp.CallToolRequest, 
 			return nil, validationError(err.Error())
 		}
 		cursor = &c
-	}
-	permissions, err := s.mcpReadPermissions(ctx, auth, issue.ProjectID)
-	if err != nil {
-		return nil, err
 	}
 	comments, hasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{
 		IssueID:            issue.ID,
@@ -2000,7 +2101,7 @@ func (s *Server) mcpGetComment(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, err
 	}
-	_, comment, err := s.mcpComment(ctx, auth, input)
+	_, _, comment, err := s.mcpComment(ctx, auth, input)
 	if err != nil {
 		return nil, err
 	}
@@ -2012,15 +2113,12 @@ func (s *Server) mcpUpdateComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	issue, comment, err := s.mcpComment(ctx, auth, input.mcpCommentInput)
+	issue, permissions, comment, err := s.mcpComment(ctx, auth, input.mcpCommentInput)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
+	if err := mcpRequireCommentAuthor(auth, permissions, issue, comment); err != nil {
 		return nil, err
-	}
-	if comment.AuthorID != auth.User.ID {
-		return nil, errMCPForbidden
 	}
 	if input.Body == "" && input.Visibility == "" {
 		return nil, validationError("body or visibility required")
@@ -2034,6 +2132,9 @@ func (s *Server) mcpUpdateComment(ctx context.Context, req *mcp.CallToolRequest,
 	visibility, err := mcpCommentVisibility(input.Visibility)
 	if err != nil {
 		return nil, err
+	}
+	if followsIssue(permissions, auth.User, issue) && visibility == model.CommentVisibilityMembers {
+		return nil, validationError(reporterCommentVisibilityError)
 	}
 	params := store.UpdateCommentParams{ID: comment.ID, AuthorID: auth.User.ID, Body: body}
 	if visibility != "" {
@@ -2051,15 +2152,12 @@ func (s *Server) mcpDeleteComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	issue, comment, err := s.mcpComment(ctx, auth, input)
+	issue, permissions, comment, err := s.mcpComment(ctx, auth, input)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPProjectWriteAccess(ctx, auth, issue.ProjectID); err != nil {
+	if err := mcpRequireCommentAuthor(auth, permissions, issue, comment); err != nil {
 		return nil, err
-	}
-	if comment.AuthorID != auth.User.ID {
-		return nil, errMCPForbidden
 	}
 	if err := s.store.DeleteComment(ctx, store.DeleteCommentParams{ID: comment.ID, AuthorID: auth.User.ID}); err != nil {
 		return nil, err

@@ -1,0 +1,144 @@
+{{define "helpdesk-panel"}}
+<section data-helpdesk-view="{{.View}}" class="mx-auto max-w-3xl px-4 py-4 sm:px-6 sm:py-6">
+  <header class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          {{template "project-key" .Project.Key}}
+          <span class="text-sm text-slate-500 dark:text-slate-400">{{.Project.Name}}</span>
+        </div>
+        {{if eq .View "issue"}}
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          {{template "issue-key" .Issue.Identifier}}
+          {{template "helpdesk-status" .Issue.Status}}
+        </div>
+        <h1 class="mt-2 break-words text-2xl font-semibold tracking-tight">{{.Issue.Title}}</h1>
+        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Opened {{template "local-time" (tokenTime .Issue.CreatedAt)}} · Updated {{template "local-time" (tokenTime .Issue.UpdatedAt)}}</p>
+        {{else if eq .View "issues"}}
+        <h1 class="mt-2 text-2xl font-semibold tracking-tight">Your issues</h1>
+        {{else}}
+        <h1 class="mt-2 text-2xl font-semibold tracking-tight">New issue</h1>
+        {{end}}
+      </div>
+      <nav class="flex shrink-0 flex-wrap gap-2" aria-label="Help desk">
+        {{if ne .View "issues"}}
+        <a href="{{projectReportedIssues .Project}}" hx-get="{{projectReportedIssues .Project}}" hx-target="#main" hx-push-url="{{projectReportedIssues .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="list" class="h-4 w-4" aria-hidden="true"></i>Your issues</a>
+        {{end}}
+        {{if ne .View "new"}}
+        <a href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNew .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New issue</a>
+        {{end}}
+      </nav>
+    </div>
+  </header>
+
+  {{if eq .View "issue"}}{{template "helpdesk-issue" .}}{{else if eq .View "issues"}}{{template "helpdesk-issues" .}}{{else}}{{template "helpdesk-new" .}}{{end}}
+</section>
+{{end}}
+
+{{define "helpdesk-status"}}
+<span data-helpdesk-status="{{.}}" class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{reporterStatusClass .}}">{{.Label}}</span>
+{{end}}
+
+{{define "helpdesk-new"}}
+  <section class="py-6">
+    <form method="post" action="{{projectIssues .Project}}" hx-post="{{projectIssues .Project}}" hx-target="#main" hx-push-url="false" class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">{{template "csrf-field" .CSRFToken}}
+      {{if .Error}}<div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>{{end}}
+      <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="helpdesk-title">Title</label>
+      <input id="helpdesk-title" name="title" value="{{.Title}}" autocomplete="off" autofocus required maxlength="200" class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="What's going wrong?">
+      <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="helpdesk-description">Description</label>
+      <textarea id="helpdesk-description" name="description" rows="6" data-autogrow-textarea placeholder="What happened, what you expected, and how to reproduce it. Markdown is supported." class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">{{.Description}}</textarea>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <p class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><i data-lucide="lock" class="h-3.5 w-3.5 shrink-0" aria-hidden="true"></i>Only you and the project's members can see this issue.</p>
+        <button type="submit" class="ml-auto inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>Submit issue</button>
+      </div>
+    </form>
+    <p data-helpdesk-promo class="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">This help desk runs on trackslash, the open issue tracker your coding agents can actually use. <a href="https://trackslash.com" target="_blank" rel="noopener" class="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200">Take a look<i data-lucide="arrow-up-right" class="h-3 w-3" aria-hidden="true"></i></a></p>
+  </section>
+{{end}}
+
+{{define "helpdesk-issues"}}
+  <section class="py-6">
+    <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      {{if .Issues}}
+      <ul class="divide-y divide-slate-100 dark:divide-slate-800">
+        {{range .Issues}}
+        <li>
+          <a href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:hover:bg-slate-800/60">
+            {{template "issue-key" .Identifier}}
+            <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">{{.Title}}</span>
+            {{template "helpdesk-status" .Status}}
+            <span class="text-xs text-slate-500 dark:text-slate-400">Updated {{template "local-time" (tokenTime .UpdatedAt)}}</span>
+          </a>
+        </li>
+        {{end}}
+      </ul>
+      {{if .IssuesHasMore}}<p class="border-t border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">Showing your latest 200</p>{{end}}
+      {{else}}
+      <p class="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">You haven't filed any issues here yet.</p>
+      {{end}}
+    </div>
+  </section>
+{{end}}
+
+{{define "helpdesk-issue"}}
+  <section class="space-y-6 py-6">
+    <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Description</h2>
+      {{if .DescriptionHTML}}<div class="markdown-body mt-3 text-sm leading-6 text-slate-800 dark:text-slate-200">{{.DescriptionHTML}}</div>{{else}}<p class="mt-3 text-sm text-slate-500 dark:text-slate-400">No description.</p>{{end}}
+    </div>
+
+    <div class="space-y-3">
+      <div class="flex items-center gap-2 px-1">
+        <h2 class="text-sm font-semibold uppercase text-slate-500 dark:text-slate-400">Conversation</h2>
+        {{template "count-badge" (len .Comments)}}
+      </div>
+      {{if .CommentsHasMore}}<p class="px-1 text-xs text-slate-500 dark:text-slate-400">Showing the first 200</p>{{end}}
+      {{range .Comments}}
+      <article data-helpdesk-comment class="min-w-0">
+        <div class="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-1">
+          {{template "user-avatar" (userAvatar . "grid h-4 w-4 shrink-0 place-items-center bg-slate-100 text-[7px] font-semibold leading-none text-slate-600 dark:bg-slate-800 dark:text-slate-300")}}
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">{{if .FromReporter}}You{{else}}{{.AuthorName}}{{end}}</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400">{{template "local-time" (tokenTime .Comment.CreatedAt)}}</span>
+          {{if .Comment.EditedAt}}<span class="text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">•</span><span class="text-xs text-slate-500 dark:text-slate-400">Edited {{template "local-time" (tokenTime .Comment.EditedAt)}}</span>{{end}}
+          {{if and .FromReporter (ne $.EditCommentID .Comment.ID)}}
+          <button type="button" aria-label="Edit reply" hx-get="{{issueCommentEdit $.Issue .Comment}}" hx-target="#main" hx-push-url="false" class="grid h-5 w-5 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:focus:ring-offset-slate-900">
+            <i data-lucide="pencil" class="h-3 w-3" aria-hidden="true"></i>
+          </button>
+          {{end}}
+        </div>
+        {{if eq $.EditCommentID .Comment.ID}}
+        <form method="post" action="{{issueComment $.Issue .Comment}}" hx-post="{{issueComment $.Issue .Comment}}" hx-target="#main" hx-push-url="false" class="w-full max-w-full rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/25">{{template "csrf-field" $.CSRFToken}}
+          <textarea name="body" rows="2" autofocus data-submit-shortcut="meta-enter" data-autogrow-textarea class="min-h-16 w-full resize-y rounded-md border border-indigo-100 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-indigo-900/60 dark:bg-slate-950 dark:text-slate-100">{{$.CommentEditBody}}</textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <button type="submit" aria-label="Save reply" class="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900">
+              <i data-lucide="check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </button>
+            <button type="button" aria-label="Cancel editing reply" hx-get="{{issuePanel $.Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+              <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            </button>
+            <span class="text-[11px] leading-4 text-slate-400 dark:text-slate-500">⌘ + Enter to save</span>
+          </div>
+          {{if $.CommentEditError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{$.CommentEditError}}</div>{{end}}
+        </form>
+        {{else}}
+        <div class="w-fit max-w-full rounded-xl border px-3 py-2 {{if .FromReporter}}border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900{{else}}border-indigo-100 bg-indigo-50/70 dark:border-indigo-900/50 dark:bg-indigo-950/25{{end}}">
+          <div class="markdown-body text-sm leading-6 text-slate-800 dark:text-slate-200">{{.BodyHTML}}</div>
+        </div>
+        {{end}}
+      </article>
+      {{else}}
+      <p class="px-1 text-sm text-slate-500 dark:text-slate-400">No replies yet. The project's members will reply here.</p>
+      {{end}}
+
+      <form method="post" action="{{issueComments .Issue}}" hx-post="{{issueComments .Issue}}" hx-target="#main" hx-push-url="false" class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">{{template "csrf-field" .CSRFToken}}
+        <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="helpdesk-reply">Reply</label>
+        <textarea id="helpdesk-reply" name="body" rows="3" data-submit-shortcut="meta-enter" data-autogrow-textarea placeholder="Add more detail or answer a question" class="mt-1 min-h-20 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">{{.CommentBody}}</textarea>
+        {{if .CommentError}}<div class="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.CommentError}}</div>{{end}}
+        <div class="mt-3 flex items-center justify-between gap-3">
+          <span class="text-[11px] text-slate-400 dark:text-slate-500">⌘ + Enter to send</span>
+          <button type="submit" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>Send reply</button>
+        </div>
+      </form>
+    </div>
+  </section>
+{{end}}

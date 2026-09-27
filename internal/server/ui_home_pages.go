@@ -163,6 +163,9 @@ func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if s.uiServeHelpDeskNew(w, r, project) {
+		return
+	}
 	input := uiNewIssueInputFromValues(r.URL.Query())
 	input.ProjectID = project.ID.String()
 	input.ProjectInput = ""
@@ -192,6 +195,9 @@ func (s *Server) uiNewProjectIssuePanel(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if s.uiServeHelpDeskNew(w, r, project) {
+		return
+	}
 	input := uiNewIssueInputFromValues(r.URL.Query())
 	input.ProjectID = project.ID.String()
 	input.ProjectInput = ""
@@ -211,7 +217,32 @@ func (s *Server) uiCreateProjectIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	permissions, err := s.uiProjectPermissions(r.Context(), currentUser(r), project.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if uiIsHelpDeskReporter(permissions) {
+		s.uiCreateHelpDeskIssue(w, r, project)
+		return
+	}
 	s.uiCreateIssueForProject(w, r, &project)
+}
+
+// uiServeHelpDeskNew answers the new-issue page with the help-desk form when
+// the user files into the project as a help-desk reporter, and reports
+// whether it did.
+func (s *Server) uiServeHelpDeskNew(w http.ResponseWriter, r *http.Request, project model.Project) bool {
+	permissions, err := s.uiProjectPermissions(r.Context(), currentUser(r), project.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return true
+	}
+	if !uiIsHelpDeskReporter(permissions) {
+		return false
+	}
+	s.uiRenderHelpDeskNew(w, r, http.StatusOK, project, "", "", "")
+	return true
 }
 
 func (s *Server) uiCreateIssue(w http.ResponseWriter, r *http.Request) {
@@ -242,6 +273,12 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 	permissions, err := s.uiProjectPermissions(r.Context(), currentUser(r), project.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
+		return
+	}
+	// A help-desk reporter files through the help-desk form's rules whichever
+	// form sent the issue.
+	if uiIsHelpDeskReporter(permissions) {
+		s.uiCreateHelpDeskIssue(w, r, project)
 		return
 	}
 	if !permissions.CanWrite && (strings.TrimSpace(input.AssigneeInput) != "" || strings.TrimSpace(input.ReporterInput) != "") {

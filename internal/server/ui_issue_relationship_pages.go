@@ -220,6 +220,15 @@ func (s *Server) uiCreateComment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unable to read form", http.StatusBadRequest)
 		return
 	}
+	follows, err := s.uiFollowedIssue(r.Context(), currentUser(r), issue)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	if follows {
+		s.uiCreateHelpDeskReply(w, r, issue)
+		return
+	}
 	body := strings.TrimSpace(r.Form.Get("body"))
 	if body == "" || len(body) > 10000 {
 		s.renderUIIssuePanelWithCommentError(w, r, issue.ID, r.Form.Get("body"), "Comment required, max 10000 chars.")
@@ -258,9 +267,16 @@ func (s *Server) uiEditComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r)
-	if err := s.uiRequireProjectAccess(r.Context(), user, issue.ProjectID); err != nil {
+	follows, err := s.uiFollowedIssue(r.Context(), user, issue)
+	if err != nil {
 		writeUIStoreError(w, err)
 		return
+	}
+	if !follows {
+		if err := s.uiRequireProjectAccess(r.Context(), user, issue.ProjectID); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
 	}
 	comment, ok := s.uiCommentFromRoute(w, r, issue)
 	if !ok {
@@ -268,6 +284,13 @@ func (s *Server) uiEditComment(w http.ResponseWriter, r *http.Request) {
 	}
 	if comment.AuthorID != user.ID {
 		writeUIStoreError(w, errUIForbidden)
+		return
+	}
+	if follows {
+		s.uiRenderHelpDeskIssue(w, r, issue, func(panel *uiHelpDeskPanelData) {
+			panel.EditCommentID = comment.ID
+			panel.CommentEditBody = comment.Body
+		})
 		return
 	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
@@ -291,9 +314,16 @@ func (s *Server) uiUpdateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r)
-	if err := s.uiRequireProjectAccess(r.Context(), user, issue.ProjectID); err != nil {
+	follows, err := s.uiFollowedIssue(r.Context(), user, issue)
+	if err != nil {
 		writeUIStoreError(w, err)
 		return
+	}
+	if !follows {
+		if err := s.uiRequireProjectAccess(r.Context(), user, issue.ProjectID); err != nil {
+			writeUIStoreError(w, err)
+			return
+		}
 	}
 	comment, ok := s.uiCommentFromRoute(w, r, issue)
 	if !ok {
@@ -301,6 +331,10 @@ func (s *Server) uiUpdateComment(w http.ResponseWriter, r *http.Request) {
 	}
 	if comment.AuthorID != user.ID {
 		writeUIStoreError(w, errUIForbidden)
+		return
+	}
+	if follows {
+		s.uiUpdateHelpDeskReply(w, r, issue, comment)
 		return
 	}
 	body := strings.TrimSpace(r.Form.Get("body"))

@@ -24,6 +24,8 @@ type updateCommentReq struct {
 
 const commentVisibilityError = "visibility must be shared or members"
 
+const reporterCommentVisibilityError = "a help desk reporter's comments are always shared"
+
 // commentVisibleTo reports whether a reader with these permissions may see the
 // comment at all. A hidden comment is reported as missing, not forbidden, so
 // its existence does not leak.
@@ -32,11 +34,12 @@ func commentVisibleTo(permissions store.ProjectPermissions, comment model.Commen
 }
 
 func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
-	issue, ok := s.issueFromRoute(w, r)
+	issue, permissions, ok := s.issueWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
+	if !canCommentOnIssue(permissions, currentUser(r), issue) {
+		writeForbidden(w)
 		return
 	}
 	var req createCommentReq
@@ -53,6 +56,14 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, commentVisibilityError)
 		return
 	}
+	// A reporter's replies are always visible to them.
+	if followsIssue(permissions, currentUser(r), issue) {
+		if req.Visibility == model.CommentVisibilityMembers {
+			writeError(w, http.StatusBadRequest, reporterCommentVisibilityError)
+			return
+		}
+		req.Visibility = model.CommentVisibilityShared
+	}
 
 	c, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
 		IssueID:    issue.ID,
@@ -68,12 +79,12 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listComments(w http.ResponseWriter, r *http.Request) {
-	issue, ok := s.issueFromRoute(w, r)
+	issue, permissions, ok := s.issueWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	permissions, ok := s.requireProjectReadPermissions(w, r, issue.ProjectID)
-	if !ok {
+	if !permissions.CanRead && !followsIssue(permissions, currentUser(r), issue) {
+		writeForbidden(w)
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -111,12 +122,12 @@ func (s *Server) listComments(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getComment(w http.ResponseWriter, r *http.Request) {
-	issue, comment, ok := s.commentFromRoute(w, r)
+	issue, permissions, comment, ok := s.commentWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	permissions, ok := s.requireProjectReadPermissions(w, r, issue.ProjectID)
-	if !ok {
+	if !permissions.CanRead && !followsIssue(permissions, currentUser(r), issue) {
+		writeForbidden(w)
 		return
 	}
 	if !commentVisibleTo(permissions, comment) {
@@ -127,7 +138,7 @@ func (s *Server) getComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
-	issue, comment, ok := s.commentFromRoute(w, r)
+	issue, permissions, comment, ok := s.commentWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
@@ -152,12 +163,13 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, commentVisibilityError)
 		return
 	}
-	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
+	user := currentUser(r)
+	if !canCommentOnIssue(permissions, user, issue) || !commentVisibleTo(permissions, comment) || comment.AuthorID != user.ID {
+		writeForbidden(w)
 		return
 	}
-	user := currentUser(r)
-	if comment.AuthorID != user.ID {
-		writeForbidden(w)
+	if followsIssue(permissions, user, issue) && req.Visibility != nil && *req.Visibility == model.CommentVisibilityMembers {
+		writeError(w, http.StatusBadRequest, reporterCommentVisibilityError)
 		return
 	}
 	c, err := s.store.UpdateComment(r.Context(), store.UpdateCommentParams{
@@ -174,15 +186,12 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request) {
-	issue, comment, ok := s.commentFromRoute(w, r)
+	issue, permissions, comment, ok := s.commentWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
-		return
-	}
 	user := currentUser(r)
-	if comment.AuthorID != user.ID {
+	if !canCommentOnIssue(permissions, user, issue) || !commentVisibleTo(permissions, comment) || comment.AuthorID != user.ID {
 		writeForbidden(w)
 		return
 	}
@@ -193,19 +202,19 @@ func (s *Server) deleteComment(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) commentFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, model.Comment, bool) {
-	issue, ok := s.issueFromRoute(w, r)
+func (s *Server) commentWithAccessFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, store.ProjectPermissions, model.Comment, bool) {
+	issue, permissions, ok := s.issueWithAccessFromRoute(w, r)
 	if !ok {
-		return model.Issue{}, model.Comment{}, false
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, false
 	}
 	number, ok := parseTypedRefParam(w, r, "commentRef", "comment")
 	if !ok {
-		return model.Issue{}, model.Comment{}, false
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, false
 	}
 	comment, err := s.store.GetCommentForIssueByNumber(r.Context(), issue.ID, number)
 	if err != nil {
 		writeStoreError(w, err)
-		return model.Issue{}, model.Comment{}, false
+		return model.Issue{}, store.ProjectPermissions{}, model.Comment{}, false
 	}
-	return issue, comment, true
+	return issue, permissions, comment, true
 }

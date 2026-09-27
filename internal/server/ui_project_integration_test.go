@@ -624,7 +624,7 @@ func TestUIProjectMemberManagerAndReadonlyRendering(t *testing.T) {
 		t.Fatalf("successful member add should close modal: %s", body)
 	}
 
-	for _, invalid := range []string{"", "helpdesk", "everyone"} {
+	for _, invalid := range []string{"", "members", "everyone"} {
 		accessForm := url.Values{"access_mode": {invalid}}
 		res = e.uiDoNoRedirect(t, http.MethodPost, e.projectPath()+"/member-access", e.authToken, strings.NewReader(accessForm.Encode()))
 		body = readBody(t, res)

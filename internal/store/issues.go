@@ -351,6 +351,8 @@ type ListIssuesParams struct {
 	Priorities []model.IssuePriority
 	// AssigneeIDs filters to issues assigned to any supplied users. Empty = all.
 	AssigneeIDs []uuid.UUID
+	// ReporterID filters to issues the user reported. Nil = all.
+	ReporterID *uuid.UUID
 	// TagNames filters to issues tagged with any supplied tag names. Empty = all.
 	TagNames []string
 	// SprintID filters by sprint. Backlog == true means "WHERE sprint_id IS NULL"
@@ -457,6 +459,10 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	if len(p.AssigneeIDs) > 0 {
 		args = append(args, p.AssigneeIDs)
 		q += fmt.Sprintf(" AND i.assignee_id = ANY($%d)", len(args))
+	}
+	if p.ReporterID != nil {
+		args = append(args, *p.ReporterID)
+		q += fmt.Sprintf(" AND i.reporter_id = $%d", len(args))
 	}
 	tagNames, err := normalizeIssueTagFilters(p.TagNames)
 	if err != nil {
@@ -1084,7 +1090,7 @@ func issueProjectReporterExists(ctx context.Context, tx pgx.Tx, projectID, userI
 			  AND (
 			      p.owner_id = u.id
 			      OR pm.role = 'member'
-			      OR (pm.user_id IS NULL AND p.access_mode = 'public_issues')
+			      OR (pm.user_id IS NULL AND p.access_mode IN ('public_issues', 'helpdesk'))
 			  )
 		)
 	`, projectID, userID).Scan(&ok)
