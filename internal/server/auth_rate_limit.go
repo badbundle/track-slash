@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"math"
 	"net"
 	"net/http"
@@ -15,7 +17,10 @@ const (
 	defaultAuthIPWindow           = time.Minute
 	defaultAuthIdentifierAttempts = 10
 	defaultAuthIdentifierWindow   = 5 * time.Minute
-	defaultAuthLimitEntries       = 10_000
+	// defaultAuthLimitEntries bounds each limiter's table. When it is full the
+	// entry closest to expiry makes room, so a flood of new keys cannot turn
+	// the limiter into a refusal for everyone else.
+	defaultAuthLimitEntries = 100_000
 )
 
 type AuthRateLimitOptions struct {
@@ -73,7 +78,16 @@ func newFixedWindowLimiter(limit int, window time.Duration, maxEntries int, now 
 	}
 }
 
+// limiterKey stores a fixed-size digest of the caller's key. Keys come from
+// request input such as usernames and client IDs, and keeping them verbatim
+// would let a caller park megabytes in the table for a whole window.
+func limiterKey(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:16])
+}
+
 func (l *fixedWindowLimiter) allow(key string) (bool, time.Duration) {
+	key = limiterKey(key)
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -93,13 +107,18 @@ func (l *fixedWindowLimiter) allow(key string) (bool, time.Duration) {
 	}
 
 	if len(l.entries) >= l.maxEntries {
+		oldest, oldestReset := "", time.Time{}
 		for candidate, candidateEntry := range l.entries {
 			if !now.Before(candidateEntry.reset) {
 				delete(l.entries, candidate)
+				continue
+			}
+			if oldest == "" || candidateEntry.reset.Before(oldestReset) {
+				oldest, oldestReset = candidate, candidateEntry.reset
 			}
 		}
 		if len(l.entries) >= l.maxEntries {
-			return false, l.window
+			delete(l.entries, oldest)
 		}
 	}
 	l.entries[key] = fixedWindowEntry{count: 1, reset: now.Add(l.window)}
@@ -114,6 +133,7 @@ func (l *fixedWindowLimiter) allow(key string) (bool, time.Duration) {
 // question on every request but answer for very few, and calling allow there
 // would quietly charge the successes too.
 func (l *fixedWindowLimiter) blocked(key string) (bool, time.Duration) {
+	key = limiterKey(key)
 	now := l.now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -167,16 +187,41 @@ func (s *Server) authAccountRateLimited(next http.HandlerFunc) http.HandlerFunc 
 }
 
 func (s *Server) allowAuthIdentifier(w http.ResponseWriter, identifier string) bool {
-	key := strings.ToLower(strings.TrimSpace(identifier))
-	if key == "" {
-		key = "unknown"
-	}
-	allowed, retryAfter := s.authLimiter.byIdentifier.allow(key)
+	allowed, retryAfter := s.authLimiter.byIdentifier.allow(authIdentifierKey(identifier))
 	if !allowed {
 		writeAuthRateLimit(w, retryAfter)
 		return false
 	}
 	return true
+}
+
+func authIdentifierKey(identifier string) string {
+	key := strings.ToLower(strings.TrimSpace(identifier))
+	if key == "" {
+		key = "unknown"
+	}
+	return key
+}
+
+// passwordLoginKey is the budget for password sign-ins to one username. It is
+// spent only by failures (see passwordLoginBlocked and notePasswordLoginFailure),
+// so an account's own successful sign-ins never use it up.
+func passwordLoginKey(username string) string {
+	return "password-login:" + authIdentifierKey(username)
+}
+
+// passwordLoginBlocked answers 429 when a username has used up its failed
+// sign-in budget, without spending any of it.
+func (s *Server) passwordLoginBlocked(w http.ResponseWriter, username string) bool {
+	if stopped, retryAfter := s.authLimiter.byIdentifier.blocked(passwordLoginKey(username)); stopped {
+		writeAuthRateLimit(w, retryAfter)
+		return true
+	}
+	return false
+}
+
+func (s *Server) notePasswordLoginFailure(username string) {
+	s.authLimiter.byIdentifier.allow(passwordLoginKey(username))
 }
 
 func clientIP(r *http.Request, trustedProxyCIDRs []net.IPNet) string {
@@ -192,22 +237,34 @@ func clientIP(r *http.Request, trustedProxyCIDRs []net.IPNet) string {
 		}
 		return remote
 	}
-	peer := peerIP.String()
+	peer := rateLimitAddress(peerIP)
 	if !ipInNetworks(peerIP, trustedProxyCIDRs) {
 		return peer
 	}
 
-	forwarded := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	// A proxy may append its own X-Forwarded-For line rather than extend the
+	// client's, so every line counts, in order.
+	forwarded := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
 	for i := len(forwarded) - 1; i >= 0; i-- {
 		candidate := net.ParseIP(strings.TrimSpace(forwarded[i]))
 		if candidate == nil {
 			return peer
 		}
 		if !ipInNetworks(candidate, trustedProxyCIDRs) {
-			return candidate.String()
+			return rateLimitAddress(candidate)
 		}
 	}
 	return peer
+}
+
+// rateLimitAddress is the unit an address is budgeted in: the address itself
+// for IPv4, and its /64 for IPv6, since a single host is routinely handed a
+// whole /64 and could otherwise use a fresh address for every attempt.
+func rateLimitAddress(ip net.IP) string {
+	if ip.To4() != nil {
+		return ip.String()
+	}
+	return (&net.IPNet{IP: ip.Mask(net.CIDRMask(64, 128)), Mask: net.CIDRMask(64, 128)}).String()
 }
 
 func ipInNetworks(ip net.IP, networks []net.IPNet) bool {

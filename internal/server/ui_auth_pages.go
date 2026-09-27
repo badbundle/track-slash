@@ -38,16 +38,18 @@ func (s *Server) uiLogin(w http.ResponseWriter, r *http.Request) {
 	username := strings.TrimSpace(r.Form.Get("username"))
 	password := r.Form.Get("password")
 	next := safeUINext(r.Form.Get("next"))
-	if !s.allowAuthIdentifier(w, username) {
+	if s.passwordLoginBlocked(w, username) {
 		return
 	}
 	if username == "" || password == "" {
+		s.notePasswordLoginFailure(username)
 		s.renderUILogin(w, r, http.StatusUnauthorized, uiLoginData{Error: "Username and password required.", Next: next})
 		return
 	}
 	u, err := s.store.AuthenticatePassword(r.Context(), username, password)
 	if err != nil {
 		if errors.Is(err, store.ErrUnauthorized) {
+			s.notePasswordLoginFailure(username)
 			s.renderUILogin(w, r, http.StatusUnauthorized, uiLoginData{Error: "Username or password not accepted.", Next: next})
 			return
 		}

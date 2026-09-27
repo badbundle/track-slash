@@ -16,11 +16,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// maxJSONBodyBytes bounds a JSON request body. The largest legitimate one is
+// a 100,000-character description or context body, well inside this, and a
+// cap keeps a caller from streaming an unbounded body into the decoder.
+const maxJSONBodyBytes = 2 << 20
+
 func decodeJSON(r *http.Request, v any) error {
 	if r.Body == nil {
 		return errors.New("empty body")
 	}
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, maxJSONBodyBytes))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		if errors.Is(err, io.EOF) {

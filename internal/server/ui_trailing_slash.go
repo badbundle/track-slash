@@ -49,5 +49,11 @@ func uiCanonicalPath(r *http.Request) (string, bool) {
 	if trimmed == "" {
 		trimmed = "/"
 	}
+	// A path that starts with two slashes (or a slash and a backslash) is
+	// read by browsers as another host, so //evil.example/ would redirect
+	// off-site. Such a path names no page here; serve it as addressed.
+	if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/\\") || strings.HasPrefix(trimmed, "/%5C") || strings.HasPrefix(trimmed, "/%5c") {
+		return "", false
+	}
 	return trimmed, true
 }

@@ -639,3 +639,41 @@ func (b *flakyDeleteBackend) Delete(ctx context.Context, key string) error {
 	delete(b.objects, key)
 	return nil
 }
+
+// Uploads are served from the app's origin, so only safe images keep their
+// declared type; everything else is opaque bytes in a sandbox, and nothing is
+// loadable cross-origin.
+func TestHTTPStorageObjectContentIsServedSafely(t *testing.T) {
+	t.Parallel()
+	e, _ := newStorageHTTPEnv(t, 1024*1024)
+	for _, tc := range []struct {
+		filename, wantType string
+		content            []byte
+	}{
+		{"evil.js", "application/octet-stream", []byte("alert(document.cookie)")},
+		{"page.html", "application/octet-stream", []byte("<html><script>alert(1)</script></html>")},
+		{"photo.png", "image/png", []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")},
+	} {
+		code, body := e.doMultipartObject(t, e.authToken, tc.filename, tc.content)
+		if code != http.StatusCreated {
+			t.Fatalf("upload %s code = %d body = %s", tc.filename, code, body)
+		}
+		object := decode[model.StorageObject](t, body)
+		res, _ := e.doRaw(t, e.authToken, http.MethodGet, e.storageObjectPath(object)+"/content?inline=1", nil, "")
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s content code = %d", tc.filename, res.StatusCode)
+		}
+		if got := res.Header.Get("Content-Type"); got != tc.wantType {
+			t.Fatalf("%s Content-Type = %q, want %q", tc.filename, got, tc.wantType)
+		}
+		if got := res.Header.Values("Content-Security-Policy"); len(got) != 2 || got[1] != "default-src 'none'; sandbox" {
+			t.Fatalf("%s CSP = %q, want the site policy plus a sandbox", tc.filename, got)
+		}
+		if got := res.Header.Get("Cross-Origin-Resource-Policy"); got != "same-origin" {
+			t.Fatalf("%s CORP = %q", tc.filename, got)
+		}
+		if tc.wantType != "image/png" && !strings.HasPrefix(res.Header.Get("Content-Disposition"), "attachment") {
+			t.Fatalf("%s Content-Disposition = %q, want attachment", tc.filename, res.Header.Get("Content-Disposition"))
+		}
+	}
+}

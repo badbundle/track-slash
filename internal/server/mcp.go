@@ -417,6 +417,23 @@ type mcpListUserTokensInput struct {
 	UserID string `json:"user_id" jsonschema:"user id (UUID)"`
 }
 
+// limitMCPBody caps an MCP request body. The SDK reads a whole POST into
+// memory, and the largest legitimate one is an attachment upload carried as
+// base64, so the cap is the upload limit inflated by base64 plus room for the
+// JSON-RPC envelope.
+func (s *Server) limitMCPBody(next http.Handler) http.Handler {
+	limit := int64(maxJSONBodyBytes)
+	if s.objectStorage != nil {
+		limit += s.objectStorage.MaxUploadBytes()/3*4 + 4
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) mountMCPRoutes(r chi.Router) {
 	mcpServer := s.newMCPServer()
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
@@ -427,7 +444,7 @@ func (s *Server) mountMCPRoutes(r chi.Router) {
 		SessionTimeout: 30 * time.Minute,
 	})
 	authenticated := mcpauth.RequireBearerToken(s.verifyMCPBearerToken, nil)(handler)
-	r.Handle(mcpPath, s.mcpOriginMiddleware(s.mcpBearerChallengeMiddleware(authenticated)))
+	r.Handle(mcpPath, s.mcpOriginMiddleware(s.mcpBearerChallengeMiddleware(s.limitMCPBody(authenticated))))
 }
 
 func (s *Server) mcpOriginMiddleware(next http.Handler) http.Handler {

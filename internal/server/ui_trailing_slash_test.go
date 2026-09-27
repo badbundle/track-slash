@@ -90,6 +90,12 @@ func TestRedirectUITrailingSlashLeavesExemptPathsAlone(t *testing.T) {
 		"/api/v1/healthz/",
 		"/mcp/",
 		"/static/",
+		// Browsers read these as another host, so canonicalising them would
+		// be an open redirect.
+		"//evil.example/",
+		"//evil.example/path/",
+		"/%5Cevil.example/",
+		"/%5cevil.example/",
 	} {
 		t.Run(target, func(t *testing.T) {
 			t.Parallel()
