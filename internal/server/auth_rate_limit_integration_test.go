@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,8 +35,12 @@ func TestAuthenticationRateLimits(t *testing.T) {
 			if response.Code != want {
 				t.Fatalf("attempt %d code = %d, want %d", attempt+1, response.Code, want)
 			}
-			if want == http.StatusTooManyRequests && response.Header().Get("Retry-After") != "300" {
-				t.Fatalf("Retry-After = %q, want 300", response.Header().Get("Retry-After"))
+			// The window opened with the first attempt, and every sign-in
+			// check costs a bcrypt comparison, so allow a few seconds.
+			if want == http.StatusTooManyRequests {
+				if retry, err := strconv.Atoi(response.Header().Get("Retry-After")); err != nil || retry < 290 || retry > 300 {
+					t.Fatalf("Retry-After = %q, want about 300", response.Header().Get("Retry-After"))
+				}
 			}
 		}
 	})

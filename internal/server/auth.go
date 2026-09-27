@@ -92,6 +92,25 @@ func requireFirstPartyToken(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// firstPartyOnly wraps a credential-management handler in requireFirstPartyToken.
+func firstPartyOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireFirstPartyToken(w, r) {
+			return
+		}
+		next(w, r)
+	}
+}
+
+// keptSessionTokenID is the session to keep when a password change signs the
+// user out everywhere else: the one making the change, if it is a session.
+func keptSessionTokenID(auth authContext) uuid.UUID {
+	if auth.Token.Kind == model.AuthTokenKindSession {
+		return auth.Token.ID
+	}
+	return uuid.Nil
+}
+
 func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	if !currentUser(r).IsAdmin {
 		writeForbidden(w)

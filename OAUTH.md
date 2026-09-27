@@ -90,6 +90,14 @@ would outlive the consent it was created under. `CreateAuthToken` also refuses
 the `oauth` kind outright, so the only way an `oauth` row exists is through the
 authorization server, which always records the client behind it.
 
+The same rule covers every way into the account, not only tokens: changing the
+email or password (`PATCH /me/settings`, `track_update_my_settings`), password
+login, passkeys and the reauthentication that guards them (`/me/password-login`,
+`/me/passkeys*`, `/me/reauth/*`), saved GitHub tokens, and a site admin's account
+administration (`/users`, `track_*_user`). A connector that could set the
+password or add a passkey would own a way in that outlives its revocation. A
+display name is not a credential, so a connector may still change that.
+
 **A connector's token is not a browser session.** `uiAuthMiddleware` rejects the
 `oauth` kind. The UI's CSRF token is derived from whatever value sits in the
 session cookie, so anything holding a raw access token could otherwise drive the

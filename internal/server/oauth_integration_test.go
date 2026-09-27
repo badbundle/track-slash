@@ -1010,6 +1010,17 @@ func TestConnectorTokenCannotManageCredentials(t *testing.T) {
 		{name: "save a github token", method: http.MethodPost, path: "/me/github-tokens", body: map[string]any{"name": "Personal", "token": "x"}},
 		{name: "replace a saved github token", method: http.MethodPatch, path: "/me/github-tokens/" + uuid.NewString(), body: map[string]any{"token": "x"}},
 		{name: "delete a saved github token", method: http.MethodDelete, path: "/me/github-tokens/" + uuid.NewString()},
+		{name: "change the account email", method: http.MethodPatch, path: "/me/settings", body: map[string]any{"email": "taken-over@example.com"}},
+		{name: "change the password", method: http.MethodPatch, path: "/me/settings", body: map[string]any{"current_password": "guess", "new_password": "attacker-password-1"}},
+		{name: "read password login", method: http.MethodGet, path: "/me/password-login"},
+		{name: "toggle password login", method: http.MethodPatch, path: "/me/password-login", body: map[string]any{"enabled": false, "reauth_token": "x"}},
+		{name: "list passkeys", method: http.MethodGet, path: "/me/passkeys"},
+		{name: "reauthenticate with the password", method: http.MethodPost, path: "/me/reauth/password", body: map[string]any{"current_password": "guess"}},
+		{name: "begin passkey reauthentication", method: http.MethodPost, path: "/me/reauth/passkey/options"},
+		{name: "finish passkey reauthentication", method: http.MethodPost, path: "/me/reauth/passkey", body: map[string]any{}},
+		{name: "begin adding a passkey", method: http.MethodPost, path: "/me/passkeys/options", body: map[string]any{"name": "attacker", "reauth_token": "x"}},
+		{name: "add a passkey", method: http.MethodPost, path: "/me/passkeys", body: map[string]any{}},
+		{name: "revoke a passkey", method: http.MethodDelete, path: "/me/passkeys/" + uuid.NewString(), body: map[string]any{"reauth_token": "x"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			code, body := e.doWithToken(t, accessToken, tt.method, tt.path, tt.body)
@@ -1024,6 +1035,11 @@ func TestConnectorTokenCannotManageCredentials(t *testing.T) {
 	code, body := e.doWithToken(t, e.sessionToken, http.MethodPost, "/me/tokens", map[string]any{"name": "mine"})
 	if code != http.StatusCreated {
 		t.Fatalf("the user's own token should still mint: %d %s", code, body)
+	}
+	// A display name is not a credential, so a connector may still set it.
+	code, body = e.doWithToken(t, accessToken, http.MethodPatch, "/me/settings", map[string]any{"name": "Renamed by an agent"})
+	if code != http.StatusOK || decode[model.User](t, body).Name != "Renamed by an agent" {
+		t.Fatalf("connector name change: %d %s", code, body)
 	}
 }
 
@@ -1182,6 +1198,8 @@ func TestConnectorTokenCannotManageCredentialsOverMCP(t *testing.T) {
 	}{
 		{name: "track_create_my_token", arguments: `{"name":"persistence"}`},
 		{name: "track_list_my_tokens", arguments: `{}`},
+		{name: "track_update_my_settings", arguments: `{"email":"taken-over@example.com"}`},
+		{name: "track_update_my_settings", arguments: `{"current_password":"guess","new_password":"attacker-password-1"}`},
 	} {
 		t.Run(tool.name, func(t *testing.T) {
 			res := e.mcpTool(t, accessToken, tool.name, tool.arguments)
@@ -1200,6 +1218,13 @@ func TestConnectorTokenCannotManageCredentialsOverMCP(t *testing.T) {
 	res.Body.Close()
 	if strings.Contains(body, "forbidden") {
 		t.Fatalf("an API token should still be able to mint: %s", body)
+	}
+	// A display name is not a credential, so a connector may still set it.
+	res = e.mcpTool(t, accessToken, "track_update_my_settings", `{"name":"Renamed by an agent"}`)
+	body = readBody(t, res)
+	res.Body.Close()
+	if strings.Contains(body, "forbidden") || !strings.Contains(body, "Renamed by an agent") {
+		t.Fatalf("connector name change over MCP: %s", body)
 	}
 }
 
@@ -1221,5 +1246,47 @@ func TestCreateTokenStillWorksExceptForTheForgedOAuthKind(t *testing.T) {
 	code, body = e.do(t, http.MethodPost, "/me/tokens", map[string]any{"name": "forged", "kind": "oauth"})
 	if code != http.StatusConflict {
 		t.Fatalf("forged oauth kind = %d, want 409: %s", code, body)
+	}
+}
+
+// Administering accounts is the site admin's own work: a connector the admin
+// approved acts with their permissions everywhere else, but not here.
+func TestAdminConnectorCannotAdministerAccounts(t *testing.T) {
+	t.Parallel()
+	e := newOAuthHTTPEnv(t)
+	e.sessionToken = e.authToken // the admin approves the connector
+	tokens := e.exchange(t, e.approve(t, nil))
+	accessToken, _ := tokens["access_token"].(string)
+	target := e.mustUserNamed(t, "admin-connector-target")
+
+	for _, tt := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodGet, "/users", nil},
+		{http.MethodPost, "/users", map[string]any{"email": "made-by-connector@example.com", "name": "x"}},
+		{http.MethodGet, "/users/" + target.ID.String(), nil},
+		{http.MethodDelete, "/users/" + target.ID.String(), nil},
+	} {
+		if code, body := e.doWithToken(t, accessToken, tt.method, tt.path, tt.body); code != http.StatusForbidden {
+			t.Fatalf("connector %s %s = %d, want 403: %s", tt.method, tt.path, code, body)
+		}
+	}
+	for _, tool := range []struct{ name, arguments string }{
+		{"track_list_users", `{}`},
+		{"track_get_user", `{"id":"` + target.ID.String() + `"}`},
+		{"track_create_user", `{"email":"made-by-connector@example.com","name":"x"}`},
+		{"track_delete_user", `{"id":"` + target.ID.String() + `"}`},
+	} {
+		res := e.mcpTool(t, accessToken, tool.name, tool.arguments)
+		body := readBody(t, res)
+		res.Body.Close()
+		if !strings.Contains(body, "forbidden") {
+			t.Fatalf("%s was not refused to an admin's connector: %s", tool.name, body)
+		}
+	}
+	// The admin's own token still administers.
+	if code, body := e.do(t, http.MethodGet, "/users/"+target.ID.String(), nil); code != http.StatusOK {
+		t.Fatalf("admin token get user = %d: %s", code, body)
 	}
 }

@@ -104,6 +104,12 @@ func (s *Server) uiUpdatePassword(w http.ResponseWriter, r *http.Request) {
 		s.renderUILoginSettings(w, r, err.Error(), false)
 		return
 	}
+	// A new password signs every other browser out, so a session taken with
+	// the old one ends with it.
+	if _, err := s.store.RevokeSessionAuthTokensForUserExcept(r.Context(), currentUser(r).ID, keptSessionTokenID(currentAuth(r))); err != nil {
+		writeUIInternalError(w, "ui update password revoke sessions", err)
+		return
+	}
 	s.renderUILoginSettings(w, r, "", true)
 }
 
