@@ -830,7 +830,10 @@ type uiTokenPanelData struct {
 	// ConnectedApps counts live access tokens issued to OAuth clients. They are
 	// minted and retired on their own schedule as connectors refresh, so a row
 	// each would churn beneath the tokens people actually manage.
-	ConnectedApps       int
+	ConnectedApps int
+	// OAuthGrants are the connectors this user approved, whoever registered
+	// them, each of which they can disconnect.
+	OAuthGrants         []model.OAuthGrant
 	OAuthClients        []model.OAuthClient
 	OAuthError          string
 	CreatedClientID     string
@@ -849,9 +852,12 @@ type uiTokenPanelData struct {
 // It is rendered standalone rather than inside the app shell: this is an
 // interstitial shown on behalf of a third party, not a page of the product.
 type uiOAuthConsentData struct {
-	CSRFToken     string
-	User          model.User
-	ClientName    string
+	CSRFToken  string
+	User       model.User
+	ClientName string
+	// RegisteredBy is who registered the client. Anyone can register one
+	// and name it anything, so the page says whose it is.
+	RegisteredBy  string
 	ClientID      string
 	RedirectURI   string
 	RedirectHost  string

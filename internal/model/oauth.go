@@ -41,3 +41,13 @@ func (c OAuthClient) AllowsRedirectURI(uri string) bool {
 // user created would, so subdividing it here would imply an enforcement
 // boundary that does not exist anywhere else in the product.
 const OAuthScopeMCP = "mcp"
+
+// OAuthGrant is a connector a user approved and that still holds, or can still
+// obtain, access on their behalf. Whoever registered the connector, the user
+// who approved it can always see and end it.
+type OAuthGrant struct {
+	ClientID     uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	RegisteredBy string    `json:"registered_by"`
+	ConnectedAt  time.Time `json:"connected_at"`
+}

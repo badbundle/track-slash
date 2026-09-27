@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -253,7 +254,7 @@ func (s *Server) oauthAuthAllowed(w http.ResponseWriter, r *http.Request, client
 		writeAuthRateLimit(w, retryAfter)
 		return false
 	}
-	if stopped, retryAfter := s.authLimiter.byIdentifier.blocked(oauthFailureKey("client:" + clientID)); stopped {
+	if stopped, retryAfter := s.authLimiter.byIdentifier.blocked(oauthClientFailureKey(r, s.trustedProxyCIDRs, clientID)); stopped {
 		writeAuthRateLimit(w, retryAfter)
 		return false
 	}
@@ -269,8 +270,16 @@ func (s *Server) oauthAuthAllowed(w http.ResponseWriter, r *http.Request, client
 func (s *Server) oauthNoteAuthFailure(r *http.Request, clientID string) {
 	s.authLimiter.byIP.allow(oauthFailureKey(clientIP(r, s.trustedProxyCIDRs)))
 	if clientID != "" {
-		s.authLimiter.byIdentifier.allow(oauthFailureKey("client:" + clientID))
+		s.authLimiter.byIdentifier.allow(oauthClientFailureKey(r, s.trustedProxyCIDRs, clientID))
 	}
+}
+
+// oauthClientFailureKey budgets a client's failures per source address. A
+// client_id is public, so a budget for the client alone would let anyone who
+// saw an authorize URL spend it with bad secrets and lock every user of that
+// connector out of refreshing.
+func oauthClientFailureKey(r *http.Request, trustedProxyCIDRs []net.IPNet, clientID string) string {
+	return oauthFailureKey("client:" + clientID + "@" + clientIP(r, trustedProxyCIDRs))
 }
 
 func oauthFailureKey(identifier string) string {

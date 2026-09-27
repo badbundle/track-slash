@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -263,6 +264,9 @@ func TestOAuthAuthorizeRefusesToRedirectBeforeTheClientIsSettled(t *testing.T) {
 func TestOAuthAuthorizeReportsRecoverableErrorsToTheClient(t *testing.T) {
 	t.Parallel()
 	e := newOAuthHTTPEnv(t)
+	// Errors go back by redirect only to a client this user approved before;
+	// TestOAuthAuthorizeShowsErrorsForClientsNotYetApproved covers the rest.
+	e.exchange(t, e.approve(t, nil))
 
 	for _, tt := range []struct {
 		name      string
@@ -892,6 +896,8 @@ func TestOAuthTokenEndpointThrottlesFailuresByIP(t *testing.T) {
 func TestOAuthAuthorizeDecisionRevalidatesItsForm(t *testing.T) {
 	t.Parallel()
 	e := newOAuthHTTPEnv(t)
+	// Approved once, so errors after the client is settled go back to it.
+	e.exchange(t, e.approve(t, nil))
 
 	for _, tt := range []struct {
 		name     string
@@ -1122,6 +1128,8 @@ func TestOAuthForeignClientCannotBurnACode(t *testing.T) {
 func TestOAuthRejectsMalformedPKCELengths(t *testing.T) {
 	t.Parallel()
 	e := newOAuthHTTPEnv(t)
+	// Approved once, so errors after the client is settled go back to it.
+	e.exchange(t, e.approve(t, nil))
 
 	// A challenge outside RFC 7636's range is a bad request reported to the
 	// client, not an internal error from the column constraint.
@@ -1137,7 +1145,7 @@ func TestOAuthRejectsMalformedPKCELengths(t *testing.T) {
 
 	// A short verifier would still hash and compare, quietly reducing PKCE to
 	// decoration, so it is refused on its length.
-	code := e.approve(t, nil)
+	code := e.approve(t, map[string]string{"prompt": "consent"})
 	tokenRes, body := e.postToken(t, url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
@@ -1288,5 +1296,194 @@ func TestAdminConnectorCannotAdministerAccounts(t *testing.T) {
 	// The admin's own token still administers.
 	if code, body := e.do(t, http.MethodGet, "/users/"+target.ID.String(), nil); code != http.StatusOK {
 		t.Fatalf("admin token get user = %d: %s", code, body)
+	}
+}
+
+// Anyone can register a client and choose its redirect URI, so an error for a
+// client the user never approved is shown here rather than handed to an
+// address its registrant picked.
+func TestOAuthAuthorizeShowsErrorsForClientsNotYetApproved(t *testing.T) {
+	t.Parallel()
+	e := newOAuthHTTPEnv(t)
+	res := e.uiDoNoRedirect(t, http.MethodGet, e.authorizeQuery(map[string]string{"response_type": "token"}), e.sessionToken, nil)
+	body := readBody(t, res)
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest || res.Header.Get("Location") != "" || !strings.Contains(body, "unsupported_response_type") {
+		t.Fatalf("unapproved client error = %d %q: %s", res.StatusCode, res.Header.Get("Location"), body)
+	}
+}
+
+// The consent page says who registered the client, since anyone can register
+// one under any name.
+func TestOAuthConsentPageNamesTheRegistrant(t *testing.T) {
+	t.Parallel()
+	e := newOAuthHTTPEnv(t)
+	body := e.uiGet(t, e.authorizeQuery(nil), e.sessionToken)
+	if !strings.Contains(body, "data-oauth-registered-by") || !strings.Contains(body, "@"+e.user.Username) {
+		t.Fatalf("consent page does not name the registrant: %s", body)
+	}
+}
+
+// Someone who approved a connector they did not register can still see it and
+// end it, and revoking one of its access tokens ends the whole grant rather
+// than letting it mint the next from its refresh token.
+func TestOAuthGrantsCanBeDisconnectedByTheApprovingUser(t *testing.T) {
+	t.Parallel()
+	e := newOAuthHTTPEnv(t)
+	// A second user approves the connector the first one registered.
+	approver, approverToken := e.mustProjectMemberToken(t, "oauth-approver")
+	registrantToken := e.sessionToken
+	e.sessionToken = approverToken
+	tokens := e.exchange(t, e.approve(t, nil))
+	refresh, _ := tokens["refresh_token"].(string)
+	access, _ := tokens["access_token"].(string)
+
+	code, body := e.doWithToken(t, approverToken, http.MethodGet, "/me/oauth-grants", nil)
+	grants := decode[[]model.OAuthGrant](t, body)
+	if code != http.StatusOK || len(grants) != 1 || grants[0].ClientID != e.client.Client.ID || grants[0].RegisteredBy != e.user.Username {
+		t.Fatalf("approver grants = %d %s", code, body)
+	}
+	if code, body := e.doWithToken(t, access, http.MethodGet, "/me/oauth-grants", nil); code != http.StatusForbidden {
+		t.Fatalf("connector listing grants = %d %s", code, body)
+	}
+	if code, body := e.doWithToken(t, registrantToken, http.MethodGet, "/me/oauth-grants", nil); code != http.StatusOK || len(decode[[]model.OAuthGrant](t, body)) != 0 {
+		t.Fatalf("registrant sees another user's grant: %d %s", code, body)
+	}
+	page := e.uiGet(t, "/tokens", approverToken)
+	if !strings.Contains(page, "data-oauth-grant") || !strings.Contains(page, "/oauth-grants/"+e.client.Client.ID.String()+"/revoke") {
+		t.Fatalf("tokens page lacks the connected app: %s", page)
+	}
+
+	// Revoking the access token through the token list ends the grant.
+	tokensList := decode[[]model.AuthToken](t, func() []byte {
+		_, b := e.doWithToken(t, approverToken, http.MethodGet, "/me/tokens", nil)
+		return b
+	}())
+	var accessID string
+	for _, token := range tokensList {
+		if token.Kind == model.AuthTokenKindOAuth {
+			accessID = token.ID.String()
+		}
+	}
+	if code, body := e.doWithToken(t, approverToken, http.MethodDelete, "/me/tokens/"+accessID, nil); code != http.StatusNoContent {
+		t.Fatalf("revoke connector access token = %d %s", code, body)
+	}
+	res, body2 := e.postToken(t, url.Values{
+		"grant_type": {"refresh_token"}, "refresh_token": {refresh},
+		"client_id": {e.client.Client.ClientID}, "client_secret": {e.client.RawSecret},
+	}, false)
+	if res.StatusCode != http.StatusBadRequest || body2["error"] != "invalid_grant" {
+		t.Fatalf("refresh after access token revoke = %d %v", res.StatusCode, body2)
+	}
+
+	// Connect again, then disconnect from the UI.
+	tokens = e.exchange(t, e.approve(t, map[string]string{"prompt": "consent"}))
+	refresh, _ = tokens["refresh_token"].(string)
+	form := url.Values{"csrf_token": {uiCSRFTokenForTest("session", approverToken)}}
+	res2 := e.uiDoNoRedirect(t, http.MethodPost, "/oauth-grants/"+e.client.Client.ID.String()+"/revoke", approverToken, strings.NewReader(form.Encode()))
+	res2.Body.Close()
+	if res2.StatusCode != http.StatusSeeOther {
+		t.Fatalf("UI disconnect = %d", res2.StatusCode)
+	}
+	res, body2 = e.postToken(t, url.Values{
+		"grant_type": {"refresh_token"}, "refresh_token": {refresh},
+		"client_id": {e.client.Client.ClientID}, "client_secret": {e.client.RawSecret},
+	}, false)
+	if res.StatusCode != http.StatusBadRequest || body2["error"] != "invalid_grant" {
+		t.Fatalf("refresh after UI disconnect = %d %v", res.StatusCode, body2)
+	}
+	if consented, err := e.store.OAuthClientConsented(e.ctx, e.client.Client.ID, approver.ID, model.OAuthScopeMCP); err != nil || consented {
+		t.Fatalf("approval survived disconnect: %v, %v", consented, err)
+	}
+	// Disconnecting again over REST finds nothing; a bad ID is refused.
+	if code, body := e.doWithToken(t, approverToken, http.MethodDelete, "/me/oauth-grants/"+e.client.Client.ID.String(), nil); code != http.StatusNotFound {
+		t.Fatalf("second disconnect = %d %s", code, body)
+	}
+	if code, body := e.doWithToken(t, approverToken, http.MethodDelete, "/me/oauth-grants/not-a-uuid", nil); code != http.StatusBadRequest {
+		t.Fatalf("bad disconnect id = %d %s", code, body)
+	}
+	res3 := e.uiDoNoRedirect(t, http.MethodPost, "/oauth-grants/not-a-uuid/revoke", approverToken, strings.NewReader(form.Encode()))
+	res3.Body.Close()
+	if res3.StatusCode != http.StatusBadRequest {
+		t.Fatalf("UI bad disconnect id = %d", res3.StatusCode)
+	}
+}
+
+// Deleting the account that registered a connector ends it for everyone.
+func TestOAuthClientDiesWithItsRegistrant(t *testing.T) {
+	t.Parallel()
+	e := newOAuthHTTPEnv(t)
+	approver, approverToken := e.mustProjectMemberToken(t, "oauth-orphan")
+	e.sessionToken = approverToken
+	tokens := e.exchange(t, e.approve(t, nil))
+	refresh, _ := tokens["refresh_token"].(string)
+	access, _ := tokens["access_token"].(string)
+	_ = approver
+
+	if code, body := e.do(t, http.MethodDelete, "/users/"+e.user.ID.String(), nil); code != http.StatusNoContent {
+		t.Fatalf("delete registrant = %d %s", code, body)
+	}
+	if code, body := e.doWithToken(t, access, http.MethodGet, "/me", nil); code != http.StatusUnauthorized {
+		t.Fatalf("connector access after registrant deleted = %d %s", code, body)
+	}
+	res, body := e.postToken(t, url.Values{
+		"grant_type": {"refresh_token"}, "refresh_token": {refresh},
+		"client_id": {e.client.Client.ClientID}, "client_secret": {e.client.RawSecret},
+	}, false)
+	if res.StatusCode != http.StatusUnauthorized || body["error"] != "invalid_client" {
+		t.Fatalf("refresh after registrant deleted = %d %v", res.StatusCode, body)
+	}
+	res2 := e.uiDoNoRedirect(t, http.MethodGet, e.authorizeQuery(nil), approverToken, nil)
+	page := readBody(t, res2)
+	res2.Body.Close()
+	if res2.StatusCode != http.StatusBadRequest || !strings.Contains(page, "Unknown client") {
+		t.Fatalf("authorize after registrant deleted = %d: %s", res2.StatusCode, page)
+	}
+}
+
+// A client_id is public, so its failure budget is per source address: failures
+// from one address do not lock the client out from another.
+func TestOAuthClientFailureBudgetIsPerAddress(t *testing.T) {
+	t.Parallel()
+	_, loopback, _ := net.ParseCIDR("127.0.0.0/8")
+	limited := newHTTPEnvWithOptions(t, server.Options{
+		TrustedProxyCIDRs: []net.IPNet{*loopback},
+		AuthRateLimit: server.AuthRateLimitOptions{
+			IPAttempts: 100, IPWindow: time.Minute, IdentifierAttempts: 2, IdentifierWindow: 5 * time.Minute,
+		},
+	})
+	user, sessionToken := limited.mustProjectMemberToken(t, "oauth-per-ip")
+	created, err := limited.store.CreateOAuthClient(limited.ctx, store.CreateOAuthClientParams{
+		UserID: user.ID, Name: "Claude", RedirectURIs: []string{oauthTestRedirectURI},
+	})
+	if err != nil {
+		t.Fatalf("CreateOAuthClient: %v", err)
+	}
+	e := &oauthHTTPEnv{httpEnv: limited, user: user, sessionToken: sessionToken, client: created}
+	post := func(from, secret string) int {
+		t.Helper()
+		form := url.Values{
+			"grant_type": {"refresh_token"}, "refresh_token": {"never-issued"},
+			"client_id": {created.Client.ClientID}, "client_secret": {secret},
+		}
+		req, _ := http.NewRequestWithContext(e.ctx, http.MethodPost, e.ts.URL+"/oauth/token", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-Forwarded-For", from)
+		res, err := e.ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("POST /oauth/token: %v", err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for range 3 {
+		post("198.51.100.7", "wrong-secret")
+	}
+	if code := post("198.51.100.7", "wrong-secret"); code != http.StatusTooManyRequests {
+		t.Fatalf("attacker address not throttled: %d", code)
+	}
+	// The real client, elsewhere, is answered on its merits.
+	if code := post("203.0.113.9", created.RawSecret); code != http.StatusBadRequest {
+		t.Fatalf("client from another address = %d, want 400 invalid_grant", code)
 	}
 }

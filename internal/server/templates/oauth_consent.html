@@ -13,6 +13,7 @@
           <div class="text-center">
             <h2 class="text-lg font-semibold tracking-tight">Connect {{.ClientName}}</h2>
             <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{.ClientName}} wants to access your trackslash account.</p>
+            {{if .RegisteredBy}}<p data-oauth-registered-by class="mt-1 text-xs text-slate-500 dark:text-slate-400">Registered on trackslash by @{{.RegisteredBy}}. Only continue if you trust them with this access.</p>{{end}}
           </div>
           <div class="rounded-lg border border-slate-200 px-3 py-3 text-sm dark:border-slate-800">
             <div class="flex items-center gap-2">
@@ -31,7 +32,7 @@
             </ul>
           </div>
           <p class="text-xs text-slate-500 dark:text-slate-400">
-            You will be returned to <span class="font-mono break-all">{{.RedirectHost}}</span>. Revoke this at any time from Tokens.
+            You will be returned to <span class="font-mono break-all">{{.RedirectHost}}</span>. Disconnect it at any time from Connected apps on the Tokens page.
           </p>
           <div class="flex gap-2">
             <button type="submit" name="approve" value="0" class="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-900">Deny</button>

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -182,17 +183,35 @@ func (s *Store) ListUserProfilesByID(ctx context.Context, ids []uuid.UUID) ([]mo
 	return users, nil
 }
 
+// DeleteUser soft-deletes a user. The connectors they registered go with them,
+// for everyone who approved one: their secrets are scrubbed and every token
+// they hold stops working at once.
 func (s *Store) DeleteUser(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		UPDATE users SET deleted_at = now()
-		WHERE id = $1 AND deleted_at IS NULL
-	`, id)
-	if err != nil {
-		// Defensive: soft-delete has no expected FK/check mapping.
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE users SET deleted_at = now()
+			WHERE id = $1 AND deleted_at IS NULL
+		`, id)
+		if err != nil {
+			// Defensive: soft-delete has no expected FK/check mapping.
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		rows, err := tx.Query(ctx, `SELECT id FROM oauth_clients WHERE created_by_id = $1 AND disabled_at IS NULL`, id)
+		if err != nil {
+			return err
+		}
+		clientIDs, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil {
+			return err
+		}
+		for _, clientID := range clientIDs {
+			if err := disableOAuthClient(ctx, tx, clientID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

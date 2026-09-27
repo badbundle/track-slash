@@ -84,6 +84,7 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		// /tokens/{id}/ would take precedence over the id param.
 		r.Post("/oauth-clients", s.uiCreateOAuthClient)
 		r.Post("/oauth-clients/{id}/revoke", s.uiRevokeOAuthClient)
+		r.Post("/oauth-grants/{id}/revoke", s.uiDisconnectOAuthGrant)
 		// Consent runs inside the signed-in UI so an unauthenticated visitor is
 		// sent through the ordinary login page and returned here afterwards.
 		r.Get(oauthAuthorizePath, s.uiOAuthAuthorize)
