@@ -727,6 +727,10 @@ func TestUIShellProvidesAccessibleIconTooltips(t *testing.T) {
 		`document.body.addEventListener("focusout"`,
 		`event.pointerType === "touch"`,
 		`window.queueMicrotask`,
+		`target.hasAttribute("data-tooltip-when-truncated")`,
+		`target.querySelectorAll("[data-tooltip-truncates]")`,
+		`element.scrollWidth > element.clientWidth`,
+		`if (hasVisibleControlText(target) && !tooltipTextIsTruncated(target)) return null;`,
 		`[data-app-tooltip-target] { anchor-name: --app-tooltip-target; }`,
 		`position-anchor: --app-tooltip-target;`,
 		`position-area: bottom center;`,
@@ -755,15 +759,113 @@ func TestUIShellProvidesAccessibleIconTooltips(t *testing.T) {
 	}
 }
 
+// sidebarSection returns the markup of the sidebar section with the given id.
+func sidebarSection(t *testing.T, body, id string) string {
+	t.Helper()
+	start := strings.Index(body, `<div id="`+id+`"`)
+	if start < 0 {
+		t.Fatalf("missing sidebar section %q: %s", id, body)
+	}
+	end := strings.Index(body[start:], "\n</div>")
+	if end < 0 {
+		t.Fatalf("unterminated sidebar section %q: %s", id, body)
+	}
+	return body[start : start+end]
+}
+
+func TestUIShellRendersSidebarFavoritesAndRecents(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
+	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	first := model.Issue{ID: uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Number: 85, Identifier: "TRACK-85", Title: "Show a small sprint badge"}
+	second := model.Issue{ID: uuid.MustParse("1f2e7c1a-5a47-4bd3-8a4c-1b9b0fd3d2a1"), ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Number: 12, Identifier: "TRACK-12", Title: "Older work"}
+	heading := `text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">`
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{
+		User:             model.User{Name: "Demo User", Username: "demo"},
+		SidebarFavorites: uiSidebarFavoritesData{Projects: []model.Project{project}},
+		SidebarRecents:   uiSidebarRecentsData{Issues: []model.Issue{first, second}},
+	}); err != nil {
+		t.Fatalf("ExecuteTemplate: %v", err)
+	}
+	body := buf.String()
+
+	favorites := sidebarSection(t, body, "sidebar-favorites")
+	if !strings.Contains(favorites, `<h2 class="wide-only px-2 pb-1 pt-1 `+heading+`Favorites</h2>`) {
+		t.Fatalf("favorites are missing their heading: %s", favorites)
+	}
+	recents := sidebarSection(t, body, "sidebar-recents")
+	for _, want := range []string{
+		`<div id="sidebar-recents"  class="wide-only mb-2 mt-2 space-y-1 border-t`,
+		`<h2 class="px-2 pb-1 pt-1 ` + heading + `Recents</h2>`,
+		`<a data-sidebar-recent data-sidebar-link data-sidebar-view="issue" data-sidebar-issue-id="` + first.ID.String() + `" href="/bradley/issues/TRACK-85" hx-get="/bradley/issues/TRACK-85/panel" hx-target="#main" hx-push-url="/bradley/issues/TRACK-85" data-tooltip="TRACK-85: Show a small sprint badge" data-tooltip-when-truncated  class="flex min-w-0 items-center gap-2`,
+		`text-slate-600 dark:text-slate-300`,
+		`>TRACK-85</span>`,
+		`<span data-tooltip-truncates class="min-w-0 truncate font-medium">Show a small sprint badge</span>`,
+	} {
+		if !strings.Contains(recents, want) {
+			t.Fatalf("recents missing %q: %s", want, recents)
+		}
+	}
+	if strings.Index(recents, "TRACK-85") > strings.Index(recents, "TRACK-12") {
+		t.Fatalf("recents are not newest first: %s", recents)
+	}
+	if strings.Contains(recents, `aria-current`) {
+		t.Fatalf("recents mark an issue current without an active issue: %s", recents)
+	}
+
+	buf.Reset()
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Name: "Demo User", Username: "demo"}}); err != nil {
+		t.Fatalf("ExecuteTemplate empty: %v", err)
+	}
+	empty := buf.String()
+	for _, id := range []string{"sidebar-favorites", "sidebar-recents"} {
+		section := sidebarSection(t, empty, id)
+		if !strings.Contains(section, `class="hidden"`) || strings.Contains(section, "<h2") {
+			t.Fatalf("empty %s should be hidden without a heading: %s", id, section)
+		}
+	}
+
+	buf.Reset()
+	if err := uiTemplates.ExecuteTemplate(&buf, "sidebar-recents", uiSidebarRecentsData{Issues: []model.Issue{first}, ActiveIssueID: first.ID, OOB: true}); err != nil {
+		t.Fatalf("ExecuteTemplate OOB: %v", err)
+	}
+	oob := buf.String()
+	for _, want := range []string{`<div id="sidebar-recents" hx-swap-oob="true"`, `aria-current="page"`, "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"} {
+		if !strings.Contains(oob, want) {
+			t.Fatalf("out-of-band recents missing %q: %s", want, oob)
+		}
+	}
+
+	appJS, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app asset: %v", err)
+	}
+	for _, want := range []string{
+		`if (state.dataset.sidebarIssueId) {`,
+		`link.dataset.sidebarIssueId === state.dataset.sidebarIssueId && link.getClientRects().length > 0`,
+		"applySidebarCollapsed(collapsed);\n      syncSidebarActive();",
+	} {
+		if !strings.Contains(string(appJS), want) {
+			t.Fatalf("app.js missing Recents active-state behavior %q", want)
+		}
+	}
+}
+
 func TestUIShellRendersOneActiveSidebarDestination(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16")
 	project := model.Project{ID: projectID, OwnerUsername: "bradley", Key: "TRACK", Name: "Track Slash"}
+	issueID := uuid.MustParse("9480828a-47f3-4661-bb64-b21b4f02f27b")
+	issue := model.Issue{ID: issueID, ProjectID: projectID, OwnerUsername: "bradley", ProjectKey: "TRACK", Number: 7, Identifier: "TRACK-7", Title: "Recent work"}
 	tests := []struct {
 		name        string
 		active      uiSidebarState
 		favorites   uiSidebarFavoritesData
+		recents     uiSidebarRecentsData
 		wantMarker  string
 		wantCount   int
 		accountMenu bool
@@ -775,6 +877,15 @@ func TestUIShellRendersOneActiveSidebarDestination(t *testing.T) {
 			active:     uiSidebarState{View: "project", ProjectID: projectID},
 			favorites:  uiSidebarFavoritesData{Projects: []model.Project{project}, ActiveProjectID: projectID},
 			wantMarker: `data-sidebar-project-id="` + projectID.String() + `"`,
+			wantCount:  1,
+		},
+		{
+			// renderUIShell hands the highlight to the issue's Recents entry.
+			name:       "recent issue",
+			active:     uiSidebarState{View: "project", ProjectID: projectID, IssueID: issueID},
+			favorites:  uiSidebarFavoritesData{Projects: []model.Project{project}},
+			recents:    uiSidebarRecentsData{Issues: []model.Issue{issue}, ActiveIssueID: issueID},
+			wantMarker: `data-sidebar-issue-id="` + issueID.String() + `"`,
 			wantCount:  1,
 		},
 		// Account pages are marked in the account menu, not the sidebar.
@@ -794,6 +905,7 @@ func TestUIShellRendersOneActiveSidebarDestination(t *testing.T) {
 				User:             model.User{Name: "Demo User", Username: "demo"},
 				SidebarActive:    tt.active,
 				SidebarFavorites: tt.favorites,
+				SidebarRecents:   tt.recents,
 			})
 			if err != nil {
 				t.Fatalf("ExecuteTemplate: %v", err)

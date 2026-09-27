@@ -75,6 +75,46 @@ func (s *Server) uiIssueCreatableProjects(ctx context.Context, user model.User) 
 	}
 }
 
+// uiSidebarRecentIssueLimit is how many issues the sidebar's Recents list shows.
+const uiSidebarRecentIssueLimit = 10
+
+func (s *Server) uiRecentIssues(ctx context.Context, user model.User) ([]model.Issue, error) {
+	return s.store.ListRecentIssues(ctx, user, uiSidebarRecentIssueLimit)
+}
+
+func uiIssuesInclude(issues []model.Issue, id uuid.UUID) bool {
+	for _, issue := range issues {
+		if issue.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// uiRecordIssueView records that the signed-in user opened the panel's issue.
+// For an htmx navigation, which leaves the sidebar in place, it also attaches
+// the refreshed Recents list for an out-of-band swap. A full page load renders
+// the sidebar afresh instead.
+func (s *Server) uiRecordIssueView(r *http.Request, panel *uiIssuePanelData) error {
+	user := currentUser(r)
+	if user.ID == uuid.Nil {
+		return nil
+	}
+	if err := s.store.RecordIssueView(r.Context(), user.ID, panel.Issue.ID); err != nil {
+		return err
+	}
+	if !isHTMXRequest(r) {
+		return nil
+	}
+	recents, err := s.uiRecentIssues(r.Context(), user)
+	if err != nil {
+		// Defensive: the view was just recorded; failures require a DB outage.
+		return err
+	}
+	panel.SidebarRecents = &uiSidebarRecentsData{Issues: recents, ActiveIssueID: panel.Issue.ID, OOB: true}
+	return nil
+}
+
 func (s *Server) uiFavoriteProjects(ctx context.Context, user model.User) ([]model.Project, error) {
 	return s.store.ListFavoriteProjects(ctx, store.ListFavoriteProjectsParams{
 		User:  user,
@@ -92,6 +132,7 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 	data.Authenticated = data.User.ID != uuid.Nil
 	data.Anonymous = !data.Authenticated
 	var favorites []model.Project
+	var recents []model.Issue
 	if data.Authenticated {
 		var err error
 		favorites, err = s.uiFavoriteProjects(r.Context(), data.User)
@@ -99,14 +140,30 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 			writeUIInternalError(w, "ui shell favorites", err)
 			return
 		}
+		recents, err = s.uiRecentIssues(r.Context(), data.User)
+		if err != nil {
+			writeUIInternalError(w, "ui shell recent issues", err)
+			return
+		}
 	}
 	activeProjectID := uuid.Nil
+	activeIssueID := uuid.Nil
 	if data.SidebarActive.View == "project" {
 		activeProjectID = data.SidebarActive.ProjectID
+		// An issue page's own Recents entry is its one active destination,
+		// so its project is not marked as well.
+		if uiIssuesInclude(recents, data.SidebarActive.IssueID) {
+			activeProjectID = uuid.Nil
+			activeIssueID = data.SidebarActive.IssueID
+		}
 	}
 	data.SidebarFavorites = uiSidebarFavoritesData{
 		Projects:        favorites,
 		ActiveProjectID: activeProjectID,
+	}
+	data.SidebarRecents = uiSidebarRecentsData{
+		Issues:        recents,
+		ActiveIssueID: activeIssueID,
 	}
 	renderUITemplate(w, status, uiShellTemplateName(r), data)
 }
