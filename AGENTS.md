@@ -8,6 +8,10 @@ Read `STORAGE.md` before changing object storage, attachment, image, or file-upl
 Read `ATTACHMENTS.md` before changing issue attachments, description Markdown rendering, `object-N` references, or attachment UI behavior.
 Read `OAUTH.md` before changing OAuth connectors, the `/oauth/*` endpoints, the discovery documents, MCP bearer authentication, or the `auth_tokens` kinds.
 
+## Issues
+
+Issues for this repo are tracked in trackslash itself, in the `TRACK` project owned by `badbundle`, on the development preview at `trackslash.com`, through its MCP server. That is the hosted preview, not a local or self-hosted instance you run for development. Look there for what's open and in progress, and record a bug, a follow-up or a planned change there rather than in a TODO comment, a file in the repo, a GitHub issue or a PR body alone. Refer to an issue by its ref, such as `TRACK-45`. Security vulnerabilities are the exception: report them as `SECURITY.md` describes, never in the public project. See [Issue tracking](./README.md#issue-tracking).
+
 ## Frontend design principles
 
 track-slash UI should feel like a fast work tool: quiet, direct, and consistent with the existing Tailwind-based templates. Consistency wins over almost everything else. Prefer reuse over novelty: simple components that compose should carry the interface.
