@@ -84,12 +84,14 @@ func TestUISidebarHighlightsOnlyActiveDestination(t *testing.T) {
 	}
 	for _, path := range []string{
 		e.projectPath() + "/sprint",
-		e.issuePath(issue),
 		e.projectPath() + "/context",
 		e.projectPath() + "/issues/new",
 	} {
 		requireActiveSidebarDestination(t, e.uiGet(t, path, token), projectMarker)
 	}
+	// Opening an issue lists it in Recents, and that entry, not its project, is
+	// the issue page's one active destination.
+	requireActiveSidebarDestination(t, e.uiGet(t, e.issuePath(issue), token), `data-sidebar-issue-id="`+issue.ID.String()+`"`)
 }
 
 func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
