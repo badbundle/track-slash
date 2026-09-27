@@ -706,3 +706,133 @@ func TestOAuthRefreshRotationIsSerialised(t *testing.T) {
 		t.Fatalf("wins = %d replays = %d, want exactly one of each", wins, replays)
 	}
 }
+
+// A connector's grant belongs to the user who approved it: they can list and
+// end it, whoever registered the client, and revoking one of its access tokens
+// ends the grant rather than leaving the refresh token to mint the next.
+func TestOAuthGrantsBelongToTheApprovingUser(t *testing.T) {
+	t.Parallel()
+	e := newOAuthEnv(t)
+	created := e.mustClient(t, "Claude")
+	approver, err := e.store.CreateUser(e.ctx, "approver-"+uuid.NewString()+"@example.com", "Approver")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	issue := func() store.IssuedOAuthTokens {
+		t.Helper()
+		code, err := e.store.CreateOAuthAuthorizationCode(e.ctx, store.CreateOAuthAuthorizationCodeParams{
+			ClientID: created.Client.ID, UserID: approver.ID, RedirectURI: "https://claude.ai/api/mcp/auth_callback",
+			CodeChallenge: "0123456789012345678901234567890123456789012", Scope: model.OAuthScopeMCP,
+		})
+		if err != nil {
+			t.Fatalf("CreateOAuthAuthorizationCode: %v", err)
+		}
+		if _, err := e.store.ConsumeOAuthAuthorizationCode(e.ctx, code, created.Client.ID); err != nil {
+			t.Fatalf("ConsumeOAuthAuthorizationCode: %v", err)
+		}
+		issued, err := e.store.IssueOAuthTokens(e.ctx, store.IssueOAuthTokensParams{
+			ClientID: created.Client.ID, ClientName: "Claude", UserID: approver.ID, Scope: model.OAuthScopeMCP,
+		})
+		if err != nil {
+			t.Fatalf("IssueOAuthTokens: %v", err)
+		}
+		return issued
+	}
+
+	if grants, err := e.store.ListOAuthGrantsForUser(e.ctx, approver.ID); err != nil || len(grants) != 0 {
+		t.Fatalf("grants before approval = %+v, %v", grants, err)
+	}
+	if err := e.store.DisconnectOAuthGrantForUser(e.ctx, approver.ID, created.Client.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("disconnect with nothing held = %v, want ErrNotFound", err)
+	}
+	issued := issue()
+	grants, err := e.store.ListOAuthGrantsForUser(e.ctx, approver.ID)
+	if err != nil || len(grants) != 1 || grants[0].ClientID != created.Client.ID || grants[0].Name != "Claude" {
+		t.Fatalf("grants after approval = %+v, %v", grants, err)
+	}
+	// Issuing a code records the approval.
+	if approved, err := e.store.OAuthClientApprovedByUser(e.ctx, created.Client.ID, approver.ID); err != nil || !approved {
+		t.Fatalf("approved after a code = %v, %v", approved, err)
+	}
+
+	// Revoking the access token ends the grant.
+	accessToken, err := e.store.AuthenticateToken(e.ctx, issued.AccessToken)
+	if err != nil {
+		t.Fatalf("AuthenticateToken: %v", err)
+	}
+	if err := e.store.RevokeAuthTokenForUser(e.ctx, approver.ID, accessToken.Token.ID); err != nil {
+		t.Fatalf("RevokeAuthTokenForUser: %v", err)
+	}
+	if _, err := e.store.RotateOAuthRefreshToken(e.ctx, issued.RefreshToken, created.Client.ID); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("refresh after access token revoke = %v, want ErrUnauthorized", err)
+	}
+	if grants, err := e.store.ListOAuthGrantsForUser(e.ctx, approver.ID); err != nil || len(grants) != 0 {
+		t.Fatalf("grants after access token revoke = %+v, %v", grants, err)
+	}
+
+	// Disconnecting ends a fresh grant; the registrant's own view is untouched.
+	issued = issue()
+	if err := e.store.DisconnectOAuthGrantForUser(e.ctx, approver.ID, created.Client.ID); err != nil {
+		t.Fatalf("DisconnectOAuthGrantForUser: %v", err)
+	}
+	if _, err := e.store.AuthenticateToken(e.ctx, issued.AccessToken); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("access after disconnect = %v, want ErrUnauthorized", err)
+	}
+	if clients, err := e.store.ListOAuthClientsForUser(e.ctx, e.user.ID); err != nil || len(clients) != 1 {
+		t.Fatalf("registrant's clients after a user disconnects = %+v, %v", clients, err)
+	}
+	// An admin revoking an API token by ID is unaffected.
+	api, err := e.store.CreateAuthToken(e.ctx, store.CreateAuthTokenParams{UserID: approver.ID, Kind: model.AuthTokenKindAPI, Name: "api"})
+	if err != nil {
+		t.Fatalf("CreateAuthToken: %v", err)
+	}
+	if err := e.store.RevokeAuthToken(e.ctx, api.Token.ID); err != nil {
+		t.Fatalf("RevokeAuthToken api: %v", err)
+	}
+	if err := e.store.RevokeAuthToken(e.ctx, api.Token.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("second RevokeAuthToken = %v, want ErrNotFound", err)
+	}
+}
+
+// Deleting the account that registered a client disables it for everyone.
+func TestDeleteUserDisablesTheirOAuthClients(t *testing.T) {
+	t.Parallel()
+	e := newOAuthEnv(t)
+	created := e.mustClient(t, "Claude")
+	code := e.mustCode(t, created.Client.ID)
+	if _, err := e.store.ConsumeOAuthAuthorizationCode(e.ctx, code, created.Client.ID); err != nil {
+		t.Fatalf("ConsumeOAuthAuthorizationCode: %v", err)
+	}
+	issued, err := e.store.IssueOAuthTokens(e.ctx, store.IssueOAuthTokensParams{
+		ClientID: created.Client.ID, ClientName: "Claude", UserID: e.user.ID, Scope: model.OAuthScopeMCP,
+	})
+	if err != nil {
+		t.Fatalf("IssueOAuthTokens: %v", err)
+	}
+	if err := e.store.DeleteUser(e.ctx, e.user.ID); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+	if _, err := e.store.GetOAuthClientByClientID(e.ctx, created.Client.ClientID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("client after registrant deleted = %v, want ErrNotFound", err)
+	}
+	if _, err := e.store.AuthenticateOAuthClient(e.ctx, created.Client.ClientID, created.RawSecret); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("client auth after registrant deleted = %v, want ErrUnauthorized", err)
+	}
+	if _, err := e.store.RotateOAuthRefreshToken(e.ctx, issued.RefreshToken, created.Client.ID); !errors.Is(err, store.ErrUnauthorized) {
+		t.Fatalf("refresh after registrant deleted = %v, want ErrUnauthorized", err)
+	}
+	if err := e.store.DeleteUser(e.ctx, e.user.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("second DeleteUser = %v, want ErrNotFound", err)
+	}
+
+	// A client whose registrant was deleted before clients were disabled on
+	// delete is still refused, by the live-registrant filter.
+	other := newOAuthEnv(t)
+	orphan := other.mustClient(t, "Orphan")
+	if _, err := other.pool.Exec(other.ctx, `UPDATE users SET deleted_at = now() WHERE id = $1`, other.user.ID); err != nil {
+		t.Fatalf("soft-delete directly: %v", err)
+	}
+	if _, err := other.store.GetOAuthClientByClientID(other.ctx, orphan.Client.ClientID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("orphaned client lookup = %v, want ErrNotFound", err)
+	}
+}

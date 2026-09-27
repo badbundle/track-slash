@@ -104,27 +104,27 @@ func (s *Server) oauthResolveAuthorizeRequest(w http.ResponseWriter, r *http.Req
 
 	state := params.Get("state")
 	if responseType := params.Get("response_type"); responseType != "code" {
-		oauthRedirectError(w, r, redirectURI, state, "unsupported_response_type",
+		s.oauthRequestError(w, r, client, redirectURI, state, "unsupported_response_type",
 			"only the authorization code response type is supported")
 		return oauthAuthorizeRequest{}, false
 	}
 	challenge := strings.TrimSpace(params.Get("code_challenge"))
 	if challenge == "" {
-		oauthRedirectError(w, r, redirectURI, state, "invalid_request", "code_challenge is required")
+		s.oauthRequestError(w, r, client, redirectURI, state, "invalid_request", "code_challenge is required")
 		return oauthAuthorizeRequest{}, false
 	}
 	// Checked here as well as by the column constraint, so a malformed challenge
 	// is reported to the client as a bad request instead of failing the insert
 	// and surfacing as an internal error.
 	if !oauthValidPKCELength(challenge) {
-		oauthRedirectError(w, r, redirectURI, state, "invalid_request",
+		s.oauthRequestError(w, r, client, redirectURI, state, "invalid_request",
 			"code_challenge must be 43 to 128 characters")
 		return oauthAuthorizeRequest{}, false
 	}
 	// PKCE is mandatory and only S256 is accepted. "plain" offers no protection
 	// against an intercepted code, which is the whole point of the exchange.
 	if method := params.Get("code_challenge_method"); method != oauthCodeChallengeMethodS256 {
-		oauthRedirectError(w, r, redirectURI, state, "invalid_request",
+		s.oauthRequestError(w, r, client, redirectURI, state, "invalid_request",
 			"code_challenge_method must be S256")
 		return oauthAuthorizeRequest{}, false
 	}
@@ -133,7 +133,7 @@ func (s *Server) oauthResolveAuthorizeRequest(w http.ResponseWriter, r *http.Req
 		scope = model.OAuthScopeMCP
 	}
 	if scope != model.OAuthScopeMCP {
-		oauthRedirectError(w, r, redirectURI, state, "invalid_scope",
+		s.oauthRequestError(w, r, client, redirectURI, state, "invalid_scope",
 			"the only supported scope is "+model.OAuthScopeMCP)
 		return oauthAuthorizeRequest{}, false
 	}
@@ -141,7 +141,7 @@ func (s *Server) oauthResolveAuthorizeRequest(w http.ResponseWriter, r *http.Req
 	// minted here can never be aimed somewhere else.
 	resource := strings.TrimSpace(params.Get("resource"))
 	if resource != "" && resource != s.uiRequestOrigin(r)+mcpPath {
-		oauthRedirectError(w, r, redirectURI, state, "invalid_target",
+		s.oauthRequestError(w, r, client, redirectURI, state, "invalid_target",
 			"the only supported resource is "+s.uiRequestOrigin(r)+mcpPath)
 		return oauthAuthorizeRequest{}, false
 	}
@@ -175,6 +175,25 @@ func (s *Server) oauthIssueCodeAndRedirect(w http.ResponseWriter, r *http.Reques
 	})
 	allowOAuthFormAction(w, req.RedirectURI)
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// oauthRequestError reports a malformed authorization request. Returning it to
+// the client by redirect is what the spec describes, but anyone can register a
+// client, so a redirect to one the user has never approved would be a redirect
+// to an address its registrant chose, straight after a genuine trackslash page.
+// Until the user has approved the client once, the error is shown here instead.
+func (s *Server) oauthRequestError(w http.ResponseWriter, r *http.Request, client model.OAuthClient, redirectURI, state, code, description string) {
+	approved, err := s.store.OAuthClientApprovedByUser(r.Context(), client.ID, currentUser(r).ID)
+	if err != nil {
+		writeUIInternalError(w, "oauth authorize approval lookup", err)
+		return
+	}
+	if approved {
+		oauthRedirectError(w, r, redirectURI, state, code, description)
+		return
+	}
+	s.renderOAuthError(w, r, http.StatusBadRequest, "Invalid authorization request",
+		client.Name+" sent a request trackslash cannot accept ("+code+": "+description+"). Nothing was shared with it.")
 }
 
 func oauthRedirectError(w http.ResponseWriter, r *http.Request, redirectURI, state, code, description string) {
@@ -211,11 +230,19 @@ func (s *Server) renderOAuthConsent(w http.ResponseWriter, r *http.Request, req 
 	if parsed, err := url.Parse(req.RedirectURI); err == nil {
 		redirectHost = parsed.Host
 	}
+	registeredBy := ""
+	if creator, err := s.store.GetUser(r.Context(), req.Client.CreatedByID); err == nil {
+		registeredBy = creator.Username
+	} else if !errors.Is(err, store.ErrNotFound) {
+		writeUIInternalError(w, "oauth consent client creator", err)
+		return
+	}
 	allowOAuthFormAction(w, req.RedirectURI)
 	renderUITemplate(w, http.StatusOK, "oauth-consent", uiOAuthConsentData{
 		CSRFToken:     uiSessionCSRFToken(r),
 		User:          currentUser(r),
 		ClientName:    req.Client.Name,
+		RegisteredBy:  registeredBy,
 		ClientID:      req.Client.ClientID,
 		RedirectURI:   req.RedirectURI,
 		RedirectHost:  redirectHost,

@@ -143,3 +143,18 @@ func uiValidateOAuthRedirectURI(candidate string) error {
 		return errors.New("Redirect URIs must use https, or http for localhost.")
 	}
 }
+
+// uiDisconnectOAuthGrant ends one connector's access for the signed-in user,
+// whether or not they registered it. It is already gone if nothing was held.
+func (s *Server) uiDisconnectOAuthGrant(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "invalid client id", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.DisconnectOAuthGrantForUser(r.Context(), currentUser(r).ID, id); err != nil && !errors.Is(err, store.ErrNotFound) {
+		writeUIStoreError(w, err)
+		return
+	}
+	http.Redirect(w, r, uiTokenRevealPath, http.StatusSeeOther)
+}

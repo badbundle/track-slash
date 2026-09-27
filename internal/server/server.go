@@ -209,6 +209,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/me/tokens", s.listMyTokens)
 			r.Post("/me/tokens", s.createMyToken)
 			r.Delete("/me/tokens/{id}", s.revokeMyToken)
+			r.Get("/me/oauth-grants", s.listMyOAuthGrants)
+			r.Delete("/me/oauth-grants/{id}", s.disconnectMyOAuthGrant)
 			r.Get("/me/github-tokens", s.listMyGitHubCredentials)
 			r.Post("/me/github-tokens", s.createMyGitHubCredential)
 			r.Patch("/me/github-tokens/{credentialID}", s.updateMyGitHubCredential)

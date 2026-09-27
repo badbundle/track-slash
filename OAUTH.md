@@ -109,6 +109,13 @@ code is delivered, so there is no normalisation, case folding, or prefix match.
 Nothing at all is sent to an unregistered address — not even an error — because
 that would be an open redirector carrying the victim's `state`.
 
+A registered address is not trusted either until the user has approved the
+client once. Anyone can register a client and pick its redirect URI, so a
+malformed request for a client the user has never approved shows its error on
+trackslash's own page (`oauthRequestError`) instead of bouncing the user to the
+registrant's address straight after a genuine sign-in. Deny still redirects: the
+user chose it on the consent screen.
+
 Registration is correspondingly strict. Userinfo is refused, per RFC 6749
 section 3.1.2 — browsers disagree about whether to strip or prompt on it, and
 trackslash would be placing a fresh authorization code next to a password in a
@@ -135,7 +142,22 @@ configured allow list.
 **Failures are budgeted, not traffic.** Hosted clients refresh from a small pool
 of shared egress addresses, so a per-IP budget spent by successful refreshes
 would throttle exactly the traffic that is working. The rate limiter is consumed
-only when client authentication or a grant fails.
+only when client authentication or a grant fails. A client's own budget is per
+source address: a `client_id` is public, so a budget for the client alone would
+let anyone spend it with bad secrets and stop every user of that connector
+refreshing.
+
+**The user who approves a connector can always end it.** A grant is theirs,
+whoever registered the client: Tokens → Connected apps (and `GET/DELETE
+/me/oauth-grants`) lists every connector holding access for them, and
+disconnecting one revokes its tokens and forgets the approval. Revoking a
+connector's access token from the token list ends the whole grant, since
+otherwise its refresh token would simply mint the next. The consent screen says
+who registered the client, because anyone can register one under any name.
+
+**A client dies with the account that registered it.** Deleting a user disables
+every client they registered, for everyone who approved it, and client lookups
+also refuse a client whose registrant no longer exists.
 
 **No dynamic client registration, and no client credentials grant.** Omitting
 `registration_endpoint` from the metadata is what tells a client to ask the

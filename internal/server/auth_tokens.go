@@ -350,3 +350,33 @@ func (s *Server) revokeMyToken(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// listMyOAuthGrants lists the connectors the user approved. Like tokens, this
+// is the account's credential management, so a connector cannot use it.
+func (s *Server) listMyOAuthGrants(w http.ResponseWriter, r *http.Request) {
+	if !requireFirstPartyToken(w, r) {
+		return
+	}
+	grants, err := s.store.ListOAuthGrantsForUser(r.Context(), currentUser(r).ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, grants)
+}
+
+func (s *Server) disconnectMyOAuthGrant(w http.ResponseWriter, r *http.Request) {
+	if !requireFirstPartyToken(w, r) {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := s.store.DisconnectOAuthGrantForUser(r.Context(), currentUser(r).ID, id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

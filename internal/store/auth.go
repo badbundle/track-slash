@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/bradleymackey/track-slash/internal/model"
@@ -150,31 +151,38 @@ func (s *Store) ListAuthTokens(ctx context.Context, userID uuid.UUID) ([]model.A
 }
 
 func (s *Store) RevokeAuthToken(ctx context.Context, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		UPDATE auth_tokens SET revoked_at = now()
-		WHERE id = $1 AND revoked_at IS NULL
-	`, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.revokeAuthToken(ctx, id, nil)
 }
 
 func (s *Store) RevokeAuthTokenForUser(ctx context.Context, userID, id uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `
-		UPDATE auth_tokens SET revoked_at = now()
-		WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
-	`, id, userID)
-	if err != nil {
+	return s.revokeAuthToken(ctx, id, &userID)
+}
+
+// revokeAuthToken revokes one token, the user's own when userID is set. A
+// connector's access token is only the latest of many it mints from its
+// refresh token, so revoking one ends the connector's whole grant for that
+// user; otherwise it would simply mint the next.
+func (s *Store) revokeAuthToken(ctx context.Context, id uuid.UUID, userID *uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		var owner uuid.UUID
+		var clientID uuid.NullUUID
+		err := tx.QueryRow(ctx, `
+			UPDATE auth_tokens SET revoked_at = now()
+			WHERE id = $1 AND ($2::uuid IS NULL OR user_id = $2) AND revoked_at IS NULL
+			RETURNING user_id, oauth_client_id
+		`, id, userID).Scan(&owner, &clientID)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if !clientID.Valid {
+			return nil
+		}
+		_, err = endOAuthGrant(ctx, tx, clientID.UUID, owner)
 		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	})
 }
 
 // RevokeSessionAuthTokensForUser revokes every live web session belonging to a

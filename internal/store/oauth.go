@@ -38,6 +38,14 @@ const oauthClientColumns = `
 	id, client_id, name, redirect_uris, created_by_id, disabled_at, created_at, updated_at
 `
 
+// liveOAuthClientFilter keeps a client usable only while it is enabled and
+// the account that registered it still exists; deleting that account ends
+// the client for everyone who approved it.
+const liveOAuthClientFilter = `
+	disabled_at IS NULL
+	AND EXISTS (SELECT 1 FROM users creator WHERE creator.id = oauth_clients.created_by_id AND creator.deleted_at IS NULL)
+`
+
 type oauthClientScanner interface {
 	Scan(dest ...any) error
 }
@@ -132,7 +140,7 @@ func (s *Store) GetOAuthClientByClientID(ctx context.Context, clientID string) (
 	const q = `
 		SELECT ` + oauthClientColumns + `
 		FROM oauth_clients
-		WHERE client_id = $1 AND disabled_at IS NULL
+		WHERE client_id = $1 AND ` + liveOAuthClientFilter + `
 	`
 	client, err := scanOAuthClient(s.db.QueryRow(ctx, q, clientID))
 	if err != nil {
@@ -154,7 +162,7 @@ func (s *Store) AuthenticateOAuthClient(ctx context.Context, clientID, secret st
 	const q = `
 		SELECT ` + oauthClientColumns + `, secret_hash
 		FROM oauth_clients
-		WHERE client_id = $1 AND disabled_at IS NULL
+		WHERE client_id = $1 AND ` + liveOAuthClientFilter + `
 	`
 	var out model.OAuthClient
 	var storedHash []byte
@@ -187,43 +195,142 @@ func (s *Store) AuthenticateOAuthClient(ctx context.Context, clientID, secret st
 // dropped, and every live access and refresh token stops working at once.
 func (s *Store) DisableOAuthClientForUser(ctx context.Context, userID, id uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
-		// The hash column is NOT NULL with an exact-length CHECK, so the scrub
-		// writes 32 zero bytes rather than nulling it. No real secret hashes to
-		// that, so the row cannot authenticate even if it were re-enabled.
-		tag, err := tx.Exec(ctx, `
-			UPDATE oauth_clients
-			SET disabled_at = now(),
-			    secret_hash = decode(repeat('00', 32), 'hex'),
-			    updated_at = now()
-			WHERE id = $1 AND created_by_id = $2 AND disabled_at IS NULL
-		`, id, userID)
+		var owned bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM oauth_clients WHERE id = $1 AND created_by_id = $2 AND disabled_at IS NULL)
+		`, id, userID).Scan(&owned); err != nil {
+			return err
+		}
+		if !owned {
+			return ErrNotFound
+		}
+		return disableOAuthClient(ctx, tx, id)
+	})
+}
+
+// disableOAuthClient revokes a client and everything it was ever granted: the
+// secret is scrubbed, remembered consent is dropped, and every live access and
+// refresh token stops working at once.
+func disableOAuthClient(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	// The hash column is NOT NULL with an exact-length CHECK, so the scrub
+	// writes 32 zero bytes rather than nulling it. No real secret hashes to
+	// that, so the row cannot authenticate even if it were re-enabled.
+	if _, err := tx.Exec(ctx, `
+		UPDATE oauth_clients
+		SET disabled_at = now(),
+		    secret_hash = decode(repeat('00', 32), 'hex'),
+		    updated_at = now()
+		WHERE id = $1 AND disabled_at IS NULL
+	`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM oauth_client_consents WHERE client_id = $1`, id); err != nil {
+		return err // defensive: DB outage mid-transaction
+	}
+	// Codes the client has not exchanged yet die with it. Client
+	// authentication would already refuse the exchange, but revocation
+	// should not rest on a filter in a different function.
+	if _, err := tx.Exec(ctx, `DELETE FROM oauth_authorization_codes WHERE client_id = $1`, id); err != nil {
+		return err // defensive: DB outage mid-transaction
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE oauth_refresh_tokens SET revoked_at = now()
+		WHERE client_id = $1 AND revoked_at IS NULL
+	`, id); err != nil {
+		return err // defensive: DB outage mid-transaction
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE auth_tokens SET revoked_at = now()
+		WHERE oauth_client_id = $1 AND revoked_at IS NULL
+	`, id)
+	return err
+}
+
+// ListOAuthGrantsForUser lists the connectors a user has approved that still
+// hold, or can still obtain, access for them: a remembered approval, a live
+// refresh token or a live access token. Disabled clients are gone already.
+func (s *Store) ListOAuthGrantsForUser(ctx context.Context, userID uuid.UUID) ([]model.OAuthGrant, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT c.id, c.name, COALESCE(owner.username, ''), g.connected_at
+		FROM (
+			SELECT client_id, min(created_at) AS connected_at
+			FROM (
+				SELECT client_id, created_at FROM oauth_client_consents WHERE user_id = $1
+				UNION ALL
+				SELECT client_id, created_at FROM oauth_refresh_tokens
+				WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > now()
+				UNION ALL
+				SELECT oauth_client_id, created_at FROM auth_tokens
+				WHERE user_id = $1 AND oauth_client_id IS NOT NULL AND revoked_at IS NULL
+				  AND (expires_at IS NULL OR expires_at > now())
+			) held
+			GROUP BY client_id
+		) g
+		JOIN oauth_clients c ON c.id = g.client_id AND c.disabled_at IS NULL
+		LEFT JOIN users owner ON owner.id = c.created_by_id
+		ORDER BY g.connected_at DESC, c.id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.OAuthGrant{}
+	for rows.Next() {
+		var grant model.OAuthGrant
+		if err := rows.Scan(&grant.ClientID, &grant.Name, &grant.RegisteredBy, &grant.ConnectedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, grant)
+	}
+	return out, rows.Err()
+}
+
+// DisconnectOAuthGrantForUser ends one connector's access for the user who
+// approved it, whoever registered it: every token it holds for them is
+// revoked, unexchanged codes are dropped, and the remembered approval is
+// forgotten so the next connection asks again. It is ErrNotFound when the
+// connector held nothing for this user.
+func (s *Store) DisconnectOAuthGrantForUser(ctx context.Context, userID, clientID uuid.UUID) error {
+	return pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		ended, err := endOAuthGrant(ctx, tx, clientID, userID)
 		if err != nil {
 			return err
 		}
-		if tag.RowsAffected() == 0 {
+		if ended == 0 {
 			return ErrNotFound
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM oauth_client_consents WHERE client_id = $1`, id); err != nil {
-			return err // defensive: DB outage past the rows-affected check
-		}
-		// Codes the client has not exchanged yet die with it. Client
-		// authentication would already refuse the exchange, but revocation
-		// should not rest on a filter in a different function.
-		if _, err := tx.Exec(ctx, `DELETE FROM oauth_authorization_codes WHERE client_id = $1`, id); err != nil {
-			return err // defensive: DB outage past the rows-affected check
-		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE oauth_refresh_tokens SET revoked_at = now()
-			WHERE client_id = $1 AND revoked_at IS NULL
-		`, id); err != nil {
-			return err // defensive: DB outage past the rows-affected check
-		}
-		_, err = tx.Exec(ctx, `
-			UPDATE auth_tokens SET revoked_at = now()
-			WHERE oauth_client_id = $1 AND revoked_at IS NULL
-		`, id)
-		return err
+		return nil
 	})
+}
+
+// endOAuthGrant is revokeOAuthGrants plus forgetting the approval and any
+// codes in flight, and reports how many rows it touched.
+func endOAuthGrant(ctx context.Context, tx pgx.Tx, clientID, userID uuid.UUID) (int64, error) {
+	var total int64
+	for _, q := range []string{
+		`UPDATE oauth_refresh_tokens SET revoked_at = now() WHERE client_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+		`UPDATE auth_tokens SET revoked_at = now() WHERE oauth_client_id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+		`DELETE FROM oauth_client_consents WHERE client_id = $1 AND user_id = $2`,
+		`DELETE FROM oauth_authorization_codes WHERE client_id = $1 AND user_id = $2`,
+	} {
+		tag, err := tx.Exec(ctx, q, clientID, userID)
+		if err != nil {
+			return 0, err
+		}
+		total += tag.RowsAffected()
+	}
+	return total, nil
+}
+
+// OAuthClientApprovedByUser reports whether the user has ever approved this
+// client, for any scope. Only such a client is trusted to receive an error
+// by redirect before the user has seen its consent screen.
+func (s *Store) OAuthClientApprovedByUser(ctx context.Context, clientID, userID uuid.UUID) (bool, error) {
+	var exists bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM oauth_client_consents WHERE client_id = $1 AND user_id = $2)
+	`, clientID, userID).Scan(&exists)
+	return exists, err
 }
 
 // OAuthClientConsented reports whether this user has already approved this
