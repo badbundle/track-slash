@@ -699,3 +699,45 @@ func TestParseTopic(t *testing.T) {
 		}
 	}
 }
+
+func TestHubDeliversMembersOnlyEventsOnlyToMembersOnlySubscribers(t *testing.T) {
+	hub := NewHub()
+	projectID := uuid.New()
+	issueID := uuid.New()
+	commentID := uuid.New()
+
+	member := newTestClient(4)
+	viewer := newTestClient(4)
+	hub.SubscribeWithAccess(member, ProjectTopic(projectID), TopicAccess{MembersOnly: true})
+	hub.SubscribeWithAccess(viewer, ProjectTopic(projectID), TopicAccess{})
+	// A plain Subscribe carries no members-only access either.
+	plain := newTestClient(4)
+	hub.Subscribe(plain, IssueTopic(issueID))
+
+	hidden := Event{Op: OpInsert, Entity: EntityComment, ID: commentID, IssueID: &issueID, ProjectID: &projectID, MembersOnly: true}
+	hub.Publish(hidden)
+	if ev, ok := recv(t, member, time.Second); !ok || !ev.MembersOnly {
+		t.Fatalf("member did not receive members-only event: %#v, %v", ev, ok)
+	}
+	if _, ok := recv(t, viewer, 100*time.Millisecond); ok {
+		t.Fatal("viewer received members-only event")
+	}
+	if _, ok := recv(t, plain, 100*time.Millisecond); ok {
+		t.Fatal("plain subscriber received members-only event")
+	}
+
+	shared := Event{Op: OpInsert, Entity: EntityComment, ID: uuid.New(), IssueID: &issueID, ProjectID: &projectID}
+	hub.Publish(shared)
+	for name, c := range map[string]*Client{"member": member, "viewer": viewer, "plain": plain} {
+		if _, ok := recv(t, c, time.Second); !ok {
+			t.Fatalf("%s did not receive shared event", name)
+		}
+	}
+
+	// Subscribing again replaces the earlier access.
+	hub.SubscribeWithAccess(viewer, ProjectTopic(projectID), TopicAccess{MembersOnly: true})
+	hub.Publish(hidden)
+	if _, ok := recv(t, viewer, time.Second); !ok {
+		t.Fatal("viewer granted members-only access did not receive event")
+	}
+}

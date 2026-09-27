@@ -11,12 +11,24 @@ import (
 )
 
 type createCommentReq struct {
-	AuthorID uuid.UUID `json:"author_id,omitempty"`
-	Body     string    `json:"body"`
+	AuthorID   uuid.UUID               `json:"author_id,omitempty"`
+	Body       string                  `json:"body"`
+	Visibility model.CommentVisibility `json:"visibility,omitempty"`
 }
 
+// updateCommentReq changes a comment's body, its visibility, or both.
 type updateCommentReq struct {
-	Body string `json:"body"`
+	Body       *string                  `json:"body,omitempty"`
+	Visibility *model.CommentVisibility `json:"visibility,omitempty"`
+}
+
+const commentVisibilityError = "visibility must be shared or members"
+
+// commentVisibleTo reports whether a reader with these permissions may see the
+// comment at all. A hidden comment is reported as missing, not forbidden, so
+// its existence does not leak.
+func commentVisibleTo(permissions store.ProjectPermissions, comment model.Comment) bool {
+	return comment.Visibility != model.CommentVisibilityMembers || permissions.CanReadMembersOnly
 }
 
 func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
@@ -37,11 +49,16 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "body required, max 10000 chars")
 		return
 	}
+	if req.Visibility != "" && !req.Visibility.Valid() {
+		writeError(w, http.StatusBadRequest, commentVisibilityError)
+		return
+	}
 
 	c, err := s.store.CreateComment(r.Context(), store.CreateCommentParams{
-		IssueID:  issue.ID,
-		AuthorID: currentUser(r).ID,
-		Body:     body,
+		IssueID:    issue.ID,
+		AuthorID:   currentUser(r).ID,
+		Body:       body,
+		Visibility: req.Visibility,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -55,7 +72,8 @@ func (s *Server) listComments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, issue.ProjectID)
+	if !ok {
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -74,9 +92,10 @@ func (s *Server) listComments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	comments, hasMore, err := s.store.ListCommentsForIssue(r.Context(), store.ListCommentsForIssueParams{
-		IssueID: issue.ID,
-		Cursor:  cursor,
-		Limit:   limit,
+		IssueID:            issue.ID,
+		Cursor:             cursor,
+		Limit:              limit,
+		IncludeMembersOnly: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -96,7 +115,12 @@ func (s *Server) getComment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, issue.ProjectID)
+	if !ok {
+		return
+	}
+	if !commentVisibleTo(permissions, comment) {
+		writeStoreError(w, store.ErrNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, comment)
@@ -112,9 +136,20 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	body := strings.TrimSpace(req.Body)
-	if body == "" || len(body) > 10000 {
-		writeError(w, http.StatusBadRequest, "body required, max 10000 chars")
+	if req.Body == nil && req.Visibility == nil {
+		writeError(w, http.StatusBadRequest, "body or visibility required")
+		return
+	}
+	body := comment.Body
+	if req.Body != nil {
+		body = strings.TrimSpace(*req.Body)
+		if body == "" || len(body) > 10000 {
+			writeError(w, http.StatusBadRequest, "body required, max 10000 chars")
+			return
+		}
+	}
+	if req.Visibility != nil && !req.Visibility.Valid() {
+		writeError(w, http.StatusBadRequest, commentVisibilityError)
 		return
 	}
 	if !s.requireProjectWriteAccess(w, r, issue.ProjectID) {
@@ -126,9 +161,10 @@ func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := s.store.UpdateComment(r.Context(), store.UpdateCommentParams{
-		ID:       comment.ID,
-		AuthorID: user.ID,
-		Body:     body,
+		ID:         comment.ID,
+		AuthorID:   user.ID,
+		Body:       body,
+		Visibility: req.Visibility,
 	})
 	if err != nil {
 		writeStoreError(w, err)

@@ -114,6 +114,37 @@ func TestProjectAccessMode(t *testing.T) {
 	}
 }
 
+func TestCommentVisibility(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		visibility CommentVisibility
+		valid      bool
+		label      string
+	}{
+		{CommentVisibilityShared, true, "Shared"},
+		{CommentVisibilityMembers, true, "Members only"},
+		{"public", false, "Shared"},
+		{"", false, "Shared"},
+	} {
+		if got := tc.visibility.Valid(); got != tc.valid {
+			t.Fatalf("%q.Valid() = %v, want %v", tc.visibility, got, tc.valid)
+		}
+		if got := tc.visibility.Label(); got != tc.label {
+			t.Fatalf("%q.Label() = %q, want %q", tc.visibility, got, tc.label)
+		}
+	}
+	for mode, want := range map[ProjectAccessMode]CommentVisibility{
+		ProjectAccessPrivate:      CommentVisibilityShared,
+		ProjectAccessPublic:       CommentVisibilityShared,
+		ProjectAccessPublicIssues: CommentVisibilityShared,
+		ProjectAccessHelpDesk:     CommentVisibilityMembers,
+	} {
+		if got := DefaultCommentVisibility(mode); got != want {
+			t.Fatalf("DefaultCommentVisibility(%q) = %q, want %q", mode, got, want)
+		}
+	}
+}
+
 func TestStatusCountsAsDone(t *testing.T) {
 	cases := []struct {
 		in   Status

@@ -50,8 +50,11 @@ type Event struct {
 	TagID         *uuid.UUID `json:"tag_id,omitempty"`
 	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
 	ProjectID     *uuid.UUID `json:"project_id,omitempty"`
-	Version       int64      `json:"version"`
-	Ts            string     `json:"ts"`
+	// MembersOnly marks an event about a members-only comment, or a changelog
+	// entry about one. Only subscribers with TopicAccess.MembersOnly get it.
+	MembersOnly bool   `json:"members_only,omitempty"`
+	Version     int64  `json:"version"`
+	Ts          string `json:"ts"`
 }
 
 // Topics returns the topic names this event should be fanned out on.

@@ -114,6 +114,21 @@ func (s *Server) requireProjectAccess(w http.ResponseWriter, r *http.Request, pr
 	return true
 }
 
+// requireProjectReadPermissions is requireProjectAccess for handlers that also
+// need to know what else the reader may see, such as members-only comments.
+func (s *Server) requireProjectReadPermissions(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) (store.ProjectPermissions, bool) {
+	permissions, err := s.store.ProjectPermissionsForUser(r.Context(), currentUser(r), projectID)
+	if err != nil {
+		writeStoreError(w, err)
+		return store.ProjectPermissions{}, false
+	}
+	if !permissions.CanRead {
+		writeForbidden(w)
+		return store.ProjectPermissions{}, false
+	}
+	return permissions, true
+}
+
 func (s *Server) requireProjectWriteAccess(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
 	ok, err := s.store.UserCanWriteProject(r.Context(), currentUser(r), projectID)
 	if err != nil {

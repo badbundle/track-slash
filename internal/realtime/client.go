@@ -91,13 +91,18 @@ func (c *Client) readPump(ctx context.Context) {
 		}
 		switch msg.Action {
 		case "subscribe":
+			// Without an authorizer every topic is open, members-only
+			// events included.
+			access := TopicAccess{MembersOnly: true}
 			if c.authorize != nil {
-				if err := c.authorize(ctx, kind, id); err != nil {
+				var err error
+				access, err = c.authorize(ctx, kind, id)
+				if err != nil {
 					c.writeError(ctx, "forbidden")
 					continue
 				}
 			}
-			c.hub.Subscribe(c, msg.Topic)
+			c.hub.SubscribeWithAccess(c, msg.Topic, access)
 		case "unsubscribe":
 			c.hub.Unsubscribe(c, msg.Topic)
 		default:

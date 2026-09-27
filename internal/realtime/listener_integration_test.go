@@ -433,6 +433,85 @@ func TestListenerReceivesCommentEvent(t *testing.T) {
 	waitForCommentEvent(t, commentSub, commentID, issueID, projectID, OpDelete)
 }
 
+// TestListenerMarksMembersOnlyCommentEvents verifies a members-only comment,
+// and the changelog entries about it, carry members_only so the hub keeps them
+// from subscribers without members-only access.
+func TestListenerMarksMembersOnlyCommentEvents(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-members-only")
+	var ownerID, issueID string
+	if err := pool.QueryRow(ctx, `SELECT owner_id::text FROM projects WHERE id = $1`, projectID).Scan(&ownerID); err != nil {
+		t.Fatalf("select owner: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'A') RETURNING id::text
+	`, projectID).Scan(&issueID); err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+
+	member := newTestClient(16)
+	viewer := newTestClient(16)
+	hub.SubscribeWithAccess(member, "issue:"+issueID, TopicAccess{MembersOnly: true})
+	hub.SubscribeWithAccess(viewer, "issue:"+issueID, TopicAccess{})
+
+	var commentID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO comments (issue_id, number, author_id, body, visibility)
+		VALUES ($1, 1, $2, 'members only', 'members')
+		RETURNING id::text
+	`, issueID, ownerID).Scan(&commentID); err != nil {
+		t.Fatalf("insert comment: %v", err)
+	}
+	var changelogID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO project_changelog_entries (project_id, entity, op, entity_id, issue_id, summary, members_only)
+		VALUES ($1, 'comment', 'insert', $2, $3, 'Commented', true)
+		RETURNING id::text
+	`, projectID, commentID, issueID).Scan(&changelogID); err != nil {
+		t.Fatalf("insert changelog entry: %v", err)
+	}
+
+	seen := map[Entity]bool{}
+	deadline := time.After(3 * time.Second)
+	for !seen[EntityComment] || !seen[EntityChangelog] {
+		select {
+		case ev := <-member.send:
+			if ev.Entity != EntityComment && ev.Entity != EntityChangelog {
+				continue
+			}
+			if !ev.MembersOnly {
+				t.Fatalf("member event without members_only: %#v", ev)
+			}
+			seen[ev.Entity] = true
+		case <-deadline:
+			t.Fatalf("member did not receive members-only events, saw %v", seen)
+		}
+	}
+	quiet := time.After(200 * time.Millisecond)
+	for waiting := true; waiting; {
+		select {
+		case ev := <-viewer.send:
+			if ev.MembersOnly || ev.Entity == EntityComment || ev.Entity == EntityChangelog {
+				t.Fatalf("viewer received members-only event: %#v", ev)
+			}
+		case <-quiet:
+			waiting = false
+		}
+	}
+
+	// Sharing the comment makes its events reach every subscriber.
+	if _, err := pool.Exec(ctx, `UPDATE comments SET visibility = 'shared' WHERE id = $1`, commentID); err != nil {
+		t.Fatalf("share comment: %v", err)
+	}
+	waitForCommentEvent(t, viewer, commentID, issueID, projectID, OpUpdate)
+}
+
 // TestListenerReceivesProjectContextEvents verifies context and issue-context
 // link triggers include enough ids for project, issue, and context fanout.
 func TestListenerReceivesProjectContextEvents(t *testing.T) {

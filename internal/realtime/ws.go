@@ -11,7 +11,17 @@ import (
 	"github.com/google/uuid"
 )
 
-type TopicAuthorizer func(context.Context, string, uuid.UUID) error
+// TopicAccess is what a subscriber may receive on a topic it was allowed to
+// join.
+type TopicAccess struct {
+	// MembersOnly admits events about members-only comments, which a public
+	// viewer may subscribe alongside members but must not receive.
+	MembersOnly bool
+}
+
+// TopicAuthorizer decides whether the connection may subscribe to a topic of
+// the given kind and entity, and with what access.
+type TopicAuthorizer func(context.Context, string, uuid.UUID) (TopicAccess, error)
 
 type OriginPolicy struct {
 	AllowedOrigins        []string

@@ -125,3 +125,70 @@ func TestHandlerSendsResyncControlToSubscribedClient(t *testing.T) {
 		t.Fatalf("control = %#v, want overflow resync", got)
 	}
 }
+
+// TestHandlerAppliesAuthorizedTopicAccess checks the access the authorizer
+// grants decides whether members-only events reach the connection.
+func TestHandlerAppliesAuthorizedTopicAccess(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		authorize TopicAuthorizer
+		want      bool
+	}{
+		{"viewer", func(context.Context, string, uuid.UUID) (TopicAccess, error) { return TopicAccess{}, nil }, false},
+		{"member", func(context.Context, string, uuid.UUID) (TopicAccess, error) {
+			return TopicAccess{MembersOnly: true}, nil
+		}, true},
+		{"no authorizer", nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hub := NewHub()
+			ts := httptest.NewServer(hub.Handler(OriginPolicy{AllowMissingOrigin: true}, tc.authorize))
+			defer ts.Close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(ts.URL, "http"), nil)
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			defer func() { _ = conn.CloseNow() }()
+
+			projectID := uuid.New()
+			subscribe, err := json.Marshal(controlMsg{Action: "subscribe", Topic: ProjectTopic(projectID)})
+			if err != nil {
+				t.Fatalf("marshal subscribe: %v", err)
+			}
+			if err := conn.Write(ctx, websocket.MessageText, subscribe); err != nil {
+				t.Fatalf("subscribe: %v", err)
+			}
+			for hub.TopicCount() != 1 {
+				select {
+				case <-ctx.Done():
+					t.Fatal("subscription was not registered")
+				case <-time.After(time.Millisecond):
+				}
+			}
+
+			hidden := uuid.New()
+			hub.Publish(Event{Op: OpInsert, Entity: EntityComment, ID: hidden, ProjectID: &projectID, MembersOnly: true})
+			shared := uuid.New()
+			hub.Publish(Event{Op: OpInsert, Entity: EntityComment, ID: shared, ProjectID: &projectID})
+
+			_, data, err := conn.Read(ctx)
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+			var got Event
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			want := shared
+			if tc.want {
+				want = hidden
+			}
+			if got.ID != want {
+				t.Fatalf("first event = %s, want %s", got.ID, want)
+			}
+		})
+	}
+}

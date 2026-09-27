@@ -5,13 +5,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/bradleymackey/track-slash/internal/realtime"
 	"github.com/bradleymackey/track-slash/internal/store"
 )
 
-func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) error {
+func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) (realtime.TopicAccess, error) {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
 	if !ok {
-		return store.ErrUnauthorized
+		return realtime.TopicAccess{}, store.ErrUnauthorized
 	}
 	var (
 		projectID uuid.UUID
@@ -41,19 +42,19 @@ func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) 
 	case "whiteboard_page":
 		projectID, err = s.store.ProjectIDForWhiteboardPage(ctx, id)
 	default:
-		return store.ErrUnauthorized
+		return realtime.TopicAccess{}, store.ErrUnauthorized
 	}
 	if err != nil {
-		return err
+		return realtime.TopicAccess{}, err
 	}
-	ok, err = s.store.UserCanAccessProject(ctx, auth.User, projectID)
+	permissions, err := s.store.ProjectPermissionsForUser(ctx, auth.User, projectID)
 	if err != nil {
-		return err
+		return realtime.TopicAccess{}, err
 	}
-	if !ok {
-		return store.ErrUnauthorized
+	if !permissions.CanRead {
+		return realtime.TopicAccess{}, store.ErrUnauthorized
 	}
-	return nil
+	return realtime.TopicAccess{MembersOnly: permissions.CanReadMembersOnly}, nil
 }
 
 func (s *Server) disconnectRealtimeClients() {

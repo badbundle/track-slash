@@ -139,12 +139,14 @@ type mcpCommentInput struct {
 
 type mcpCreateCommentInput struct {
 	mcpIssueInput
-	Body string `json:"body"`
+	Body       string `json:"body"`
+	Visibility string `json:"visibility,omitempty" jsonschema:"shared (anyone who can read the issue) or members (project members only); defaults to members in a help desk and shared elsewhere"`
 }
 
 type mcpUpdateCommentInput struct {
 	mcpCommentInput
-	Body string `json:"body"`
+	Body       string `json:"body,omitempty" jsonschema:"new body; omit to change only the visibility"`
+	Visibility string `json:"visibility,omitempty" jsonschema:"shared or members; omit to keep it"`
 }
 
 type mcpSprintInput struct {
@@ -515,10 +517,10 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_create_sub_issue", "Create sub-issue under an issue.", write, s.mcpCreateSubIssue)
 	addMCPTool(srv, "track_list_sub_issues", "List sub-issues under an issue.", readOnly, s.mcpListSubIssues)
 
-	addMCPTool(srv, "track_create_comment", "Create issue comment.", write, s.mcpCreateComment)
-	addMCPTool(srv, "track_list_comments", "List issue comments.", readOnly, s.mcpListComments)
+	addMCPTool(srv, "track_create_comment", "Create issue comment. visibility is shared (anyone who can read the issue) or members (project members only).", write, s.mcpCreateComment)
+	addMCPTool(srv, "track_list_comments", "List issue comments you can see: members-only comments are listed for project members only.", readOnly, s.mcpListComments)
 	addMCPTool(srv, "track_get_comment", "Get issue comment.", readOnly, s.mcpGetComment)
-	addMCPTool(srv, "track_update_comment", "Update own issue comment.", write, s.mcpUpdateComment)
+	addMCPTool(srv, "track_update_comment", "Update own issue comment: its body, its visibility (shared or members), or both.", write, s.mcpUpdateComment)
 	addMCPTool(srv, "track_delete_comment", "Delete issue comment.", write, s.mcpDeleteComment)
 
 	addMCPTool(srv, "track_create_sprint", "Create project sprint.", write, s.mcpCreateSprint)
@@ -684,6 +686,19 @@ func (s *Server) requireMCPAdmin(auth authContext) error {
 		return errMCPForbidden
 	}
 	return nil
+}
+
+// mcpReadPermissions is requireMCPProjectAccess for tools that also need to
+// know what else the reader may see, such as members-only comments.
+func (s *Server) mcpReadPermissions(ctx context.Context, auth authContext, projectID uuid.UUID) (store.ProjectPermissions, error) {
+	permissions, err := s.store.ProjectPermissionsForUser(ctx, auth.User, projectID)
+	if err != nil {
+		return store.ProjectPermissions{}, err
+	}
+	if !permissions.CanRead {
+		return store.ProjectPermissions{}, errMCPForbidden
+	}
+	return permissions, nil
 }
 
 func (s *Server) requireMCPProjectAccess(ctx context.Context, auth authContext, projectID uuid.UUID) error {
@@ -1408,10 +1423,15 @@ func (s *Server) mcpListProjectChangelog(ctx context.Context, req *mcp.CallToolR
 		}
 		cursor = &c
 	}
+	permissions, err := s.mcpReadPermissions(ctx, auth, project.ID)
+	if err != nil {
+		return nil, err
+	}
 	entries, hasMore, err := s.store.ListProjectChangelog(ctx, store.ListProjectChangelogParams{
-		ProjectID: project.ID,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:          project.ID,
+		Cursor:             cursor,
+		Limit:              limit,
+		IncludeMembersOnly: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return nil, err
@@ -1887,7 +1907,22 @@ func (s *Server) mcpComment(ctx context.Context, auth authContext, input mcpComm
 	if err != nil {
 		return model.Issue{}, model.Comment{}, err
 	}
+	permissions, err := s.mcpReadPermissions(ctx, auth, issue.ProjectID)
+	if err != nil {
+		return model.Issue{}, model.Comment{}, err
+	}
+	if !commentVisibleTo(permissions, comment) {
+		return model.Issue{}, model.Comment{}, store.ErrNotFound
+	}
 	return issue, comment, nil
+}
+
+func mcpCommentVisibility(raw string) (model.CommentVisibility, error) {
+	visibility := model.CommentVisibility(raw)
+	if raw != "" && !visibility.Valid() {
+		return "", validationError(commentVisibilityError)
+	}
+	return visibility, nil
 }
 
 func (s *Server) mcpCreateComment(ctx context.Context, req *mcp.CallToolRequest, input mcpCreateCommentInput) (mcpToolOutput, error) {
@@ -1906,7 +1941,11 @@ func (s *Server) mcpCreateComment(ctx context.Context, req *mcp.CallToolRequest,
 	if err != nil {
 		return nil, err
 	}
-	comment, err := s.store.CreateComment(ctx, store.CreateCommentParams{IssueID: issue.ID, AuthorID: auth.User.ID, Body: body})
+	visibility, err := mcpCommentVisibility(input.Visibility)
+	if err != nil {
+		return nil, err
+	}
+	comment, err := s.store.CreateComment(ctx, store.CreateCommentParams{IssueID: issue.ID, AuthorID: auth.User.ID, Body: body, Visibility: visibility})
 	if err != nil {
 		return nil, err
 	}
@@ -1934,7 +1973,16 @@ func (s *Server) mcpListComments(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 		cursor = &c
 	}
-	comments, hasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{IssueID: issue.ID, Cursor: cursor, Limit: limit})
+	permissions, err := s.mcpReadPermissions(ctx, auth, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	comments, hasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{
+		IssueID:            issue.ID,
+		Cursor:             cursor,
+		Limit:              limit,
+		IncludeMembersOnly: permissions.CanReadMembersOnly,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1974,11 +2022,24 @@ func (s *Server) mcpUpdateComment(ctx context.Context, req *mcp.CallToolRequest,
 	if comment.AuthorID != auth.User.ID {
 		return nil, errMCPForbidden
 	}
-	body, err := validateMCPCommentBody(input.Body)
+	if input.Body == "" && input.Visibility == "" {
+		return nil, validationError("body or visibility required")
+	}
+	body := comment.Body
+	if input.Body != "" {
+		if body, err = validateMCPCommentBody(input.Body); err != nil {
+			return nil, err
+		}
+	}
+	visibility, err := mcpCommentVisibility(input.Visibility)
 	if err != nil {
 		return nil, err
 	}
-	updated, err := s.store.UpdateComment(ctx, store.UpdateCommentParams{ID: comment.ID, AuthorID: auth.User.ID, Body: body})
+	params := store.UpdateCommentParams{ID: comment.ID, AuthorID: auth.User.ID, Body: body}
+	if visibility != "" {
+		params.Visibility = &visibility
+	}
+	updated, err := s.store.UpdateComment(ctx, params)
 	if err != nil {
 		return nil, err
 	}

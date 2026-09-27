@@ -32,6 +32,9 @@ func (s *Server) renderUIIssuePanelWithCommentError(w http.ResponseWriter, r *ht
 	}
 	panel.CommentBody = body
 	panel.CommentError = message
+	if visibility := model.CommentVisibility(r.Form.Get("visibility")); visibility.Valid() {
+		panel.CommentVisibility = visibility
+	}
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -44,6 +47,9 @@ func (s *Server) renderUIIssuePanelWithCommentEditError(w http.ResponseWriter, r
 	panel.EditCommentID = commentID
 	panel.CommentEditBody = body
 	panel.CommentEditError = message
+	if visibility := model.CommentVisibility(r.Form.Get("visibility")); visibility.Valid() {
+		panel.CommentEditVisibility = visibility
+	}
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
@@ -468,9 +474,10 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		return nil, err
 	}
 	comments, commentsHasMore, err := s.store.ListCommentsForIssue(ctx, store.ListCommentsForIssueParams{
-		IssueID:     issueID,
-		Limit:       MaxLimit,
-		NewestFirst: true,
+		IssueID:            issueID,
+		Limit:              MaxLimit,
+		NewestFirst:        true,
+		IncludeMembersOnly: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return nil, err
@@ -482,11 +489,12 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 			return nil, err
 		}
 		item := uiIssueCommentItem{
-			Comment:    comment,
-			BodyHTML:   renderIssueCommentMarkdown(issue, comment, attachments),
-			AuthorID:   comment.AuthorID,
-			AuthorName: "Unknown user",
-			CanEdit:    permissions.CanWrite && comment.AuthorID == currentUser(r).ID,
+			Comment:     comment,
+			BodyHTML:    renderIssueCommentMarkdown(issue, comment, attachments),
+			AuthorID:    comment.AuthorID,
+			AuthorName:  "Unknown user",
+			CanEdit:     permissions.CanWrite && comment.AuthorID == currentUser(r).ID,
+			MembersOnly: comment.Visibility == model.CommentVisibilityMembers,
 		}
 		if author != nil {
 			item.AuthorUsername = author.Username
@@ -547,34 +555,36 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 
 	backHref, backHXGet, backLabel := uiIssueBackLink(project, issue, parentIssue, sprint)
 	return &uiIssuePanelData{
-		CSRFToken:          uiSessionCSRFToken(r),
-		Issue:              issue,
-		Project:            project,
-		CanWrite:           permissions.CanWrite,
-		GitHubConfigured:   s.githubIntegration != nil,
-		GitHubConnections:  githubConnections,
-		GitHubLinks:        githubItems,
-		OwnerCrumb:         currentUser(r).ID != project.OwnerID,
-		ParentIssue:        parentIssue,
-		Sprint:             sprint,
-		Assignee:           assignee,
-		Reporter:           reporter,
-		CanEditSprint:      permissions.CanWrite && issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
-		DescriptionHTML:    renderIssueDescriptionMarkdown(issue, attachments),
-		Attachments:        attachments,
-		AttachmentsHasMore: attachmentsHasMore,
-		SubIssues:          subIssues,
-		SubIssuesHasMore:   subIssuesHasMore,
-		Comments:           commentItems,
-		CommentsHasMore:    commentsHasMore,
-		Links:              linkItems,
-		LinksHasMore:       linksHasMore,
-		Contexts:           contexts,
-		ContextsHasMore:    contextsHasMore,
-		BackHref:           backHref,
-		BackHXGet:          backHXGet,
-		BackLabel:          backLabel,
-		DeleteNotice:       deleteNotice,
+		CSRFToken:               uiSessionCSRFToken(r),
+		Issue:                   issue,
+		Project:                 project,
+		CanWrite:                permissions.CanWrite,
+		GitHubConfigured:        s.githubIntegration != nil,
+		GitHubConnections:       githubConnections,
+		GitHubLinks:             githubItems,
+		OwnerCrumb:              currentUser(r).ID != project.OwnerID,
+		ParentIssue:             parentIssue,
+		Sprint:                  sprint,
+		Assignee:                assignee,
+		Reporter:                reporter,
+		CanEditSprint:           permissions.CanWrite && issue.ParentIssueID == nil && !issue.Status.CountsAsDone(),
+		DescriptionHTML:         renderIssueDescriptionMarkdown(issue, attachments),
+		Attachments:             attachments,
+		AttachmentsHasMore:      attachmentsHasMore,
+		SubIssues:               subIssues,
+		SubIssuesHasMore:        subIssuesHasMore,
+		Comments:                commentItems,
+		CommentsHasMore:         commentsHasMore,
+		CommentVisibilityChoice: permissions.AccessMode != model.ProjectAccessPrivate,
+		CommentVisibility:       model.DefaultCommentVisibility(permissions.AccessMode),
+		Links:                   linkItems,
+		LinksHasMore:            linksHasMore,
+		Contexts:                contexts,
+		ContextsHasMore:         contextsHasMore,
+		BackHref:                backHref,
+		BackHXGet:               backHXGet,
+		BackLabel:               backLabel,
+		DeleteNotice:            deleteNotice,
 	}, nil
 }
 
