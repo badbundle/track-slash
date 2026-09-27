@@ -36,7 +36,7 @@ Brand building blocks live in `internal/server/templates/brand.html`; see "Brand
 
 - `issue-key`: compact monospace issue identifier badge. Use it for ticket numbers wherever possible; if a generic data-driven badge must show an issue identifier, mirror this component's monospace, uppercase, compact bordered treatment.
 - `project-key`: compact project key badge.
-- `project-visibility-badge`: `Public` (globe, emerald) or `Private` (lock, neutral) badge from a boolean `IsPublic`. Carries `data-project-visibility` so tests and scripts can read the state without parsing copy.
+- `access-badge`: icon-and-label badge for a project access setting, from a `uiAccessBadge`. The open or on state is tinted emerald and the restricted or off state is neutral. Build it with `projectVisibilityBadge` (`Public` globe / `Private` lock), `projectIssueCreationBadge` (`Any signed-in user` users / `Members only` user-round-check) or `projectSprintModeBadge` (`Enabled` person-standing / `Disabled` list-checks). Each carries its setting's data hook (`data-project-visibility`, `data-project-issue-creation`, `data-project-sprint-mode`) so tests and scripts can read the state without parsing copy.
 - `sprint-ref`: compact monospace canonical sprint-reference badge. Keep the `sprint-N` value lowercase and pair it with sprint titles on current, planned, and historical cards.
 - `count-badge`: small numeric count badge.
 - `sprint-issue-count-badge`: compact sprint-total badge that uses `Issue` for one and `Issues` for zero or multiple while reusing `count-badge` styling.
