@@ -226,7 +226,7 @@ func TestListSubIssueProgress(t *testing.T) {
 	t.Parallel()
 	env := newSprintsEnv(t)
 
-	empty, err := env.store.ListSubIssueProgress(env.ctx, nil)
+	empty, err := env.store.ListSubIssueProgress(env.ctx, nil, true)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty progress = %+v, %v", empty, err)
 	}
@@ -256,7 +256,7 @@ func TestListSubIssueProgress(t *testing.T) {
 		t.Fatalf("delete child: %v", err)
 	}
 
-	progress, err := env.store.ListSubIssueProgress(env.ctx, []uuid.UUID{parent.ID, withoutChildren.ID})
+	progress, err := env.store.ListSubIssueProgress(env.ctx, []uuid.UUID{parent.ID, withoutChildren.ID}, true)
 	if err != nil {
 		t.Fatalf("ListSubIssueProgress: %v", err)
 	}

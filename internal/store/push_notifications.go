@@ -752,8 +752,11 @@ func (s *Store) PreparePushNotificationDelivery(ctx context.Context, delivery Pu
 		}
 		return PushNotificationPayload{}, false, err
 	}
-	// A help-desk reporter hears about the issue they filed, but not about its
-	// due date, which only members see.
+	// A private issue reaches only the project's members and its reporter.
+	permissions = permissions.ForIssue(user, issue)
+	// A reporter who follows their issue (in a help desk, or of a private
+	// issue) hears about it, but not about its due date, which only members
+	// see.
 	reporter := !permissions.CanRead && permissions.CanFollowIssue(user, issue)
 	if !permissions.CanRead && !reporter {
 		return PushNotificationPayload{}, false, nil

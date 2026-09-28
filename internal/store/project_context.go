@@ -67,6 +67,9 @@ type ListProjectContextsParams struct {
 	ProjectID uuid.UUID
 	Cursor    *ProjectContextsCursor
 	Limit     int
+	// IncludePrivate counts links to private issues too; see
+	// ListIssuesParams.
+	IncludePrivate bool
 }
 
 type ListContextsForIssueParams struct {
@@ -79,6 +82,8 @@ type ListIssuesForContextParams struct {
 	ContextID uuid.UUID
 	Cursor    *IssuesCursor
 	Limit     int
+	// IncludePrivate lists private issues too; see ListIssuesParams.
+	IncludePrivate bool
 }
 
 type projectContextScanner interface {
@@ -344,9 +349,10 @@ func (s *Store) ListProjectContexts(ctx context.Context, p ListProjectContextsPa
 		FROM project_context pc
 		JOIN projects p ON p.id = pc.project_id
 		LEFT JOIN issue_context_links icl ON icl.context_id = pc.id
-		LEFT JOIN issues i ON i.id = icl.issue_id AND i.deleted_at IS NULL
+		LEFT JOIN issues i ON i.id = icl.issue_id AND i.deleted_at IS NULL AND ($2 OR NOT i.private)
 		WHERE pc.project_id = $1 AND pc.scope = 'project' AND p.deleted_at IS NULL
 	`
+	args = append(args, p.IncludePrivate)
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Position)
 		q += fmt.Sprintf(" AND pc.position > $%d", len(args))
@@ -382,6 +388,24 @@ func (s *Store) ListProjectContexts(ctx context.Context, p ListProjectContextsPa
 	return out, hasMore, nil
 }
 
+// issueScopedContextIssueID is the issue an issue-scoped context belongs to,
+// so its changelog entries follow that issue's visibility. Project context
+// belongs to no issue.
+func issueScopedContextIssueID(ctx context.Context, tx pgx.Tx, contextItem model.ProjectContext) (*uuid.UUID, error) {
+	if contextItem.Scope != model.ProjectContextScopeIssue {
+		return nil, nil
+	}
+	var issueID uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT issue_id FROM issue_context_links WHERE context_id = $1 ORDER BY created_at LIMIT 1`, contextItem.ID).Scan(&issueID)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, nil
+		}
+		return nil, err // defensive: only a DB outage fails this lookup
+	}
+	return &issueID, nil
+}
+
 func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContextParams) (model.ProjectContext, error) {
 	var out model.ProjectContext
 	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
@@ -397,6 +421,10 @@ func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContext
 			if isNoRows(err) {
 				return ErrNotFound
 			}
+			return err
+		}
+		contextIssueID, err := issueScopedContextIssueID(ctx, tx, before)
+		if err != nil {
 			return err
 		}
 		if p.Position != nil {
@@ -489,6 +517,7 @@ func (s *Store) UpdateProjectContext(ctx context.Context, p UpdateProjectContext
 			Entity:      "project_context",
 			Op:          "update",
 			EntityID:    out.ID,
+			IssueID:     contextIssueID,
 			TargetRef:   changelogContextRef(out),
 			TargetTitle: out.Title,
 			Summary:     fmt.Sprintf("Updated context %s", out.Title),
@@ -521,6 +550,10 @@ func (s *Store) DeleteProjectContext(ctx context.Context, id uuid.UUID) error {
 			if isNoRows(err) {
 				return ErrNotFound
 			}
+			return err
+		}
+		contextIssueID, err := issueScopedContextIssueID(ctx, tx, before)
+		if err != nil {
 			return err
 		}
 		var count int64
@@ -570,6 +603,7 @@ func (s *Store) DeleteProjectContext(ctx context.Context, id uuid.UUID) error {
 			Entity:      "project_context",
 			Op:          "delete",
 			EntityID:    before.ID,
+			IssueID:     contextIssueID,
 			TargetRef:   changelogContextRef(before),
 			TargetTitle: before.Title,
 			Summary:     fmt.Sprintf("Deleted context %s", before.Title),
@@ -845,7 +879,7 @@ func (s *Store) ListIssuesForContext(ctx context.Context, p ListIssuesForContext
 	}
 	args := []any{p.ContextID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issue_context_links icl
 		JOIN issues i ON i.id = icl.issue_id
@@ -853,6 +887,9 @@ func (s *Store) ListIssuesForContext(ctx context.Context, p ListIssuesForContext
 		JOIN users u ON u.id = pr.owner_id
 		WHERE icl.context_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
+	if !p.IncludePrivate {
+		q += " AND NOT i.private"
+	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)
 		q += fmt.Sprintf(" AND i.number > $%d", len(args))

@@ -54,6 +54,17 @@ func (s *Server) authorizeTopic(ctx context.Context, kind string, id uuid.UUID) 
 	if !permissions.CanRead {
 		return realtime.TopicAccess{}, store.ErrUnauthorized
 	}
+	if !permissions.CanReadMembersOnly {
+		// A topic about a private issue is answered as though it didn't
+		// exist, the same as a missing one.
+		private, err := s.store.RealtimeTopicIsPrivate(ctx, kind, id)
+		if err != nil {
+			return realtime.TopicAccess{}, err
+		}
+		if private {
+			return realtime.TopicAccess{}, store.ErrNotFound
+		}
+	}
 	return realtime.TopicAccess{MembersOnly: permissions.CanReadMembersOnly}, nil
 }
 

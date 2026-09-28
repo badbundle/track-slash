@@ -15,14 +15,24 @@ import (
 var errIssueRouteForbidden = errors.New("forbidden")
 
 // issueRouteAccess is the check every route that names an issue makes before
-// anything else. A user blocked from the project is refused outright, even for
-// issues they filed. A help-desk reporter is told that an issue they did not
-// report does not exist, so the issues of other reporters cannot be counted
-// or probed; routes that serve reporters decide what to show of their own.
+// anything else, and the permissions it returns are for that issue. A user
+// blocked from the project is refused outright, even for issues they filed. A
+// help-desk reporter is told that an issue they did not report does not
+// exist, so the issues of other reporters cannot be counted or probed. So is
+// anyone outside the project asking for a private issue, except its reporter,
+// who follows it like a help-desk reporter. Routes that serve reporters decide
+// what to show of their own.
 func (s *Server) issueRouteAccess(ctx context.Context, user model.User, issue model.Issue) (store.ProjectPermissions, error) {
 	permissions, err := s.store.ProjectPermissionsForUser(ctx, user, issue.ProjectID)
 	if err != nil {
 		return store.ProjectPermissions{}, err
+	}
+	if permissions.HidesIssue(issue) {
+		narrowed := permissions.ForIssue(user, issue)
+		if !narrowed.CanFollowIssue(user, issue) {
+			return store.ProjectPermissions{}, store.ErrNotFound
+		}
+		return narrowed, nil
 	}
 	if permissions.CanRead {
 		return permissions, nil
@@ -37,20 +47,20 @@ func (s *Server) issueRouteAccess(ctx context.Context, user model.User, issue mo
 }
 
 // deletedIssueRouteAccess is issueRouteAccess for deleted issues, which a
-// help-desk reporter never sees, not even one they filed.
+// reporter who follows their issue never sees, not even one they filed.
 func (s *Server) deletedIssueRouteAccess(ctx context.Context, user model.User, issue model.Issue) (store.ProjectPermissions, error) {
 	permissions, err := s.issueRouteAccess(ctx, user, issue)
 	if err != nil {
 		return store.ProjectPermissions{}, err
 	}
-	if !permissions.CanRead && permissions.HelpDeskReporter {
+	if !permissions.CanRead && (permissions.HelpDeskReporter || permissions.PrivateIssueReporter) {
 		return store.ProjectPermissions{}, store.ErrNotFound
 	}
 	return permissions, nil
 }
 
-// followsIssue reports whether the user reads this issue as its help-desk
-// reporter rather than as someone who can read the project.
+// followsIssue reports whether the user reads this issue as its reporter (in
+// a help desk, or of a private issue) rather than as someone who can read it.
 func followsIssue(permissions store.ProjectPermissions, user model.User, issue model.Issue) bool {
 	return !permissions.CanRead && permissions.CanFollowIssue(user, issue)
 }
@@ -70,10 +80,12 @@ func (s *Server) reportedIssuesPage(ctx context.Context, projectID, reporterID u
 		ProjectID:        projectID,
 		ReporterID:       &reporterID,
 		IncludeSubIssues: true,
-		Cursor:           cursor,
-		Limit:            limit,
-		Sort:             store.ListIssuesSortCreated,
-		Direction:        store.ListIssuesSortDescending,
+		// The reporter's own issues, private ones included.
+		IncludePrivate: true,
+		Cursor:         cursor,
+		Limit:          limit,
+		Sort:           store.ListIssuesSortCreated,
+		Direction:      store.ListIssuesSortDescending,
 	})
 	if err != nil {
 		return nil, nil, err

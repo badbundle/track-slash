@@ -898,14 +898,17 @@ type Issue struct {
 	CloseReason   *IssueCloseReason `json:"close_reason"`
 	Priority      IssuePriority     `json:"priority"`
 	Worker        *IssueWorker      `json:"worker"`
-	AssigneeID    *uuid.UUID        `json:"assignee_id,omitempty"`
-	ReporterID    *uuid.UUID        `json:"reporter_id,omitempty"`
-	SprintID      *uuid.UUID        `json:"sprint_id,omitempty"`
-	ParentIssueID *uuid.UUID        `json:"parent_issue_id,omitempty"`
-	DueDate       *Date             `json:"due_date"`
-	Tags          []IssueTag        `json:"tags,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	// Private keeps the issue to the project's members and its reporter,
+	// even on a public project.
+	Private       bool       `json:"private"`
+	AssigneeID    *uuid.UUID `json:"assignee_id,omitempty"`
+	ReporterID    *uuid.UUID `json:"reporter_id,omitempty"`
+	SprintID      *uuid.UUID `json:"sprint_id,omitempty"`
+	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
+	DueDate       *Date      `json:"due_date"`
+	Tags          []IssueTag `json:"tags,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type IssueTag struct {

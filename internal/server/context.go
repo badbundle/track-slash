@@ -84,7 +84,8 @@ func (s *Server) listProjectContexts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	limit, err := parseLimit(r.URL.Query().Get("limit"))
@@ -102,9 +103,10 @@ func (s *Server) listProjectContexts(w http.ResponseWriter, r *http.Request) {
 		cursor = &c
 	}
 	out, hasMore, err := s.store.ListProjectContexts(r.Context(), store.ListProjectContextsParams{
-		ProjectID: project.ID,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:      project.ID,
+		Cursor:         cursor,
+		Limit:          limit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)

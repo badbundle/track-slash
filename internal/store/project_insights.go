@@ -31,6 +31,9 @@ type ProjectInsightsParams struct {
 	// the most recently completed sprint in range.
 	SprintID *uuid.UUID
 	Now      time.Time
+	// IncludePrivate counts private issues too; see ListIssuesParams. Left
+	// false, every series is drawn as though private issues didn't exist.
+	IncludePrivate bool
 }
 
 type insightPeriod struct {
@@ -69,8 +72,8 @@ func (s *Store) GetProjectInsights(ctx context.Context, p ProjectInsightsParams)
 		if rng == model.InsightRangeAll {
 			var firstIssue *time.Time
 			if err := tx.QueryRow(ctx, `
-				SELECT min(created_at) FROM issues WHERE project_id = $1 AND deleted_at IS NULL
-			`, p.ProjectID).Scan(&firstIssue); err != nil {
+				SELECT min(created_at) FROM issues WHERE project_id = $1 AND deleted_at IS NULL AND ($2 OR NOT private)
+			`, p.ProjectID, p.IncludePrivate).Scan(&firstIssue); err != nil {
 				return err
 			}
 			if firstIssue != nil && firstIssue.Before(earliest) {
@@ -85,15 +88,15 @@ func (s *Store) GetProjectInsights(ctx context.Context, p ProjectInsightsParams)
 			Start:     periods[0].Start,
 			End:       now,
 		}
-		out.Flow, out.Throughput, err = insightFlowAndThroughput(ctx, tx, p.ProjectID, periods)
+		out.Flow, out.Throughput, err = insightFlowAndThroughput(ctx, tx, p.ProjectID, periods, p.IncludePrivate)
 		if err != nil {
 			return err
 		}
-		out.CycleTime, err = insightCycleTime(ctx, tx, project, out.Start, now)
+		out.CycleTime, err = insightCycleTime(ctx, tx, project, out.Start, now, p.IncludePrivate)
 		if err != nil {
 			return err
 		}
-		out.Sprints, err = insightSprints(ctx, tx, p.ProjectID, p.SprintID, out.Start, now)
+		out.Sprints, err = insightSprints(ctx, tx, p.ProjectID, p.SprintID, out.Start, now, p.IncludePrivate)
 		return err
 	})
 	if err != nil {
@@ -183,15 +186,25 @@ func insightStatusSQL(expr string) string {
 	END`
 }
 
+// insightPrivateSQL is a SQL condition on the issue alias that keeps private
+// issues out unless includePrivate is set. It is a literal, never input.
+func insightPrivateSQL(alias string, includePrivate bool) string {
+	if includePrivate {
+		return "true"
+	}
+	return "NOT " + alias + ".private"
+}
+
 // insightIssueHistoryCTE rebuilds each live issue's status timeline from the
 // project changelog. $1 is the project ID. A change stamped before its issue
 // was created (only possible with imported or hand-edited rows) is moved to
 // the creation time so intervals never run backwards.
-var insightIssueHistoryCTE = `
+func insightIssueHistoryCTE(includePrivate bool) string {
+	return `
 live_issues AS (
 	SELECT i.id, i.created_at, i.status::text AS status
 	FROM issues i
-	WHERE i.project_id = $1 AND i.deleted_at IS NULL
+	WHERE i.project_id = $1 AND i.deleted_at IS NULL AND ` + insightPrivateSQL("i", includePrivate) + `
 ),
 status_changes AS (
 	SELECT e.entity_id AS issue_id,
@@ -229,6 +242,7 @@ status_intervals AS (
 	       lead(at) OVER (PARTITION BY issue_id ORDER BY at, seq, entry_id) AS valid_to
 	FROM status_points
 )`
+}
 
 // insightPeriodsCTE exposes periods passed as $2 (starts) and $3 (ends).
 const insightPeriodsCTE = `
@@ -269,10 +283,10 @@ func insightFlowPoint(period insightPeriod, todo, inProgress, done, cancelled in
 	}
 }
 
-func insightFlowAndThroughput(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, periods []insightPeriod) ([]model.ProjectInsightFlowPoint, []model.ProjectInsightThroughputPoint, error) {
+func insightFlowAndThroughput(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, periods []insightPeriod, includePrivate bool) ([]model.ProjectInsightFlowPoint, []model.ProjectInsightThroughputPoint, error) {
 	starts, ends := insightPeriodArgs(periods)
 	rows, err := tx.Query(ctx, `
-		WITH `+insightPeriodsCTE+`, `+insightIssueHistoryCTE+`
+		WITH `+insightPeriodsCTE+`, `+insightIssueHistoryCTE(includePrivate)+`
 		SELECT p.idx,
 		       `+insightStatusCountsSQL+`,
 		       (SELECT count(*) FROM live_issues li
@@ -321,7 +335,8 @@ func insightFlowAndThroughput(ctx context.Context, tx pgx.Tx, projectID uuid.UUI
 // insightCycleTimeCTE lists live Done issues whose last move to Done falls in
 // [$2, $3), with the first move to In progress before it. Issues reopened and
 // finished again are measured to their final completion.
-var insightCycleTimeCTE = insightIssueHistoryCTE + `,
+func insightCycleTimeCTE(includePrivate bool) string {
+	return insightIssueHistoryCTE(includePrivate) + `,
 completions AS (
 	SELECT sc.issue_id, max(sc.at) AS completed_at
 	FROM status_changes sc
@@ -336,12 +351,13 @@ cycle AS (
 	FROM completions c
 	WHERE c.completed_at >= $2 AND c.completed_at < $3
 )`
+}
 
-func insightCycleTime(ctx context.Context, tx pgx.Tx, project model.Project, start, now time.Time) (model.ProjectInsightCycleTime, error) {
+func insightCycleTime(ctx context.Context, tx pgx.Tx, project model.Project, start, now time.Time, includePrivate bool) (model.ProjectInsightCycleTime, error) {
 	out := model.ProjectInsightCycleTime{Issues: []model.ProjectInsightCycleTimeIssue{}}
 	var started int
 	if err := tx.QueryRow(ctx, `
-		WITH `+insightCycleTimeCTE+`
+		WITH `+insightCycleTimeCTE(includePrivate)+`
 		SELECT count(*) FILTER (WHERE started_at IS NULL)::INT,
 		       count(*) FILTER (WHERE started_at IS NOT NULL)::INT,
 		       COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY hours), 0)::FLOAT8,
@@ -358,7 +374,7 @@ func insightCycleTime(ctx context.Context, tx pgx.Tx, project model.Project, sta
 		return out, nil
 	}
 	rows, err := tx.Query(ctx, `
-		WITH `+insightCycleTimeCTE+`
+		WITH `+insightCycleTimeCTE(includePrivate)+`
 		SELECT i.id, i.number, i.title, cy.started_at, cy.completed_at
 		FROM cycle cy
 		JOIN issues i ON i.id = cy.issue_id
@@ -404,7 +420,7 @@ activations AS (
 	GROUP BY e.entity_id
 )`
 
-func insightSprints(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, sprintID *uuid.UUID, start, now time.Time) (model.ProjectInsightSprints, error) {
+func insightSprints(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, sprintID *uuid.UUID, start, now time.Time, includePrivate bool) (model.ProjectInsightSprints, error) {
 	out := model.ProjectInsightSprints{
 		Velocity: []model.ProjectInsightSprintVelocity{},
 		Options:  []model.ProjectInsightSprintOption{},
@@ -420,7 +436,7 @@ func insightSprints(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, sprintI
 		}
 		return out, nil
 	}
-	velocity, err := insightVelocity(ctx, tx, projectID, start)
+	velocity, err := insightVelocity(ctx, tx, projectID, start, includePrivate)
 	if err != nil {
 		return model.ProjectInsightSprints{}, err
 	}
@@ -461,14 +477,14 @@ func insightSprints(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, sprintI
 	default:
 		return out, nil
 	}
-	out.Burnup, err = insightSprintBurnup(ctx, tx, projectID, *target, now)
+	out.Burnup, err = insightSprintBurnup(ctx, tx, projectID, *target, now, includePrivate)
 	if err != nil {
 		return model.ProjectInsightSprints{}, err
 	}
 	return out, nil
 }
 
-func insightVelocity(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, start time.Time) ([]model.ProjectInsightSprintVelocity, error) {
+func insightVelocity(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, start time.Time, includePrivate bool) ([]model.ProjectInsightSprintVelocity, error) {
 	rows, err := tx.Query(ctx, `
 		WITH `+insightSprintActivationsCTE+`
 		SELECT * FROM (
@@ -483,7 +499,7 @@ func insightVelocity(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, start 
 			           ELSE (
 			               SELECT count(*)::INT
 			               FROM sprint_issue_memberships m
-			               JOIN issues mi ON mi.id = m.issue_id AND mi.deleted_at IS NULL
+			               JOIN issues mi ON mi.id = m.issue_id AND mi.deleted_at IS NULL AND `+insightPrivateSQL("mi", includePrivate)+`
 			               WHERE m.sprint_id = s.id
 			                 AND m.added_at <= a.started_at
 			                 AND (m.removed_at IS NULL OR m.removed_at > a.started_at)
@@ -492,7 +508,7 @@ func insightVelocity(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, start 
 			FROM sprints s
 			LEFT JOIN activations a ON a.sprint_id = s.id
 			LEFT JOIN sprint_issue_snapshots sis ON sis.sprint_id = s.id
-			LEFT JOIN issues i ON i.id = sis.issue_id AND i.deleted_at IS NULL
+			LEFT JOIN issues i ON i.id = sis.issue_id AND i.deleted_at IS NULL AND `+insightPrivateSQL("i", includePrivate)+`
 			WHERE s.project_id = $1
 			  AND s.deleted_at IS NULL
 			  AND s.status = 'completed'
@@ -528,7 +544,7 @@ func insightVelocity(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, start 
 	return out, nil
 }
 
-func insightSprintBurnup(ctx context.Context, tx pgx.Tx, projectID, sprintID uuid.UUID, now time.Time) (*model.ProjectInsightSprintBurnup, error) {
+func insightSprintBurnup(ctx context.Context, tx pgx.Tx, projectID, sprintID uuid.UUID, now time.Time, includePrivate bool) (*model.ProjectInsightSprintBurnup, error) {
 	var sprint model.Sprint
 	var startedAt *time.Time
 	var estimated bool
@@ -568,7 +584,7 @@ func insightSprintBurnup(ctx context.Context, tx pgx.Tx, projectID, sprintID uui
 	}
 	starts, ends := insightPeriodArgs(periods)
 	rows, err := tx.Query(ctx, `
-		WITH `+insightPeriodsCTE+`, `+insightIssueHistoryCTE+`,
+		WITH `+insightPeriodsCTE+`, `+insightIssueHistoryCTE(includePrivate)+`,
 		members AS (
 			SELECT m.issue_id, m.added_at, m.removed_at
 			FROM sprint_issue_memberships m

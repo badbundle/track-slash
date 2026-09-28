@@ -253,6 +253,8 @@ var uiTemplates = template.Must(template.New("ui").Funcs(template.FuncMap{
 	"tagClass":                       uiTagClass,
 	"tagColors":                      uiTagColors,
 	"tagDotClass":                    uiTagDotClass,
+	"issuePrivateField":              uiIssuePrivateField,
+	"issuePrivate":                   uiIssuePrivatePath,
 	"brandBackdrop":                  uiBrandBackdrop,
 	"backgroundPresets":              uiBackgroundPresets,
 	"backgroundSwatchClass":          uiBackgroundSwatchClass,

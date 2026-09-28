@@ -183,6 +183,26 @@ func (s *Server) uiRequireDeletedIssueAccess(ctx context.Context, user model.Use
 	return nil
 }
 
+// uiRequireIssueAccess is uiRequireProjectAccess for one issue, returning the
+// reader's permissions. A private issue is missing to everyone outside the
+// project; its reporter, who follows it on its own page, is refused.
+func (s *Server) uiRequireIssueAccess(ctx context.Context, user model.User, issue model.Issue) (store.ProjectPermissions, error) {
+	permissions, err := s.uiProjectPermissions(ctx, user, issue.ProjectID)
+	if err != nil {
+		return store.ProjectPermissions{}, err
+	}
+	if permissions.HidesIssue(issue) {
+		if permissions.ForIssue(user, issue).CanFollowIssue(user, issue) {
+			return store.ProjectPermissions{}, errUIForbidden
+		}
+		return store.ProjectPermissions{}, store.ErrNotFound
+	}
+	if !permissions.CanRead {
+		return store.ProjectPermissions{}, errUIForbidden
+	}
+	return permissions, nil
+}
+
 func (s *Server) uiRequireProjectWriteAccess(ctx context.Context, user model.User, projectID uuid.UUID) error {
 	ok, err := s.store.UserCanWriteProject(ctx, user, projectID)
 	if err != nil {
@@ -448,6 +468,10 @@ func (s *Server) uiDeletedIssueNotice(ctx context.Context, r *http.Request, owne
 	if err != nil {
 		return nil, err
 	}
+	// Deleted issues, like their notice, are for the project's members.
+	if !permissions.CanReadMembersOnly {
+		return nil, nil
+	}
 	return &uiIssueDeleteNotice{CSRFToken: uiSessionCSRFToken(r), Issue: issue, CanWrite: permissions.CanWrite}, nil
 }
 
@@ -457,7 +481,12 @@ func (s *Server) uiIssueLinkFromRoute(w http.ResponseWriter, r *http.Request, is
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return model.IssueLink{}, false
 	}
-	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), issue.ProjectID, number)
+	includePrivate, err := s.readsPrivateIssues(r.Context(), currentUser(r), issue.ProjectID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return model.IssueLink{}, false
+	}
+	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), issue.ProjectID, number, includePrivate)
 	if err != nil {
 		writeUIStoreError(w, err)
 		return model.IssueLink{}, false

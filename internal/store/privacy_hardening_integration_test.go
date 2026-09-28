@@ -141,7 +141,7 @@ func TestDeletedContentIsForMembers(t *testing.T) {
 	}
 	listed := func(hide bool) bool {
 		t.Helper()
-		objects, _, err := env.store.ListStorageObjects(env.ctx, store.ListStorageObjectsParams{ProjectID: env.projectID, Limit: 50, HideDeletedIssueObjects: hide})
+		objects, _, err := env.store.ListStorageObjects(env.ctx, store.ListStorageObjectsParams{ProjectID: env.projectID, Limit: 50, HideMembersOnlyIssueObjects: hide})
 		if err != nil {
 			t.Fatalf("ListStorageObjects: %v", err)
 		}

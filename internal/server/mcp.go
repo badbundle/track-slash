@@ -83,6 +83,7 @@ type mcpCreateIssueInput struct {
 	Description string               `json:"description,omitempty"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
 	Worker      *model.IssueWorker   `json:"worker,omitempty" jsonschema:"agent or human: who is meant to complete the issue"`
+	Private     bool                 `json:"private,omitempty" jsonschema:"keep the issue to the project's members and its reporter, even on a public project: for security reports or anything with personal or account details"`
 	AssigneeID  *string              `json:"assignee_id,omitempty"`
 	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
@@ -101,6 +102,7 @@ type mcpListIssuesInput struct {
 	Sort        store.ListIssuesSort          `json:"sort,omitempty" jsonschema:"one of number, created, updated, status, priority, due"`
 	Direction   store.ListIssuesSortDirection `json:"direction,omitempty" jsonschema:"asc or desc"`
 	Sprint      string                        `json:"sprint,omitempty" jsonschema:"sprint ref, or backlog"`
+	Private     *bool                         `json:"private,omitempty" jsonschema:"true for only private issues, false for only the rest; private issues are listed to project members only"`
 }
 
 type mcpBatchIssuesInput struct {
@@ -117,6 +119,7 @@ type mcpUpdateIssueInput struct {
 	Priority      *model.IssuePriority    `json:"priority,omitempty"`
 	Worker        *model.IssueWorker      `json:"worker,omitempty" jsonschema:"agent or human: who is meant to complete the issue"`
 	ClearWorker   bool                    `json:"clear_worker,omitempty"`
+	Private       *bool                   `json:"private,omitempty" jsonschema:"true keeps the issue to the project's members and its reporter; false shows it to everyone who can read the project"`
 	AssigneeID    *string                 `json:"assignee_id,omitempty"`
 	ClearAssignee bool                    `json:"clear_assignee,omitempty"`
 	ReporterID    *string                 `json:"reporter_id,omitempty"`
@@ -133,6 +136,7 @@ type mcpCreateSubIssueInput struct {
 	Description string               `json:"description,omitempty"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
 	Worker      *model.IssueWorker   `json:"worker,omitempty" jsonschema:"agent or human: who is meant to complete the issue"`
+	Private     bool                 `json:"private,omitempty" jsonschema:"keep the sub-issue to the project's members and its reporter; always true under a private issue"`
 	AssigneeID  *string              `json:"assignee_id,omitempty"`
 	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
@@ -531,11 +535,11 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_get_project_progress", "Get what a project is working on now: top-level issues in progress, highest priority first, and issues completed within a window (Done or Closed, including won't-do and duplicates), most recently completed first, each with completed_at.", readOnly, s.mcpGetProjectProgress)
 	addMCPTool(srv, "track_list_project_changelog", "List project changelog entries.", readOnly, s.mcpListProjectChangelog)
 
-	addMCPTool(srv, "track_create_issue", "Create issue in project. In a help desk you are not a member of, only title and description are accepted and the issue comes back as its reporter sees it.", write, s.mcpCreateIssue)
-	addMCPTool(srv, "track_list_issues", "List project issues. Filter workers by agent for issues meant for an agent, or by human for issues waiting on a person. In a help desk you are not a member of, lists only the issues you reported, newest first, as their reporter sees them; filters are ignored.", readOnly, s.mcpListIssues)
+	addMCPTool(srv, "track_create_issue", "Create issue in project. Set private to keep it to the project's members and you, even on a public project, for example for a security report. In a help desk you are not a member of, only title, description and private are accepted and the issue comes back as its reporter sees it, as does a private issue you file into a public project you are not a member of.", write, s.mcpCreateIssue)
+	addMCPTool(srv, "track_list_issues", "List project issues. Filter workers by agent for issues meant for an agent, or by human for issues waiting on a person. Private issues are listed to project members only. In a help desk you are not a member of, lists only the issues you reported, newest first, as their reporter sees them; filters are ignored.", readOnly, s.mcpListIssues)
 	addMCPTool(srv, "track_list_deleted_issues", "List deleted project issues.", readOnly, s.mcpListDeletedIssues)
 	addMCPTool(srv, "track_batch_get_issues", "Get visible issues by refs.", readOnly, s.mcpBatchIssues)
-	addMCPTool(srv, "track_get_issue", "Get issue by ref. The help-desk reporter of an issue gets only its title, description, status (open, in_progress or closed) and times.", readOnly, s.mcpGetIssue)
+	addMCPTool(srv, "track_get_issue", "Get issue by ref. The reporter of an issue in a help desk, or of a private issue in a project they are not a member of, gets only its title, description, status (open, in_progress or closed) and times. A private issue is not_found to anyone else outside the project.", readOnly, s.mcpGetIssue)
 	addMCPTool(srv, "track_update_issue", "Update issue fields. worker says who is meant to complete the issue: agent or human. If you cannot finish an issue and a person has to step in, set worker to human and add a comment saying what they need to do.", write, s.mcpUpdateIssue)
 	addMCPTool(srv, "track_delete_issue", "Soft-delete issue.", write, s.mcpDeleteIssue)
 	addMCPTool(srv, "track_restore_issue", "Restore deleted issue.", write, s.mcpRestoreIssue)
@@ -1457,7 +1461,11 @@ func (s *Server) mcpListProjectAssignees(ctx context.Context, req *mcp.CallToolR
 	if err != nil {
 		return nil, err
 	}
-	assignees, err := s.store.ListProjectAssignees(ctx, project.ID)
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	assignees, err := s.store.ListProjectAssignees(ctx, project.ID, includePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -1473,7 +1481,11 @@ func (s *Server) mcpGetProjectStats(ctx context.Context, req *mcp.CallToolReques
 	if err != nil {
 		return nil, err
 	}
-	stats, err := s.store.GetProjectStats(ctx, store.ProjectStatsParams{ProjectID: project.ID})
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	stats, err := s.store.GetProjectStats(ctx, store.ProjectStatsParams{ProjectID: project.ID, IncludePrivate: includePrivate})
 	if err != nil {
 		return nil, err
 	}
@@ -1493,7 +1505,11 @@ func (s *Server) mcpGetProjectInsights(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, validationError(err.Error())
 	}
-	insights, err := s.projectInsights(ctx, project, query)
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	insights, err := s.projectInsights(ctx, project, query, includePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -1513,7 +1529,11 @@ func (s *Server) mcpGetProjectProgress(ctx context.Context, req *mcp.CallToolReq
 	if err != nil {
 		return nil, validationError(err.Error())
 	}
-	progress, err := s.projectProgress(ctx, project, window, time.Now())
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	progress, err := s.projectProgress(ctx, project, window, time.Now(), includePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -1615,6 +1635,7 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		Description: input.Description,
 		Priority:    priority,
 		Worker:      input.Worker,
+		Private:     input.Private,
 		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     input.DueDate,
@@ -1622,7 +1643,9 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
-	if reporter {
+	// Someone outside the project follows a private issue they filed as its
+	// reporter, as a help-desk reporter does.
+	if reporter || permissions.HidesIssue(issue) {
 		return mcpToolOutput{"issue": model.NewReporterIssue(issue)}, nil
 	}
 	return mcpToolOutput{"issue": issue}, nil
@@ -1669,6 +1692,7 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 		Description:   input.Description,
 		Priority:      priority,
 		Worker:        input.Worker,
+		Private:       input.Private,
 		AssigneeID:    assigneeID,
 		ReporterID:    reporterID,
 		DueDate:       input.DueDate,
@@ -1758,17 +1782,19 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 		return nil, validationError(err.Error())
 	}
 	params := store.ListIssuesParams{
-		ProjectID:   project.ID,
-		Statuses:    statuses,
-		Priorities:  priorities,
-		Workers:     workers,
-		UnsetWorker: unsetWorker,
-		AssigneeIDs: assigneeIDs,
-		TagNames:    tagNames,
-		Cursor:      cursor,
-		Limit:       limit,
-		Sort:        sortBy,
-		Direction:   direction,
+		ProjectID:      project.ID,
+		Statuses:       statuses,
+		Priorities:     priorities,
+		Workers:        workers,
+		UnsetWorker:    unsetWorker,
+		AssigneeIDs:    assigneeIDs,
+		TagNames:       tagNames,
+		Cursor:         cursor,
+		Limit:          limit,
+		Sort:           sortBy,
+		Direction:      direction,
+		IncludePrivate: permissions.CanReadMembersOnly,
+		Private:        input.Private,
 	}
 	switch {
 	case input.Sprint == "backlog":
@@ -1864,10 +1890,15 @@ func (s *Server) mcpListSubIssues(ctx context.Context, req *mcp.CallToolRequest,
 		}
 		cursor = &c
 	}
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, parent.ProjectID)
+	if err != nil {
+		return nil, err
+	}
 	issues, hasMore, err := s.store.ListSubIssuesForIssue(ctx, store.ListSubIssuesForIssueParams{
-		ParentIssueID: parent.ID,
-		Cursor:        cursor,
-		Limit:         limit,
+		ParentIssueID:  parent.ID,
+		Cursor:         cursor,
+		Limit:          limit,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return nil, err
@@ -1912,8 +1943,13 @@ func (s *Server) mcpBatchIssues(ctx context.Context, req *mcp.CallToolRequest, i
 		if err == nil {
 			var permissions store.ProjectPermissions
 			// A help-desk reporter's view of another reporter's issue is
-			// missing, so it is skipped like one.
+			// missing, so it is skipped like one, as is a private issue to
+			// anyone outside the project. Its own reporter reads it only as
+			// a reporter, so it is left out of a batch of full issues.
 			permissions, err = s.mcpIssueAccess(ctx, auth, issue)
+			if err == nil && permissions.PrivateIssueReporter {
+				continue
+			}
 			if err == nil && !permissions.CanRead {
 				return nil, errMCPForbidden
 			}
@@ -2013,6 +2049,7 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		Priority:      input.Priority,
 		Worker:        input.Worker,
 		ClearWorker:   input.ClearWorker,
+		Private:       input.Private,
 		AssigneeID:    assigneeID,
 		ClearAssignee: input.ClearAssignee,
 		ReporterID:    reporterID,
@@ -2392,11 +2429,16 @@ func (s *Server) mcpListSprintHistoryIssues(ctx context.Context, req *mcp.CallTo
 		}
 		cursor = &c
 	}
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
 	issues, hasMore, err := s.store.ListSprintSnapshotIssues(ctx, store.ListSprintSnapshotIssuesParams{
-		ProjectID: project.ID,
-		SprintID:  sprint.ID,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:      project.ID,
+		SprintID:       sprint.ID,
+		Cursor:         cursor,
+		Limit:          limit,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return nil, err
@@ -2801,7 +2843,11 @@ func (s *Server) mcpLink(ctx context.Context, auth authContext, input mcpLinkInp
 	if err != nil {
 		return model.Project{}, model.IssueLink{}, err
 	}
-	link, err := s.store.GetIssueLinkByProjectNumber(ctx, project.ID, number)
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return model.Project{}, model.IssueLink{}, err
+	}
+	link, err := s.store.GetIssueLinkByProjectNumber(ctx, project.ID, number, includePrivate)
 	if err != nil {
 		return model.Project{}, model.IssueLink{}, err
 	}
@@ -2862,7 +2908,11 @@ func (s *Server) mcpListIssueLinks(ctx context.Context, req *mcp.CallToolRequest
 		}
 		cursor = &c
 	}
-	links, hasMore, err := s.store.ListIssueLinksForIssue(ctx, store.ListIssueLinksForIssueParams{IssueID: issue.ID, Cursor: cursor, Limit: limit})
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, issue.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	links, hasMore, err := s.store.ListIssueLinksForIssue(ctx, store.ListIssueLinksForIssueParams{IssueID: issue.ID, Cursor: cursor, Limit: limit, IncludePrivate: includePrivate})
 	if err != nil {
 		return nil, err
 	}
@@ -3041,7 +3091,11 @@ func (s *Server) mcpListProjectContext(ctx context.Context, req *mcp.CallToolReq
 		}
 		cursor = &c
 	}
-	contexts, hasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{ProjectID: project.ID, Cursor: cursor, Limit: limit})
+	includePrivate, err := s.readsPrivateIssues(ctx, auth.User, project.ID)
+	if err != nil {
+		return nil, err
+	}
+	contexts, hasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{ProjectID: project.ID, Cursor: cursor, Limit: limit, IncludePrivate: includePrivate})
 	if err != nil {
 		return nil, err
 	}
@@ -3513,7 +3567,7 @@ func (s *Server) mcpListObjects(ctx context.Context, req *mcp.CallToolRequest, i
 		return nil, err
 	}
 	objects, hasMore, err := s.store.ListStorageObjects(ctx, store.ListStorageObjectsParams{
-		ProjectID: project.ID, Cursor: cursor, Limit: limit, HideDeletedIssueObjects: !permissions.CanReadMembersOnly,
+		ProjectID: project.ID, Cursor: cursor, Limit: limit, HideMembersOnlyIssueObjects: !permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return nil, err

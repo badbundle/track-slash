@@ -11,6 +11,7 @@
         <div class="mt-3 flex flex-wrap items-center gap-2">
           {{template "issue-key" .Issue.Identifier}}
           {{template "helpdesk-status" .Issue.Status}}
+          {{if .Private}}{{template "issue-private-badge"}}{{end}}
         </div>
         <h1 class="mt-2 break-words text-2xl font-semibold tracking-tight">{{.Issue.Title}}</h1>
         <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Opened {{template "local-time" (tokenTime .Issue.CreatedAt)}} · Updated {{template "local-time" (tokenTime .Issue.UpdatedAt)}}</p>
@@ -20,12 +21,19 @@
         <h1 class="mt-2 text-2xl font-semibold tracking-tight">New issue</h1>
         {{end}}
       </div>
-      <nav class="flex shrink-0 flex-wrap gap-2" aria-label="Help desk">
+      <nav class="flex shrink-0 flex-wrap gap-2" aria-label="{{if .PublicProject}}Project{{else}}Help desk{{end}}">
+        {{if .PublicProject}}
+        <a href="{{projectHome .Project}}" hx-get="{{projectHomePanel .Project}}" hx-target="#main" hx-push-url="{{projectHome .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="folder" class="h-4 w-4" aria-hidden="true"></i>Project</a>
+        {{if .CanCreateIssues}}
+        <a href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNewPanel .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New issue</a>
+        {{end}}
+        {{else}}
         {{if ne .View "issues"}}
         <a href="{{projectReportedIssues .Project}}" hx-get="{{projectReportedIssues .Project}}" hx-target="#main" hx-push-url="{{projectReportedIssues .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"><i data-lucide="list" class="h-4 w-4" aria-hidden="true"></i>Your issues</a>
         {{end}}
         {{if ne .View "new"}}
         <a href="{{projectIssueNew .Project}}" hx-get="{{projectIssueNew .Project}}" hx-target="#main" hx-push-url="{{projectIssueNew .Project}}" class="inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>New issue</a>
+        {{end}}
         {{end}}
       </nav>
     </div>
@@ -47,6 +55,7 @@
       <input id="helpdesk-title" name="title" value="{{.Title}}" autocomplete="off" autofocus required maxlength="200" class="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="What's going wrong?">
       <label class="mt-4 block text-xs font-medium text-slate-500 dark:text-slate-400" for="helpdesk-description">Description</label>
       <textarea id="helpdesk-description" name="description" rows="6" data-autogrow-textarea placeholder="What happened, what you expected, and how to reproduce it. Markdown is supported." class="mt-1 w-full resize-y rounded-md border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">{{.Description}}</textarea>
+      {{template "issue-private-field" (issuePrivateField "helpdesk-private" .Private true)}}
       <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
         <p class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><i data-lucide="lock" class="h-3.5 w-3.5 shrink-0" aria-hidden="true"></i>Only you and the project's members can see this issue.</p>
         <button type="submit" class="ml-auto inline-flex h-9 items-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"><i data-lucide="send-horizontal" class="h-4 w-4" aria-hidden="true"></i>Submit issue</button>

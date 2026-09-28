@@ -424,8 +424,9 @@ func (s *Server) uiBuildProjectContextManager(ctx context.Context, r *http.Reque
 		return nil, err
 	}
 	contexts, hasMore, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
-		ProjectID: projectID,
-		Limit:     MaxLimit,
+		ProjectID:      projectID,
+		Limit:          MaxLimit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return nil, err
@@ -465,9 +466,10 @@ func (s *Server) uiHydrateProjectContextManager(ctx context.Context, panel *uiCo
 	var issueCursor *store.IssuesCursor
 	for {
 		issues, hasMore, err := s.store.ListIssuesForContext(ctx, store.ListIssuesForContextParams{
-			ContextID: contextItem.ID,
-			Cursor:    issueCursor,
-			Limit:     MaxLimit,
+			ContextID:      contextItem.ID,
+			Cursor:         issueCursor,
+			Limit:          MaxLimit,
+			IncludePrivate: panel.permissions.CanReadMembersOnly,
 		})
 		if err != nil {
 			return err // defensive: context was validated above; remaining failures require a DB outage or concurrent delete
@@ -502,11 +504,11 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 	if err != nil {
 		return nil, err
 	}
-	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
-		return nil, err
-	}
 	issue, err := s.store.GetIssue(ctx, issueID)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := s.uiRequireIssueAccess(ctx, currentUser(r), issue); err != nil {
 		return nil, err
 	}
 	var parentIssue *model.Issue
@@ -536,8 +538,9 @@ func (s *Server) uiBuildIssueContextManager(ctx context.Context, r *http.Request
 		return nil, err
 	}
 	contextSummaries, _, err := s.store.ListProjectContexts(ctx, store.ListProjectContextsParams{
-		ProjectID: projectID,
-		Limit:     MaxLimit,
+		ProjectID:      projectID,
+		Limit:          MaxLimit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return nil, err

@@ -179,7 +179,7 @@ func (s *Server) uiIssueAttachmentFromRoute(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return model.Issue{}, model.IssueAttachment{}, false
 	}
-	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+	if _, err := s.uiRequireIssueAccess(r.Context(), currentUser(r), issue); err != nil {
 		writeUIStoreError(w, err)
 		return model.Issue{}, model.IssueAttachment{}, false
 	}

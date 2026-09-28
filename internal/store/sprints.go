@@ -293,11 +293,15 @@ type ListSprintSnapshotIssuesParams struct {
 	SprintID  uuid.UUID
 	Cursor    *IssuesCursor
 	Limit     int
+	// IncludePrivate lists private issues too; see ListIssuesParams.
+	IncludePrivate bool
 }
 
 type CountSprintSnapshotIssuesByStatusParams struct {
 	ProjectID uuid.UUID
 	SprintIDs []uuid.UUID
+	// IncludePrivate counts private issues too; see ListIssuesParams.
+	IncludePrivate bool
 }
 
 func (s *Store) CountSprintSnapshotIssuesByStatus(ctx context.Context, p CountSprintSnapshotIssuesByStatusParams) (map[uuid.UUID]model.ProjectIssueStatusCounts, error) {
@@ -318,8 +322,9 @@ func (s *Store) CountSprintSnapshotIssuesByStatus(ctx context.Context, p CountSp
 		JOIN projects p ON p.id = sis.project_id
 		WHERE sis.project_id = $1 AND sis.sprint_id = ANY($2)
 		  AND sp.deleted_at IS NULL AND p.deleted_at IS NULL
+		  AND ($3 OR NOT EXISTS (SELECT 1 FROM issues i WHERE i.id = sis.issue_id AND i.private))
 		GROUP BY sis.sprint_id
-	`, p.ProjectID, p.SprintIDs)
+	`, p.ProjectID, p.SprintIDs, p.IncludePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +349,7 @@ func (s *Store) CountSprintSnapshotIssuesByStatus(ctx context.Context, p CountSp
 func (s *Store) ListSprintSnapshotIssues(ctx context.Context, p ListSprintSnapshotIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID, p.SprintID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM sprint_issue_snapshots sis
 		JOIN issues i ON i.id = sis.issue_id AND i.project_id = sis.project_id
@@ -353,6 +358,9 @@ func (s *Store) ListSprintSnapshotIssues(ctx context.Context, p ListSprintSnapsh
 		WHERE sis.project_id = $1 AND sis.sprint_id = $2
 		  AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
+	if !p.IncludePrivate {
+		q += " AND NOT i.private"
+	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)
 		q += fmt.Sprintf(" AND i.number > $%d", len(args))

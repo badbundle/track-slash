@@ -108,8 +108,16 @@ func (s *Server) projectFromRoute(w http.ResponseWriter, r *http.Request) (model
 	return project, true
 }
 
+// issueFromRoute resolves the route's issue for handlers that serve only
+// people who can read it. A reporter who only follows the issue is refused
+// here, before a project-level check could let them through to a private
+// issue's details.
 func (s *Server) issueFromRoute(w http.ResponseWriter, r *http.Request) (model.Issue, bool) {
-	issue, _, ok := s.issueWithAccessFromRoute(w, r)
+	issue, permissions, ok := s.issueWithAccessFromRoute(w, r)
+	if ok && !permissions.CanRead {
+		writeForbidden(w)
+		return model.Issue{}, false
+	}
 	return issue, ok
 }
 

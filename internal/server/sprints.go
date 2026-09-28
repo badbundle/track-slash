@@ -223,7 +223,8 @@ func (s *Server) listSprintHistoryIssues(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	if sprint.Status != model.SprintStatusCompleted {
@@ -245,10 +246,11 @@ func (s *Server) listSprintHistoryIssues(w http.ResponseWriter, r *http.Request)
 		cursor = &c
 	}
 	issues, hasMore, err := s.store.ListSprintSnapshotIssues(r.Context(), store.ListSprintSnapshotIssuesParams{
-		ProjectID: project.ID,
-		SprintID:  sprint.ID,
-		Cursor:    cursor,
-		Limit:     limit,
+		ProjectID:      project.ID,
+		SprintID:       sprint.ID,
+		Cursor:         cursor,
+		Limit:          limit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)

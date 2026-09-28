@@ -2007,7 +2007,7 @@ func TestListProjectAssigneesIncludesMembersAndAssignedUsers(t *testing.T) {
 		t.Fatalf("CreateIssue assigned: %v", err)
 	}
 
-	got, err := env.store.ListProjectAssignees(env.ctx, env.projectID)
+	got, err := env.store.ListProjectAssignees(env.ctx, env.projectID, true)
 	if err != nil {
 		t.Fatalf("ListProjectAssignees: %v", err)
 	}
@@ -2018,7 +2018,7 @@ func TestListProjectAssigneesIncludesMembersAndAssignedUsers(t *testing.T) {
 		t.Fatalf("project assignees included unrelated user: %+v", got)
 	}
 
-	_, err = env.store.ListProjectAssignees(env.ctx, uuid.New())
+	_, err = env.store.ListProjectAssignees(env.ctx, uuid.New(), true)
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing project err = %v, want ErrNotFound", err)
 	}

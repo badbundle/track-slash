@@ -512,6 +512,108 @@ func TestListenerMarksMembersOnlyCommentEvents(t *testing.T) {
 	waitForCommentEvent(t, viewer, commentID, issueID, projectID, OpUpdate)
 }
 
+// TestListenerMarksPrivateIssueEvents verifies events about a private issue,
+// and about its comments, links and changelog entries, carry members_only so
+// the hub keeps them from subscribers without members-only access.
+func TestListenerMarksPrivateIssueEvents(t *testing.T) {
+	t.Parallel()
+	ctx, pool, dbURL := newRealtimeDB(t)
+
+	hub := NewHub()
+	runRealtimeListener(t, ctx, dbURL, hub)
+	time.Sleep(500 * time.Millisecond)
+
+	projectID := insertRealtimeProject(ctx, t, pool, "rt-private-issue")
+	var ownerID, publicID, privateID string
+	if err := pool.QueryRow(ctx, `SELECT owner_id::text FROM projects WHERE id = $1`, projectID).Scan(&ownerID); err != nil {
+		t.Fatalf("select owner: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title) VALUES ($1, 1, 'Public') RETURNING id::text
+	`, projectID).Scan(&publicID); err != nil {
+		t.Fatalf("insert public issue: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, number, title, private) VALUES ($1, 2, 'Private', true) RETURNING id::text
+	`, projectID).Scan(&privateID); err != nil {
+		t.Fatalf("insert private issue: %v", err)
+	}
+
+	member := newTestClient(32)
+	viewer := newTestClient(32)
+	hub.SubscribeWithAccess(member, "project:"+projectID, TopicAccess{MembersOnly: true})
+	hub.SubscribeWithAccess(viewer, "project:"+projectID, TopicAccess{})
+
+	if _, err := pool.Exec(ctx, `UPDATE issues SET title = 'Private, edited' WHERE id = $1`, privateID); err != nil {
+		t.Fatalf("update private issue: %v", err)
+	}
+	var commentID, linkID, changelogID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO comments (issue_id, number, author_id, body) VALUES ($1, 1, $2, 'shared, on a private issue')
+		RETURNING id::text
+	`, privateID, ownerID).Scan(&commentID); err != nil {
+		t.Fatalf("insert comment: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issue_links (project_id, number, source_id, target_id, link_type)
+		VALUES ($1, 1, $2, $3, 'relates_to')
+		RETURNING id::text
+	`, projectID, publicID, privateID).Scan(&linkID); err != nil {
+		t.Fatalf("insert link: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO project_changelog_entries (project_id, entity, op, entity_id, issue_id, summary, related_issue_ids)
+		VALUES ($1, 'issue_link', 'insert', $2, $3, 'Linked', ARRAY[$4::uuid])
+		RETURNING id::text
+	`, projectID, linkID, publicID, privateID).Scan(&changelogID); err != nil {
+		t.Fatalf("insert changelog entry: %v", err)
+	}
+
+	want := map[string]bool{privateID: false, commentID: false, linkID: false, changelogID: false}
+	deadline := time.After(3 * time.Second)
+	for remaining := len(want); remaining > 0; {
+		select {
+		case ev := <-member.send:
+			if seen, ok := want[ev.ID.String()]; ok && !seen {
+				if !ev.MembersOnly {
+					t.Fatalf("member event without members_only: %#v", ev)
+				}
+				want[ev.ID.String()] = true
+				remaining--
+			}
+		case <-deadline:
+			t.Fatalf("member did not receive every private-issue event: %v", want)
+		}
+	}
+	quiet := time.After(200 * time.Millisecond)
+	for waiting := true; waiting; {
+		select {
+		case ev := <-viewer.send:
+			if _, private := want[ev.ID.String()]; private || ev.MembersOnly {
+				t.Fatalf("viewer received a private-issue event: %#v", ev)
+			}
+		case <-quiet:
+			waiting = false
+		}
+	}
+
+	// Once the issue is no longer private, its events reach every subscriber.
+	if _, err := pool.Exec(ctx, `UPDATE issues SET private = false WHERE id = $1`, privateID); err != nil {
+		t.Fatalf("make issue public: %v", err)
+	}
+	deadline = time.After(3 * time.Second)
+	for {
+		select {
+		case ev := <-viewer.send:
+			if ev.ID.String() == privateID && !ev.MembersOnly {
+				return
+			}
+		case <-deadline:
+			t.Fatal("viewer did not receive the issue once it was public")
+		}
+	}
+}
+
 // TestListenerReceivesProjectContextEvents verifies context and issue-context
 // link triggers include enough ids for project, issue, and context fanout.
 func TestListenerReceivesProjectContextEvents(t *testing.T) {

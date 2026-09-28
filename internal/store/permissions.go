@@ -434,7 +434,10 @@ func (s *Store) ListProjectMembers(ctx context.Context, projectID uuid.UUID) ([]
 	return out, rows.Err()
 }
 
-func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) ([]model.ProjectAssignee, error) {
+// ListProjectAssignees lists the project's members and anyone assigned one of
+// its issues. includePrivate also counts assignments on private issues; see
+// ListIssuesParams.IncludePrivate.
+func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID, includePrivate bool) ([]model.ProjectAssignee, error) {
 	if _, err := s.GetProject(ctx, projectID); err != nil {
 		return nil, err
 	}
@@ -453,6 +456,7 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 			FROM issues i
 			JOIN users u ON u.id = i.assignee_id
 			WHERE i.project_id = $1 AND i.deleted_at IS NULL AND u.deleted_at IS NULL
+			  AND ($2 OR NOT i.private)
 			  AND NOT EXISTS (
 			      SELECT 1 FROM project_user_blocks b
 			      WHERE b.project_id = i.project_id AND b.user_id = u.id
@@ -462,7 +466,7 @@ func (s *Store) ListProjectAssignees(ctx context.Context, projectID uuid.UUID) (
 		FROM assignees
 		ORDER BY lower(name) ASC, lower(username) ASC, id ASC
 	`
-	rows, err := s.db.Query(ctx, q, projectID)
+	rows, err := s.db.Query(ctx, q, projectID, includePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +632,11 @@ type ProjectPermissions struct {
 	// issues and follow the ones they reported, and nothing else. CanRead
 	// stays false, so every project route keeps refusing them.
 	HelpDeskReporter bool
-	CanManageMembers bool
+	// PrivateIssueReporter is set only by ForIssue: the signed-in non-member
+	// who reported a private issue on a project they can otherwise read. They
+	// follow it the way a help-desk reporter follows theirs.
+	PrivateIssueReporter bool
+	CanManageMembers     bool
 	// CanDelete covers deleting the project itself, which is a stronger
 	// authority than editing its contents: write members may delete issues,
 	// sprints, and context, but only the owner or a site admin may remove the
@@ -687,10 +695,36 @@ func (s *Store) ProjectPermissionsForUser(ctx context.Context, user model.User, 
 	return permissions, nil
 }
 
-// CanFollowIssue reports whether a help-desk reporter may see the issue: only
-// one they reported.
+// CanFollowIssue reports whether a reporter who can't read the issue in full
+// may follow it: a help-desk reporter, or the non-member reporter of a private
+// issue, and only an issue they reported.
 func (p ProjectPermissions) CanFollowIssue(user model.User, issue model.Issue) bool {
-	return p.HelpDeskReporter && issue.ReporterID != nil && *issue.ReporterID == user.ID
+	return (p.HelpDeskReporter || p.PrivateIssueReporter) && issue.ReporterID != nil && *issue.ReporterID == user.ID
+}
+
+// CanReadIssue reports whether the permissions read the issue in full: a
+// private issue only to the project's members, a site admin or its owner.
+func (p ProjectPermissions) CanReadIssue(issue model.Issue) bool {
+	return p.CanRead && (!issue.Private || p.CanReadMembersOnly)
+}
+
+// HidesIssue reports whether someone who can read the project must be told
+// that the issue doesn't exist: it is private and they aren't a member.
+func (p ProjectPermissions) HidesIssue(issue model.Issue) bool {
+	return p.CanRead && !p.CanReadIssue(issue)
+}
+
+// ForIssue narrows project permissions to one issue. Anyone who can read the
+// project reads and writes an ordinary issue as before. A private issue is
+// the members' alone: everyone else loses read and write, and its signed-in
+// reporter becomes a PrivateIssueReporter who follows it.
+func (p ProjectPermissions) ForIssue(user model.User, issue model.Issue) ProjectPermissions {
+	if !p.HidesIssue(issue) {
+		return p
+	}
+	narrowed := ProjectPermissions{Role: p.Role, AccessMode: p.AccessMode}
+	narrowed.PrivateIssueReporter = user.ID != uuid.Nil && issue.ReporterID != nil && *issue.ReporterID == user.ID
+	return narrowed
 }
 
 func (s *Store) UserCanAccessProject(ctx context.Context, user model.User, projectID uuid.UUID) (bool, error) {

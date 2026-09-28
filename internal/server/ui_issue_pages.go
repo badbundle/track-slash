@@ -4,6 +4,7 @@ import (
 	"github.com/bradleymackey/track-slash/internal/model"
 	"github.com/bradleymackey/track-slash/internal/store"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -438,6 +439,35 @@ func (s *Server) uiUpdateIssueWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, params)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+// uiUpdateIssuePrivate marks the issue private or public. Only writers reach
+// it (uiIssueWriteHandler).
+func (s *Server) uiUpdateIssuePrivate(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	private, err := strconv.ParseBool(r.Form.Get("private"))
+	if err != nil {
+		http.Error(w, "private must be true or false", http.StatusBadRequest)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, store.UpdateIssueParams{Private: &private})
 	if err != nil {
 		writeUIStoreError(w, err)
 		return

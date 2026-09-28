@@ -12,6 +12,8 @@ import (
 type ProjectStatsParams struct {
 	ProjectID uuid.UUID
 	Now       time.Time
+	// IncludePrivate counts private issues too; see ListIssuesParams.
+	IncludePrivate bool
 }
 
 func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (model.ProjectStats, error) {
@@ -39,9 +41,9 @@ func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (mode
 			(COUNT(*) FILTER (WHERE i.created_at >= $2 AND i.status = 'done'))::INT,
 			(COUNT(*) FILTER (WHERE i.created_at >= $2 AND i.status = 'closed'))::INT
 		FROM issues i
-		WHERE i.project_id = $1 AND i.deleted_at IS NULL
+		WHERE i.project_id = $1 AND i.deleted_at IS NULL AND ($3 OR NOT i.private)
 	`
-	err := s.db.QueryRow(ctx, countsQ, p.ProjectID, cutoff).Scan(
+	err := s.db.QueryRow(ctx, countsQ, p.ProjectID, cutoff, p.IncludePrivate).Scan(
 		&stats.AllTime.Total,
 		&stats.AllTime.Todo,
 		&stats.AllTime.InProgress,
@@ -73,11 +75,12 @@ func (s *Store) GetProjectStats(ctx context.Context, p ProjectStatsParams) (mode
 		WHERE i.project_id = $1
 		  AND i.deleted_at IS NULL
 		  AND u.deleted_at IS NULL
+		  AND ($2 OR NOT i.private)
 		GROUP BY u.id, u.username, u.name, u.profile_image_thumbnail_object_id
 		ORDER BY COUNT(*) DESC, lower(u.name) ASC, lower(u.username) ASC, u.id ASC
 		LIMIT 5
 	`
-	rows, err := s.db.Query(ctx, topAssigneesQ, p.ProjectID)
+	rows, err := s.db.Query(ctx, topAssigneesQ, p.ProjectID, p.IncludePrivate)
 	if err != nil {
 		return model.ProjectStats{}, err
 	}

@@ -53,8 +53,9 @@ func projectInsightsSprintsEnabled(project model.Project) bool {
 }
 
 // projectInsights loads every insight series for a project the caller has
-// already been authorised to read.
-func (s *Server) projectInsights(ctx context.Context, project model.Project, query projectInsightsQuery) (model.ProjectInsights, error) {
+// already been authorised to read. includePrivate counts private issues, for a
+// reader who may see them (readsPrivateIssues).
+func (s *Server) projectInsights(ctx context.Context, project model.Project, query projectInsightsQuery, includePrivate bool) (model.ProjectInsights, error) {
 	var sprintID *uuid.UUID
 	if query.SprintNumber > 0 {
 		sprint, err := s.store.GetSprintByProjectNumber(ctx, project.ID, query.SprintNumber)
@@ -64,9 +65,10 @@ func (s *Server) projectInsights(ctx context.Context, project model.Project, que
 		sprintID = &sprint.ID
 	}
 	insights, err := s.store.GetProjectInsights(ctx, store.ProjectInsightsParams{
-		ProjectID: project.ID,
-		Range:     query.Range,
-		SprintID:  sprintID,
+		ProjectID:      project.ID,
+		Range:          query.Range,
+		SprintID:       sprintID,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return model.ProjectInsights{}, err
@@ -80,7 +82,8 @@ func (s *Server) getProjectInsights(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	query, err := parseProjectInsightsValues(r.URL.Query())
@@ -88,7 +91,7 @@ func (s *Server) getProjectInsights(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	insights, err := s.projectInsights(r.Context(), project, query)
+	insights, err := s.projectInsights(r.Context(), project, query, permissions.CanReadMembersOnly)
 	if err != nil {
 		writeStoreError(w, err)
 		return

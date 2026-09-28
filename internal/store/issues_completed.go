@@ -14,6 +14,8 @@ type ListRecentlyCompletedIssuesParams struct {
 	// Since is the earliest completion time to include.
 	Since time.Time
 	Limit int
+	// IncludePrivate lists private issues too; see ListIssuesParams.
+	IncludePrivate bool
 }
 
 // ListRecentlyCompletedIssues returns a project's top-level issues that count
@@ -29,7 +31,7 @@ type ListRecentlyCompletedIssuesParams struct {
 // store) falls back to its creation time.
 func (s *Store) ListRecentlyCompletedIssues(ctx context.Context, p ListRecentlyCompletedIssuesParams) ([]model.CompletedIssue, bool, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at,
 		       done.completed_at
 		FROM issues i
@@ -54,10 +56,11 @@ func (s *Store) ListRecentlyCompletedIssues(ctx context.Context, p ListRecentlyC
 		  AND i.status IN ('done', 'closed')
 		  AND i.updated_at >= $2
 		  AND done.completed_at >= $2
+		  AND ($4 OR NOT i.private)
 		ORDER BY done.completed_at DESC, i.number DESC
 		LIMIT $3
 	`
-	rows, err := s.db.Query(ctx, q, p.ProjectID, p.Since, p.Limit+1)
+	rows, err := s.db.Query(ctx, q, p.ProjectID, p.Since, p.Limit+1, p.IncludePrivate)
 	if err != nil {
 		return nil, false, err
 	}
