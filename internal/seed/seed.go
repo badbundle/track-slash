@@ -149,9 +149,9 @@ func ensureProject(ctx context.Context, st *store.Store, userID uuid.UUID, def p
 	var cursor *store.ProjectsCursor
 	for {
 		projects, hasMore, err := st.ListProjects(ctx, store.ListProjectsParams{
-			Cursor:        cursor,
-			Limit:         100,
-			VisibleToUser: &userID,
+			Cursor:     cursor,
+			Limit:      100,
+			MemberUser: &userID,
 		})
 		if err != nil {
 			return model.Project{}, false, err

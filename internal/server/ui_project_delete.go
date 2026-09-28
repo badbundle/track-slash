@@ -82,15 +82,8 @@ func (s *Server) renderUIProjectDeleteModal(w http.ResponseWriter, r *http.Reque
 		renderUITemplate(w, http.StatusOK, "project-panel", panel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		// Defensive: the sidebar project list only fails on a DB outage.
-		writeUIInternalError(w, "ui project delete visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
 		ProjectPanel:  panel,
 	})

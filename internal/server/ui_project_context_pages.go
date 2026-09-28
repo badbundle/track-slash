@@ -356,13 +356,8 @@ func (s *Server) renderUIProjectContextManager(w http.ResponseWriter, r *http.Re
 		renderUITemplate(w, http.StatusOK, "project-panel", projectPanel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui context visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
-		User: currentUser(r), Projects: projects,
+		User:          currentUser(r),
 		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID}, ProjectPanel: projectPanel,
 	})
 }
@@ -409,14 +404,8 @@ func (s *Server) renderUIContextManager(w http.ResponseWriter, r *http.Request, 
 		renderUITemplate(w, http.StatusOK, "context-manager-panel", panel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui context manager visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:           currentUser(r),
-		Projects:       projects,
 		SidebarActive:  uiSidebarState{View: "project", ProjectID: panel.Project.ID},
 		ContextManager: panel,
 	})

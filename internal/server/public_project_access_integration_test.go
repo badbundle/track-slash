@@ -45,8 +45,9 @@ func TestHTTPPublicProjectAccessIssueCreationAndBlocks(t *testing.T) {
 	if code != http.StatusOK || decode[projectResponseDecoded](t, body).ID != e.projectID {
 		t.Fatalf("public anonymous get code = %d body = %s", code, body)
 	}
+	// Public projects are link-only, so opening one works but no list names it.
 	code, body = e.doUnauth(t, http.MethodGet, "/projects", nil)
-	if code != http.StatusOK || !projectResponseInPage(decodePage[projectResponseDecoded](t, body).Items, e.projectID.String()) {
+	if code != http.StatusOK || projectResponseInPage(decodePage[projectResponseDecoded](t, body).Items, e.projectID.String()) {
 		t.Fatalf("public anonymous list code = %d body = %s", code, body)
 	}
 	code, body = e.doUnauth(t, http.MethodPatch, accessPath, map[string]any{"is_public": false})

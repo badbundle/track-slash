@@ -11,9 +11,9 @@ import (
 )
 
 func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
+	projects, err := s.uiMemberProjects(r.Context(), currentUser(r))
 	if err != nil {
-		writeUIInternalError(w, "ui home visible projects", err)
+		writeUIInternalError(w, "ui home member projects", err)
 		return
 	}
 	if len(projects) == 0 {
@@ -29,14 +29,8 @@ func (s *Server) uiWorkPage(w http.ResponseWriter, r *http.Request, view string)
 		writeUIStoreError(w, err)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui work visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "me"},
 		WorkPanel:     panel,
 	})
@@ -120,14 +114,8 @@ func (s *Server) uiNewIssuePage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui new issue visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		NewIssuePanel: panel,
 	})
 }
@@ -177,14 +165,8 @@ func (s *Server) uiNewProjectIssuePage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui new project issue visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
 		NewIssuePanel: panel,
 	})
@@ -407,18 +389,12 @@ func (s *Server) renderUINewIssueWithError(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if !isHTMXRequest(r) {
-		projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-		if err != nil {
-			writeUIInternalError(w, "ui new issue error visible projects", err)
-			return
-		}
 		active := uiSidebarState{}
 		if panel.ProjectScoped {
 			active = uiSidebarState{View: "project", ProjectID: panel.Project.ID}
 		}
 		s.renderUIShell(w, r, http.StatusOK, uiShellData{
 			User:          currentUser(r),
-			Projects:      projects,
 			SidebarActive: active,
 			NewIssuePanel: panel,
 		})
@@ -435,7 +411,6 @@ func (s *Server) renderUIProjects(w http.ResponseWriter, r *http.Request, status
 	}
 	s.renderUIShell(w, r, status, uiShellData{
 		User:          currentUser(r),
-		Projects:      panel.Projects,
 		SidebarActive: uiSidebarState{View: "projects"},
 		ProjectsPanel: panel,
 	})
@@ -447,29 +422,16 @@ func (s *Server) renderUIOwnerProjects(w http.ResponseWriter, r *http.Request, s
 		writeUIStoreError(w, err)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		// Defensive: the owner panel already completed the same project query; this requires a subsequent DB outage.
-		writeUIInternalError(w, "ui owner projects visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, status, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "projects"},
 		ProjectsPanel: panel,
 	})
 }
 
 func (s *Server) renderUINewProject(w http.ResponseWriter, r *http.Request, status int, message, key, name, description string) {
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui new project visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, status, uiShellData{
-		User:     currentUser(r),
-		Projects: projects,
+		User: currentUser(r),
 		NewProjectPanel: &uiNewProjectPanelData{
 			CSRFToken:   uiSessionCSRFToken(r),
 			Error:       message,

@@ -21,14 +21,8 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 			writeUIStoreError(w, err)
 			return
 		}
-		projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-		if err != nil {
-			writeUIInternalError(w, "ui deleted issue visible projects", err)
-			return
-		}
 		s.renderUIShell(w, r, http.StatusOK, uiShellData{
 			User:              currentUser(r),
-			Projects:          projects,
 			SidebarActive:     uiSidebarState{View: "project", ProjectID: panel.Project.ID},
 			DeletedIssuePanel: panel,
 		})
@@ -45,14 +39,8 @@ func (s *Server) uiIssuePage(w http.ResponseWriter, r *http.Request) {
 		writeUIStoreError(w, err)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui issue visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID, IssueID: panel.Issue.ID},
 		IssuePanel:    panel,
 	})

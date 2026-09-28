@@ -763,8 +763,8 @@ func TestProjectMembershipAndVisibleProjects(t *testing.T) {
 	}
 
 	projects, _, err := env.store.ListProjects(env.ctx, store.ListProjectsParams{
-		Limit:         100,
-		VisibleToUser: &u.ID,
+		Limit:      100,
+		MemberUser: &u.ID,
 	})
 	if err != nil {
 		t.Fatalf("ListProjects: %v", err)
@@ -929,8 +929,8 @@ func TestCreateProjectForUserGrantsAccess(t *testing.T) {
 		t.Fatalf("members = %+v", members)
 	}
 	projects, _, err := env.store.ListProjects(env.ctx, store.ListProjectsParams{
-		Limit:         100,
-		VisibleToUser: &u.ID,
+		Limit:      100,
+		MemberUser: &u.ID,
 	})
 	if err != nil {
 		t.Fatalf("ListProjects: %v", err)

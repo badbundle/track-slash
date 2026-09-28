@@ -245,14 +245,8 @@ func (s *Server) renderUIIssuePanelResponse(w http.ResponseWriter, r *http.Reque
 		renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui issue panel visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID},
 		IssuePanel:    panel,
 	})
@@ -263,14 +257,8 @@ func (s *Server) renderUITagManager(w http.ResponseWriter, r *http.Request, pane
 		renderUITemplate(w, http.StatusOK, "tag-manager-panel", panel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui tag manager visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: panel.Project.ID},
 		TagManager:    panel,
 	})

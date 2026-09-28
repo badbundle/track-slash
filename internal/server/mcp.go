@@ -511,7 +511,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_update_my_settings", "Update current user profile or password.", write, s.mcpUpdateMySettings)
 
 	addMCPTool(srv, "track_create_project", "Create a project owned by current user.", write, s.mcpCreateProject)
-	addMCPTool(srv, "track_list_projects", "List projects visible to current user.", readOnly, s.mcpListProjects)
+	addMCPTool(srv, "track_list_projects", "List projects you own or are a member of. Public projects you are not in are not listed; get them by owner and key.", readOnly, s.mcpListProjects)
 	addMCPTool(srv, "track_get_project", "Get project by owner and key, including whether sprints are enabled.", readOnly, s.mcpGetProject)
 	addMCPTool(srv, "track_delete_project", "Soft-delete a project. Project owner or admin only.", write, s.mcpDeleteProject)
 	addMCPTool(srv, "track_list_project_members", "List project members and roles.", readOnly, s.mcpListProjectMembers)
@@ -1136,9 +1136,9 @@ func (s *Server) mcpListProjects(ctx context.Context, req *mcp.CallToolRequest, 
 		cursor = &c
 	}
 	projects, hasMore, err := s.store.ListProjects(ctx, store.ListProjectsParams{
-		Cursor:        cursor,
-		Limit:         limit,
-		VisibleToUser: visibleProjectUser(auth.User),
+		Cursor:     cursor,
+		Limit:      limit,
+		MemberUser: &auth.User.ID,
 	})
 	if err != nil {
 		return nil, err
