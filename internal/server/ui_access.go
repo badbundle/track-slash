@@ -12,56 +12,23 @@ import (
 	"strings"
 )
 
-func (s *Server) uiVisibleProjects(ctx context.Context, user model.User) ([]model.Project, error) {
-	var all []model.Project
-	var cursor *store.ProjectsCursor
-	for {
-		projects, hasMore, err := s.store.ListProjects(ctx, store.ListProjectsParams{
-			Cursor:        cursor,
-			Limit:         MaxLimit,
-			VisibleToUser: visibleProjectUser(user),
-		})
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, projects...)
-		if !hasMore {
-			return all, nil
-		}
-		last := projects[len(projects)-1]
-		cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
-	}
+// uiMemberProjects lists the projects the user owns or is a member of. Public
+// projects are link-only, so this, not access, decides what lists advertise.
+func (s *Server) uiMemberProjects(ctx context.Context, user model.User) ([]model.Project, error) {
+	return s.uiListAllProjects(ctx, store.ListProjectsParams{MemberUser: &user.ID})
 }
 
-func (s *Server) uiWritableProjects(ctx context.Context, user model.User) ([]model.Project, error) {
-	var all []model.Project
-	var cursor *store.ProjectsCursor
-	for {
-		params := store.ListProjectsParams{Cursor: cursor, Limit: MaxLimit}
-		if !user.IsAdmin {
-			params.WritableToUser = &user.ID
-		}
-		projects, hasMore, err := s.store.ListProjects(ctx, params)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, projects...)
-		if !hasMore {
-			return all, nil
-		}
-		last := projects[len(projects)-1]
-		cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
-	}
-}
-
+// uiIssueCreatableProjects lists the projects a new-issue picker offers: the
+// ones the user owns or can write to. Someone filing into a link-only public
+// project starts from that project's own page instead.
 func (s *Server) uiIssueCreatableProjects(ctx context.Context, user model.User) ([]model.Project, error) {
+	return s.uiListAllProjects(ctx, store.ListProjectsParams{WritableToUser: &user.ID})
+}
+
+func (s *Server) uiListAllProjects(ctx context.Context, params store.ListProjectsParams) ([]model.Project, error) {
 	var all []model.Project
-	var cursor *store.ProjectsCursor
+	params.Limit = MaxLimit
 	for {
-		params := store.ListProjectsParams{Cursor: cursor, Limit: MaxLimit}
-		if !user.IsAdmin {
-			params.IssueCreatableToUser = &user.ID
-		}
 		projects, hasMore, err := s.store.ListProjects(ctx, params)
 		if err != nil {
 			return nil, err
@@ -71,7 +38,7 @@ func (s *Server) uiIssueCreatableProjects(ctx context.Context, user model.User) 
 			return all, nil
 		}
 		last := projects[len(projects)-1]
-		cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+		params.Cursor = &store.ProjectsCursor{CreatedAt: last.CreatedAt, ID: last.ID}
 	}
 }
 

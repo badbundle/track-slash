@@ -77,10 +77,11 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request) {
 		cursor = &c
 	}
 
+	user := currentUser(r)
 	projects, hasMore, err := s.store.ListProjects(r.Context(), store.ListProjectsParams{
-		Cursor:        cursor,
-		Limit:         limit,
-		VisibleToUser: visibleProjectUser(currentUser(r)),
+		Cursor:     cursor,
+		Limit:      limit,
+		MemberUser: &user.ID,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -234,13 +235,6 @@ func (s *Server) unfavoriteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, projectResponse{Project: project})
-}
-
-func visibleProjectUser(u model.User) *uuid.UUID {
-	if u.IsAdmin {
-		return nil
-	}
-	return &u.ID
 }
 
 func (s *Server) projectResponse(ctx context.Context, user model.User, project model.Project) (projectResponse, error) {

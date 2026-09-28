@@ -27,7 +27,6 @@ type uiShellData struct {
 	Authenticated     bool
 	Anonymous         bool
 	User              model.User
-	Projects          []model.Project
 	SidebarFavorites  uiSidebarFavoritesData
 	SidebarRecents    uiSidebarRecentsData
 	SidebarActive     uiSidebarState

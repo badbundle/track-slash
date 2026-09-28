@@ -23,6 +23,12 @@ source of a user's rights in a project.
   paths open (see `helpdesk.go`). Every route that names an issue goes through
   `issueRouteAccess`, which answers another reporter's issue exactly as it would
   a missing one.
+- **Public projects are link-only.** Anyone with the link can read one, but
+  lists name a project only to its owner and members: the Projects page and an
+  owner's projects page, the `/` redirect, Me, the new-issue project picker,
+  `GET /api/v1/projects` and `track_list_projects`. Site admins get the same
+  lists; their wider access works by link. Recents and Favorites record the
+  user's own history, so a public project opened by link can appear there.
 - **Members-only data stays with members.** That covers members-only comments,
   block history, deleted issues and the files only they hold, the changelog
   about them, and deleted comments' previews. Members-only comments never reach

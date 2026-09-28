@@ -341,12 +341,18 @@ type ProjectsCursor struct {
 	ID        uuid.UUID `json:"i"`
 }
 
+// ListProjectsParams filters ListProjects. Public projects are link-only: a
+// user can open one by its URL, but lists name only the projects the user
+// owns or is a member of, admins included.
 type ListProjectsParams struct {
-	Cursor               *ProjectsCursor
-	Limit                int
-	VisibleToUser        *uuid.UUID
-	WritableToUser       *uuid.UUID
-	IssueCreatableToUser *uuid.UUID
+	Cursor *ProjectsCursor
+	Limit  int
+	// MemberUser lists the projects the user owns or is a member of, in any
+	// role.
+	MemberUser *uuid.UUID
+	// WritableToUser lists the projects the user owns or is a writing member
+	// of: the ones a project picker offers to file issues into.
+	WritableToUser *uuid.UUID
 }
 
 func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model.Project, bool, error) {
@@ -359,11 +365,10 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 		JOIN users u ON u.id = projects.owner_id
 		WHERE projects.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
-	if p.VisibleToUser != nil {
-		args = append(args, *p.VisibleToUser)
+	if p.MemberUser != nil {
+		args = append(args, *p.MemberUser)
 		q += fmt.Sprintf(` AND (
-			projects.access_mode IN ('public', 'public_issues')
-			OR projects.owner_id = $%d
+			projects.owner_id = $%d
 			OR EXISTS (
 				SELECT 1 FROM project_members pm
 				WHERE pm.project_id = projects.id AND pm.user_id = $%d
@@ -387,28 +392,6 @@ func (s *Store) ListProjects(ctx context.Context, p ListProjectsParams) ([]model
 			SELECT 1 FROM project_user_blocks b
 			WHERE b.project_id = projects.id AND b.user_id = $%d
 		)`, len(args), len(args), len(args))
-	}
-	if p.IssueCreatableToUser != nil {
-		args = append(args, *p.IssueCreatableToUser)
-		q += fmt.Sprintf(` AND (
-			projects.owner_id = $%d
-			OR EXISTS (
-				SELECT 1 FROM project_members pm
-				WHERE pm.project_id = projects.id
-				  AND pm.user_id = $%d
-				  AND pm.role = 'member'
-			)
-			OR (
-				projects.access_mode = 'public_issues'
-				AND NOT EXISTS (
-					SELECT 1 FROM project_members pm
-					WHERE pm.project_id = projects.id AND pm.user_id = $%d
-				)
-			)
-		) AND NOT EXISTS (
-			SELECT 1 FROM project_user_blocks b
-			WHERE b.project_id = projects.id AND b.user_id = $%d
-		)`, len(args), len(args), len(args), len(args))
 	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)

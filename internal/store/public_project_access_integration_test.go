@@ -90,23 +90,26 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 		t.Fatalf("restore public issue creation: %v", err)
 	}
 
-	for name, params := range map[string]store.ListProjectsParams{
-		"anonymous visibility":    {VisibleToUser: uuidPtr(uuid.Nil), Limit: 100},
-		"outsider visibility":     {VisibleToUser: &outsider.ID, Limit: 100},
-		"outsider issue creation": {IssueCreatableToUser: &outsider.ID, Limit: 100},
-		"readonly issue creation": {IssueCreatableToUser: &readonly.ID, Limit: 100},
+	// Public projects are link-only: outsiders can open and file into one, but
+	// lists name it only to its owner and members.
+	for name, tc := range map[string]struct {
+		params store.ListProjectsParams
+		want   bool
+	}{
+		"anonymous member list": {params: store.ListProjectsParams{MemberUser: uuidPtr(uuid.Nil), Limit: 100}},
+		"outsider member list":  {params: store.ListProjectsParams{MemberUser: &outsider.ID, Limit: 100}},
+		"outsider writable":     {params: store.ListProjectsParams{WritableToUser: &outsider.ID, Limit: 100}},
+		"readonly member list":  {params: store.ListProjectsParams{MemberUser: &readonly.ID, Limit: 100}, want: true},
+		"readonly writable":     {params: store.ListProjectsParams{WritableToUser: &readonly.ID, Limit: 100}},
+		"owner member list":     {params: store.ListProjectsParams{MemberUser: &owner.ID, Limit: 100}, want: true},
+		"owner writable":        {params: store.ListProjectsParams{WritableToUser: &owner.ID, Limit: 100}, want: true},
 	} {
-		projects, _, err := env.store.ListProjects(env.ctx, params)
+		projects, _, err := env.store.ListProjects(env.ctx, tc.params)
 		if err != nil {
 			t.Fatalf("ListProjects %s: %v", name, err)
 		}
-		seen := projectInList(projects, project.ID)
-		if name == "readonly issue creation" {
-			if seen {
-				t.Fatalf("%s unexpectedly included project", name)
-			}
-		} else if !seen {
-			t.Fatalf("%s did not include public project: %+v", name, projects)
+		if seen := projectInList(projects, project.ID); seen != tc.want {
+			t.Fatalf("ListProjects %s included public project = %v, want %v: %+v", name, seen, tc.want, projects)
 		}
 	}
 
@@ -126,6 +129,14 @@ func TestPublicProjectAccessAndUserBlocks(t *testing.T) {
 	}
 	if canCreate, err := env.store.UserCanCreateProjectIssue(env.ctx, outsider, project.ID); err != nil || canCreate {
 		t.Fatalf("UserCanCreateProjectIssue blocked = %v, %v", canCreate, err)
+	}
+	for name, params := range map[string]store.ListProjectsParams{
+		"member list": {MemberUser: &outsider.ID, Limit: 100},
+		"writable":    {WritableToUser: &outsider.ID, Limit: 100},
+	} {
+		if projects, _, err := env.store.ListProjects(env.ctx, params); err != nil || projectInList(projects, project.ID) {
+			t.Fatalf("blocked member %s includes project: %+v, %v", name, projects, err)
+		}
 	}
 	blocks, err := env.store.ListProjectUserBlocks(env.ctx, project.ID)
 	if err != nil || len(blocks) != 1 || blocks[0].ID != block.ID {

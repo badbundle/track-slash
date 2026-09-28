@@ -173,14 +173,8 @@ func (s *Server) renderUIProjectWhiteboard(w http.ResponseWriter, r *http.Reques
 		renderUITemplate(w, http.StatusOK, "project-panel", panel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui whiteboard visible projects", err) // defensive: the panel build above already reached the DB
-		return
-	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
 		ProjectPanel:  panel,
 	})

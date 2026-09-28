@@ -56,11 +56,6 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 		uiRedirectPreservingQuery(w, r, uiProjectViewPath(project, resolved))
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui project visible projects", err)
-		return
-	}
 	panel, err := s.uiBuildProjectPanel(r.Context(), r, project.ID, view)
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -68,7 +63,6 @@ func (s *Server) uiProjectWorkPage(w http.ResponseWriter, r *http.Request, view 
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
 		ProjectPanel:  panel,
 	})
@@ -187,11 +181,6 @@ func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui deleted issues visible projects", err)
-		return
-	}
 	panel, err := s.uiBuildDeletedIssuesPanel(r.Context(), r, project.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -199,7 +188,6 @@ func (s *Server) uiProjectDeletedPage(w http.ResponseWriter, r *http.Request) {
 	}
 	s.renderUIShell(w, r, http.StatusOK, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		SidebarActive: uiSidebarState{View: "project", ProjectID: project.ID},
 		DeletedPanel:  panel,
 	})
@@ -219,7 +207,9 @@ func (s *Server) uiProjectDeletedPanel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uiBuildWorkPanel(ctx context.Context, r *http.Request, user model.User, view string) (*uiWorkPanelData, error) {
-	projects, err := s.uiVisibleProjects(ctx, user)
+	// Assignees are always members, so the user's own projects hold all their
+	// assigned issues.
+	projects, err := s.uiMemberProjects(ctx, user)
 	if err != nil {
 		return nil, err
 	}
@@ -237,11 +227,11 @@ func (s *Server) uiBuildWorkPanel(ctx context.Context, r *http.Request, user mod
 	}
 	switch view {
 	case "active":
-		panel.Subtitle = "Active sprint issues assigned to you across accessible projects."
+		panel.Subtitle = "Active sprint issues assigned to you across your projects."
 		panel.IssueListLabel = "Active sprint issues"
 		panel.Issues, panel.HasMore, err = s.uiAssignedActiveSprintIssues(ctx, projects, user.ID, query)
 	case "all":
-		panel.Subtitle = "Issues assigned to you across accessible projects."
+		panel.Subtitle = "Issues assigned to you across your projects."
 		panel.IssueListLabel = "All assigned issues"
 		panel.Issues, panel.HasMore, err = s.uiAssignedIssues(ctx, projects, user.ID, query)
 	default:
@@ -259,9 +249,9 @@ func (s *Server) uiBuildProjectsPanel(ctx context.Context, user model.User) (*ui
 	var cursor *store.ProjectsCursor
 	for {
 		projects, more, err := s.store.ListProjects(ctx, store.ListProjectsParams{
-			Cursor:        cursor,
-			Limit:         MaxLimit,
-			VisibleToUser: visibleProjectUser(user),
+			Cursor:     cursor,
+			Limit:      MaxLimit,
+			MemberUser: &user.ID,
 		})
 		if err != nil {
 			return nil, err

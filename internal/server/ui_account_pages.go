@@ -177,13 +177,7 @@ func (s *Server) renderUINotifications(w http.ResponseWriter, r *http.Request) {
 // renderUIAccountPage puts one account page in the shell and marks its entry in
 // the sidebar's account group as the current page.
 func (s *Server) renderUIAccountPage(w http.ResponseWriter, r *http.Request, user model.User, view string, shell uiShellData) {
-	projects, err := s.uiVisibleProjects(r.Context(), user)
-	if err != nil {
-		writeUIInternalError(w, "ui "+view+" visible projects", err)
-		return
-	}
 	shell.User = user
-	shell.Projects = projects
 	shell.SidebarActive = uiSidebarState{View: view}
 	s.renderUIShell(w, r, http.StatusOK, shell)
 }

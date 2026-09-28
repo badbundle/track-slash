@@ -96,8 +96,8 @@ func TestHelpDeskPermissionsAndReportedIssues(t *testing.T) {
 	// A help desk is never listed to a non-member, not even as a place to
 	// file issues.
 	for name, params := range map[string]store.ListProjectsParams{
-		"visible":        {VisibleToUser: &alice.ID, Limit: 100},
-		"issue creation": {IssueCreatableToUser: &alice.ID, Limit: 100},
+		"member":   {MemberUser: &alice.ID, Limit: 100},
+		"writable": {WritableToUser: &alice.ID, Limit: 100},
 	} {
 		projects, _, err := env.store.ListProjects(env.ctx, params)
 		if err != nil || projectInList(projects, env.projectID) {

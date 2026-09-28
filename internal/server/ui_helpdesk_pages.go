@@ -25,14 +25,8 @@ func (s *Server) renderUIHelpDesk(w http.ResponseWriter, r *http.Request, status
 		renderUITemplate(w, status, "helpdesk-panel", panel)
 		return
 	}
-	projects, err := s.uiVisibleProjects(r.Context(), currentUser(r))
-	if err != nil {
-		writeUIInternalError(w, "ui help desk visible projects", err)
-		return
-	}
 	s.renderUIShell(w, r, status, uiShellData{
 		User:          currentUser(r),
-		Projects:      projects,
 		HelpDeskPanel: panel,
 	})
 }

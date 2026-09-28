@@ -104,7 +104,7 @@ func TestUIProjectsPageListsVisibleProjectsAndCreatesProject(t *testing.T) {
 	}
 
 	body := e.uiGet(t, "/projects", token)
-	for _, want := range []string{"Projects", "Projects you can access.", `aria-label="New project"`, `href="/projects/new"`, `hx-get="/projects/new/panel"`, e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
+	for _, want := range []string{"Projects", "Projects you own or belong to.", `aria-label="New project"`, `href="/projects/new"`, `hx-get="/projects/new/panel"`, e.projKey, "http-test", "inline-flex w-fit justify-self-start", `href="` + e.projectPath() + `/sprint"`, `hx-get="` + e.projectPath() + `/sprint/panel"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("projects body missing %q: %s", want, body)
 		}
@@ -248,21 +248,22 @@ func TestUIOwnerProjectListingsAndBreadcrumbAccess(t *testing.T) {
 
 	ownerPath := "/" + e.ownerUsername + "/projects"
 	body := e.uiGet(t, ownerPath, memberToken)
-	for _, want := range []string{"@" + e.ownerUsername + " projects", "Projects owned by @" + e.ownerUsername + " that you can access.", "http-test", publicProject.Name} {
+	for _, want := range []string{"@" + e.ownerUsername + " projects", "Projects owned by @" + e.ownerUsername + " that you belong to.", "http-test"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("owner project listing missing %q: %s", want, body)
 		}
 	}
 	// The owner listing already names its owner in the heading, so rows skip
-	// the per-row owner and its column.
-	for _, notWant := range []string{hidden.Name, deleted.Name, owned.Name, `aria-label="New project"`, "data-project-owner", "grid-cols-[2.25rem_4.5rem_minmax(0,1fr)_auto_auto]"} {
+	// the per-row owner and its column. A public project the viewer isn't in
+	// is link-only, so it isn't listed either.
+	for _, notWant := range []string{hidden.Name, publicProject.Name, deleted.Name, owned.Name, `aria-label="New project"`, "data-project-owner", "grid-cols-[2.25rem_4.5rem_minmax(0,1fr)_auto_auto]"} {
 		if strings.Contains(body, notWant) {
 			t.Fatalf("owner project listing leaked or rendered %q: %s", notWant, body)
 		}
 	}
 	panelBody := e.uiGet(t, ownerPath+"/panel", memberToken)
-	if !strings.Contains(panelBody, publicProject.Name) || strings.Contains(panelBody, hidden.Name) {
-		t.Fatalf("owner projects panel did not preserve access filtering: %s", panelBody)
+	if !strings.Contains(panelBody, "http-test") || strings.Contains(panelBody, publicProject.Name) || strings.Contains(panelBody, hidden.Name) {
+		t.Fatalf("owner projects panel did not preserve membership filtering: %s", panelBody)
 	}
 
 	for label, tc := range map[string]struct {
@@ -304,16 +305,18 @@ func TestUIOwnerProjectListingsAndBreadcrumbAccess(t *testing.T) {
 		t.Fatalf("own project rendered redundant owner breadcrumb: %s", ownBody)
 	}
 
+	// Signed out, an owner's page lists nothing: public projects are
+	// link-only.
 	res := e.uiDoNoRedirect(t, http.MethodGet, ownerPath, "", nil)
 	defer res.Body.Close()
 	publicBody := readBody(t, res)
-	if res.StatusCode != http.StatusOK || !strings.Contains(publicBody, publicProject.Name) || strings.Contains(publicBody, "http-test") || strings.Contains(publicBody, hidden.Name) {
+	if res.StatusCode != http.StatusOK || !strings.Contains(publicBody, "No projects yet.") || strings.Contains(publicBody, publicProject.Name) || strings.Contains(publicBody, "http-test") || strings.Contains(publicBody, hidden.Name) {
 		t.Fatalf("anonymous owner listing code = %d body = %s", res.StatusCode, publicBody)
 	}
 	res = e.uiDoNoRedirect(t, http.MethodGet, ownerPath+"/panel", "", nil)
 	defer res.Body.Close()
 	publicPanelBody := readBody(t, res)
-	if res.StatusCode != http.StatusOK || !strings.Contains(publicPanelBody, publicProject.Name) || strings.Contains(publicPanelBody, "http-test") {
+	if res.StatusCode != http.StatusOK || strings.Contains(publicPanelBody, publicProject.Name) || strings.Contains(publicPanelBody, "http-test") {
 		t.Fatalf("anonymous owner panel code = %d body = %s", res.StatusCode, publicPanelBody)
 	}
 
