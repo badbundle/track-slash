@@ -30,21 +30,25 @@ func parseCompletionWindow(raw string) (model.CompletionWindow, error) {
 // projectProgress loads what a project the caller may read is working on now:
 // its top-level issues in progress, highest priority first, and those
 // completed (Done or Closed) within the window, most recently completed first.
-func (s *Server) projectProgress(ctx context.Context, project model.Project, window model.CompletionWindow, now time.Time) (model.ProjectProgress, error) {
+// includePrivate lists private issues, for a reader who may see them
+// (readsPrivateIssues).
+func (s *Server) projectProgress(ctx context.Context, project model.Project, window model.CompletionWindow, now time.Time, includePrivate bool) (model.ProjectProgress, error) {
 	since := now.Add(-window.Duration()).UTC()
 	inProgress, inProgressHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-		ProjectID: project.ID,
-		Status:    model.StatusInProgress,
-		Sort:      store.ListIssuesSortPriority,
-		Limit:     MaxLimit,
+		ProjectID:      project.ID,
+		Status:         model.StatusInProgress,
+		Sort:           store.ListIssuesSortPriority,
+		Limit:          MaxLimit,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return model.ProjectProgress{}, err
 	}
 	completed, completedHasMore, err := s.store.ListRecentlyCompletedIssues(ctx, store.ListRecentlyCompletedIssuesParams{
-		ProjectID: project.ID,
-		Since:     since,
-		Limit:     MaxLimit,
+		ProjectID:      project.ID,
+		Since:          since,
+		Limit:          MaxLimit,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return model.ProjectProgress{}, err
@@ -64,7 +68,8 @@ func (s *Server) getProjectProgress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
 	window, err := parseCompletionWindow(r.URL.Query().Get("completed_within"))
@@ -72,7 +77,7 @@ func (s *Server) getProjectProgress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	progress, err := s.projectProgress(r.Context(), project, window, time.Now())
+	progress, err := s.projectProgress(r.Context(), project, window, time.Now(), permissions.CanReadMembersOnly)
 	if err != nil {
 		writeStoreError(w, err)
 		return

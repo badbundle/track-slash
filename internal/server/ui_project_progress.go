@@ -31,8 +31,8 @@ func uiProjectProgressPath(project model.Project, window model.CompletionWindow,
 	return path
 }
 
-func (s *Server) uiBuildProjectProgress(ctx context.Context, project model.Project, progress model.ProjectProgress) (*uiProjectProgressData, error) {
-	inProgress, err := s.uiIssueItemsWithSubIssueProgress(ctx, progress.InProgress, project, nil)
+func (s *Server) uiBuildProjectProgress(ctx context.Context, project model.Project, progress model.ProjectProgress, includePrivate bool) (*uiProjectProgressData, error) {
+	inProgress, err := s.uiIssueItemsWithSubIssueProgress(ctx, progress.InProgress, project, nil, includePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (s *Server) uiBuildProjectProgress(ctx context.Context, project model.Proje
 	for _, completed := range progress.RecentlyCompleted {
 		completedIssues = append(completedIssues, completed.Issue)
 	}
-	completed, err := s.uiIssueItemsWithSubIssueProgress(ctx, completedIssues, project, nil)
+	completed, err := s.uiIssueItemsWithSubIssueProgress(ctx, completedIssues, project, nil, includePrivate)
 	if err != nil {
 		return nil, err
 	}

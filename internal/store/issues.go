@@ -21,6 +21,7 @@ type CreateIssueParams struct {
 	Description string
 	Priority    model.IssuePriority
 	Worker      *model.IssueWorker
+	Private     bool
 	AssigneeID  *uuid.UUID
 	ReporterID  *uuid.UUID
 	DueDate     *model.Date
@@ -32,9 +33,12 @@ type CreateSubIssueParams struct {
 	Description   string
 	Priority      model.IssuePriority
 	Worker        *model.IssueWorker
-	AssigneeID    *uuid.UUID
-	ReporterID    *uuid.UUID
-	DueDate       *model.Date
+	// Private is forced on under a private parent, so a sub-issue never
+	// starts out more visible than the issue it belongs to.
+	Private    bool
+	AssigneeID *uuid.UUID
+	ReporterID *uuid.UUID
+	DueDate    *model.Date
 }
 
 type issueScanner interface {
@@ -46,7 +50,7 @@ func scanIssue(row issueScanner) (model.Issue, error) {
 	var dueDate *time.Time
 	err := row.Scan(
 		&iss.ID, &iss.ProjectID, &iss.OwnerUsername, &iss.ProjectKey, &iss.Number,
-		&iss.Title, &iss.Description, &iss.Status, &iss.CloseReason, &iss.Priority, &iss.Worker, &iss.AssigneeID, &iss.ReporterID,
+		&iss.Title, &iss.Description, &iss.Status, &iss.CloseReason, &iss.Priority, &iss.Worker, &iss.Private, &iss.AssigneeID, &iss.ReporterID,
 		&iss.SprintID, &iss.ParentIssueID, &dueDate, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
@@ -133,12 +137,12 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		priority := issuePriorityOrDefault(p.Priority)
 		var dueDate *time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, priority, worker, assignee_id, reporter_id, due_date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			RETURNING id, project_id, number, title, description, status, close_reason, priority, worker,
+			INSERT INTO issues (project_id, number, title, description, priority, worker, private, assignee_id, reporter_id, due_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			RETURNING id, project_id, number, title, description, status, close_reason, priority, worker, private,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
-		`, p.ProjectID, number, p.Title, p.Description, string(priority), issueWorkerValue(p.Worker), p.AssigneeID, p.ReporterID, issueDueDateValue(p.DueDate)).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority, &out.Worker,
+		`, p.ProjectID, number, p.Title, p.Description, string(priority), issueWorkerValue(p.Worker), p.Private, p.AssigneeID, p.ReporterID, issueDueDateValue(p.DueDate)).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority, &out.Worker, &out.Private,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -200,16 +204,17 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 			ownerUsername string
 			projectID     uuid.UUID
 			parentIssueID *uuid.UUID
+			parentPrivate bool
 		)
 		err := tx.QueryRow(ctx, `
-			SELECT pr.next_issue_number, pr.key, u.username, i.project_id, i.parent_issue_id
+			SELECT pr.next_issue_number, pr.key, u.username, i.project_id, i.parent_issue_id, i.private
 			FROM issues i
 			JOIN projects pr ON pr.id = i.project_id
 			JOIN users u ON u.id = pr.owner_id
 			WHERE i.id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL
 			  AND u.deleted_at IS NULL
 			FOR UPDATE OF i, pr
-		`, p.ParentIssueID).Scan(&number, &projectKey, &ownerUsername, &projectID, &parentIssueID)
+		`, p.ParentIssueID).Scan(&number, &projectKey, &ownerUsername, &projectID, &parentIssueID, &parentPrivate)
 		if err != nil {
 			if isNoRows(err) {
 				return ErrNotFound
@@ -226,12 +231,12 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		priority := issuePriorityOrDefault(p.Priority)
 		var dueDate *time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, priority, worker, assignee_id, reporter_id, parent_issue_id, due_date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			RETURNING id, project_id, number, title, description, status, close_reason, priority, worker,
+			INSERT INTO issues (project_id, number, title, description, priority, worker, private, assignee_id, reporter_id, parent_issue_id, due_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			RETURNING id, project_id, number, title, description, status, close_reason, priority, worker, private,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
-		`, projectID, number, p.Title, p.Description, string(priority), issueWorkerValue(p.Worker), p.AssigneeID, p.ReporterID, p.ParentIssueID, issueDueDateValue(p.DueDate)).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority, &out.Worker,
+		`, projectID, number, p.Title, p.Description, string(priority), issueWorkerValue(p.Worker), p.Private || parentPrivate, p.AssigneeID, p.ReporterID, p.ParentIssueID, issueDueDateValue(p.DueDate)).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority, &out.Worker, &out.Private,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -285,7 +290,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -308,7 +313,7 @@ func getIssueForChangelog(ctx context.Context, q changelogQueryer, id uuid.UUID,
 		deletedClause = "TRUE"
 	}
 	query := fmt.Sprintf(`
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -327,6 +332,7 @@ func issueChangelogChanges(ctx context.Context, q changelogQueryer, before, afte
 	changes = changelogAppendChange(changes, "close_reason", "Close reason", changelogCloseReasonLabel(before.CloseReason), changelogCloseReasonLabel(after.CloseReason))
 	changes = changelogAppendChange(changes, "priority", "Priority", string(before.Priority), string(after.Priority))
 	changes = changelogAppendChange(changes, "worker", "Worker", changelogWorkerLabel(before.Worker), changelogWorkerLabel(after.Worker))
+	changes = changelogAppendChange(changes, "private", "Private", changelogYesNo(before.Private), changelogYesNo(after.Private))
 	changes = changelogAppendChange(changes, "assignee", "Assignee", changelogUserLabel(ctx, q, before.AssigneeID), changelogUserLabel(ctx, q, after.AssigneeID))
 	changes = changelogAppendChange(changes, "reporter", "Reporter", changelogUserLabel(ctx, q, before.ReporterID), changelogUserLabel(ctx, q, after.ReporterID))
 	changes = changelogAppendChange(changes, "sprint", "Sprint", changelogSprintLabel(ctx, q, before.SprintID), changelogSprintLabel(ctx, q, after.SprintID))
@@ -336,7 +342,7 @@ func issueChangelogChanges(ctx context.Context, q changelogQueryer, before, afte
 
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -356,7 +362,7 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 
 func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -403,6 +409,12 @@ type ListIssuesParams struct {
 	// IncludeSubIssues is reserved for explicit parent/child traversal. Product
 	// issue collections keep the default top-level-only shape.
 	IncludeSubIssues bool
+	// IncludePrivate lists private issues too. Set it only for a reader who
+	// may see them: a project member, the owner or a site admin.
+	IncludePrivate bool
+	// Private filters to private (true) or non-private (false) issues. Nil =
+	// both, subject to IncludePrivate.
+	Private *bool
 }
 
 type ListIssuesSort string
@@ -443,7 +455,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		return []model.Issue{}, nil
 	}
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -473,7 +485,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -482,6 +494,13 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	`
 	if !p.IncludeSubIssues {
 		q += " AND i.parent_issue_id IS NULL"
+	}
+	if !p.IncludePrivate {
+		q += " AND NOT i.private"
+	}
+	if p.Private != nil {
+		args = append(args, *p.Private)
+		q += fmt.Sprintf(" AND i.private = $%d", len(args))
 	}
 	statuses := issueStatusFilters(p.Status, p.Statuses)
 	if len(statuses) > 0 {
@@ -756,7 +775,7 @@ type ListDeletedIssuesParams struct {
 func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -803,6 +822,8 @@ type ListSubIssuesForIssueParams struct {
 	ParentIssueID uuid.UUID
 	Cursor        *IssuesCursor
 	Limit         int
+	// IncludePrivate lists private sub-issues too; see ListIssuesParams.
+	IncludePrivate bool
 }
 
 type SubIssueProgress struct {
@@ -810,7 +831,9 @@ type SubIssueProgress struct {
 	Completed int
 }
 
-func (s *Store) ListSubIssueProgress(ctx context.Context, parentIssueIDs []uuid.UUID) (map[uuid.UUID]SubIssueProgress, error) {
+// ListSubIssueProgress counts each parent's sub-issues. includePrivate counts
+// private sub-issues too; see ListIssuesParams.IncludePrivate.
+func (s *Store) ListSubIssueProgress(ctx context.Context, parentIssueIDs []uuid.UUID, includePrivate bool) (map[uuid.UUID]SubIssueProgress, error) {
 	out := make(map[uuid.UUID]SubIssueProgress, len(parentIssueIDs))
 	if len(parentIssueIDs) == 0 {
 		return out, nil
@@ -821,9 +844,9 @@ func (s *Store) ListSubIssueProgress(ctx context.Context, parentIssueIDs []uuid.
 		       COUNT(*)::int,
 		       COUNT(*) FILTER (WHERE status IN ('done', 'closed'))::int
 		FROM issues
-		WHERE parent_issue_id = ANY($1) AND deleted_at IS NULL
+		WHERE parent_issue_id = ANY($1) AND deleted_at IS NULL AND ($2 OR NOT private)
 		GROUP BY parent_issue_id
-	`, parentIssueIDs)
+	`, parentIssueIDs, includePrivate)
 	if err != nil {
 		// Defensive: aggregate query failures require a database/runtime fault.
 		return nil, err
@@ -866,13 +889,16 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 
 	args := []any{p.ParentIssueID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker, i.private,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
 		JOIN users u ON u.id = pr.owner_id
 		WHERE i.parent_issue_id = $1 AND i.deleted_at IS NULL AND pr.deleted_at IS NULL AND u.deleted_at IS NULL
 	`
+	if !p.IncludePrivate {
+		q += " AND NOT i.private"
+	}
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.Number)
 		q += fmt.Sprintf(" AND i.number > $%d", len(args))
@@ -919,6 +945,7 @@ type UpdateIssueParams struct {
 	Priority      *model.IssuePriority
 	Worker        *model.IssueWorker
 	ClearWorker   bool
+	Private       *bool
 	AssigneeID    *uuid.UUID
 	ClearAssignee bool
 	ReporterID    *uuid.UUID
@@ -971,6 +998,11 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	} else if p.Worker != nil {
 		sets = append(sets, fmt.Sprintf("worker = $%d", i))
 		args = append(args, string(*p.Worker))
+		i++
+	}
+	if p.Private != nil {
+		sets = append(sets, fmt.Sprintf("private = $%d", i))
+		args = append(args, *p.Private)
 		i++
 	}
 	if p.ClearDueDate {
@@ -1056,6 +1088,17 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 				return fmt.Errorf("close reason only applies to closed issues: %w", ErrConflict)
 			}
 		}
+		if p.Private != nil && !*p.Private && parentIssueID != nil {
+			var parentPrivate bool
+			// FOR SHARE waits for a concurrent change to the parent, so a
+			// parent going private can't race a sub-issue going public.
+			if err := tx.QueryRow(ctx, `SELECT private FROM issues WHERE id = $1 FOR SHARE`, *parentIssueID).Scan(&parentPrivate); err != nil {
+				return err // defensive: the parent is a foreign key of a live issue
+			}
+			if parentPrivate {
+				return ErrSubIssueOfPrivateIssue
+			}
+		}
 		if editSprint {
 			if issueStatus.CountsAsDone() || (p.Status != nil && p.Status.CountsAsDone()) {
 				return fmt.Errorf("cannot edit sprint for completed issue: %w", ErrConflict)
@@ -1092,6 +1135,11 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 			return err
 		}
 		out = after
+		if !before.Private && after.Private {
+			if err := makeSubIssuesPrivate(ctx, tx, after.ID); err != nil {
+				return err
+			}
+		}
 		changes := issueChangelogChanges(ctx, tx, before, after)
 		if len(changes) == 0 {
 			return nil
@@ -1133,6 +1181,64 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	}
 	out.Tags = []model.IssueTag{}
 	return out, nil
+}
+
+// ErrSubIssueOfPrivateIssue refuses to make public a sub-issue whose parent is
+// private: a sub-issue is never more visible than the issue it belongs to.
+var ErrSubIssueOfPrivateIssue = fmt.Errorf("a sub-issue of a private issue stays private: %w", ErrConflict)
+
+// makeSubIssuesPrivate makes every sub-issue of a newly private issue private
+// too, deleted ones included so a restore can't bring one back public, and
+// records the change on each live one.
+func makeSubIssuesPrivate(ctx context.Context, tx pgx.Tx, parentID uuid.UUID) error {
+	rows, err := tx.Query(ctx, `
+		UPDATE issues SET private = true, updated_at = now()
+		WHERE parent_issue_id = $1 AND NOT private
+		RETURNING id, deleted_at IS NULL
+	`, parentID)
+	if err != nil {
+		return err
+	}
+	var live []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		var isLive bool
+		if err := rows.Scan(&id, &isLive); err != nil {
+			rows.Close()
+			return err
+		}
+		if isLive {
+			live = append(live, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range live {
+		child, err := getIssueForChangelog(ctx, tx, id, false)
+		if err != nil {
+			return err
+		}
+		targetRef, targetTitle := changelogTarget(child)
+		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
+			ProjectID:     child.ProjectID,
+			Entity:        "issue",
+			Op:            "update",
+			EntityID:      child.ID,
+			IssueID:       &child.ID,
+			ParentIssueID: child.ParentIssueID,
+			TargetRef:     targetRef,
+			TargetTitle:   targetTitle,
+			Summary:       changelogIssueSummary(child, "Updated issue"),
+			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
+				changelogChange("private", "Private", changelogYesNo(false), changelogYesNo(true)),
+			}},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func issueProjectMemberExists(ctx context.Context, tx pgx.Tx, projectID, userID uuid.UUID) (bool, error) {

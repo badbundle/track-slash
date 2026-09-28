@@ -177,7 +177,7 @@ func TestStoreOwnerScopedPublicRefs(t *testing.T) {
 	if link1.Number != 1 || link1.Ref != "link-1" || link2.Number != 2 || link2.Ref != "link-2" {
 		t.Fatalf("link refs = %+v %+v", link1, link2)
 	}
-	gotLink, err := s.GetIssueLinkByProjectNumber(ctx, projectA.ID, 2)
+	gotLink, err := s.GetIssueLinkByProjectNumber(ctx, projectA.ID, 2, true)
 	if err != nil {
 		t.Fatalf("GetIssueLinkByProjectNumber: %v", err)
 	}

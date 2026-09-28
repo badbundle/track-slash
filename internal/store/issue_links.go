@@ -115,14 +115,15 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 		}
 
 		if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
-			ProjectID:   out.ProjectID,
-			Entity:      "issue_link",
-			Op:          "insert",
-			EntityID:    out.ID,
-			IssueID:     &sourceIssue.ID,
-			TargetRef:   changelogLinkRef(out),
-			TargetTitle: changelogLinkTitle(sourceIssue, out, targetIssue),
-			Summary:     fmt.Sprintf("Linked %s to %s", sourceIssue.Identifier, targetIssue.Identifier),
+			ProjectID:       out.ProjectID,
+			Entity:          "issue_link",
+			Op:              "insert",
+			EntityID:        out.ID,
+			IssueID:         &sourceIssue.ID,
+			RelatedIssueIDs: []uuid.UUID{targetIssue.ID},
+			TargetRef:       changelogLinkRef(out),
+			TargetTitle:     changelogLinkTitle(sourceIssue, out, targetIssue),
+			Summary:         fmt.Sprintf("Linked %s to %s", sourceIssue.Identifier, targetIssue.Identifier),
 			Details: model.ProjectChangelogDetails{Changes: []model.ProjectChangelogChange{
 				changelogChange("link_type", "Relationship", "", changelogLinkTypeLabel(out.LinkType)),
 			}},
@@ -270,15 +271,16 @@ func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssue
 		changes = changelogAppendChange(changes, "link_type", "Relationship", changelogLinkTypeLabel(before.LinkType), changelogLinkTypeLabel(out.LinkType))
 		if len(changes) > 0 {
 			if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
-				ProjectID:   out.ProjectID,
-				Entity:      "issue_link",
-				Op:          "update",
-				EntityID:    out.ID,
-				IssueID:     &sourceIssue.ID,
-				TargetRef:   changelogLinkRef(out),
-				TargetTitle: changelogLinkTitle(sourceIssue, out, targetIssue),
-				Summary:     fmt.Sprintf("Updated link %s", changelogLinkRef(out)),
-				Details:     model.ProjectChangelogDetails{Changes: changes},
+				ProjectID:       out.ProjectID,
+				Entity:          "issue_link",
+				Op:              "update",
+				EntityID:        out.ID,
+				IssueID:         &sourceIssue.ID,
+				RelatedIssueIDs: []uuid.UUID{beforeSourceIssue.ID, beforeTargetIssue.ID, targetIssue.ID},
+				TargetRef:       changelogLinkRef(out),
+				TargetTitle:     changelogLinkTitle(sourceIssue, out, targetIssue),
+				Summary:         fmt.Sprintf("Updated link %s", changelogLinkRef(out)),
+				Details:         model.ProjectChangelogDetails{Changes: changes},
 			}); err != nil {
 				return err
 			}
@@ -333,13 +335,17 @@ func (s *Store) GetIssueLink(ctx context.Context, id uuid.UUID) (model.IssueLink
 	return out, nil
 }
 
-func (s *Store) GetIssueLinkByProjectNumber(ctx context.Context, projectID uuid.UUID, number int) (model.IssueLink, error) {
+// GetIssueLinkByProjectNumber resolves link-N. Unless includePrivate is set
+// (see ListIssuesParams.IncludePrivate), a link to or from a private issue is
+// answered as missing.
+func (s *Store) GetIssueLinkByProjectNumber(ctx context.Context, projectID uuid.UUID, number int, includePrivate bool) (model.IssueLink, error) {
 	const q = `
-		SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
-		FROM issue_links
-		WHERE project_id = $1 AND number = $2
+		SELECT l.id, l.project_id, l.number, l.source_id, l.target_id, l.link_type, l.created_at, l.updated_at
+		FROM issue_links l
+		WHERE l.project_id = $1 AND l.number = $2
+		  AND ($3 OR NOT EXISTS (SELECT 1 FROM issues i WHERE i.id IN (l.source_id, l.target_id) AND i.private))
 	`
-	out, err := scanIssueLink(s.db.QueryRow(ctx, q, projectID, number))
+	out, err := scanIssueLink(s.db.QueryRow(ctx, q, projectID, number, includePrivate))
 	if err != nil {
 		if isNoRows(err) {
 			return model.IssueLink{}, ErrNotFound
@@ -360,6 +366,9 @@ type ListIssueLinksForIssueParams struct {
 	IssueID uuid.UUID
 	Cursor  *IssueLinksCursor
 	Limit   int
+	// IncludePrivate lists links to private issues too; see
+	// ListIssuesParams.
+	IncludePrivate bool
 }
 
 // ListIssueLinksForIssue returns links touching the given issue id, both
@@ -375,11 +384,12 @@ func (s *Store) ListIssueLinksForIssue(ctx context.Context, p ListIssueLinksForI
 		return nil, false, err
 	}
 
-	args := []any{p.IssueID}
+	args := []any{p.IssueID, p.IncludePrivate}
 	q := `
 		SELECT id, project_id, number, source_id, target_id, link_type, created_at, updated_at
-		FROM issue_links
+		FROM issue_links l
 		WHERE (source_id = $1 OR target_id = $1)
+		  AND ($2 OR NOT EXISTS (SELECT 1 FROM issues i WHERE i.id IN (l.source_id, l.target_id) AND i.private))
 	`
 	if p.Cursor != nil {
 		args = append(args, p.Cursor.CreatedAt, p.Cursor.ID)
@@ -438,14 +448,15 @@ func (s *Store) DeleteIssueLink(ctx context.Context, id uuid.UUID) error {
 			return ErrNotFound
 		}
 		return appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
-			ProjectID:   before.ProjectID,
-			Entity:      "issue_link",
-			Op:          "delete",
-			EntityID:    before.ID,
-			IssueID:     &sourceIssue.ID,
-			TargetRef:   changelogLinkRef(before),
-			TargetTitle: sourceIssue.Identifier,
-			Summary:     fmt.Sprintf("Deleted link %s", changelogLinkRef(before)),
+			ProjectID:       before.ProjectID,
+			Entity:          "issue_link",
+			Op:              "delete",
+			EntityID:        before.ID,
+			IssueID:         &sourceIssue.ID,
+			RelatedIssueIDs: []uuid.UUID{before.TargetID},
+			TargetRef:       changelogLinkRef(before),
+			TargetTitle:     sourceIssue.Identifier,
+			Summary:         fmt.Sprintf("Deleted link %s", changelogLinkRef(before)),
 		})
 	})
 }

@@ -5,6 +5,7 @@
         <div class="flex flex-wrap items-center gap-2">
           {{template "issue-key" .Issue.Identifier}}
           {{template "priority-badge" .Issue.Priority}}
+          {{if .Issue.Private}}{{template "issue-private-badge"}}{{end}}
           {{template "issue-worker-badge" .Issue.Worker}}
         </div>
         {{if .EditTitle}}

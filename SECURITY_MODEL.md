@@ -15,7 +15,8 @@ source of a user's rights in a project.
 | Site admin, project owner | Everything | Everything, including members, access and deleting the project |
 | Member | Everything, including members-only comments and deleted issues | Issues, comments, sprints, context, whiteboard |
 | Read-only member | Everything, including members-only comments and deleted issues | Nothing |
-| Public viewer (`public`, `public_issues`) | Live issues and their shared comments | Files issues in `public_issues` only |
+| Public viewer (`public`, `public_issues`) | Live issues that are not private, and their shared comments | Files issues in `public_issues` only |
+| Reporter of a private issue (a non-member of a public project) | That issue, as a `ReporterIssue`, and its shared comments | Replies on it |
 | Help-desk reporter (non-member of a `helpdesk` project) | Only issues they reported, as a `ReporterIssue`, and their shared comments | Files issues (title and description) and replies |
 | Blocked user | Nothing: 403 everywhere in the project | Nothing |
 
@@ -29,6 +30,18 @@ source of a user's rights in a project.
   `GET /api/v1/projects` and `track_list_projects`. Site admins get the same
   lists; their wider access works by link. Recents and Favorites record the
   user's own history, so a public project opened by link can appear there.
+- **Private issues are the members' and their reporter's.** An issue marked
+  private is left out, for everyone else, of every list, board, count, chart,
+  sub-issue list, link, file listing, changelog entry, realtime event and push
+  notification, and every route that names it answers as a missing issue does
+  (404, MCP `not_found`, a realtime subscribe that fails as for a missing
+  topic). Store lists take `IncludePrivate`, false unless the reader is a
+  member (`readsPrivateIssues`); `ProjectPermissions.ForIssue` narrows a
+  reader's rights to one issue. A non-member reporter follows their private
+  issue the way a help-desk reporter does. A sub-issue is never more visible
+  than its parent: one filed under a private issue is private, making an issue
+  private makes its sub-issues private, and a sub-issue can't be made public
+  under a private parent.
 - **Members-only data stays with members.** That covers members-only comments,
   block history, deleted issues and the files only they hold, the changelog
   about them, and deleted comments' previews. Members-only comments never reach
@@ -45,7 +58,9 @@ source of a user's rights in a project.
   `mcpIssue`, `uiIssueFromRoute`, `projectFromRoute`, and so on) and then checks
   the right permission on the project that entity belongs to.
 - **Something the caller may not see is missing, not forbidden.** This applies to
-  a hidden comment and to another reporter's issue.
+  a hidden comment, to another reporter's issue and to a private issue. A
+  signed-out visitor is not sent to sign in for an issue ref on a public
+  project, missing or private, so both get the same 404.
 - **Credentials are the account's own.** A connector (OAuth) token cannot read
   or change tokens, email, password, password login, passkeys, saved GitHub
   tokens, or site-admin account administration. See [OAUTH.md](OAUTH.md).
@@ -63,8 +78,11 @@ These are known and left as they are. Change one only with that in mind.
 - **Existence can be probed.** A signed-in outsider gets 403 for a private
   project or issue that exists and 404 for one that does not.
   `/{owner}/projects` answers 404 for an unknown username. Project keys and
-  usernames are not secrets. Help-desk reporters are the exception: another
-  reporter's issue is always 404.
+  usernames are not secrets. Help-desk reporters and private issues are the
+  exception: another reporter's issue, and a private issue on a public
+  project, are always 404 to someone outside it. Issue numbers are still
+  sequential, so a gap shows that something had that number, just as a
+  deleted issue leaves one.
 - **Help-desk refs reveal counts.** Issue numbers run per project and comment
   numbers per issue. A reporter's own refs therefore show roughly how many
   issues the project has, and gaps show that members-only comments exist. Refs

@@ -17,6 +17,7 @@ type createIssueReq struct {
 	Description string               `json:"description"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
 	Worker      *model.IssueWorker   `json:"worker,omitempty"`
+	Private     bool                 `json:"private,omitempty"`
 	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
 	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
@@ -82,6 +83,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		Description: req.Description,
 		Priority:    priority,
 		Worker:      req.Worker,
+		Private:     req.Private,
 		AssigneeID:  req.AssigneeID,
 		ReporterID:  reporterID,
 		DueDate:     req.DueDate,
@@ -90,7 +92,9 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	if reporter {
+	// Someone outside the project follows a private issue they filed as its
+	// reporter, as a help-desk reporter does.
+	if reporter || permissions.HidesIssue(iss) {
 		writeJSON(w, http.StatusCreated, model.NewReporterIssue(iss))
 		return
 	}
@@ -168,6 +172,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		Description:   req.Description,
 		Priority:      priority,
 		Worker:        req.Worker,
+		Private:       req.Private,
 		AssigneeID:    req.AssigneeID,
 		ReporterID:    reporterID,
 		DueDate:       req.DueDate,
@@ -224,18 +229,25 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		cursor = &c
 	}
 
+	private, err := parsePrivateFilter(r.URL.Query().Get("private"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	params := store.ListIssuesParams{
-		ProjectID:   project.ID,
-		Statuses:    query.Statuses,
-		Priorities:  query.Priorities,
-		Workers:     query.Workers,
-		UnsetWorker: query.UnsetWorker,
-		AssigneeIDs: query.AssigneeIDs,
-		TagNames:    query.TagNames,
-		Cursor:      cursor,
-		Limit:       limit,
-		Sort:        query.Sort,
-		Direction:   query.Direction,
+		ProjectID:      project.ID,
+		Statuses:       query.Statuses,
+		Priorities:     query.Priorities,
+		Workers:        query.Workers,
+		UnsetWorker:    query.UnsetWorker,
+		AssigneeIDs:    query.AssigneeIDs,
+		TagNames:       query.TagNames,
+		Cursor:         cursor,
+		Limit:          limit,
+		Sort:           query.Sort,
+		Direction:      query.Direction,
+		IncludePrivate: permissions.CanReadMembersOnly,
+		Private:        private,
 	}
 
 	sprintParam := r.URL.Query().Get("sprint")
@@ -324,11 +336,12 @@ func (s *Server) listDeletedIssues(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
-	parent, ok := s.issueFromRoute(w, r)
+	parent, permissions, ok := s.issueWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, parent.ProjectID) {
+	if !permissions.CanRead {
+		writeForbidden(w)
 		return
 	}
 
@@ -348,9 +361,10 @@ func (s *Server) listSubIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, hasMore, err := s.store.ListSubIssuesForIssue(r.Context(), store.ListSubIssuesForIssueParams{
-		ParentIssueID: parent.ID,
-		Cursor:        cursor,
-		Limit:         limit,
+		ParentIssueID:  parent.ID,
+		Cursor:         cursor,
+		Limit:          limit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -405,8 +419,13 @@ func (s *Server) batchIssues(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			var permissions store.ProjectPermissions
 			// A help-desk reporter's view of another reporter's issue is
-			// missing, so it is skipped like one.
+			// missing, so it is skipped like one, as is a private issue to
+			// anyone outside the project. Its own reporter reads it only as
+			// a reporter, so it is left out of a batch of full issues.
 			permissions, err = s.issueRouteAccess(r.Context(), currentUser(r), iss)
+			if err == nil && permissions.PrivateIssueReporter {
+				continue
+			}
 			if err == nil && !permissions.CanRead {
 				writeForbidden(w)
 				return
@@ -448,6 +467,7 @@ type updateIssueReq struct {
 	Priority    *model.IssuePriority    `json:"priority,omitempty"`
 	Worker      *model.IssueWorker      `json:"worker,omitempty"`
 	ClearWorker bool                    `json:"clear_worker,omitempty"`
+	Private     *bool                   `json:"private,omitempty"`
 	// AssigneeID: pointer-to-pointer pattern via json.RawMessage would be cleaner,
 	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
 	AssigneeID    *uuid.UUID  `json:"assignee_id,omitempty"`
@@ -532,6 +552,7 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Priority:      req.Priority,
 		Worker:        req.Worker,
 		ClearWorker:   req.ClearWorker,
+		Private:       req.Private,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,
 		ReporterID:    req.ReporterID,

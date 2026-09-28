@@ -406,14 +406,11 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	if err != nil {
 		return nil, err
 	}
-	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
-		return nil, err
-	}
-	permissions, err := s.uiProjectPermissions(ctx, currentUser(r), projectID)
+	issue, err := s.store.GetIssue(ctx, issueID)
 	if err != nil {
 		return nil, err
 	}
-	issue, err := s.store.GetIssue(ctx, issueID)
+	permissions, err := s.uiRequireIssueAccess(ctx, currentUser(r), issue)
 	if err != nil {
 		return nil, err
 	}
@@ -455,8 +452,9 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 	var subIssuesHasMore bool
 	if issue.ParentIssueID == nil {
 		subIssues, subIssuesHasMore, err = s.store.ListSubIssuesForIssue(ctx, store.ListSubIssuesForIssueParams{
-			ParentIssueID: issueID,
-			Limit:         MaxLimit,
+			ParentIssueID:  issueID,
+			Limit:          MaxLimit,
+			IncludePrivate: permissions.CanReadMembersOnly,
 		})
 		if err != nil {
 			return nil, err
@@ -500,8 +498,9 @@ func (s *Server) uiBuildIssuePanel(ctx context.Context, r *http.Request, issueID
 		commentItems = append(commentItems, item)
 	}
 	links, linksHasMore, err := s.store.ListIssueLinksForIssue(ctx, store.ListIssueLinksForIssueParams{
-		IssueID: issueID,
-		Limit:   MaxLimit,
+		IssueID:        issueID,
+		Limit:          MaxLimit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		return nil, err

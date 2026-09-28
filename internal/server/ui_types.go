@@ -815,6 +815,7 @@ type uiNewIssuePanelData struct {
 	Description       string
 	Priority          string
 	Worker            string
+	Private           bool
 	DueDate           string
 	AssigneeInput     string
 	ReporterInput     string
@@ -934,7 +935,14 @@ type uiHelpDeskPanelData struct {
 
 	Title       string
 	Description string
+	Private     bool
 	Error       string
+
+	// PublicProject is set when the reporter can also read the project: the
+	// non-member reporter of a private issue on a public project. Their page
+	// links back to the project rather than to a help desk's list.
+	PublicProject   bool
+	CanCreateIssues bool
 
 	Issues        []model.ReporterIssue
 	IssuesHasMore bool

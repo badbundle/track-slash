@@ -112,6 +112,24 @@
             </dd>
           </div>
           {{end}}
+          <div data-issue-private-row>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Private</dt>
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="inline-flex min-w-0 items-center gap-1.5 text-slate-900 dark:text-slate-100">{{if .Issue.Private}}<i data-lucide="lock" class="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>Yes, members and reporter only{{else}}No{{end}}</span>
+              {{if .CanWrite}}
+              {{if and .Issue.Private .ParentIssue .ParentIssue.Private}}
+              <span class="shrink-0 text-xs text-slate-500 dark:text-slate-400">Its parent is private</span>
+              {{else}}
+              <form method="post" action="{{issuePrivate .Issue}}" hx-post="{{issuePrivate .Issue}}" hx-target="#main" hx-push-url="false" class="shrink-0">{{template "csrf-field" $.CSRFToken}}
+                <input type="hidden" name="private" value="{{if .Issue.Private}}false{{else}}true{{end}}">
+                <button type="submit" aria-label="{{if .Issue.Private}}Make issue public{{else}}Make issue private{{end}}" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="{{if .Issue.Private}}lock-open{{else}}lock{{end}}" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </form>
+              {{end}}
+              {{end}}
+            </dd>
+          </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Worker</dt>
             {{if .EditWorker}}

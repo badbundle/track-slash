@@ -320,20 +320,23 @@ func (s *Server) uiAssignedIssues(ctx context.Context, projects []model.Project,
 	var out []uiIssueItem
 	var hasMore bool
 	for _, project := range projects {
+		// Me lists only the user's own projects, and assignees are members,
+		// so private issues are theirs to see.
 		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID:   project.ID,
-			Statuses:    query.Statuses,
-			Priorities:  query.Priorities,
-			AssigneeIDs: []uuid.UUID{userID},
-			Limit:       MaxLimit,
-			Sort:        query.Sort,
-			Direction:   query.Direction,
+			ProjectID:      project.ID,
+			Statuses:       query.Statuses,
+			Priorities:     query.Priorities,
+			AssigneeIDs:    []uuid.UUID{userID},
+			Limit:          MaxLimit,
+			Sort:           query.Sort,
+			Direction:      query.Direction,
+			IncludePrivate: true,
 		})
 		if err != nil {
 			return nil, false, err
 		}
 		hasMore = hasMore || more
-		items, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, nil)
+		items, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, nil, true)
 		if err != nil {
 			return nil, false, err
 		}
@@ -360,20 +363,21 @@ func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []mo
 		}
 		sprint := activeSprints[0]
 		issues, more, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID:   project.ID,
-			Statuses:    query.Statuses,
-			Priorities:  query.Priorities,
-			AssigneeIDs: []uuid.UUID{userID},
-			SprintID:    &sprint.ID,
-			Limit:       MaxLimit,
-			Sort:        query.Sort,
-			Direction:   query.Direction,
+			ProjectID:      project.ID,
+			Statuses:       query.Statuses,
+			Priorities:     query.Priorities,
+			AssigneeIDs:    []uuid.UUID{userID},
+			SprintID:       &sprint.ID,
+			Limit:          MaxLimit,
+			Sort:           query.Sort,
+			Direction:      query.Direction,
+			IncludePrivate: true,
 		})
 		if err != nil {
 			return nil, false, err
 		}
 		hasMore = hasMore || more
-		items, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint)
+		items, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint, true)
 		if err != nil {
 			return nil, false, err
 		}
@@ -383,12 +387,15 @@ func (s *Server) uiAssignedActiveSprintIssues(ctx context.Context, projects []mo
 	return out, hasMore, nil
 }
 
-func (s *Server) uiIssueItemsWithSubIssueProgress(ctx context.Context, issues []model.Issue, project model.Project, sprint *model.Sprint) ([]uiIssueItem, error) {
+// uiIssueItemsWithSubIssueProgress wraps issues as list items with their
+// sub-issue counts. includePrivate counts private sub-issues, for a reader who
+// may see them (readsPrivateIssues).
+func (s *Server) uiIssueItemsWithSubIssueProgress(ctx context.Context, issues []model.Issue, project model.Project, sprint *model.Sprint, includePrivate bool) ([]uiIssueItem, error) {
 	parentIssueIDs := make([]uuid.UUID, 0, len(issues))
 	for _, issue := range issues {
 		parentIssueIDs = append(parentIssueIDs, issue.ID)
 	}
-	progressByIssue, err := s.store.ListSubIssueProgress(ctx, parentIssueIDs)
+	progressByIssue, err := s.store.ListSubIssueProgress(ctx, parentIssueIDs, includePrivate)
 	if err != nil {
 		return nil, err
 	}
@@ -541,7 +548,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 	// Members render it without a second round trip.
 	panel.AccessSettings = model.NewProjectAccessSettings(permissions.AccessMode)
 	if view == "all" {
-		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
+		assignees, err = s.store.ListProjectAssignees(ctx, projectID, permissions.CanReadMembersOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -582,7 +589,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		panel.ProjectAttachments = attachments
 		panel.ProjectAttachmentsHasMore = attachmentsHasMore
 		panel.ProjectDescriptionHTML = renderProjectDescriptionMarkdown(project, attachments)
-		stats, err := s.store.GetProjectStats(ctx, store.ProjectStatsParams{ProjectID: projectID})
+		stats, err := s.store.GetProjectStats(ctx, store.ProjectStatsParams{ProjectID: projectID, IncludePrivate: permissions.CanReadMembersOnly})
 		if err != nil {
 			return nil, err
 		}
@@ -610,7 +617,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			return panel, nil
 		}
 		panel.ActiveSprint = &activeSprints[0]
-		assignees, err = s.store.ListProjectAssignees(ctx, projectID)
+		assignees, err = s.store.ListProjectAssignees(ctx, projectID, permissions.CanReadMembersOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -643,21 +650,22 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 			DescriptionHTML: renderSprintDescriptionMarkdown(project, *panel.ActiveSprint, activeAttachments),
 		}
 		sprintIssues, sprintHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-			ProjectID:   projectID,
-			Statuses:    sprintQuery.Statuses,
-			Priorities:  sprintQuery.Priorities,
-			TagNames:    sprintQuery.TagNames,
-			AssigneeIDs: assigneeIDs,
-			SprintID:    &panel.ActiveSprint.ID,
-			Limit:       MaxLimit,
-			Sort:        sprintQuery.Sort,
-			Direction:   sprintQuery.Direction,
+			ProjectID:      projectID,
+			Statuses:       sprintQuery.Statuses,
+			Priorities:     sprintQuery.Priorities,
+			TagNames:       sprintQuery.TagNames,
+			AssigneeIDs:    assigneeIDs,
+			SprintID:       &panel.ActiveSprint.ID,
+			Limit:          MaxLimit,
+			Sort:           sprintQuery.Sort,
+			Direction:      sprintQuery.Direction,
+			IncludePrivate: permissions.CanReadMembersOnly,
 		})
 		if err != nil {
 			return nil, err
 		}
 		panel.SprintIssuesHasMore = sprintHasMore
-		sprintItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, sprintIssues, project, panel.ActiveSprint)
+		sprintItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, sprintIssues, project, panel.ActiveSprint, permissions.CanReadMembersOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -692,14 +700,15 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 				return nil, err
 			}
 			issues, issuesHasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-				ProjectID: projectID,
-				SprintID:  &sprint.ID,
-				Limit:     MaxLimit,
+				ProjectID:      projectID,
+				SprintID:       &sprint.ID,
+				Limit:          MaxLimit,
+				IncludePrivate: permissions.CanReadMembersOnly,
 			})
 			if err != nil {
 				return nil, err
 			}
-			issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint)
+			issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint, permissions.CanReadMembersOnly)
 			if err != nil {
 				return nil, err
 			}
@@ -717,11 +726,11 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", errUIBadRequest, err)
 		}
-		progress, err := s.projectProgress(ctx, project, window, time.Now())
+		progress, err := s.projectProgress(ctx, project, window, time.Now(), permissions.CanReadMembersOnly)
 		if err != nil {
 			return nil, err
 		}
-		panel.Progress, err = s.uiBuildProjectProgress(ctx, project, progress)
+		panel.Progress, err = s.uiBuildProjectProgress(ctx, project, progress, permissions.CanReadMembersOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -750,7 +759,7 @@ func (s *Server) uiBuildProjectPanel(ctx context.Context, r *http.Request, proje
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", errUIBadRequest, err)
 		}
-		insights, err := s.projectInsights(ctx, project, query)
+		insights, err := s.projectInsights(ctx, project, query, permissions.CanReadMembersOnly)
 		if err != nil {
 			return nil, err
 		}
@@ -841,9 +850,14 @@ func (s *Server) uiBuildProjectSprintHistoryPage(ctx context.Context, r *http.Re
 	for _, sprint := range sprints {
 		sprintIDs = append(sprintIDs, sprint.ID)
 	}
+	includePrivate, err := s.readsPrivateIssues(ctx, currentUser(r), project.ID)
+	if err != nil {
+		return uiProjectSprintHistoryPageData{}, err
+	}
 	statusCounts, err := s.store.CountSprintSnapshotIssuesByStatus(ctx, store.CountSprintSnapshotIssuesByStatusParams{
-		ProjectID: project.ID,
-		SprintIDs: sprintIDs,
+		ProjectID:      project.ID,
+		SprintIDs:      sprintIDs,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return uiProjectSprintHistoryPageData{}, err
@@ -909,16 +923,21 @@ func (s *Server) uiBuildProjectSprintHistoryIssuePage(ctx context.Context, r *ht
 		}
 		cursor = &c
 	}
+	includePrivate, err := s.readsPrivateIssues(ctx, currentUser(r), project.ID)
+	if err != nil {
+		return uiProjectSprintHistoryIssuePageData{}, err
+	}
 	issues, hasMore, err := s.store.ListSprintSnapshotIssues(ctx, store.ListSprintSnapshotIssuesParams{
-		ProjectID: project.ID,
-		SprintID:  sprint.ID,
-		Cursor:    cursor,
-		Limit:     DefaultLimit,
+		ProjectID:      project.ID,
+		SprintID:       sprint.ID,
+		Cursor:         cursor,
+		Limit:          DefaultLimit,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return uiProjectSprintHistoryIssuePageData{}, err
 	}
-	issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint)
+	issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, &sprint, includePrivate)
 	if err != nil {
 		return uiProjectSprintHistoryIssuePageData{}, err
 	}
@@ -989,6 +1008,10 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 	if err := s.uiRequireProjectAccess(ctx, currentUser(r), project.ID); err != nil {
 		return uiProjectAllIssuePageData{}, err
 	}
+	includePrivate, err := s.readsPrivateIssues(ctx, currentUser(r), project.ID)
+	if err != nil {
+		return uiProjectAllIssuePageData{}, err
+	}
 	allQuery, err := uiParseProjectAllQuery(r)
 	if err != nil {
 		return uiProjectAllIssuePageData{}, err
@@ -1002,20 +1025,21 @@ func (s *Server) uiBuildProjectAllIssuePage(ctx context.Context, r *http.Request
 		cursor = &c
 	}
 	issues, hasMore, err := s.store.ListIssues(ctx, store.ListIssuesParams{
-		ProjectID:   project.ID,
-		Statuses:    allQuery.Statuses,
-		Priorities:  allQuery.Priorities,
-		TagNames:    allQuery.TagNames,
-		AssigneeIDs: allQuery.AssigneeIDs,
-		Cursor:      cursor,
-		Limit:       DefaultLimit,
-		Sort:        allQuery.Sort,
-		Direction:   allQuery.Direction,
+		ProjectID:      project.ID,
+		Statuses:       allQuery.Statuses,
+		Priorities:     allQuery.Priorities,
+		TagNames:       allQuery.TagNames,
+		AssigneeIDs:    allQuery.AssigneeIDs,
+		Cursor:         cursor,
+		Limit:          DefaultLimit,
+		Sort:           allQuery.Sort,
+		Direction:      allQuery.Direction,
+		IncludePrivate: includePrivate,
 	})
 	if err != nil {
 		return uiProjectAllIssuePageData{}, err
 	}
-	issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, nil)
+	issueItems, err := s.uiIssueItemsWithSubIssueProgress(ctx, issues, project, nil, includePrivate)
 	if err != nil {
 		return uiProjectAllIssuePageData{}, err
 	}

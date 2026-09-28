@@ -250,15 +250,17 @@ func (s *Server) anonymousProjectReadAllowed(r *http.Request, api bool) bool {
 		}
 		projectID = project.ID
 	case "issues":
+		// Decided by the ref's project, not the issue, so a missing issue and
+		// a private one both reach the handler and get the same 404.
 		ref, err := parseIssueRef(parts[2])
 		if err != nil {
 			return false
 		}
-		issue, err := s.store.GetIssueByOwnerKeyNumber(r.Context(), owner, ref.ProjectKey, ref.Number)
+		project, err := s.store.GetProjectByOwnerKey(r.Context(), owner, ref.ProjectKey)
 		if err != nil {
 			return false
 		}
-		projectID = issue.ProjectID
+		projectID = project.ID
 	default:
 		return false
 	}

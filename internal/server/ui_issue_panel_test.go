@@ -249,8 +249,8 @@ func TestUIIssuePanelRendersReadonlyDetail(t *testing.T) {
 			t.Fatalf("issue panel included removed archive control %q: %s", notWant, body)
 		}
 	}
-	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 6 {
-		t.Fatalf("context, due date, worker, assignee, reporter, and sprint rows should align action buttons with values, got %d rows: %s", got, body)
+	if got := strings.Count(body, `class="mt-1 flex items-center justify-between gap-3"`); got != 7 {
+		t.Fatalf("context, due date, private, worker, assignee, reporter, and sprint rows should align action buttons with values, got %d rows: %s", got, body)
 	}
 	if strings.Contains(detailsBlock, `class="flex items-start justify-between gap-3"`) {
 		t.Fatalf("detail edit buttons should not align with row titles: %s", body)

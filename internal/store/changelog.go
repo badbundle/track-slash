@@ -39,8 +39,9 @@ type ListProjectChangelogParams struct {
 	Cursor    *ProjectChangelogCursor
 	Limit     int
 	// IncludeMembersOnly adds entries a project member may see and no one
-	// else: about members-only comments, blocks, deleted issues and deleted
-	// comments. Leave it false for a reader who is not a project member.
+	// else: about members-only comments, blocks, deleted or private issues
+	// and deleted comments. Leave it false for a reader who is not a project
+	// member.
 	IncludeMembersOnly bool
 }
 
@@ -51,11 +52,14 @@ type appendProjectChangelogParams struct {
 	EntityID      uuid.UUID
 	IssueID       *uuid.UUID
 	ParentIssueID *uuid.UUID
-	TargetRef     string
-	TargetTitle   string
-	Summary       string
-	MembersOnly   bool
-	Details       model.ProjectChangelogDetails
+	// RelatedIssueIDs are the other issues the entry names, such as a link's
+	// target, so it is hidden with them when one is private.
+	RelatedIssueIDs []uuid.UUID
+	TargetRef       string
+	TargetTitle     string
+	Summary         string
+	MembersOnly     bool
+	Details         model.ProjectChangelogDetails
 }
 
 type changelogQueryer interface {
@@ -117,15 +121,17 @@ func (s *Store) ListProjectChangelog(ctx context.Context, p ListProjectChangelog
 		  AND (
 		      $2
 		      -- Besides members-only entries, a reader who is not a member
-		      -- does not see the history of deleted issues, nor the preview a
-		      -- deleted comment leaves behind.
+		      -- does not see the history of deleted or private issues, nor
+		      -- entries naming a private issue, nor the preview a deleted
+		      -- comment leaves behind.
 		      OR (
 		          NOT e.members_only
 		          AND NOT (e.entity = 'comment' AND e.op = 'delete')
 		          AND (
 		              e.issue_id IS NULL
-		              OR EXISTS (SELECT 1 FROM issues i WHERE i.id = e.issue_id AND i.deleted_at IS NULL)
+		              OR EXISTS (SELECT 1 FROM issues i WHERE i.id = e.issue_id AND i.deleted_at IS NULL AND NOT i.private)
 		          )
+		          AND NOT EXISTS (SELECT 1 FROM issues r WHERE r.id = ANY(e.related_issue_ids) AND r.private)
 		      )
 		  )
 	`
@@ -172,11 +178,18 @@ func appendProjectChangelog(ctx context.Context, q changelogQueryer, p appendPro
 	return q.QueryRow(ctx, `
 		INSERT INTO project_changelog_entries (
 			project_id, actor_id, entity, op, entity_id, issue_id, parent_issue_id,
-			target_ref, target_title, summary, details, members_only
+			target_ref, target_title, summary, details, members_only, related_issue_ids
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id
-	`, p.ProjectID, actorFromContext(ctx), p.Entity, p.Op, p.EntityID, p.IssueID, p.ParentIssueID, p.TargetRef, p.TargetTitle, p.Summary, details, p.MembersOnly).Scan(&id)
+	`, p.ProjectID, actorFromContext(ctx), p.Entity, p.Op, p.EntityID, p.IssueID, p.ParentIssueID, p.TargetRef, p.TargetTitle, p.Summary, details, p.MembersOnly, changelogRelatedIssueIDs(p.RelatedIssueIDs)).Scan(&id)
+}
+
+func changelogRelatedIssueIDs(ids []uuid.UUID) []uuid.UUID {
+	if ids == nil {
+		return []uuid.UUID{}
+	}
+	return ids
 }
 
 func changelogChange(field, label, from, to string) model.ProjectChangelogChange {
@@ -273,6 +286,13 @@ func changelogWorkerLabel(worker *model.IssueWorker) string {
 		return "None"
 	}
 	return worker.Label()
+}
+
+func changelogYesNo(value bool) string {
+	if value {
+		return "Yes"
+	}
+	return "No"
 }
 
 func changelogDateLabel(date *model.Date) string {

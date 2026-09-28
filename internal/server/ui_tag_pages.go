@@ -298,11 +298,11 @@ func (s *Server) uiBuildIssueTagManager(ctx context.Context, r *http.Request, is
 	if err != nil {
 		return nil, err
 	}
-	if err := s.uiRequireProjectAccess(ctx, currentUser(r), projectID); err != nil {
-		return nil, err
-	}
 	issue, err := s.store.GetIssue(ctx, issueID)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := s.uiRequireIssueAccess(ctx, currentUser(r), issue); err != nil {
 		return nil, err
 	}
 	project, err := s.store.GetProject(ctx, projectID)

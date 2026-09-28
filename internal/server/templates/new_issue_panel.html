@@ -27,7 +27,7 @@
       </div>
       {{if .Error}}<div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">{{.Error}}</div>{{end}}
 
-      <form id="new-issue-project-form" method="get" action="{{issueNewPanel}}" hx-get="{{issueNewPanel}}" hx-target="#main" hx-push-url="false" hx-include="#issue-title,#issue-description,input[name='priority']:checked,input[name='worker']:checked,#issue-due-date,#issue-assignee,#issue-reporter" data-search data-project-search data-search-collapsible data-search-clear-target="project_id" class="space-y-2">
+      <form id="new-issue-project-form" method="get" action="{{issueNewPanel}}" hx-get="{{issueNewPanel}}" hx-target="#main" hx-push-url="false" hx-include="#issue-title,#issue-description,input[name='priority']:checked,input[name='worker']:checked,#issue-due-date,#issue-assignee,#issue-reporter,#issue-private" data-search data-project-search data-search-collapsible data-search-clear-target="project_id" class="space-y-2">
         <label class="block text-xs font-medium text-slate-500 dark:text-slate-400" for="issue-project">Project</label>
         {{with newIssueProjectAutocomplete .}}
         {{template "autocomplete-input" .}}
@@ -95,6 +95,8 @@
           </div>
         </div>
       </div>
+
+      {{template "issue-private-field" (issuePrivateField "issue-private" .Private false)}}
 
       {{if not .PublicSubmission}}
       <datalist id="new-issue-members">

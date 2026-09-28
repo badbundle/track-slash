@@ -223,7 +223,7 @@ func (s *Server) uiServeHelpDeskNew(w http.ResponseWriter, r *http.Request, proj
 	if !uiIsHelpDeskReporter(permissions) {
 		return false
 	}
-	s.uiRenderHelpDeskNew(w, r, http.StatusOK, project, "", "", "")
+	s.uiRenderHelpDeskNew(w, r, http.StatusOK, project, "", "", false, "")
 	return true
 }
 
@@ -345,6 +345,7 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		Description: input.Description,
 		Priority:    priority,
 		Worker:      worker,
+		Private:     input.Private,
 		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     dueDate,
@@ -358,6 +359,12 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	uiSetHXPushURL(w, r, uiIssuePath(created))
+	// Someone outside the project follows a private issue they filed as its
+	// reporter.
+	if permissions.HidesIssue(created) {
+		s.uiRenderHelpDeskIssue(w, r, created, nil)
+		return
+	}
 	panel, err := s.uiBuildIssuePanel(r.Context(), r, created.ID)
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -378,6 +385,7 @@ func uiNewIssueInputFromValues(values url.Values) uiNewIssuePanelData {
 		DueDate:       strings.TrimSpace(values.Get("due_date")),
 		AssigneeInput: values.Get("assignee"),
 		ReporterInput: values.Get("reporter"),
+		Private:       values.Get("private") == "true",
 	}
 }
 

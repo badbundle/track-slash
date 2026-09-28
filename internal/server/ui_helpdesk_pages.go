@@ -31,18 +31,20 @@ func (s *Server) renderUIHelpDesk(w http.ResponseWriter, r *http.Request, status
 	})
 }
 
-func (s *Server) uiRenderHelpDeskNew(w http.ResponseWriter, r *http.Request, status int, project model.Project, title, description, message string) {
+func (s *Server) uiRenderHelpDeskNew(w http.ResponseWriter, r *http.Request, status int, project model.Project, title, description string, private bool, message string) {
 	s.renderUIHelpDesk(w, r, status, &uiHelpDeskPanelData{
 		View:        "new",
 		Project:     project,
 		Title:       title,
 		Description: description,
+		Private:     private,
 		Error:       message,
 	})
 }
 
-// uiCreateHelpDeskIssue files a reporter's issue. Only a title and description
-// are taken; the project's members triage everything else.
+// uiCreateHelpDeskIssue files a reporter's issue. Only a title, description
+// and whether it is private are taken; the project's members triage
+// everything else.
 func (s *Server) uiCreateHelpDeskIssue(w http.ResponseWriter, r *http.Request, project model.Project) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "unable to read form", http.StatusBadRequest)
@@ -50,9 +52,10 @@ func (s *Server) uiCreateHelpDeskIssue(w http.ResponseWriter, r *http.Request, p
 	}
 	rawTitle := r.Form.Get("title")
 	description := r.Form.Get("description")
+	private := r.Form.Get("private") == "true"
 	title := strings.TrimSpace(rawTitle)
 	if title == "" || len(title) > 200 {
-		s.uiRenderHelpDeskNew(w, r, http.StatusOK, project, rawTitle, description, "Title required, max 200 chars.")
+		s.uiRenderHelpDeskNew(w, r, http.StatusOK, project, rawTitle, description, private, "Title required, max 200 chars.")
 		return
 	}
 	reporterID := currentUser(r).ID
@@ -60,6 +63,7 @@ func (s *Server) uiCreateHelpDeskIssue(w http.ResponseWriter, r *http.Request, p
 		ProjectID:   project.ID,
 		Title:       title,
 		Description: description,
+		Private:     private,
 		ReporterID:  &reporterID,
 	})
 	if err != nil {
@@ -163,6 +167,14 @@ func (s *Server) uiRenderHelpDeskIssue(w http.ResponseWriter, r *http.Request, i
 		writeUIStoreError(w, err)
 		return
 	}
+	permissions, err := s.uiProjectPermissions(r.Context(), currentUser(r), issue.ProjectID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.Private = issue.Private
+	panel.PublicProject = permissions.CanRead
+	panel.CanCreateIssues = permissions.CanCreateIssues
 	if mutate != nil {
 		mutate(panel)
 	}
@@ -182,6 +194,7 @@ func (s *Server) uiIssueCommentHandler(next http.HandlerFunc) http.HandlerFunc {
 			writeUIStoreError(w, err)
 			return
 		}
+		permissions = permissions.ForIssue(currentUser(r), issue)
 		if !permissions.CanWrite && (deleted || !followsIssue(permissions, currentUser(r), issue)) {
 			writeUIStoreError(w, errUIForbidden)
 			return
@@ -191,14 +204,15 @@ func (s *Server) uiIssueCommentHandler(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // uiFollowedIssue reports whether the route's issue is being read by its
-// help-desk reporter, for the handlers uiIssueCommentHandler and the issue
-// page share with members.
+// reporter (in a help desk, or of a private issue) rather than by someone who
+// can read it, for the handlers uiIssueCommentHandler and the issue page share
+// with members.
 func (s *Server) uiFollowedIssue(ctx context.Context, user model.User, issue model.Issue) (bool, error) {
 	permissions, err := s.uiProjectPermissions(ctx, user, issue.ProjectID)
 	if err != nil {
 		return false, err
 	}
-	return followsIssue(permissions, user, issue), nil
+	return followsIssue(permissions.ForIssue(user, issue), user, issue), nil
 }
 
 func (s *Server) uiCreateHelpDeskReply(w http.ResponseWriter, r *http.Request, issue model.Issue) {

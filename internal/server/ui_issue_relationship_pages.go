@@ -194,6 +194,7 @@ func (s *Server) uiCreateSubIssue(w http.ResponseWriter, r *http.Request) {
 		ParentIssueID: parent.ID,
 		Title:         title,
 		Priority:      model.PriorityP2,
+		Private:       r.Form.Get("private") == "true",
 		ReporterID:    &reporterID,
 	}); err != nil {
 		if errors.Is(err, store.ErrConflict) {

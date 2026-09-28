@@ -11,10 +11,11 @@ func (s *Server) getProjectStats(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
-	stats, err := s.store.GetProjectStats(r.Context(), store.ProjectStatsParams{ProjectID: project.ID})
+	stats, err := s.store.GetProjectStats(r.Context(), store.ProjectStatsParams{ProjectID: project.ID, IncludePrivate: permissions.CanReadMembersOnly})
 	if err != nil {
 		writeStoreError(w, err)
 		return

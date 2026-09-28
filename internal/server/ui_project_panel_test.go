@@ -673,7 +673,7 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`hx-push-url="false"`,
 		`id="new-issue-project-form" method="get" action="/issues/new/panel"`,
 		`hx-get="/issues/new/panel"`,
-		`hx-include="#issue-title,#issue-description,input[name='priority']:checked,input[name='worker']:checked,#issue-due-date,#issue-assignee,#issue-reporter"`,
+		`hx-include="#issue-title,#issue-description,input[name='priority']:checked,input[name='worker']:checked,#issue-due-date,#issue-assignee,#issue-reporter,#issue-private"`,
 		`data-search`,
 		`data-project-search`,
 		`data-search-collapsible`,

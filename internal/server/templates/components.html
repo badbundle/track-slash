@@ -373,6 +373,27 @@
 {{end}}
 {{end}}
 
+{{/* A lock marking a private issue, which only the project's members and its reporter can see. */}}
+{{define "issue-private-badge"}}
+<span data-issue-private-badge data-tooltip="Private" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"><i data-lucide="lock" class="h-3.5 w-3.5" aria-hidden="true"></i><span class="sr-only">Private</span></span>
+{{end}}
+
+{{/*
+  The "Keep this issue private" checkbox on every form that files an issue.
+  Build it with issuePrivateField <id> <checked> <helpDesk>: a help desk's
+  issues are already hidden from everyone else, so its hint says what ticking
+  it still does.
+*/}}
+{{define "issue-private-field"}}
+<div data-issue-private-field class="mt-4">
+  <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200" for="{{.ID}}">
+    <input id="{{.ID}}" type="checkbox" name="private" value="true" {{if .Checked}}checked{{end}} aria-describedby="{{.ID}}-hint" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
+    <span>Keep this issue private</span>
+  </label>
+  <p id="{{.ID}}-hint" class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{if .HelpDesk}}Mark it private if it's a security issue or contains personal details. It stays private even if this project is made public.{{else}}Only you and the project's members will see it. Use this for security vulnerabilities, or anything with personal or account details.{{end}}</p>
+</div>
+{{end}}
+
 {{define "issue-worker-label"}}
 {{with workerBadge .}}
 <span data-issue-worker-label="{{.Value}}" class="inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold {{.Class}}"><i data-lucide="{{.Icon}}" class="h-3.5 w-3.5" aria-hidden="true"></i>{{.Tooltip}}</span>
@@ -404,6 +425,7 @@
       <span aria-hidden="true">{{.SubIssueProgress.Completed}}/{{.SubIssueProgress.Total}}</span>
     </span>
     {{end}}
+    {{if .Issue.Private}}{{template "issue-private-badge"}}{{end}}
     {{template "issue-worker-badge" .Issue.Worker}}
     {{template "issue-due-badge" .Issue}}
     {{with .SprintBadge}}{{template "issue-sprint-badge" .}}{{end}}

@@ -74,11 +74,12 @@ func (s *Server) createIssueLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
-	issue, ok := s.issueFromRoute(w, r)
+	issue, permissions, ok := s.issueWithAccessFromRoute(w, r)
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, issue.ProjectID) {
+	if !permissions.CanRead {
+		writeForbidden(w)
 		return
 	}
 
@@ -98,9 +99,10 @@ func (s *Server) listIssueLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	links, hasMore, err := s.store.ListIssueLinksForIssue(r.Context(), store.ListIssueLinksForIssueParams{
-		IssueID: issue.ID,
-		Cursor:  cursor,
-		Limit:   limit,
+		IssueID:        issue.ID,
+		Cursor:         cursor,
+		Limit:          limit,
+		IncludePrivate: permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -221,7 +223,13 @@ func (s *Server) issueLinkFromRoute(w http.ResponseWriter, r *http.Request) (mod
 	if !ok {
 		return model.Project{}, model.IssueLink{}, false
 	}
-	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), project.ID, number)
+	// Read access is checked before the lookup, so someone who can't read
+	// the project is refused the same way for every link.
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
+		return model.Project{}, model.IssueLink{}, false
+	}
+	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), project.ID, number, permissions.CanReadMembersOnly)
 	if err != nil {
 		writeStoreError(w, err)
 		return model.Project{}, model.IssueLink{}, false

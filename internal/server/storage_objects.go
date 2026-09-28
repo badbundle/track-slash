@@ -131,10 +131,10 @@ func (s *Server) listStorageObjects(w http.ResponseWriter, r *http.Request) {
 		cursor = &c
 	}
 	out, hasMore, err := s.store.ListStorageObjects(r.Context(), store.ListStorageObjectsParams{
-		ProjectID:               project.ID,
-		Cursor:                  cursor,
-		Limit:                   limit,
-		HideDeletedIssueObjects: !permissions.CanReadMembersOnly,
+		ProjectID:                   project.ID,
+		Cursor:                      cursor,
+		Limit:                       limit,
+		HideMembersOnlyIssueObjects: !permissions.CanReadMembersOnly,
 	})
 	if err != nil {
 		writeStoreError(w, err)

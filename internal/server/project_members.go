@@ -231,10 +231,11 @@ func (s *Server) listProjectAssignees(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.requireProjectAccess(w, r, project.ID) {
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return
 	}
-	assignees, err := s.store.ListProjectAssignees(r.Context(), project.ID)
+	assignees, err := s.store.ListProjectAssignees(r.Context(), project.ID, permissions.CanReadMembersOnly)
 	if err != nil {
 		writeStoreError(w, err)
 		return
