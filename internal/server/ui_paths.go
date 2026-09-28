@@ -466,6 +466,14 @@ func uiIssuePriorityEditPath(issue any) string {
 	return uiIssuePriorityPath(issue) + "/edit"
 }
 
+func uiIssueWorkerPath(issue any) string {
+	return uiIssuePath(issue) + "/worker"
+}
+
+func uiIssueWorkerEditPath(issue any) string {
+	return uiIssueWorkerPath(issue) + "/edit"
+}
+
 func uiIssueDueDatePath(issue any) string {
 	return uiIssuePath(issue) + "/due-date"
 }

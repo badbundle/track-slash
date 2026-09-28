@@ -398,6 +398,7 @@ type uiOptionDropdownData struct {
 	Name         string
 	CurrentValue string
 	CurrentLabel string
+	CurrentIcon  string
 	CurrentClass string
 	Error        string
 	Options      []uiOptionDropdownOption
@@ -406,6 +407,7 @@ type uiOptionDropdownData struct {
 type uiOptionDropdownOption struct {
 	Value string
 	Label string
+	Icon  string
 	Class string
 }
 
@@ -672,6 +674,7 @@ type uiIssuePanelData struct {
 	PendingCloseReason bool
 	EditCloseReason    bool
 	EditPriority       bool
+	EditWorker         bool
 	EditDueDate        bool
 	EditAssignee       bool
 	EditReporter       bool
@@ -809,6 +812,7 @@ type uiNewIssuePanelData struct {
 	Title             string
 	Description       string
 	Priority          string
+	Worker            string
 	DueDate           string
 	AssigneeInput     string
 	ReporterInput     string

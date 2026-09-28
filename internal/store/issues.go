@@ -20,6 +20,7 @@ type CreateIssueParams struct {
 	Title       string
 	Description string
 	Priority    model.IssuePriority
+	Worker      *model.IssueWorker
 	AssigneeID  *uuid.UUID
 	ReporterID  *uuid.UUID
 	DueDate     *model.Date
@@ -30,6 +31,7 @@ type CreateSubIssueParams struct {
 	Title         string
 	Description   string
 	Priority      model.IssuePriority
+	Worker        *model.IssueWorker
 	AssigneeID    *uuid.UUID
 	ReporterID    *uuid.UUID
 	DueDate       *model.Date
@@ -44,7 +46,7 @@ func scanIssue(row issueScanner) (model.Issue, error) {
 	var dueDate *time.Time
 	err := row.Scan(
 		&iss.ID, &iss.ProjectID, &iss.OwnerUsername, &iss.ProjectKey, &iss.Number,
-		&iss.Title, &iss.Description, &iss.Status, &iss.CloseReason, &iss.Priority, &iss.AssigneeID, &iss.ReporterID,
+		&iss.Title, &iss.Description, &iss.Status, &iss.CloseReason, &iss.Priority, &iss.Worker, &iss.AssigneeID, &iss.ReporterID,
 		&iss.SprintID, &iss.ParentIssueID, &dueDate, &iss.CreatedAt, &iss.UpdatedAt,
 	)
 	if err != nil {
@@ -69,6 +71,13 @@ func issueDueDateValue(d *model.Date) any {
 		return nil
 	}
 	return d.Time()
+}
+
+func issueWorkerValue(worker *model.IssueWorker) any {
+	if worker == nil {
+		return nil
+	}
+	return string(*worker)
 }
 
 func issuePriorityOrDefault(priority model.IssuePriority) model.IssuePriority {
@@ -124,12 +133,12 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		priority := issuePriorityOrDefault(p.Priority)
 		var dueDate *time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, due_date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			RETURNING id, project_id, number, title, description, status, close_reason, priority,
+			INSERT INTO issues (project_id, number, title, description, priority, worker, assignee_id, reporter_id, due_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			RETURNING id, project_id, number, title, description, status, close_reason, priority, worker,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
-		`, p.ProjectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, issueDueDateValue(p.DueDate)).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority,
+		`, p.ProjectID, number, p.Title, p.Description, string(priority), issueWorkerValue(p.Worker), p.AssigneeID, p.ReporterID, issueDueDateValue(p.DueDate)).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority, &out.Worker,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -217,12 +226,12 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		priority := issuePriorityOrDefault(p.Priority)
 		var dueDate *time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO issues (project_id, number, title, description, priority, assignee_id, reporter_id, parent_issue_id, due_date)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			RETURNING id, project_id, number, title, description, status, close_reason, priority,
+			INSERT INTO issues (project_id, number, title, description, priority, worker, assignee_id, reporter_id, parent_issue_id, due_date)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			RETURNING id, project_id, number, title, description, status, close_reason, priority, worker,
 			          assignee_id, reporter_id, sprint_id, parent_issue_id, due_date, created_at, updated_at
-		`, projectID, number, p.Title, p.Description, string(priority), p.AssigneeID, p.ReporterID, p.ParentIssueID, issueDueDateValue(p.DueDate)).
-			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority,
+		`, projectID, number, p.Title, p.Description, string(priority), issueWorkerValue(p.Worker), p.AssigneeID, p.ReporterID, p.ParentIssueID, issueDueDateValue(p.DueDate)).
+			Scan(&out.ID, &out.ProjectID, &out.Number, &out.Title, &out.Description, &out.Status, &out.CloseReason, &out.Priority, &out.Worker,
 				&out.AssigneeID, &out.ReporterID, &out.SprintID, &out.ParentIssueID, &dueDate, &out.CreatedAt, &out.UpdatedAt)
 		if err != nil {
 			var pgErr *pgconn.PgError
@@ -276,7 +285,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -299,7 +308,7 @@ func getIssueForChangelog(ctx context.Context, q changelogQueryer, id uuid.UUID,
 		deletedClause = "TRUE"
 	}
 	query := fmt.Sprintf(`
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -317,6 +326,7 @@ func issueChangelogChanges(ctx context.Context, q changelogQueryer, before, afte
 	changes = changelogAppendChange(changes, "status", "Status", changelogStatusLabel(before.Status), changelogStatusLabel(after.Status))
 	changes = changelogAppendChange(changes, "close_reason", "Close reason", changelogCloseReasonLabel(before.CloseReason), changelogCloseReasonLabel(after.CloseReason))
 	changes = changelogAppendChange(changes, "priority", "Priority", string(before.Priority), string(after.Priority))
+	changes = changelogAppendChange(changes, "worker", "Worker", changelogWorkerLabel(before.Worker), changelogWorkerLabel(after.Worker))
 	changes = changelogAppendChange(changes, "assignee", "Assignee", changelogUserLabel(ctx, q, before.AssigneeID), changelogUserLabel(ctx, q, after.AssigneeID))
 	changes = changelogAppendChange(changes, "reporter", "Reporter", changelogUserLabel(ctx, q, before.ReporterID), changelogUserLabel(ctx, q, after.ReporterID))
 	changes = changelogAppendChange(changes, "sprint", "Sprint", changelogSprintLabel(ctx, q, before.SprintID), changelogSprintLabel(ctx, q, after.SprintID))
@@ -326,7 +336,7 @@ func issueChangelogChanges(ctx context.Context, q changelogQueryer, before, afte
 
 func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -346,7 +356,7 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 
 func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -371,6 +381,11 @@ type ListIssuesParams struct {
 	Statuses []model.Status
 	// Priorities filters to issues in any supplied priority. Empty = all.
 	Priorities []model.IssuePriority
+	// Workers filters to issues marked for any supplied worker. Empty = all.
+	Workers []model.IssueWorker
+	// UnsetWorker also matches issues with no worker. With no Workers, it
+	// matches only those.
+	UnsetWorker bool
 	// AssigneeIDs filters to issues assigned to any supplied users. Empty = all.
 	AssigneeIDs []uuid.UUID
 	// ReporterID filters to issues the user reported. Nil = all.
@@ -428,7 +443,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 		return []model.Issue{}, nil
 	}
 	const q = `
-		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -458,7 +473,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -478,6 +493,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 		args = append(args, priorities)
 		q += fmt.Sprintf(" AND i.priority = ANY($%d::issue_priority[])", len(args))
 	}
+	q = appendIssueWorkerFilter(q, p.Workers, p.UnsetWorker, &args)
 	if len(p.AssigneeIDs) > 0 {
 		args = append(args, p.AssigneeIDs)
 		q += fmt.Sprintf(" AND i.assignee_id = ANY($%d)", len(args))
@@ -574,6 +590,30 @@ func issuePriorityFilters(priorities []model.IssuePriority) []string {
 		out = append(out, string(current))
 	}
 	return out
+}
+
+func appendIssueWorkerFilter(q string, workers []model.IssueWorker, unset bool, args *[]any) string {
+	values := make([]string, 0, len(workers))
+	seen := map[model.IssueWorker]struct{}{}
+	for _, worker := range workers {
+		if _, ok := seen[worker]; ok {
+			continue
+		}
+		seen[worker] = struct{}{}
+		values = append(values, string(worker))
+	}
+	switch {
+	case len(values) == 0 && !unset:
+		return q
+	case len(values) == 0:
+		return q + " AND i.worker IS NULL"
+	}
+	*args = append(*args, values)
+	match := fmt.Sprintf("i.worker = ANY($%d::issue_worker[])", len(*args))
+	if unset {
+		return q + " AND (" + match + " OR i.worker IS NULL)"
+	}
+	return q + " AND " + match
 }
 
 func appendIssueCursor(q string, p ListIssuesParams, args *[]any) string {
@@ -716,7 +756,7 @@ type ListDeletedIssuesParams struct {
 func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -826,7 +866,7 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 
 	args := []any{p.ParentIssueID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issues i
 		JOIN projects pr ON pr.id = i.project_id
@@ -877,6 +917,8 @@ type UpdateIssueParams struct {
 	Status        *model.Status
 	CloseReason   *model.IssueCloseReason
 	Priority      *model.IssuePriority
+	Worker        *model.IssueWorker
+	ClearWorker   bool
 	AssigneeID    *uuid.UUID
 	ClearAssignee bool
 	ReporterID    *uuid.UUID
@@ -922,6 +964,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 	if p.Priority != nil {
 		sets = append(sets, fmt.Sprintf("priority = $%d", i))
 		args = append(args, string(*p.Priority))
+		i++
+	}
+	if p.ClearWorker {
+		sets = append(sets, "worker = NULL")
+	} else if p.Worker != nil {
+		sets = append(sets, fmt.Sprintf("worker = $%d", i))
+		args = append(args, string(*p.Worker))
 		i++
 	}
 	if p.ClearDueDate {

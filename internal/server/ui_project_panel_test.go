@@ -647,6 +647,7 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		Title:          "Draft issue",
 		Description:    "Draft body",
 		Priority:       string(model.PriorityP1),
+		Worker:         string(model.WorkerHuman),
 		DueDate:        "tomorrow",
 		AssigneeInput:  "@ada",
 		ReporterInput:  "@grace",
@@ -672,7 +673,7 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`hx-push-url="false"`,
 		`id="new-issue-project-form" method="get" action="/issues/new/panel"`,
 		`hx-get="/issues/new/panel"`,
-		`hx-include="#issue-title,#issue-description,input[name='priority']:checked,#issue-due-date,#issue-assignee,#issue-reporter"`,
+		`hx-include="#issue-title,#issue-description,input[name='priority']:checked,input[name='worker']:checked,#issue-due-date,#issue-assignee,#issue-reporter"`,
 		`data-search`,
 		`data-project-search`,
 		`data-search-collapsible`,
@@ -704,6 +705,13 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		`aria-label="Priority P1"`,
 		`opacity-40`,
 		`peer-checked:opacity-100`,
+		`id="issue-worker-label">Worker</span>`,
+		`role="radiogroup" aria-labelledby="issue-worker-label" data-worker-picker`,
+		`type="radio" name="worker" value="" >`,
+		`type="radio" name="worker" value="agent" >`,
+		`type="radio" name="worker" value="human" checked>`,
+		`data-lucide="bot"`,
+		`data-lucide="user-round"`,
 		`data-checkbox-reveal`,
 		`id="issue-due-date-toggle" type="checkbox" data-checkbox-reveal-toggle aria-controls="issue-due-date-field" aria-expanded="true" checked`,
 		`id="issue-due-date-field" data-checkbox-reveal-panel`,
@@ -745,8 +753,8 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 		}
 	}
 
-	// Public submitters never pick people, so the column holds just Priority
-	// and Due date.
+	// Public submitters never pick people or a worker, so the column holds
+	// just Priority and Due date.
 	buf.Reset()
 	if err := uiTemplates.ExecuteTemplate(&buf, "new-issue-panel", &uiNewIssuePanelData{
 		Project:          project,
@@ -760,7 +768,7 @@ func TestUINewIssuePanelRendersAllCreateFields(t *testing.T) {
 	public := buf.String()
 	requireMarkupOrder(t, public, `data-new-issue-fields class="mt-4 space-y-4 sm:max-w-xs"`, `id="issue-priority-label">Priority</span>`)
 	requireMarkupOrder(t, public, `id="issue-priority-label">Priority</span>`, `id="issue-due-date-label">Due date</span>`)
-	for _, notWant := range []string{`id="issue-reporter"`, `id="issue-assignee"`, `<datalist id="new-issue-members">`} {
+	for _, notWant := range []string{`id="issue-reporter"`, `id="issue-assignee"`, `name="worker"`, `<datalist id="new-issue-members">`} {
 		if strings.Contains(public, notWant) {
 			t.Fatalf("public new issue panel rendered %q: %s", notWant, public)
 		}

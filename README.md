@@ -10,6 +10,7 @@ trackslash is a fast, self-hostable issue tracker built as a single Go applicati
 ## What it does
 
 - Tracks projects, issues, sub-issues, comments, links, tags, priorities, due dates, and sprints. Sprints are optional per project: without them, work is picked up one issue at a time.
+- Marks each issue for an agent or a human, so agents can find their work and hand an issue to a person when they get stuck.
 - Keeps project and issue context, plus free-form project whiteboard notes, addressable from the UI, HTTP API, and MCP.
 - Exposes MCP tools, resources, and prompts for issue work, planning, context, attachments, users, and tokens.
 - Supports project membership, read-only roles, public project views, passkeys, password login, and API tokens.

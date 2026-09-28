@@ -316,6 +316,7 @@ func createIssue(
 		Title:       seed.Title,
 		Description: seed.Description,
 		Priority:    issuePriorityOrDefault(seed.Priority),
+		Worker:      seed.Worker,
 		AssigneeID:  &userID,
 		ReporterID:  &userID,
 	})
@@ -382,6 +383,7 @@ func createSubIssue(
 		Title:         seed.Title,
 		Description:   seed.Description,
 		Priority:      issuePriorityOrDefault(seed.Priority),
+		Worker:        seed.Worker,
 		AssigneeID:    &userID,
 		ReporterID:    &userID,
 	})
@@ -442,9 +444,15 @@ type issueDefinition struct {
 	Description string
 	Status      model.Status
 	Priority    model.IssuePriority
+	Worker      *model.IssueWorker
 	Comments    []string
 	SubIssues   []issueDefinition
 }
+
+var (
+	seedAgent = model.WorkerAgent
+	seedHuman = model.WorkerHuman
+)
 
 type linkDefinition struct {
 	SourceKey string
@@ -519,6 +527,7 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 					Description: "Planning view needs a quick count of todo, in-progress, and done work before a sprint is activated.",
 					Status:      model.StatusInProgress,
 					Priority:    model.PriorityP0,
+					Worker:      &seedAgent,
 					Comments: []string{
 						"Counts can come from existing list endpoints for now.",
 					},
@@ -546,8 +555,10 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 					Description: "Users need confidence that old API tokens are inactive before rotating credentials.",
 					Status:      model.StatusTodo,
 					Priority:    model.PriorityP3,
+					Worker:      &seedHuman,
 					Comments: []string{
 						"Display null last_used_at as Never used.",
+						"Handing this to a human: only a person can rotate the production token.",
 					},
 				},
 				{

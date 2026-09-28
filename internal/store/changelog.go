@@ -268,6 +268,13 @@ func changelogLinkTitle(source model.Issue, link model.IssueLink, target model.I
 	return fmt.Sprintf("%s %s %s", source.Identifier, strings.ToLower(changelogLinkTypeLabel(link.LinkType)), target.Identifier)
 }
 
+func changelogWorkerLabel(worker *model.IssueWorker) string {
+	if worker == nil {
+		return "None"
+	}
+	return worker.Label()
+}
+
 func changelogDateLabel(date *model.Date) string {
 	if date == nil {
 		return "None"

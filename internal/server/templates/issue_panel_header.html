@@ -5,6 +5,7 @@
         <div class="flex flex-wrap items-center gap-2">
           {{template "issue-key" .Issue.Identifier}}
           {{template "priority-badge" .Issue.Priority}}
+          {{template "issue-worker-badge" .Issue.Worker}}
         </div>
         {{if .EditTitle}}
         <form method="post" action="{{issueTitle .Issue}}" hx-post="{{issueTitle .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2">{{template "csrf-field" $.CSRFToken}}

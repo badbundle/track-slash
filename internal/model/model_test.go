@@ -180,6 +180,8 @@ func TestReporterIssue(t *testing.T) {
 		Title: "Broken", Description: "Details", Status: StatusClosed, CloseReason: &reason, Priority: PriorityP0,
 		AssigneeID: &reporterID, ReporterID: &reporterID, DueDate: &due, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
+	worker := WorkerHuman
+	issue.Worker = &worker
 	got := NewReporterIssue(issue)
 	if got.ID != issue.ID || got.Identifier != "HELP-3" || got.Title != "Broken" || got.Description != "Details" ||
 		got.Status != ReporterStatusClosed || got.ReporterID != &reporterID || !got.CreatedAt.Equal(issue.CreatedAt) {
@@ -189,7 +191,7 @@ func TestReporterIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, hidden := range []string{"priority", "assignee_id", "close_reason", "due_date", "sprint_id", "parent_issue_id", "tags"} {
+	for _, hidden := range []string{"priority", "worker", "assignee_id", "close_reason", "due_date", "sprint_id", "parent_issue_id", "tags"} {
 		if strings.Contains(string(raw), `"`+hidden+`"`) {
 			t.Fatalf("reporter issue JSON carries %s: %s", hidden, raw)
 		}
@@ -286,6 +288,34 @@ func TestIssuePriorityValid(t *testing.T) {
 				t.Fatalf("IssuePriority(%q).Valid() = %v, want %v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+func TestIssueWorkerValid(t *testing.T) {
+	cases := []struct {
+		in   IssueWorker
+		want bool
+	}{
+		{WorkerAgent, true},
+		{WorkerHuman, true},
+		{"", false},
+		{"Agent", false},
+		{"robot", false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.in), func(t *testing.T) {
+			if got := c.in.Valid(); got != c.want {
+				t.Fatalf("IssueWorker(%q).Valid() = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIssueWorkerLabel(t *testing.T) {
+	for in, want := range map[IssueWorker]string{WorkerAgent: "Agent", WorkerHuman: "Human", "robot": "robot"} {
+		if got := in.Label(); got != want {
+			t.Fatalf("IssueWorker(%q).Label() = %q, want %q", in, got, want)
+		}
 	}
 }
 

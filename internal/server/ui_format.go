@@ -1213,6 +1213,83 @@ func uiPriorityOptions() []uiPriorityOption {
 	}
 }
 
+type uiWorkerBadgeData struct {
+	Value   model.IssueWorker
+	Label   string
+	Tooltip string
+	Icon    string
+	Class   string
+}
+
+// uiWorkerBadge is the icon that says who an issue is for. Human stands out,
+// because it means someone is waiting on a person. An issue nobody has marked
+// gets no badge.
+func uiWorkerBadge(worker *model.IssueWorker) *uiWorkerBadgeData {
+	if worker == nil {
+		return nil
+	}
+	switch *worker {
+	case model.WorkerAgent:
+		return &uiWorkerBadgeData{Value: *worker, Label: worker.Label(), Tooltip: "For an agent", Icon: "bot", Class: "border-slate-300 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"}
+	case model.WorkerHuman:
+		return &uiWorkerBadgeData{Value: *worker, Label: worker.Label(), Tooltip: "Needs a human", Icon: "user-round", Class: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200"}
+	}
+	return nil
+}
+
+type uiWorkerOption struct {
+	Value string
+	Label string
+	Icon  string
+	Class string
+}
+
+const uiWorkerNoneClass = "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+
+// uiWorkerOptions are the choices for who an issue is for. The empty value
+// clears the mark.
+func uiWorkerOptions() []uiWorkerOption {
+	options := []uiWorkerOption{{Value: "", Label: "None", Icon: "circle-dashed", Class: uiWorkerNoneClass}}
+	for _, worker := range []model.IssueWorker{model.WorkerAgent, model.WorkerHuman} {
+		badge := uiWorkerBadge(&worker)
+		options = append(options, uiWorkerOption{Value: string(worker), Label: badge.Label, Icon: badge.Icon, Class: badge.Class})
+	}
+	return options
+}
+
+func uiIssueWorkerDropdown(panel *uiIssuePanelData) uiOptionDropdownData {
+	current := uiWorkerOptions()[0]
+	if badge := uiWorkerBadge(panel.Issue.Worker); badge != nil {
+		current = uiWorkerOption{Value: string(badge.Value), Label: badge.Label, Icon: badge.Icon, Class: badge.Class}
+	}
+	options := make([]uiOptionDropdownOption, 0, len(uiWorkerOptions()))
+	for _, option := range uiWorkerOptions() {
+		options = append(options, uiOptionDropdownOption{Value: option.Value, Label: option.Label, Icon: option.Icon, Class: option.Class})
+	}
+	return uiOptionDropdownData{
+		CSRFToken:    panel.CSRFToken,
+		Action:       uiIssueWorkerPath(panel.Issue),
+		HXTarget:     "#main",
+		HXPushURL:    "false",
+		CancelHXGet:  uiIssuePanelPath(panel.Issue),
+		ToggleLabel:  "Change worker",
+		ListLabel:    "Issue worker",
+		Name:         "worker",
+		CurrentValue: current.Value,
+		CurrentLabel: current.Label,
+		CurrentIcon:  current.Icon,
+		CurrentClass: current.Class,
+		Options:      options,
+	}
+}
+
+func uiNewIssueSelectedWorker(data *uiNewIssuePanelData) string {
+	if data == nil || !model.IssueWorker(data.Worker).Valid() {
+		return ""
+	}
+	return data.Worker
+}
+
 func uiNewIssueSelectedPriority(data *uiNewIssuePanelData) model.IssuePriority {
 	if data == nil {
 		return model.PriorityP2

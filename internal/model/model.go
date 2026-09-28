@@ -111,6 +111,33 @@ func (p IssuePriority) Valid() bool {
 	return false
 }
 
+// IssueWorker says who is meant to complete an issue. Human means an agent
+// could not finish it and a person has to step in.
+type IssueWorker string
+
+const (
+	WorkerAgent IssueWorker = "agent"
+	WorkerHuman IssueWorker = "human"
+)
+
+func (w IssueWorker) Valid() bool {
+	switch w {
+	case WorkerAgent, WorkerHuman:
+		return true
+	}
+	return false
+}
+
+func (w IssueWorker) Label() string {
+	switch w {
+	case WorkerAgent:
+		return "Agent"
+	case WorkerHuman:
+		return "Human"
+	}
+	return string(w)
+}
+
 const MaxIssueTagNameLength = 80
 
 type IssueTagColor string
@@ -820,6 +847,7 @@ type Issue struct {
 	Status        Status            `json:"status"`
 	CloseReason   *IssueCloseReason `json:"close_reason"`
 	Priority      IssuePriority     `json:"priority"`
+	Worker        *IssueWorker      `json:"worker"`
 	AssigneeID    *uuid.UUID        `json:"assignee_id,omitempty"`
 	ReporterID    *uuid.UUID        `json:"reporter_id,omitempty"`
 	SprintID      *uuid.UUID        `json:"sprint_id,omitempty"`

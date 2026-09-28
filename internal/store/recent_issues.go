@@ -58,7 +58,7 @@ func (s *Store) RecordIssueView(ctx context.Context, userID, issueID uuid.UUID) 
 // out too.
 func (s *Store) ListRecentIssues(ctx context.Context, user model.User, limit int) ([]model.Issue, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT i.id, i.project_id, owner.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, owner.username, p.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM recent_issue_views v
 		JOIN issues i ON i.id = v.issue_id

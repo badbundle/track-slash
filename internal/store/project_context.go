@@ -845,7 +845,7 @@ func (s *Store) ListIssuesForContext(ctx context.Context, p ListIssuesForContext
 	}
 	args := []any{p.ContextID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM issue_context_links icl
 		JOIN issues i ON i.id = icl.issue_id

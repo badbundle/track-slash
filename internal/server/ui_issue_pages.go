@@ -413,6 +413,55 @@ func (s *Server) uiUpdateIssuePriority(w http.ResponseWriter, r *http.Request) {
 	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
 }
 
+func (s *Server) uiEditIssueWorker(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, issue.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.EditWorker = true
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
+func (s *Server) uiUpdateIssueWorker(w http.ResponseWriter, r *http.Request) {
+	issue, ok := s.uiIssueFromRoute(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "unable to read form", http.StatusBadRequest)
+		return
+	}
+	params := store.UpdateIssueParams{ClearWorker: true}
+	if raw := strings.TrimSpace(r.Form.Get("worker")); raw != "" {
+		worker := model.IssueWorker(raw)
+		if !worker.Valid() {
+			http.Error(w, "invalid worker", http.StatusBadRequest)
+			return
+		}
+		params = store.UpdateIssueParams{Worker: &worker}
+	}
+	if err := s.uiRequireProjectAccess(r.Context(), currentUser(r), issue.ProjectID); err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	updated, err := s.store.UpdateIssue(r.Context(), issue.ID, params)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	panel, err := s.uiBuildIssuePanel(r.Context(), r, updated.ID)
+	if err != nil {
+		writeUIStoreError(w, err)
+		return
+	}
+	renderUITemplate(w, http.StatusOK, "issue-panel", panel)
+}
+
 func (s *Server) uiEditIssueDueDate(w http.ResponseWriter, r *http.Request) {
 	issue, ok := s.uiIssueFromRoute(w, r)
 	if !ok {
