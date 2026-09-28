@@ -938,13 +938,6 @@
     mobileSidebarBreakpoint.addListener(handleMobileSidebarBreakpoint);
   }
   syncMobileSidebar();
-  const setNavLoading = (link, loading) => {
-    const icon = link.querySelector("[data-nav-icon]");
-    const loader = link.querySelector("[data-nav-loader]");
-    if (!icon || !loader) return;
-    icon.classList.toggle("hidden", loading);
-    loader.classList.toggle("hidden", !loading);
-  };
   let reopenIssueListControls = false;
   const rememberIssueListControls = (target) => {
     const controls = target.closest("[data-issue-list-controls]");
@@ -1107,11 +1100,7 @@
     hideAppTooltip();
     rememberIssueListControls(event.target);
     const link = event.target.closest("[data-sidebar-link]");
-    if (link) {
-      links().forEach((item) => setNavLoading(item, false));
-      setActiveNav(link);
-      setNavLoading(link, true);
-    }
+    if (link) setActiveNav(link);
     const accountMenuLink = event.target.closest("[data-account-menu-link]");
     if (accountMenuLink) {
       const menu = accountMenuLink.closest("details");
@@ -1119,10 +1108,6 @@
     }
   });
   document.body.addEventListener("htmx:afterRequest", (event) => {
-    const link = event.target.closest("[data-sidebar-link]");
-    if (link) {
-      setNavLoading(link, false);
-    }
     if (event.detail && event.detail.successful === false) syncSidebarActive();
   });
   const resetSearchOptions = (search) => {

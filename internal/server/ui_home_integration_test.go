@@ -34,7 +34,6 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 		`data-lucide="key-round"`,
 		`data-lucide="bell"`,
 		`data-lucide="braces"`,
-		"data-nav-loader",
 		`data-mobile-app-bar`,
 		`data-mobile-sidebar-toggle`,
 		`aria-controls="app-sidebar"`,
@@ -100,6 +99,9 @@ func TestUIRendersWorkSidebar(t *testing.T) {
 	}
 	if strings.Contains(body, `href="/settings"`) {
 		t.Fatalf("body still links to the removed general Settings page: %s", body)
+	}
+	if strings.Contains(body, "data-nav-loader") || strings.Contains(scripts, "setNavLoading") {
+		t.Fatalf("sidebar links still swap their icon for a loading spinner")
 	}
 	if strings.Contains(body, `data-sidebar-account`) {
 		t.Fatalf("sidebar still repeats the account pages outside the account menu: %s", body)

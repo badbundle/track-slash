@@ -488,7 +488,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		t.Fatalf("desktop sidebar collapse CSS must be scoped to the md breakpoint: %s", body)
 	}
 	mobileStateStart := strings.Index(body, `const mobileSidebar =`)
-	mobileStateEnd := strings.Index(body, `const setNavLoading =`)
+	mobileStateEnd := strings.Index(body, `let reopenIssueListControls =`)
 	if mobileStateStart < 0 || mobileStateEnd <= mobileStateStart {
 		t.Fatalf("shell missing isolated mobile sidebar state: %s", body)
 	}
