@@ -40,6 +40,20 @@ make docker-migrate IMAGE=track-slash-frontend
 
 When running migrations from inside Docker, make sure `DATABASE_URL` names a Postgres host reachable from that container.
 
+## Deploying on Merge
+
+On Dokploy, connect the frontend app to this repository through the GitHub provider, with the trigger set to push, the branch set to `main` and Auto Deploy on. Pushes then reach Dokploy through its GitHub App's webhook at `/api/deploy/github`, which deploys every app whose provider, owner, repository, branch and trigger match the push. The app needs no webhook of its own.
+
+Dokploy registers that webhook URL from the address the dashboard was open at when the GitHub App was created. If that was a private address, such as a VPN or tailnet hostname, GitHub cannot deliver to it and merges deploy nothing. In the owning account's or organization's **Settings → Developer settings → GitHub Apps**, open the Dokploy App and under **General → Webhook** set the URL to a public address that reaches Dokploy:
+
+```text
+https://<public-dokploy-host>/api/deploy/github
+```
+
+Leave the webhook secret unchanged: Dokploy verifies each delivery against the secret it stored when the App was created. To check the change, redeliver a push to `main` from the App's **Advanced → Recent Deliveries**. `Deployed 1 apps` means the push matched the frontend app, and `No apps to deploy` means it reached Dokploy but matched nothing. The count includes apps whose Watch Paths the push missed, which are then skipped, so confirm a new entry on the app's Deployments tab.
+
+Each Dokploy app also shows its own Webhook URL, for sources Dokploy has no integration with. Don't add it as a repository webhook alongside the GitHub App, or every merge deploys twice. If you do use it, set the webhook's content type to `application/json`: Dokploy reads the branch from a JSON body and answers form-encoded deliveries with `301 {"message":"Branch Not Match"}`. It gives the same answer for pushes to any other branch, so those 301s are expected.
+
 ## Frontend App
 
 Run the frontend app with the default image command:
