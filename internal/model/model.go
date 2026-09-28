@@ -444,6 +444,7 @@ type ReporterIssue struct {
 	Title         string         `json:"title"`
 	Description   string         `json:"description"`
 	Status        ReporterStatus `json:"status"`
+	Private       bool           `json:"private"`
 	ReporterID    *uuid.UUID     `json:"reporter_id,omitempty"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
@@ -460,6 +461,7 @@ func NewReporterIssue(issue Issue) ReporterIssue {
 		Title:         issue.Title,
 		Description:   issue.Description,
 		Status:        NewReporterStatus(issue.Status),
+		Private:       issue.Private,
 		ReporterID:    issue.ReporterID,
 		CreatedAt:     issue.CreatedAt,
 		UpdatedAt:     issue.UpdatedAt,

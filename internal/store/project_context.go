@@ -390,13 +390,24 @@ func (s *Store) ListProjectContexts(ctx context.Context, p ListProjectContextsPa
 
 // issueScopedContextIssueID is the issue an issue-scoped context belongs to,
 // so its changelog entries follow that issue's visibility. Project context
-// belongs to no issue.
+// belongs to no issue. The context's link names the issue while it lasts;
+// deleting the context removes the link first, so the entry recording its
+// creation, which always names the issue, is the fallback.
 func issueScopedContextIssueID(ctx context.Context, tx pgx.Tx, contextItem model.ProjectContext) (*uuid.UUID, error) {
 	if contextItem.Scope != model.ProjectContextScopeIssue {
 		return nil, nil
 	}
 	var issueID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT issue_id FROM issue_context_links WHERE context_id = $1 ORDER BY created_at LIMIT 1`, contextItem.ID).Scan(&issueID)
+	err := tx.QueryRow(ctx, `
+		SELECT issue_id FROM (
+			SELECT issue_id, 0 AS rank, created_at FROM issue_context_links WHERE context_id = $1
+			UNION ALL
+			SELECT issue_id, 1, created_at FROM project_changelog_entries
+			WHERE entity = 'project_context' AND entity_id = $1 AND issue_id IS NOT NULL
+		) owners
+		ORDER BY rank, created_at
+		LIMIT 1
+	`, contextItem.ID).Scan(&issueID)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, nil

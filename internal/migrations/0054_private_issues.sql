@@ -12,10 +12,33 @@ ALTER TABLE issues
 ALTER TABLE project_changelog_entries
     ADD COLUMN related_issue_ids uuid[] NOT NULL DEFAULT '{}';
 
+-- Existing link entries name their issues by ref in their text, including
+-- links deleted since and earlier sources and targets, so record every issue
+-- each one names.
 UPDATE project_changelog_entries e
-SET related_issue_ids = ARRAY[l.source_id, l.target_id]
-FROM issue_links l
-WHERE e.entity = 'issue_link' AND e.entity_id = l.id;
+SET related_issue_ids = COALESCE((
+    SELECT array_agg(DISTINCT i.id)
+    FROM projects p
+    CROSS JOIN LATERAL regexp_matches(
+        coalesce(e.summary, '') || ' ' || coalesce(e.target_title, '') || ' ' || coalesce(e.details::text, ''),
+        '(?:^|[^A-Z0-9])' || p.key || '-([0-9]{1,9})', 'g'
+    ) AS m(parts)
+    JOIN issues i ON i.project_id = p.id AND i.number = m.parts[1]::int
+    WHERE p.id = e.project_id
+), '{}')
+WHERE e.entity = 'issue_link';
+
+-- Entries about an issue-scoped context now carry its issue; the entry that
+-- created the context always did, so earlier ones take it from there.
+UPDATE project_changelog_entries e
+SET issue_id = created.issue_id
+FROM (
+    SELECT DISTINCT ON (entity_id) entity_id, issue_id
+    FROM project_changelog_entries
+    WHERE entity = 'project_context' AND op = 'insert' AND issue_id IS NOT NULL
+    ORDER BY entity_id, created_at
+) created
+WHERE e.entity = 'project_context' AND e.issue_id IS NULL AND e.entity_id = created.entity_id;
 -- +goose StatementEnd
 
 -- +goose StatementBegin
@@ -101,6 +124,19 @@ BEGIN
         rec_members_only := EXISTS (SELECT 1 FROM issues i WHERE i.id IN (rec.source_id, rec.target_id) AND i.private);
     ELSIF entity IN ('issue_context_link', 'issue_tag_link', 'issue_attachment') THEN
         rec_members_only := EXISTS (SELECT 1 FROM issues i WHERE i.id = rec.issue_id AND i.private);
+    ELSIF entity = 'project_context' THEN
+        -- Issue-scoped context belongs to its issue: its link names it while
+        -- it lasts, and the entry that created it always does.
+        rec_members_only := rec.scope = 'issue' AND (
+            EXISTS (
+                SELECT 1 FROM issue_context_links l JOIN issues i ON i.id = l.issue_id
+                WHERE l.context_id = rec.id AND i.private
+            )
+            OR EXISTS (
+                SELECT 1 FROM project_changelog_entries c JOIN issues i ON i.id = c.issue_id
+                WHERE c.entity = 'project_context' AND c.entity_id = rec.id AND i.private
+            )
+        );
     END IF;
 
     payload := jsonb_build_object(

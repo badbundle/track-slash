@@ -726,6 +726,14 @@ func (s *Server) uiServeHelpDeskIssue(w http.ResponseWriter, r *http.Request, is
 	if !follows {
 		return false
 	}
+	// Recents keeps the reporter's way back to a private issue on a public
+	// project, which no list shows them.
+	if err := s.store.RecordIssueView(r.Context(), currentUser(r).ID, issue.ID); err != nil {
+		// Defensive: the issue was just loaded; only a DB outage or a
+		// concurrent delete fails this.
+		writeUIStoreError(w, err)
+		return true
+	}
 	s.uiRenderHelpDeskIssue(w, r, issue, nil)
 	return true
 }

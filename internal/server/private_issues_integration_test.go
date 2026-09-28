@@ -233,6 +233,40 @@ func TestPrivateIssuesForMembers(t *testing.T) {
 	}
 }
 
+// A private issue's own context stays out of the changelog through its whole
+// life, including deleting it, which removes its link to the issue first.
+func TestPrivateIssueContextHistory(t *testing.T) {
+	t.Parallel()
+	e := newHTTPEnv(t)
+	f := newPrivateIssueFixture(t, e, model.ProjectAccessPublic)
+	code, body := e.do(t, http.MethodPost, e.issuePath(f.secret)+"/context", map[string]any{"title": "Proof of concept notes", "body": "curl the endpoint twice"})
+	if code != http.StatusCreated {
+		t.Fatalf("create issue context = %d %s", code, body)
+	}
+	var created struct {
+		Context model.ProjectContext `json:"context"`
+	}
+	if err := json.Unmarshal(body, &created); err != nil || created.Context.Ref == "" {
+		created.Context = decode[model.ProjectContext](t, body)
+	}
+	if code, body := e.do(t, http.MethodPatch, e.projectPath()+"/context/"+created.Context.Ref, map[string]any{"body": "curl it three times"}); code != http.StatusOK && code != http.StatusNotFound {
+		t.Fatalf("update issue context = %d %s", code, body)
+	}
+	if code, body := e.do(t, http.MethodDelete, e.issuePath(f.secret)+"/context/"+created.Context.Ref, nil); code != http.StatusNoContent {
+		t.Fatalf("delete issue context = %d %s", code, body)
+	}
+	for name, token := range map[string]string{"outsider": f.outsiderToken, "anonymous": ""} {
+		code, body := e.doWithToken(t, token, http.MethodGet, e.projectPath()+"/changelog?limit=200", nil)
+		if code != http.StatusOK || strings.Contains(string(body), "Proof of concept") || strings.Contains(string(body), "curl") {
+			t.Fatalf("%s changelog names the private issue's context = %d %s", name, code, body)
+		}
+	}
+	code, body = e.doWithToken(t, f.readonlyToken, http.MethodGet, e.projectPath()+"/changelog?limit=200", nil)
+	if code != http.StatusOK || !strings.Contains(string(body), "Deleted context Proof of concept notes") {
+		t.Fatalf("member changelog missing the context's deletion = %d %s", code, body)
+	}
+}
+
 // Marking an issue private or public, and who may.
 func TestPrivateIssueToggle(t *testing.T) {
 	t.Parallel()
@@ -312,7 +346,7 @@ func TestPrivateIssueReporter(t *testing.T) {
 	}
 
 	code, body := e.doWithToken(t, reporterToken, http.MethodPost, e.projectIssuesPath(), map[string]any{"title": "Account takeover", "description": "Steps inside", "private": true})
-	if code != http.StatusCreated || strings.Contains(string(body), `"priority"`) {
+	if code != http.StatusCreated || strings.Contains(string(body), `"priority"`) || !strings.Contains(string(body), `"private":true`) {
 		t.Fatalf("reporter REST create = %d %s", code, body)
 	}
 	reported := decode[model.ReporterIssue](t, body)
@@ -357,6 +391,10 @@ func TestPrivateIssueReporter(t *testing.T) {
 	}
 	if strings.Contains(page, "Your issues") {
 		t.Fatalf("reporter page on a public project links to a help desk list: %s", page)
+	}
+	// Opening it keeps it in Recents, the reporter's way back to it.
+	if me := e.uiGet(t, "/me", reporterToken); !strings.Contains(me, reported.Identifier) {
+		t.Fatalf("reporter's Recents missing their private issue: %s", me)
 	}
 
 	// Filing through the UI lands on the reporter's view.

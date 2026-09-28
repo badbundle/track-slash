@@ -223,12 +223,13 @@ func (s *Server) issueLinkFromRoute(w http.ResponseWriter, r *http.Request) (mod
 	if !ok {
 		return model.Project{}, model.IssueLink{}, false
 	}
-	includePrivate, err := s.readsPrivateIssues(r.Context(), currentUser(r), project.ID)
-	if err != nil {
-		writeStoreError(w, err)
+	// Read access is checked before the lookup, so someone who can't read
+	// the project is refused the same way for every link.
+	permissions, ok := s.requireProjectReadPermissions(w, r, project.ID)
+	if !ok {
 		return model.Project{}, model.IssueLink{}, false
 	}
-	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), project.ID, number, includePrivate)
+	link, err := s.store.GetIssueLinkByProjectNumber(r.Context(), project.ID, number, permissions.CanReadMembersOnly)
 	if err != nil {
 		writeStoreError(w, err)
 		return model.Project{}, model.IssueLink{}, false

@@ -189,10 +189,18 @@ func TestPrivateIssuesStayOutOfListsForNonMembers(t *testing.T) {
 		"issue_tag_link":     {id: tagLink.ID, want: true},
 		"issue_tag":          {id: tag.ID},
 		"project":            {id: env.projectID},
+		"project_context":    {id: contextItem.ID},
 	} {
 		if got, err := env.store.RealtimeTopicIsPrivate(env.ctx, kind, tc.id); err != nil || got != tc.want {
 			t.Fatalf("RealtimeTopicIsPrivate %s = %v, %v, want %v", kind, got, err, tc.want)
 		}
+	}
+	issueContext, err := env.store.CreateIssueContext(ownerCtx, store.CreateIssueContextParams{IssueID: secret.ID, Title: "PoC", Kind: model.ProjectContextKindText, ContentType: "text/plain; charset=utf-8", Body: "steps", CreatedByID: project.OwnerID})
+	if err != nil {
+		t.Fatalf("CreateIssueContext: %v", err)
+	}
+	if got, err := env.store.RealtimeTopicIsPrivate(env.ctx, "project_context", issueContext.ID); err != nil || !got {
+		t.Fatalf("RealtimeTopicIsPrivate issue context = %v, %v", got, err)
 	}
 	if got, err := env.store.RealtimeTopicIsPrivate(env.ctx, "issue", public.ID); err != nil || got {
 		t.Fatalf("RealtimeTopicIsPrivate public issue = %v, %v", got, err)

@@ -1090,7 +1090,9 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		}
 		if p.Private != nil && !*p.Private && parentIssueID != nil {
 			var parentPrivate bool
-			if err := tx.QueryRow(ctx, `SELECT private FROM issues WHERE id = $1`, *parentIssueID).Scan(&parentPrivate); err != nil {
+			// FOR SHARE waits for a concurrent change to the parent, so a
+			// parent going private can't race a sub-issue going public.
+			if err := tx.QueryRow(ctx, `SELECT private FROM issues WHERE id = $1 FOR SHARE`, *parentIssueID).Scan(&parentPrivate); err != nil {
 				return err // defensive: the parent is a foreign key of a live issue
 			}
 			if parentPrivate {
