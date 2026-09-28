@@ -319,6 +319,44 @@ html[data-mobile-sidebar-open] [data-mobile-sidebar] { visibility: visible; tran
 }
 
 /*
+  Background presets (Profile → Appearance) recolour the ambient backdrop
+  behind the app shell and nothing else: cards, chrome, buttons and accents
+  stay indigo. Indigo is the default and adds no class, so sign-in, legal pages
+  and anyone who hasn't picked render the brand backdrop above unchanged. A
+  preset sets the top wash and the four orb colours as RGB triples; Slate keeps
+  the grid and drops the colour. No preset leans on rose, which means errors.
+*/
+.brand-backdrop-preset {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgb(var(--backdrop-wash)) 0%, transparent 60%),
+    rgb(248 250 252);
+}
+.brand-backdrop-preset .brand-backdrop-orb-indigo { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-1) / 0.55), rgb(var(--backdrop-orb-1) / 0.22) 55%, transparent); }
+.brand-backdrop-preset .brand-backdrop-orb-violet { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-2) / 0.45), rgb(var(--backdrop-orb-2) / 0.18) 55%, transparent); }
+.brand-backdrop-preset .brand-backdrop-orb-sky { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-3) / 0.38), rgb(var(--backdrop-orb-3) / 0.14) 55%, transparent); }
+.brand-backdrop-preset .brand-backdrop-orb-rose { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-4) / 0.26), rgb(var(--backdrop-orb-4) / 0.1) 55%, transparent); }
+.brand-backdrop-preset-slate { --backdrop-wash: 241 245 249; }
+.brand-backdrop-preset-slate .brand-backdrop-orb { display: none; }
+.brand-backdrop-preset-emerald { --backdrop-wash: 236 253 245; --backdrop-orb-1: 16 185 129; --backdrop-orb-2: 20 184 166; --backdrop-orb-3: 34 211 238; --backdrop-orb-4: 132 204 22; }
+.brand-backdrop-preset-sky { --backdrop-wash: 240 249 255; --backdrop-orb-1: 14 165 233; --backdrop-orb-2: 59 130 246; --backdrop-orb-3: 34 211 238; --backdrop-orb-4: 129 140 248; }
+.brand-backdrop-preset-amber { --backdrop-wash: 255 251 235; --backdrop-orb-1: 245 158 11; --backdrop-orb-2: 249 115 22; --backdrop-orb-3: 250 204 21; --backdrop-orb-4: 251 146 60; }
+@media (prefers-color-scheme: dark) {
+  .brand-backdrop-preset {
+    background:
+      radial-gradient(120% 80% at 50% 0%, rgb(var(--backdrop-wash)) 0%, transparent 60%),
+      rgb(2 6 23);
+  }
+  .brand-backdrop-preset .brand-backdrop-orb-indigo { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-1) / 0.55), rgb(var(--backdrop-orb-1) / 0.2) 55%, transparent); }
+  .brand-backdrop-preset .brand-backdrop-orb-violet { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-2) / 0.42), rgb(var(--backdrop-orb-2) / 0.15) 55%, transparent); }
+  .brand-backdrop-preset .brand-backdrop-orb-sky { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-3) / 0.3), rgb(var(--backdrop-orb-3) / 0.1) 55%, transparent); }
+  .brand-backdrop-preset .brand-backdrop-orb-rose { background: radial-gradient(closest-side, rgb(var(--backdrop-orb-4) / 0.22), rgb(var(--backdrop-orb-4) / 0.08) 55%, transparent); }
+  .brand-backdrop-preset-slate { --backdrop-wash: 30 41 59; }
+  .brand-backdrop-preset-emerald { --backdrop-wash: 2 44 34; --backdrop-orb-1: 5 150 105; --backdrop-orb-2: 13 148 136; --backdrop-orb-3: 8 145 178; --backdrop-orb-4: 101 163 13; }
+  .brand-backdrop-preset-sky { --backdrop-wash: 8 47 73; --backdrop-orb-1: 2 132 199; --backdrop-orb-2: 37 99 235; --backdrop-orb-3: 8 145 178; --backdrop-orb-4: 99 102 241; }
+  .brand-backdrop-preset-amber { --backdrop-wash: 69 26 3; --backdrop-orb-1: 217 119 6; --backdrop-orb-2: 234 88 12; --backdrop-orb-3: 202 138 4; --backdrop-orb-4: 249 115 22; }
+}
+
+/*
   Page navigation into #main shows a thin brand-gradient bar across the top of
   the viewport, with a highlight sweeping through it at the icon's slash angle.
   app.js sets data-nav-busy on <html> while a navigation request is in flight.

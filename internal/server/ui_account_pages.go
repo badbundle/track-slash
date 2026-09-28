@@ -116,14 +116,21 @@ func (s *Server) uiUpdatePassword(w http.ResponseWriter, r *http.Request) {
 // renderUIProfile takes the user explicitly because a successful update must
 // render the row it just wrote, which the request's signed-in user predates.
 func (s *Server) renderUIProfile(w http.ResponseWriter, r *http.Request, user model.User, profileError string, profileSaved bool) {
-	s.renderUIAccountPage(w, r, user, "profile", uiShellData{
-		ProfilePanel: &uiProfilePanelData{
-			CSRFToken:    uiSessionCSRFToken(r),
-			User:         user,
-			ProfileError: profileError,
-			ProfileSaved: profileSaved,
-		},
-	})
+	s.renderUIProfilePanel(w, r, user, &uiProfilePanelData{ProfileError: profileError, ProfileSaved: profileSaved})
+}
+
+func (s *Server) renderUIProfilePanel(w http.ResponseWriter, r *http.Request, user model.User, panel *uiProfilePanelData) {
+	background, err := s.store.GetUserBackground(r.Context(), user.ID)
+	if err != nil {
+		// Defensive: the signed-in user's own row; only a DB outage or a
+		// concurrent account deletion reaches this.
+		writeUIStoreError(w, err)
+		return
+	}
+	panel.CSRFToken = uiSessionCSRFToken(r)
+	panel.User = user
+	panel.Background = background
+	s.renderUIAccountPage(w, r, user, "profile", uiShellData{Background: background, ProfilePanel: panel})
 }
 
 // The internal-error branches in the account renderers below are defensive:

@@ -138,6 +138,56 @@ func (w IssueWorker) Label() string {
 	return string(w)
 }
 
+// BackgroundPreset is the in-app background a user picked. Only the backdrop
+// behind the app changes; cards, chrome and accents stay as they are.
+type BackgroundPreset string
+
+const (
+	// BackgroundIndigo is the brand's own backdrop and everyone's default.
+	BackgroundIndigo BackgroundPreset = "indigo"
+	// BackgroundSlate keeps the grid but drops the colour.
+	BackgroundSlate   BackgroundPreset = "slate"
+	BackgroundEmerald BackgroundPreset = "emerald"
+	BackgroundSky     BackgroundPreset = "sky"
+	BackgroundAmber   BackgroundPreset = "amber"
+)
+
+// BackgroundPresets lists the presets in the order the picker offers them.
+var BackgroundPresets = []BackgroundPreset{BackgroundIndigo, BackgroundSlate, BackgroundEmerald, BackgroundSky, BackgroundAmber}
+
+func (p BackgroundPreset) Valid() bool {
+	switch p {
+	case BackgroundIndigo, BackgroundSlate, BackgroundEmerald, BackgroundSky, BackgroundAmber:
+		return true
+	}
+	return false
+}
+
+// OrDefault returns the preset, or Indigo for a value that isn't one, such as
+// a preset that has since been retired.
+func (p BackgroundPreset) OrDefault() BackgroundPreset {
+	if p.Valid() {
+		return p
+	}
+	return BackgroundIndigo
+}
+
+func (p BackgroundPreset) Label() string {
+	switch p {
+	case BackgroundIndigo:
+		return "Indigo"
+	case BackgroundSlate:
+		return "Slate"
+	case BackgroundEmerald:
+		return "Emerald"
+	case BackgroundSky:
+		return "Sky"
+	case BackgroundAmber:
+		return "Amber"
+	}
+	return string(p)
+}
+
 const MaxIssueTagNameLength = 80
 
 type IssueTagColor string

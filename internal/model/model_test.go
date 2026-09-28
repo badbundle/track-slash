@@ -319,6 +319,29 @@ func TestIssueWorkerLabel(t *testing.T) {
 	}
 }
 
+func TestBackgroundPreset(t *testing.T) {
+	labels := map[BackgroundPreset]string{
+		BackgroundIndigo:  "Indigo",
+		BackgroundSlate:   "Slate",
+		BackgroundEmerald: "Emerald",
+		BackgroundSky:     "Sky",
+		BackgroundAmber:   "Amber",
+	}
+	if len(BackgroundPresets) != len(labels) || BackgroundPresets[0] != BackgroundIndigo {
+		t.Fatalf("BackgroundPresets = %v, want every preset with Indigo first", BackgroundPresets)
+	}
+	for _, preset := range BackgroundPresets {
+		if !preset.Valid() || preset.OrDefault() != preset || preset.Label() != labels[preset] {
+			t.Fatalf("preset %q: valid %v, default %q, label %q", preset, preset.Valid(), preset.OrDefault(), preset.Label())
+		}
+	}
+	for _, unknown := range []BackgroundPreset{"", "Indigo", "rose", "violet"} {
+		if unknown.Valid() || unknown.OrDefault() != BackgroundIndigo || unknown.Label() != string(unknown) {
+			t.Fatalf("unknown %q: valid %v, default %q, label %q", unknown, unknown.Valid(), unknown.OrDefault(), unknown.Label())
+		}
+	}
+}
+
 func TestProjectContextKindValid(t *testing.T) {
 	cases := []struct {
 		in   ProjectContextKind

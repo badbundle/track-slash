@@ -23,10 +23,13 @@ type uiSignupData struct {
 }
 
 type uiShellData struct {
-	CSRFToken         string
-	Authenticated     bool
-	Anonymous         bool
-	User              model.User
+	CSRFToken     string
+	Authenticated bool
+	Anonymous     bool
+	User          model.User
+	// Background is the signed-in user's backdrop preset. renderUIShell
+	// loads it for a full page when it is left empty.
+	Background        model.BackgroundPreset
 	SidebarFavorites  uiSidebarFavoritesData
 	SidebarRecents    uiSidebarRecentsData
 	SidebarActive     uiSidebarState
@@ -887,10 +890,16 @@ type uiAccountPage struct {
 // uiProfilePanelData backs the Profile account page: profile image, display
 // name, and email.
 type uiProfilePanelData struct {
-	CSRFToken    string
-	User         model.User
-	ProfileError string
-	ProfileSaved bool
+	CSRFToken       string
+	User            model.User
+	ProfileError    string
+	ProfileSaved    bool
+	Background      model.BackgroundPreset
+	BackgroundError string
+	BackgroundSaved bool
+	// BackdropOOB adds the saved backdrop to an htmx response, which replaces
+	// only #main.
+	BackdropOOB bool
 }
 
 // uiLoginPanelData backs the Login account page: passkeys and password. They

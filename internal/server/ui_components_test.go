@@ -1202,7 +1202,7 @@ func TestUIAppPagesCarryTheAmbientBrand(t *testing.T) {
 				`<link rel="apple-touch-icon" href="/static/icon-192.png">`,
 				`<link rel="manifest" href="/manifest.webmanifest">`,
 				`<meta name="theme-color" content="#4f46e5">`,
-				`<div data-brand-backdrop class="brand-backdrop brand-backdrop-ambient" aria-hidden="true">`,
+				`<div id="brand-backdrop" data-brand-backdrop class="brand-backdrop brand-backdrop-ambient" aria-hidden="true">`,
 				`<span data-brand-mark class="flex min-w-0 items-center gap-2.5">`,
 				`<img src="/static/icon.svg" alt="" width="28" height="28"`,
 				`<span class="truncate text-base font-semibold tracking-tight text-slate-950 dark:text-white">trackslash</span>`,
