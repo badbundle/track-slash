@@ -16,7 +16,7 @@
 {{template "brand-head"}}
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-950 antialiased dark:bg-slate-950 dark:text-slate-100">
-{{template "brand-backdrop" "ambient"}}
+{{template "brand-backdrop" (brandBackdrop "ambient" "" false)}}
   <header class="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
     <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
       <a href="/" class="rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">{{template "brand-mark"}}</a>

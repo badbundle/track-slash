@@ -165,7 +165,7 @@ func TestUIAuthPagesRenderBrandingWithoutInlineStyles(t *testing.T) {
 		for _, want := range []string{
 			`<img src="/static/icon.svg" alt="" width="64" height="64"`,
 			`>trackslash</h1>`,
-			`<div data-brand-backdrop class="brand-backdrop" aria-hidden="true">`,
+			`<div id="brand-backdrop" data-brand-backdrop class="brand-backdrop" aria-hidden="true">`,
 			`<link rel="icon" href="/static/icon.svg" type="image/svg+xml">`,
 			`<meta name="theme-color" content="#4f46e5">`,
 			`<script src="/static/auth.js"></script>`,

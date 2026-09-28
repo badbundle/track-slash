@@ -112,6 +112,16 @@ func (s *Server) renderUIShell(w http.ResponseWriter, r *http.Request, status in
 			writeUIInternalError(w, "ui shell recent issues", err)
 			return
 		}
+		// Only a full page draws the backdrop; an htmx response replaces #main.
+		if data.Background == "" && !isHTMXRequest(r) {
+			data.Background, err = s.store.GetUserBackground(r.Context(), data.User.ID)
+			if err != nil {
+				// Defensive: the signed-in user's own row, read just after
+				// their favorites and recents.
+				writeUIInternalError(w, "ui shell background", err)
+				return
+			}
+		}
 	}
 	activeProjectID := uuid.Nil
 	activeIssueID := uuid.Nil
