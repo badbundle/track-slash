@@ -64,6 +64,7 @@ func TestRenderedIssueEditFragmentsCarryAPopulatedCSRFToken(t *testing.T) {
 		issuePath + "/description/edit",
 		issuePath + "/status/edit",
 		issuePath + "/priority/edit",
+		issuePath + "/worker/edit",
 		issuePath + "/due-date/edit",
 		issuePath + "/assignee/edit",
 		issuePath + "/reporter/edit",

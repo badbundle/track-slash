@@ -82,6 +82,7 @@ type mcpCreateIssueInput struct {
 	Title       string               `json:"title"`
 	Description string               `json:"description,omitempty"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
+	Worker      *model.IssueWorker   `json:"worker,omitempty" jsonschema:"agent or human: who is meant to complete the issue"`
 	AssigneeID  *string              `json:"assignee_id,omitempty"`
 	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
@@ -94,6 +95,7 @@ type mcpListIssuesInput struct {
 	Statuses    []model.Status                `json:"statuses,omitempty"`
 	Priority    model.IssuePriority           `json:"priority,omitempty"`
 	Priorities  []model.IssuePriority         `json:"priorities,omitempty"`
+	Workers     []string                      `json:"workers,omitempty" jsonschema:"any of agent, human, or none for issues nobody has marked"`
 	AssigneeIDs []string                      `json:"assignee_ids,omitempty"`
 	Tags        []string                      `json:"tags,omitempty"`
 	Sort        store.ListIssuesSort          `json:"sort,omitempty" jsonschema:"one of number, created, updated, status, priority, due"`
@@ -113,6 +115,8 @@ type mcpUpdateIssueInput struct {
 	Status        *model.Status           `json:"status,omitempty"`
 	CloseReason   *model.IssueCloseReason `json:"close_reason,omitempty"`
 	Priority      *model.IssuePriority    `json:"priority,omitempty"`
+	Worker        *model.IssueWorker      `json:"worker,omitempty" jsonschema:"agent or human: who is meant to complete the issue"`
+	ClearWorker   bool                    `json:"clear_worker,omitempty"`
 	AssigneeID    *string                 `json:"assignee_id,omitempty"`
 	ClearAssignee bool                    `json:"clear_assignee,omitempty"`
 	ReporterID    *string                 `json:"reporter_id,omitempty"`
@@ -128,6 +132,7 @@ type mcpCreateSubIssueInput struct {
 	Title       string               `json:"title"`
 	Description string               `json:"description,omitempty"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
+	Worker      *model.IssueWorker   `json:"worker,omitempty" jsonschema:"agent or human: who is meant to complete the issue"`
 	AssigneeID  *string              `json:"assignee_id,omitempty"`
 	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
@@ -527,11 +532,11 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_list_project_changelog", "List project changelog entries.", readOnly, s.mcpListProjectChangelog)
 
 	addMCPTool(srv, "track_create_issue", "Create issue in project. In a help desk you are not a member of, only title and description are accepted and the issue comes back as its reporter sees it.", write, s.mcpCreateIssue)
-	addMCPTool(srv, "track_list_issues", "List project issues. In a help desk you are not a member of, lists only the issues you reported, newest first, as their reporter sees them; filters are ignored.", readOnly, s.mcpListIssues)
+	addMCPTool(srv, "track_list_issues", "List project issues. Filter workers by agent for issues meant for an agent, or by human for issues waiting on a person. In a help desk you are not a member of, lists only the issues you reported, newest first, as their reporter sees them; filters are ignored.", readOnly, s.mcpListIssues)
 	addMCPTool(srv, "track_list_deleted_issues", "List deleted project issues.", readOnly, s.mcpListDeletedIssues)
 	addMCPTool(srv, "track_batch_get_issues", "Get visible issues by refs.", readOnly, s.mcpBatchIssues)
 	addMCPTool(srv, "track_get_issue", "Get issue by ref. The help-desk reporter of an issue gets only its title, description, status (open, in_progress or closed) and times.", readOnly, s.mcpGetIssue)
-	addMCPTool(srv, "track_update_issue", "Update issue fields.", write, s.mcpUpdateIssue)
+	addMCPTool(srv, "track_update_issue", "Update issue fields. worker says who is meant to complete the issue: agent or human. If you cannot finish an issue and a person has to step in, set worker to human and add a comment saying what they need to do.", write, s.mcpUpdateIssue)
 	addMCPTool(srv, "track_delete_issue", "Soft-delete issue.", write, s.mcpDeleteIssue)
 	addMCPTool(srv, "track_restore_issue", "Restore deleted issue.", write, s.mcpRestoreIssue)
 	addMCPTool(srv, "track_create_sub_issue", "Create sub-issue under an issue.", write, s.mcpCreateSubIssue)
@@ -953,6 +958,13 @@ func mcpPriority(raw *model.IssuePriority) (model.IssuePriority, error) {
 		priority = *raw
 	}
 	return priority, nil
+}
+
+func mcpWorker(worker *model.IssueWorker) error {
+	if worker != nil && !worker.Valid() {
+		return validationError("invalid worker: use agent or human")
+	}
+	return nil
 }
 
 func mcpReporter(auth authContext, reporterID *uuid.UUID) (*uuid.UUID, error) {
@@ -1578,11 +1590,15 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
+	if err := mcpWorker(input.Worker); err != nil {
+		return nil, err
+	}
 	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
 	if err != nil {
 		return nil, err
 	}
-	if !permissions.CanWrite && assigneeID != nil {
+	// Assignee and worker are triage decisions for members.
+	if !permissions.CanWrite && (assigneeID != nil || input.Worker != nil) {
 		return nil, errMCPForbidden
 	}
 	inputReporterID, err := mcpOptionalUUID(input.ReporterID, "reporter_id")
@@ -1598,6 +1614,7 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		Title:       title,
 		Description: input.Description,
 		Priority:    priority,
+		Worker:      input.Worker,
 		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     input.DueDate,
@@ -1631,6 +1648,9 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 	if err != nil {
 		return nil, err
 	}
+	if err := mcpWorker(input.Worker); err != nil {
+		return nil, err
+	}
 	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
 	if err != nil {
 		return nil, err
@@ -1648,6 +1668,7 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 		Title:         title,
 		Description:   input.Description,
 		Priority:      priority,
+		Worker:        input.Worker,
 		AssigneeID:    assigneeID,
 		ReporterID:    reporterID,
 		DueDate:       input.DueDate,
@@ -1720,6 +1741,10 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return nil, validationError(err.Error())
 	}
+	workers, unsetWorker, err := parseIssueWorkerFilters(input.Workers)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
 	tagNames, err := parseIssueTagNames(input.Tags)
 	if err != nil {
 		return nil, validationError(err.Error())
@@ -1736,6 +1761,8 @@ func (s *Server) mcpListIssues(ctx context.Context, req *mcp.CallToolRequest, in
 		ProjectID:   project.ID,
 		Statuses:    statuses,
 		Priorities:  priorities,
+		Workers:     workers,
+		UnsetWorker: unsetWorker,
 		AssigneeIDs: assigneeIDs,
 		TagNames:    tagNames,
 		Cursor:      cursor,
@@ -1955,6 +1982,9 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if input.Priority != nil && !input.Priority.Valid() {
 		return nil, validationError("invalid priority")
 	}
+	if err := mcpWorker(input.Worker); err != nil {
+		return nil, err
+	}
 	assigneeID, err := mcpOptionalUUID(input.AssigneeID, "assignee_id")
 	if err != nil {
 		return nil, err
@@ -1981,6 +2011,8 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		Status:        input.Status,
 		CloseReason:   input.CloseReason,
 		Priority:      input.Priority,
+		Worker:        input.Worker,
+		ClearWorker:   input.ClearWorker,
 		AssigneeID:    assigneeID,
 		ClearAssignee: input.ClearAssignee,
 		ReporterID:    reporterID,

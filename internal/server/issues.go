@@ -16,6 +16,7 @@ type createIssueReq struct {
 	Title       string               `json:"title"`
 	Description string               `json:"description"`
 	Priority    *model.IssuePriority `json:"priority,omitempty"`
+	Worker      *model.IssueWorker   `json:"worker,omitempty"`
 	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
 	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
@@ -52,7 +53,12 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		priority = *req.Priority
 	}
-	if !permissions.CanWrite && req.AssigneeID != nil {
+	if req.Worker != nil && !req.Worker.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid worker")
+		return
+	}
+	// Assignee and worker are triage decisions for members.
+	if !permissions.CanWrite && (req.AssigneeID != nil || req.Worker != nil) {
 		writeForbidden(w)
 		return
 	}
@@ -75,6 +81,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		Title:       req.Title,
 		Description: req.Description,
 		Priority:    priority,
+		Worker:      req.Worker,
 		AssigneeID:  req.AssigneeID,
 		ReporterID:  reporterID,
 		DueDate:     req.DueDate,
@@ -142,6 +149,10 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		priority = *req.Priority
 	}
+	if req.Worker != nil && !req.Worker.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid worker")
+		return
+	}
 	reporterID := req.ReporterID
 	if reporterID == nil {
 		id := currentUser(r).ID
@@ -156,6 +167,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		Title:         req.Title,
 		Description:   req.Description,
 		Priority:      priority,
+		Worker:        req.Worker,
 		AssigneeID:    req.AssigneeID,
 		ReporterID:    reporterID,
 		DueDate:       req.DueDate,
@@ -189,6 +201,7 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	query, err := parseIssueListQueryValues(r.URL.Query(), issueListQueryOptions{
 		DefaultSort:      store.ListIssuesSortNumber,
 		IncludeAssignees: true,
+		IncludeWorkers:   true,
 		AllowNumberSort:  true,
 	})
 	if err != nil {
@@ -215,6 +228,8 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		ProjectID:   project.ID,
 		Statuses:    query.Statuses,
 		Priorities:  query.Priorities,
+		Workers:     query.Workers,
+		UnsetWorker: query.UnsetWorker,
 		AssigneeIDs: query.AssigneeIDs,
 		TagNames:    query.TagNames,
 		Cursor:      cursor,
@@ -431,6 +446,8 @@ type updateIssueReq struct {
 	Status      *model.Status           `json:"status,omitempty"`
 	CloseReason *model.IssueCloseReason `json:"close_reason,omitempty"`
 	Priority    *model.IssuePriority    `json:"priority,omitempty"`
+	Worker      *model.IssueWorker      `json:"worker,omitempty"`
+	ClearWorker bool                    `json:"clear_worker,omitempty"`
 	// AssigneeID: pointer-to-pointer pattern via json.RawMessage would be cleaner,
 	// but v0 keeps it simple: assignee_id present sets it, assignee_id null clears.
 	AssigneeID    *uuid.UUID  `json:"assignee_id,omitempty"`
@@ -488,6 +505,10 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid priority")
 		return
 	}
+	if req.Worker != nil && !req.Worker.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid worker")
+		return
+	}
 	var sprintID *uuid.UUID
 	if req.Sprint != nil && !req.ClearSprint {
 		number, err := parseTypedRef(*req.Sprint, "sprint")
@@ -509,6 +530,8 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		Status:        req.Status,
 		CloseReason:   req.CloseReason,
 		Priority:      req.Priority,
+		Worker:        req.Worker,
+		ClearWorker:   req.ClearWorker,
 		AssigneeID:    req.AssigneeID,
 		ClearAssignee: req.ClearAssignee,
 		ReporterID:    req.ReporterID,

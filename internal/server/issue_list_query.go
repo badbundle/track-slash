@@ -14,6 +14,7 @@ import (
 type issueListQueryOptions struct {
 	DefaultSort      store.ListIssuesSort
 	IncludeAssignees bool
+	IncludeWorkers   bool
 	AllowNumberSort  bool
 }
 
@@ -22,6 +23,8 @@ type issueListQuery struct {
 	Priorities  []model.IssuePriority
 	TagNames    []string
 	AssigneeIDs []uuid.UUID
+	Workers     []model.IssueWorker
+	UnsetWorker bool
 	Sort        store.ListIssuesSort
 	Direction   store.ListIssuesSortDirection
 }
@@ -54,14 +57,47 @@ func parseIssueListQueryValues(values url.Values, opts issueListQueryOptions) (i
 			return issueListQuery{}, err
 		}
 	}
+	var workers []model.IssueWorker
+	var unsetWorker bool
+	if opts.IncludeWorkers {
+		workers, unsetWorker, err = parseIssueWorkerFilters(values["worker"])
+		if err != nil {
+			return issueListQuery{}, err
+		}
+	}
 	return issueListQuery{
 		Statuses:    statuses,
 		Priorities:  priorities,
 		TagNames:    tags,
 		AssigneeIDs: assigneeIDs,
+		Workers:     workers,
+		UnsetWorker: unsetWorker,
 		Sort:        sortBy,
 		Direction:   direction,
 	}, nil
+}
+
+// issueWorkerFilterNone matches issues nobody has marked for an agent or a
+// human.
+const issueWorkerFilterNone = "none"
+
+func parseIssueWorkerFilters(raws []string) ([]model.IssueWorker, bool, error) {
+	workers := make([]model.IssueWorker, 0, len(raws))
+	unset := false
+	for _, raw := range raws {
+		raw = strings.TrimSpace(raw)
+		switch {
+		case raw == "":
+			continue
+		case raw == issueWorkerFilterNone:
+			unset = true
+		case model.IssueWorker(raw).Valid():
+			workers = append(workers, model.IssueWorker(raw))
+		default:
+			return nil, false, fmt.Errorf("invalid worker: use agent, human or none")
+		}
+	}
+	return workers, unset, nil
 }
 
 func parseIssueStatusFilters(raws []string) ([]model.Status, error) {

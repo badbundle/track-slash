@@ -60,7 +60,7 @@ Use this as lightweight product/design memory alongside `MANIFESTO.md` and `COMP
 
 ## Forms
 
-- Create forms stack their fields in one left-aligned column, each labelled above its control with even spacing, so tab order follows the visual order. Free-text fields (title, description) span the card; short metadata fields (priority, people, dates) share a narrower column width. On New issue the order is Priority, Reporter, Assignee, then Due date.
+- Create forms stack their fields in one left-aligned column, each labelled above its control with even spacing, so tab order follows the visual order. Free-text fields (title, description) span the card; short metadata fields (priority, people, dates) share a narrower column width. On New issue the order is Priority, Worker, Reporter, Assignee, then Due date. Worker, Reporter and Assignee are for members, so a public submission skips them.
 
 ## Issue Detail
 

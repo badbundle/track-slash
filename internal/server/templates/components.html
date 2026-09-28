@@ -282,14 +282,14 @@
 <div data-option-dropdown-root class="space-y-2">
   <div>
     <button type="button" aria-label="{{.ToggleLabel}}" aria-haspopup="listbox" aria-expanded="true" hx-get="{{.CancelHXGet}}" hx-target="{{.HXTarget}}" hx-push-url="{{.HXPushURL}}" data-option-dropdown-toggle class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm font-semibold hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 {{.CurrentClass}}">
-      <span class="min-w-0 truncate">{{.CurrentLabel}}</span>
+      <span class="inline-flex min-w-0 items-center gap-1.5">{{if .CurrentIcon}}<i data-lucide="{{.CurrentIcon}}" class="h-4 w-4 shrink-0" aria-hidden="true"></i>{{end}}<span class="min-w-0 truncate">{{.CurrentLabel}}</span></span>
       <i data-lucide="chevron-up" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
     </button>
   </div>
   <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-target="{{.HXTarget}}" hx-push-url="{{.HXPushURL}}" role="listbox" aria-label="{{.ListLabel}}" data-option-dropdown-list class="overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">{{template "csrf-field" $.CSRFToken}}
     {{range .Options}}
     <button type="submit" name="{{$.Name}}" value="{{.Value}}" role="option" aria-selected="{{if eq $.CurrentValue .Value}}true{{else}}false{{end}}" class="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-2.5 py-2 text-left last:border-b-0 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-slate-800 dark:hover:bg-slate-800">
-      <span class="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold {{.Class}}">{{.Label}}</span>
+      <span class="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-semibold {{.Class}}">{{if .Icon}}<i data-lucide="{{.Icon}}" class="h-3.5 w-3.5" aria-hidden="true"></i>{{end}}{{.Label}}</span>
       {{if eq $.CurrentValue .Value}}<i data-lucide="check" class="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i>{{end}}
     </button>
     {{end}}
@@ -367,6 +367,18 @@
 <span data-issue-sprint-badge="{{.Ref}}" data-tooltip="In {{.Ref}} · {{.Name}} ({{.Status}})" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded border border-indigo-200 bg-indigo-50 text-[11px] font-bold leading-none text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200"><span aria-hidden="true">S</span><span class="sr-only">In {{.Ref}} · {{.Name}} ({{.Status}})</span></span>
 {{end}}
 
+{{define "issue-worker-badge"}}
+{{with workerBadge .}}
+<span data-issue-worker-badge="{{.Value}}" data-tooltip="{{.Tooltip}}" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded border {{.Class}}"><i data-lucide="{{.Icon}}" class="h-3.5 w-3.5" aria-hidden="true"></i><span class="sr-only">{{.Tooltip}}</span></span>
+{{end}}
+{{end}}
+
+{{define "issue-worker-label"}}
+{{with workerBadge .}}
+<span data-issue-worker-label="{{.Value}}" class="inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold {{.Class}}"><i data-lucide="{{.Icon}}" class="h-3.5 w-3.5" aria-hidden="true"></i>{{.Tooltip}}</span>
+{{end}}
+{{end}}
+
 {{define "issue-summary-row"}}
 <span data-issue-summary-row class="grid min-w-0 gap-2 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
   <span class="flex min-w-0 items-center gap-2 sm:contents">
@@ -392,6 +404,7 @@
       <span aria-hidden="true">{{.SubIssueProgress.Completed}}/{{.SubIssueProgress.Total}}</span>
     </span>
     {{end}}
+    {{template "issue-worker-badge" .Issue.Worker}}
     {{template "issue-due-badge" .Issue}}
     {{with .SprintBadge}}{{template "issue-sprint-badge" .}}{{end}}
     {{if .CompletedAt}}<span data-completed-at class="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"><span class="sr-only">Completed </span>{{template "local-time" (tokenTime .CompletedAt)}}</span>{{end}}

@@ -314,6 +314,8 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			uiTestIssueTag(uuid.MustParse("8cc21ed4-2d69-4d43-9f0c-402736e4aa16"), 1, "Card Tag", model.TagColorViolet),
 		},
 	}
+	human := model.WorkerHuman
+	issue.Worker = &human
 	project := model.Project{ID: issue.ProjectID, Key: "TRACK", Name: "Track Slash"}
 
 	// Rows sit inside an opaque list card, so they use the translucent row tint.
@@ -349,6 +351,10 @@ func TestUIIssueRowsUseCompactIssueKeyAndColoredStatus(t *testing.T) {
 			`aria-label="Due Jun 24, 2099"`,
 			`data-lucide="calendar"`,
 			"Jun 24",
+			`data-issue-worker-badge="human" data-tooltip="Needs a human"`,
+			`data-lucide="user-round"`,
+			`<span class="sr-only">Needs a human</span>`,
+			"border-amber-300 bg-amber-50 text-amber-800",
 		} {
 			if !strings.Contains(body, want) {
 				t.Fatalf("%s missing markup %q: %s", tt.name, want, body)

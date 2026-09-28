@@ -67,6 +67,7 @@ func TestSafeUINextRootPaths(t *testing.T) {
 		{name: "issue status edit", raw: "/bradley/issues/TRACK-7/status/edit", want: "/bradley/issues/TRACK-7/status/edit"},
 		{name: "issue close reason edit", raw: "/bradley/issues/TRACK-7/close-reason/edit", want: "/bradley/issues/TRACK-7/close-reason/edit"},
 		{name: "issue priority edit", raw: "/bradley/issues/TRACK-7/priority/edit", want: "/bradley/issues/TRACK-7/priority/edit"},
+		{name: "issue worker edit", raw: "/bradley/issues/TRACK-7/worker/edit", want: "/bradley/issues/TRACK-7/worker/edit"},
 		{name: "issue sprint edit", raw: "/bradley/issues/TRACK-7/sprint/edit", want: "/bradley/issues/TRACK-7/sprint/edit"},
 		{name: "issue restore", raw: "/bradley/issues/TRACK-7/restore", want: "/bradley/issues/TRACK-7/restore"},
 		{name: "issue removed archive action", raw: "/bradley/issues/TRACK-7/archive", want: "/"},

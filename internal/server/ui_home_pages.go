@@ -301,6 +301,20 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		}
 	}
 
+	var worker *model.IssueWorker
+	if input.Worker != "" {
+		if !permissions.CanWrite {
+			s.renderUINewIssueWithError(w, r, input, "Public issue submissions cannot choose who works on the issue.")
+			return
+		}
+		parsed := model.IssueWorker(input.Worker)
+		if !parsed.Valid() {
+			s.renderUINewIssueWithError(w, r, input, "Invalid worker.")
+			return
+		}
+		worker = &parsed
+	}
+
 	var dueDate *model.Date
 	if input.DueDate != "" {
 		parsed, err := model.ParseDate(input.DueDate)
@@ -348,6 +362,7 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		Title:       title,
 		Description: input.Description,
 		Priority:    priority,
+		Worker:      worker,
 		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     dueDate,
@@ -377,6 +392,7 @@ func uiNewIssueInputFromValues(values url.Values) uiNewIssuePanelData {
 		Title:         values.Get("title"),
 		Description:   values.Get("description"),
 		Priority:      strings.TrimSpace(values.Get("priority")),
+		Worker:        strings.TrimSpace(values.Get("worker")),
 		DueDate:       strings.TrimSpace(values.Get("due_date")),
 		AssigneeInput: values.Get("assignee"),
 		ReporterInput: values.Get("reporter"),

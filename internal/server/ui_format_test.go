@@ -302,6 +302,39 @@ func TestUIIssueColumnStatus(t *testing.T) {
 	}
 }
 
+func TestUIWorkerBadge(t *testing.T) {
+	t.Parallel()
+
+	agent, human, unknown := model.WorkerAgent, model.WorkerHuman, model.IssueWorker("robot")
+	if got := uiWorkerBadge(nil); got != nil {
+		t.Fatalf("uiWorkerBadge(nil) = %+v, want nil", got)
+	}
+	if got := uiWorkerBadge(&unknown); got != nil {
+		t.Fatalf("uiWorkerBadge(robot) = %+v, want nil", got)
+	}
+	if got := uiWorkerBadge(&agent); got == nil || got.Label != "Agent" || got.Tooltip != "For an agent" || got.Icon != "bot" {
+		t.Fatalf("uiWorkerBadge(agent) = %+v", got)
+	}
+	if got := uiWorkerBadge(&human); got == nil || got.Label != "Human" || got.Tooltip != "Needs a human" || got.Icon != "user-round" || !strings.Contains(got.Class, "amber") {
+		t.Fatalf("uiWorkerBadge(human) = %+v", got)
+	}
+
+	options := uiWorkerOptions()
+	if len(options) != 3 || options[0].Value != "" || options[0].Label != "None" || options[1].Value != "agent" || options[2].Value != "human" {
+		t.Fatalf("uiWorkerOptions = %+v", options)
+	}
+	for data, want := range map[*uiNewIssuePanelData]string{
+		nil:                                 "",
+		{Worker: "robot"}:                   "",
+		{Worker: ""}:                        "",
+		{Worker: string(model.WorkerAgent)}: "agent",
+	} {
+		if got := uiNewIssueSelectedWorker(data); got != want {
+			t.Fatalf("uiNewIssueSelectedWorker(%+v) = %q, want %q", data, got, want)
+		}
+	}
+}
+
 func TestUIPriorityClassAndLabel(t *testing.T) {
 	t.Parallel()
 

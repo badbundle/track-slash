@@ -112,6 +112,23 @@
             </dd>
           </div>
           {{end}}
+          <div>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Worker</dt>
+            {{if .EditWorker}}
+            <div class="mt-1">
+              {{template "option-dropdown" (issueWorkerDropdown .)}}
+            </div>
+            {{else}}
+            <dd class="mt-1 flex items-center justify-between gap-3">
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">{{if .Issue.Worker}}{{template "issue-worker-label" .Issue.Worker}}{{else}}None{{end}}</span>
+              {{if .CanWrite}}
+              <button type="button" aria-label="Edit worker" hx-get="{{issueWorkerEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{end}}
+            </dd>
+            {{end}}
+          </div>
           {{if .EditAssignee}}
           {{template "autocomplete-edit" (issueAssigneeAutocomplete .)}}
           {{else}}

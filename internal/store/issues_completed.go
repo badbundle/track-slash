@@ -29,7 +29,7 @@ type ListRecentlyCompletedIssuesParams struct {
 // store) falls back to its creation time.
 func (s *Store) ListRecentlyCompletedIssues(ctx context.Context, p ListRecentlyCompletedIssuesParams) ([]model.CompletedIssue, bool, error) {
 	const q = `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at,
 		       done.completed_at
 		FROM issues i

@@ -111,6 +111,8 @@ func (s *Server) mountUIRoutes(r chi.Router) {
 		r.Post("/{owner}/issues/{issueRef}/close-reason", s.uiIssueWriteHandler(s.uiUpdateIssueCloseReason))
 		r.Get("/{owner}/issues/{issueRef}/priority/edit", s.uiIssueWriteHandler(s.uiEditIssuePriority))
 		r.Post("/{owner}/issues/{issueRef}/priority", s.uiIssueWriteHandler(s.uiUpdateIssuePriority))
+		r.Get("/{owner}/issues/{issueRef}/worker/edit", s.uiIssueWriteHandler(s.uiEditIssueWorker))
+		r.Post("/{owner}/issues/{issueRef}/worker", s.uiIssueWriteHandler(s.uiUpdateIssueWorker))
 		r.Get("/{owner}/issues/{issueRef}/due-date/edit", s.uiIssueWriteHandler(s.uiEditIssueDueDate))
 		r.Post("/{owner}/issues/{issueRef}/due-date", s.uiIssueWriteHandler(s.uiUpdateIssueDueDate))
 		r.Get("/{owner}/issues/{issueRef}/assignee/edit", s.uiIssueWriteHandler(s.uiEditIssueAssignee))

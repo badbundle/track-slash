@@ -344,7 +344,7 @@ func (s *Store) CountSprintSnapshotIssuesByStatus(ctx context.Context, p CountSp
 func (s *Store) ListSprintSnapshotIssues(ctx context.Context, p ListSprintSnapshotIssuesParams) ([]model.Issue, bool, error) {
 	args := []any{p.ProjectID, p.SprintID}
 	q := `
-		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority,
+		SELECT i.id, i.project_id, u.username, pr.key, i.number, i.title, i.description, i.status, i.close_reason, i.priority, i.worker,
 		       i.assignee_id, i.reporter_id, i.sprint_id, i.parent_issue_id, i.due_date, i.created_at, i.updated_at
 		FROM sprint_issue_snapshots sis
 		JOIN issues i ON i.id = sis.issue_id AND i.project_id = sis.project_id
