@@ -323,3 +323,17 @@ func mapStorageObjectWriteError(err error) error {
 		return nil
 	}
 }
+
+// StorageObjectBytesInUse reports whether a live storage object still uses
+// the backend bytes at a key. A repeating issue's attachment copies share
+// their original's bytes, so bytes are deleted only once this is false.
+func (s *Store) StorageObjectBytesInUse(ctx context.Context, backend, bucket, objectKey string) (bool, error) {
+	var inUse bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM storage_objects
+			WHERE backend = $1 AND bucket = $2 AND object_key = $3 AND deleted_at IS NULL
+		)
+	`, backend, bucket, objectKey).Scan(&inUse)
+	return inUse, err
+}

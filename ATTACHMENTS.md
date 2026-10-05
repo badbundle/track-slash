@@ -28,6 +28,8 @@ Project, issue, and sprint attachment uploads use multipart field `file`.
 3. Server inserts one parent-specific attachment link to that object.
 4. If link creation fails, the server soft-deletes the metadata row, transactionally queues backend deletion, and attempts immediate backend cleanup.
 
+When a repeating issue's next repetition is created (TRACK-103), each attachment the completed repetition's description shows is copied to the new issue: a new object and link that share the original's bytes (see `STORAGE.md`). "Shows" means what rendering resolves: an `object-N` that is a whole link or image destination, with or without a title, or a reference definition. Those refs are rewritten to the copies' numbers. Prose, URLs and code that merely contain `object-N` are left alone. Attachments the description doesn't show aren't copied, and neither are deleted ones, one being deleted at that moment, or any copy that would take the description over its length limit. Deleting a copy or the original removes only that object; the bytes go with the last one.
+
 Objects attached through a description upload path are owned by that attachment flow. Removing the attachment removes the link, soft-deletes the object metadata row, and queues backend deletion in the same transaction. A background worker retries backend failures; the delete response reflects the committed logical removal.
 
 ## Markdown Resolution

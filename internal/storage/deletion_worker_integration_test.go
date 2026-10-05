@@ -214,3 +214,51 @@ func TestDeletionWorkerRunOnceReportsStoreErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletionWorkerRunOnceKeepsBytesALiveCopyUses(t *testing.T) {
+	t.Parallel()
+	env := newDeletionWorkerTestEnv(t)
+	original, err := env.store.CreateStorageObject(env.ctx, store.CreateStorageObjectParams{
+		ID: uuid.New(), ProjectID: env.projectID, Backend: "local", Bucket: "local", ObjectKey: "objects/shared",
+		Filename: "shared.bin", ContentType: "application/octet-stream", ByteSize: 1,
+		SHA256: strings.Repeat("a", 64), CreatedByID: env.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateStorageObject: %v", err)
+	}
+	// A repeating issue's attachment copy: its own row, the same bytes.
+	var copyID uuid.UUID
+	if err := env.pool.QueryRow(env.ctx, `
+		INSERT INTO storage_objects (project_id, number, backend, bucket, object_key, filename, content_type, byte_size, sha256, created_by_id, copied_from_id)
+		SELECT project_id, number + 100, backend, bucket, object_key, filename, content_type, byte_size, sha256, created_by_id, id
+		FROM storage_objects WHERE id = $1
+		RETURNING id
+	`, original.ID).Scan(&copyID); err != nil {
+		t.Fatalf("insert copy: %v", err)
+	}
+	deleted := []string{}
+	service := newDeletionWorkerService(t, &deletionWorkerBackend{delete: func(_ context.Context, key string) error {
+		deleted = append(deleted, key)
+		return nil
+	}})
+	worker := NewDeletionWorker(env.store, service, DeletionWorkerOptions{})
+
+	if _, err := env.store.DeleteStorageObject(env.ctx, original.ID); err != nil {
+		t.Fatalf("delete original: %v", err)
+	}
+	result, err := worker.RunOnce(env.ctx)
+	if err != nil || result != (DeletionRunResult{Claimed: 1, Kept: 1}) || len(deleted) != 0 {
+		t.Fatalf("RunOnce with a live copy = %+v, %v, deleted %v", result, err, deleted)
+	}
+	if _, err := env.store.GetStorageObjectDeletion(env.ctx, original.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("kept job err = %v, want ErrNotFound", err)
+	}
+
+	if _, err := env.store.DeleteStorageObject(env.ctx, copyID); err != nil {
+		t.Fatalf("delete copy: %v", err)
+	}
+	result, err = worker.RunOnce(env.ctx)
+	if err != nil || result != (DeletionRunResult{Claimed: 1, Deleted: 1}) || len(deleted) != 1 || deleted[0] != "objects/shared" {
+		t.Fatalf("RunOnce after the last copy = %+v, %v, deleted %v", result, err, deleted)
+	}
+}

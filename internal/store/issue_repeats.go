@@ -3,8 +3,12 @@ package store
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -287,6 +291,9 @@ func advanceIssueRepeat(ctx context.Context, tx pgx.Tx, completed model.Issue, n
 	`, completed.ID, nextID); err != nil {
 		return nil, err
 	}
+	if err := copyRepeatAttachments(ctx, tx, completed, nextID); err != nil {
+		return nil, err
+	}
 	next, err := getIssueForChangelog(ctx, tx, nextID, false)
 	if err != nil {
 		return nil, err
@@ -317,6 +324,142 @@ func advanceIssueRepeat(ctx context.Context, tx pgx.Tx, completed model.Issue, n
 		return nil, err
 	}
 	return &next, nil
+}
+
+// repeatObjectDestinations finds attachment refs where Markdown rendering
+// resolves them: a whole link or image destination, optionally with a title
+// (`![Chart](object-3)`, `[log](object-4 "Log")`), or a reference definition
+// (`[log]: object-4`). Only canonical refs (no leading zeros) resolve. A ref
+// elsewhere, such as in prose or inside a pasted URL, is left alone.
+var repeatObjectDestinations = []*regexp.Regexp{
+	regexp.MustCompile(`(\]\(\s*)object-([1-9][0-9]*)(\s*(?:"[^"]*"|'[^']*'|\([^()]*\))?\s*\))`),
+	regexp.MustCompile(`(?m)(^ {0,3}\[[^\]]+\]:[ \t]*)object-([1-9][0-9]*)([ \t]|$)`),
+}
+
+func repeatDescriptionRefs(description string) []int {
+	numbers := []int{}
+	for _, pattern := range repeatObjectDestinations {
+		for _, match := range pattern.FindAllStringSubmatch(description, -1) {
+			if n, err := strconv.Atoi(match[2]); err == nil && !slices.Contains(numbers, n) {
+				numbers = append(numbers, n)
+			}
+		}
+	}
+	return numbers
+}
+
+func rewriteRepeatDescriptionRefs(description string, renumbered map[int]int) string {
+	for _, pattern := range repeatObjectDestinations {
+		description = pattern.ReplaceAllStringFunc(description, func(match string) string {
+			parts := pattern.FindStringSubmatch(match)
+			n, _ := strconv.Atoi(parts[2])
+			to, ok := renumbered[n]
+			if !ok {
+				return match
+			}
+			return parts[1] + model.StorageObjectRef(to) + parts[3]
+		})
+	}
+	return description
+}
+
+// copyRepeatAttachments gives the next repetition its own copy of each
+// attachment the completed repetition's description shows, and points the
+// copied description at the copies, so its images and files keep working.
+// A copy is its own storage object, with its own object-N and attachment
+// link, sharing the original's backend bytes (see STORAGE.md), so this does no
+// storage I/O. Attachments the description doesn't show aren't copied, and
+// neither is one that's being deleted right now.
+func copyRepeatAttachments(ctx context.Context, tx pgx.Tx, completed model.Issue, nextID uuid.UUID) error {
+	numbers := repeatDescriptionRefs(completed.Description)
+	if len(numbers) == 0 {
+		return nil
+	}
+	type source struct {
+		id, createdBy, linkedBy uuid.UUID
+		number                  int
+		backend, bucket, key    string
+		filename, contentType   string
+		byteSize                int64
+		sha256                  string
+	}
+	// FOR SHARE holds the originals live until this commits, so their bytes
+	// can't be deleted before the copies count as using them. SKIP LOCKED
+	// passes over one being deleted rather than waiting: its deletion holds
+	// it and then waits for this issue, which this transaction has locked.
+	rows, err := tx.Query(ctx, `
+		SELECT so.id, so.number, so.backend, so.bucket, so.object_key, so.filename, so.content_type,
+		       so.byte_size, so.sha256, so.created_by_id, ia.created_by_id
+		FROM issue_attachments ia
+		JOIN storage_objects so ON so.id = ia.storage_object_id
+		WHERE ia.issue_id = $1 AND so.number = ANY($2) AND so.deleted_at IS NULL
+		ORDER BY so.number
+		FOR SHARE OF so SKIP LOCKED
+	`, completed.ID, numbers)
+	if err != nil {
+		return err
+	}
+	sources := []source{}
+	for rows.Next() {
+		var src source
+		if err := rows.Scan(&src.id, &src.number, &src.backend, &src.bucket, &src.key, &src.filename, &src.contentType,
+			&src.byteSize, &src.sha256, &src.createdBy, &src.linkedBy); err != nil {
+			rows.Close()
+			return err
+		}
+		sources = append(sources, src)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(sources) == 0 {
+		return nil
+	}
+	// The project row is already locked by the caller, so the numbers can be
+	// worked out first and the rewritten description checked before
+	// anything is written.
+	var firstNumber int
+	if err := tx.QueryRow(ctx, `SELECT next_object_number FROM projects WHERE id = $1`, completed.ProjectID).Scan(&firstNumber); err != nil {
+		return err
+	}
+	renumbered := make(map[int]int, len(sources))
+	for i, src := range sources {
+		renumbered[src.number] = firstNumber + i
+	}
+	description := rewriteRepeatDescriptionRefs(completed.Description, renumbered)
+	if utf8.RuneCountInString(description) > MaxIssueDescriptionRunes {
+		// Longer refs would take the description over its limit; leave the
+		// copy as it was, without attachments, rather than fail.
+		return nil
+	}
+	for _, src := range sources {
+		var copyID uuid.UUID
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO storage_objects (
+				project_id, number, backend, bucket, object_key, filename, content_type, byte_size, sha256,
+				created_by_id, copied_from_id
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			RETURNING id
+		`, completed.ProjectID, renumbered[src.number], src.backend, src.bucket, src.key, src.filename, src.contentType,
+			src.byteSize, src.sha256, src.createdBy, src.id).Scan(&copyID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO issue_attachments (project_id, issue_id, storage_object_id, created_by_id)
+			VALUES ($1, $2, $3, $4)
+		`, completed.ProjectID, nextID, copyID, src.linkedBy); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE projects SET next_object_number = next_object_number + $2, updated_at = now() WHERE id = $1
+	`, completed.ProjectID, len(sources)); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE issues SET description = $2 WHERE id = $1`, nextID, description)
+	return err
 }
 
 func keepIssuePerson(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, userID *uuid.UUID, allowed func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) (bool, error)) (*uuid.UUID, error) {

@@ -217,9 +217,27 @@ func storageCleanupContext(parent context.Context) (context.Context, context.Can
 	return context.WithTimeout(context.WithoutCancel(parent), storageCleanupTimeout)
 }
 
+// deleteStorageBackendObject deletes bytes no row was ever written for, such
+// as an upload whose metadata insert failed. Nothing can share them. For an
+// object that had a row, use deleteRemovedStorageBytes.
 func (s *Server) deleteStorageBackendObject(parent context.Context, objectKey string) error {
 	cleanupCtx, cancel := storageCleanupContext(parent)
 	defer cancel()
+	return s.objectStorage.Delete(cleanupCtx, objectKey)
+}
+
+// deleteRemovedStorageBytes is the immediate, best-effort backend delete after
+// an object's row is soft-deleted. It leaves bytes another live object still
+// uses, such as a repeating issue's attachment copy. When it can't tell, it
+// leaves them to the deletion worker the soft-delete queued, which checks
+// again.
+func (s *Server) deleteRemovedStorageBytes(parent context.Context, objectKey string) error {
+	cleanupCtx, cancel := storageCleanupContext(parent)
+	defer cancel()
+	inUse, err := s.store.StorageObjectBytesInUse(cleanupCtx, s.objectStorage.BackendName(), s.objectStorage.Bucket(), objectKey)
+	if err != nil || inUse {
+		return nil
+	}
 	return s.objectStorage.Delete(cleanupCtx, objectKey)
 }
 
@@ -237,7 +255,7 @@ func (s *Server) deleteStorageObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.objectStorage != nil {
-		_ = s.deleteStorageBackendObject(r.Context(), deleted.ObjectKey)
+		_ = s.deleteRemovedStorageBytes(r.Context(), deleted.ObjectKey)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

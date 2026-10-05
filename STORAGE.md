@@ -70,6 +70,9 @@ Important fields:
 - `backend`, `bucket`, `object_key`: backend locator. Project keys look like `projects/{project_id}/objects/{object_id}`. User profile image keys look like `users/{user_id}/profile-images/{object_id}/{variant}`.
 - `filename`, `content_type`, `byte_size`, `sha256`: download metadata and integrity metadata.
 - `created_by_id`, timestamps, `deleted_at`: audit and soft-delete state.
+- `copied_from_id`: set on a copy, the row it was copied from (see below).
+
+Each upload has a backend key of its own. Copies are the one exception: when a repeating issue's next repetition is created, each attachment its description refers to is copied as a new row, with its own `object-N` and attachment link, that shares the original's backend key and bytes. Nothing is copied in the backend, so a completion never does storage I/O. The unique index on `(backend, bucket, object_key)` covers rows that aren't copies. While the copy is made, the originals are held `FOR SHARE SKIP LOCKED`: an original can't be deleted until the copy is committed, and one already being deleted is passed over rather than waited on.
 
 The storage_object_deletions table is the durable backend-deletion queue. A Postgres trigger inserts a pending job in the same transaction whenever a live storage_objects row becomes soft-deleted. Jobs copy the backend, bucket, and object key needed after the object disappears from normal reads. The migration also backfills jobs for objects that were already soft-deleted.
 
@@ -112,6 +115,8 @@ Any authenticated user may read any live user's profile image content. Profile i
 Uploads write bytes to the backend first, then insert metadata in Postgres. If the metadata insert fails, the server deletes the just-written backend object. When metadata exists but a later attachment-link transaction fails, cleanup soft-deletes the object, transactionally queues backend deletion, and also attempts immediate removal.
 
 Deletes soft-delete the Postgres row and enqueue storage_object_deletions work in the same transaction. This avoids live metadata pointing at missing bytes and preserves a retry path across request failures, process crashes, and restarts. HTTP and MCP delete responses describe the committed logical deletion; they do not fail merely because the immediate best-effort backend removal failed.
+
+Backend bytes are deleted only once no live row uses them, because a copy may share them. The deletion worker checks before each backend delete and completes the job without deleting while another live row has the key, counting it as `Kept`. The immediate best-effort deletes after a soft-delete (`deleteRemovedStorageBytes`) make the same check, and leave the bytes to the worker if the check fails. Bytes no row was ever written for, such as an upload whose metadata insert failed, are deleted directly, because nothing can share them. No new row can start using a key once the check finds none, because a copy is only made from a live row.
 
 Every running trackd binary processes due jobs. Workers use leased FOR UPDATE SKIP LOCKED claims, so multiple replicas can cooperate without intentionally processing the same live lease. Missing backend bytes count as success. Transient failures retry up to eight attempts with exponential backoff starting at five seconds and capped at five minutes. A processing lease becomes reclaimable after one minute, and each backend delete has a ten-second timeout.
 

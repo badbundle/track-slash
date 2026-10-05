@@ -3683,7 +3683,7 @@ func (s *Server) mcpDeleteObject(ctx context.Context, req *mcp.CallToolRequest, 
 		return nil, err
 	}
 	if s.objectStorage != nil {
-		_ = s.deleteStorageBackendObject(ctx, deleted.ObjectKey)
+		_ = s.deleteRemovedStorageBytes(ctx, deleted.ObjectKey)
 	}
 	return mcpOK(), nil
 }
@@ -3819,7 +3819,7 @@ func mcpDeleteDescriptionAttachment[T any](s *Server, ctx context.Context, unlin
 		return zero, err
 	}
 	if s.objectStorage != nil {
-		_ = s.deleteStorageBackendObject(ctx, objectKey(deleted))
+		_ = s.deleteRemovedStorageBytes(ctx, objectKey(deleted))
 	}
 	return deleted, nil
 }
