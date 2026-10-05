@@ -6,14 +6,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -634,13 +637,28 @@ func (s *Server) newMCPServer() *mcp.Server {
 	return srv
 }
 
+// mcpSchemaOptions corrects the JSON schema reflection would give a type.
+// model.Date is a time.Time underneath, so reflection describes it as an
+// object, and the SDK, which validates arguments against the schema before a
+// handler runs, would refuse the YYYY-MM-DD string it travels as.
+var mcpSchemaOptions = &jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+	reflect.TypeFor[model.Date](): {Type: "string", Format: "date"},
+}}
+
 func addMCPTool[In any](srv *mcp.Server, name, description string, readOnly bool, handler func(context.Context, *mcp.CallToolRequest, In) (mcpToolOutput, error)) {
+	inputSchema, err := jsonschema.For[In](mcpSchemaOptions)
+	if err != nil {
+		// Defensive: the input types are fixed at compile time and covered by
+		// the tool-list tests.
+		panic(fmt.Sprintf("%s input schema: %v", name, err))
+	}
 	openWorld := false
 	destructive := !readOnly
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        name,
 		Title:       strings.TrimPrefix(name, "track_"),
 		Description: description,
+		InputSchema: inputSchema,
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    readOnly,
 			DestructiveHint: &destructive,
