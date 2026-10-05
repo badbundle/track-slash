@@ -207,7 +207,7 @@ func (s *Server) deleteProjectContextAndObjects(ctx context.Context, contextItem
 	}
 	if s.objectStorage != nil {
 		for _, object := range objects {
-			if err := s.deleteStorageBackendObject(ctx, object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+			if err := s.deleteRemovedStorageBytes(ctx, object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 				continue
 			}
 		}

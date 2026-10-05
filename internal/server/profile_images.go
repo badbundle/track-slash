@@ -267,7 +267,7 @@ func (s *Server) deleteBackendObjectsBestEffort(r *http.Request, objects []model
 		if object.ObjectKey == "" {
 			continue
 		}
-		if err := s.deleteStorageBackendObject(r.Context(), object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
+		if err := s.deleteRemovedStorageBytes(r.Context(), object.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrNotFound) {
 			continue
 		}
 	}

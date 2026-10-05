@@ -27,6 +27,9 @@ type DeletionWorkerOptions struct {
 type DeletionRunResult struct {
 	Claimed int
 	Deleted int
+	// Kept counts jobs completed without deleting, because another live
+	// object, such as a repeating issue's attachment copy, uses the bytes.
+	Kept    int
 	Retried int
 	Failed  int
 }
@@ -122,9 +125,22 @@ func (w *DeletionWorker) RunOnce(ctx context.Context) (DeletionRunResult, error)
 			continue
 		}
 
-		deleteCtx, cancel := context.WithTimeout(ctx, w.deleteTimeout)
-		deleteErr := w.service.Delete(deleteCtx, job.ObjectKey)
-		cancel()
+		// No new object can start using these bytes once this check finds
+		// none: a copy is only made from a live object, under a lock its
+		// deletion has to wait for.
+		inUse, deleteErr := w.store.StorageObjectBytesInUse(ctx, job.Backend, job.Bucket, job.ObjectKey)
+		if deleteErr == nil && inUse {
+			if err := w.store.CompleteStorageObjectDeletion(ctx, job.StorageObjectID, job.AttemptCount); err != nil {
+				return result, fmt.Errorf("complete job %s: %w", job.StorageObjectID, err)
+			}
+			result.Kept++
+			continue
+		}
+		if deleteErr == nil {
+			deleteCtx, cancel := context.WithTimeout(ctx, w.deleteTimeout)
+			deleteErr = w.service.Delete(deleteCtx, job.ObjectKey)
+			cancel()
+		}
 		if deleteErr == nil || errors.Is(deleteErr, ErrNotFound) {
 			if err := w.store.CompleteStorageObjectDeletion(ctx, job.StorageObjectID, job.AttemptCount); err != nil {
 				return result, fmt.Errorf("complete job %s: %w", job.StorageObjectID, err)

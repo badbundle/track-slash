@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -631,5 +632,165 @@ func TestIssueRepeatPrivateNeighbours(t *testing.T) {
 	}
 	if got := mustGetIssue(t, env, first.ID); got.Repeat.Next == nil || got.Repeat.Next.Number != second.Number {
 		t.Fatalf("private repetition next = %+v", got.Repeat.Next)
+	}
+}
+
+func TestIssueRepeatCopiesDescriptionAttachments(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	setRepeatClock(env, "2026-10-05T12:00:00Z")
+	project, err := env.store.GetProject(env.ctx, env.projectID)
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	issue, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{ProjectID: env.projectID, Title: "Monthly report", Repeat: &store.IssueRepeatSetting{Rule: mustRepeatRule(t, "daily")}})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	attach := func(issueID uuid.UUID, key string) model.StorageObject {
+		t.Helper()
+		object, err := env.store.CreateStorageObject(env.ctx, storageObjectParams(env.projectID, project.OwnerID, key))
+		if err != nil {
+			t.Fatalf("CreateStorageObject: %v", err)
+		}
+		if _, err := env.store.CreateIssueAttachment(env.ctx, store.CreateIssueAttachmentParams{IssueID: issueID, StorageObjectID: object.ID, CreatedByID: project.OwnerID}); err != nil {
+			t.Fatalf("CreateIssueAttachment: %v", err)
+		}
+		return object
+	}
+	chart := attach(issue.ID, "projects/p/objects/chart")
+	log := attach(issue.ID, "projects/p/objects/log")
+	attach(issue.ID, "projects/p/objects/unmentioned")
+	other := mustCreateIssue(t, env, "Somewhere else")
+	elsewhere := attach(other.ID, "projects/p/objects/elsewhere")
+	// Only refs Markdown resolves are copied and rewritten: whole link and
+	// image destinations, with or without a title, and reference
+	// definitions. Prose, URLs and zero-padded refs stay as they are.
+	description := "![Chart](" + chart.Ref + ") and [log](" + log.Ref + ` "Log").` + "\n\n[again]: " + chart.Ref +
+		"\n\nProse " + chart.Ref + ", a URL /x/attachments/" + chart.Ref + "/content, padded ![p](object-0" + strings.TrimPrefix(chart.Ref, "object-") +
+		"), not mine ![e](" + elsewhere.Ref + "), missing ![m](object-999)."
+	if _, err := env.store.UpdateIssue(env.ctx, issue.ID, store.UpdateIssueParams{Description: &description}); err != nil {
+		t.Fatalf("set description: %v", err)
+	}
+
+	second := nextRepetition(t, env, completeIssue(t, env, issue.ID))
+	copies, _, err := env.store.ListIssueAttachments(env.ctx, store.ListIssueAttachmentsParams{IssueID: second.ID, Limit: 10})
+	if err != nil || len(copies) != 2 {
+		t.Fatalf("copied attachments = %+v, %v", copies, err)
+	}
+	chartCopy, logCopy := copies[0].Object, copies[1].Object
+	if chartCopy.ObjectKey != chart.ObjectKey || logCopy.ObjectKey != log.ObjectKey || chartCopy.ID == chart.ID || chartCopy.Number == chart.Number ||
+		chartCopy.Filename != chart.Filename || chartCopy.SHA256 != chart.SHA256 || copies[0].CreatedByID != project.OwnerID {
+		t.Fatalf("copies = %+v, %+v", chartCopy, logCopy)
+	}
+	want := "![Chart](" + chartCopy.Ref + ") and [log](" + logCopy.Ref + ` "Log").` + "\n\n[again]: " + chartCopy.Ref +
+		"\n\nProse " + chart.Ref + ", a URL /x/attachments/" + chart.Ref + "/content, padded ![p](object-0" + strings.TrimPrefix(chart.Ref, "object-") +
+		"), not mine ![e](" + elsewhere.Ref + "), missing ![m](object-999)."
+	if second.Description != want {
+		t.Fatalf("copied description = %q, want %q", second.Description, want)
+	}
+	var copiedFrom uuid.UUID
+	if err := env.pool.QueryRow(env.ctx, `SELECT copied_from_id FROM storage_objects WHERE id = $1`, chartCopy.ID).Scan(&copiedFrom); err != nil || copiedFrom != chart.ID {
+		t.Fatalf("copied_from_id = %v, %v", copiedFrom, err)
+	}
+
+	// Each copy is its own object: deleting the original leaves the copy's
+	// bytes in use, and the bytes are free once no live object has them.
+	if _, err := env.store.DeleteStorageObject(env.ctx, chart.ID); err != nil {
+		t.Fatalf("delete original: %v", err)
+	}
+	if inUse, err := env.store.StorageObjectBytesInUse(env.ctx, chart.Backend, chart.Bucket, chart.ObjectKey); err != nil || !inUse {
+		t.Fatalf("bytes in use after deleting the original = %v, %v", inUse, err)
+	}
+
+	// The next repetition copies the copies, and a deleted attachment isn't
+	// copied, leaving its ref as it was.
+	if _, err := env.store.DeleteStorageObject(env.ctx, logCopy.ID); err != nil {
+		t.Fatalf("delete log copy: %v", err)
+	}
+	third := nextRepetition(t, env, completeIssue(t, env, second.ID))
+	thirdCopies, _, err := env.store.ListIssueAttachments(env.ctx, store.ListIssueAttachmentsParams{IssueID: third.ID, Limit: 10})
+	if err != nil || len(thirdCopies) != 1 || thirdCopies[0].Object.ObjectKey != chart.ObjectKey {
+		t.Fatalf("third copies = %+v, %v", thirdCopies, err)
+	}
+	if !strings.Contains(third.Description, "![Chart]("+thirdCopies[0].Object.Ref+")") || !strings.Contains(third.Description, "[log]("+logCopy.Ref+` "Log")`) {
+		t.Fatalf("third description = %q", third.Description)
+	}
+	for _, id := range []uuid.UUID{chartCopy.ID, thirdCopies[0].Object.ID} {
+		if _, err := env.store.DeleteStorageObject(env.ctx, id); err != nil {
+			t.Fatalf("delete copy: %v", err)
+		}
+	}
+	if inUse, err := env.store.StorageObjectBytesInUse(env.ctx, chart.Backend, chart.Bucket, chart.ObjectKey); err != nil || inUse {
+		t.Fatalf("bytes in use after deleting every copy = %v, %v", inUse, err)
+	}
+
+	// A description without refs is left alone.
+	plain := nextRepetition(t, env, completeIssue(t, env, third.ID))
+	if plain.Description != third.Description {
+		t.Fatalf("description changed without refs to copy: %q", plain.Description)
+	}
+
+	// An attachment being deleted right now is passed over, not waited on.
+	busyIssue, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{ProjectID: env.projectID, Title: "Busy", Repeat: &store.IssueRepeatSetting{Rule: mustRepeatRule(t, "daily")}})
+	if err != nil {
+		t.Fatalf("CreateIssue busy: %v", err)
+	}
+	busy := attach(busyIssue.ID, "projects/p/objects/busy")
+	free := attach(busyIssue.ID, "projects/p/objects/free")
+	busyDescription := "![b](" + busy.Ref + ") ![f](" + free.Ref + ")"
+	if _, err := env.store.UpdateIssue(env.ctx, busyIssue.ID, store.UpdateIssueParams{Description: &busyDescription}); err != nil {
+		t.Fatalf("set busy description: %v", err)
+	}
+	lock, err := env.pool.Begin(env.ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer lock.Rollback(env.ctx)
+	if _, err := lock.Exec(env.ctx, `SELECT 1 FROM storage_objects WHERE id = $1 FOR UPDATE`, busy.ID); err != nil {
+		t.Fatalf("lock busy object: %v", err)
+	}
+	afterBusy := nextRepetition(t, env, completeIssue(t, env, busyIssue.ID))
+	busyCopies, _, err := env.store.ListIssueAttachments(env.ctx, store.ListIssueAttachmentsParams{IssueID: afterBusy.ID, Limit: 10})
+	if err != nil || len(busyCopies) != 1 || busyCopies[0].Object.ObjectKey != free.ObjectKey || !strings.Contains(afterBusy.Description, "![b]("+busy.Ref+")") {
+		t.Fatalf("copies while one is locked = %+v, %q, %v", busyCopies, afterBusy.Description, err)
+	}
+}
+
+func TestIssueRepeatSkipsCopiesThatOverflowTheDescription(t *testing.T) {
+	t.Parallel()
+	env := newSprintsEnv(t)
+	setRepeatClock(env, "2026-10-05T12:00:00Z")
+	project, err := env.store.GetProject(env.ctx, env.projectID)
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	issue, err := env.store.CreateIssue(env.ctx, store.CreateIssueParams{ProjectID: env.projectID, Title: "Full", Repeat: &store.IssueRepeatSetting{Rule: mustRepeatRule(t, "daily")}})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	object, err := env.store.CreateStorageObject(env.ctx, storageObjectParams(env.projectID, project.OwnerID, "projects/p/objects/full"))
+	if err != nil {
+		t.Fatalf("CreateStorageObject: %v", err)
+	}
+	if _, err := env.store.CreateIssueAttachment(env.ctx, store.CreateIssueAttachmentParams{IssueID: issue.ID, StorageObjectID: object.ID, CreatedByID: project.OwnerID}); err != nil {
+		t.Fatalf("CreateIssueAttachment: %v", err)
+	}
+	// Push the project's object numbers to two digits, so the copy's ref is
+	// one character longer than object-1.
+	for i := 0; i < 9; i++ {
+		if _, err := env.store.CreateStorageObject(env.ctx, storageObjectParams(env.projectID, project.OwnerID, fmt.Sprintf("projects/p/objects/filler-%d", i))); err != nil {
+			t.Fatalf("CreateStorageObject filler: %v", err)
+		}
+	}
+	ref := "![a](" + object.Ref + ")"
+	full := ref + strings.Repeat("x", store.MaxIssueDescriptionRunes-len(ref))
+	if _, err := env.store.UpdateIssue(env.ctx, issue.ID, store.UpdateIssueParams{Description: &full}); err != nil {
+		t.Fatalf("set full description: %v", err)
+	}
+	next := nextRepetition(t, env, completeIssue(t, env, issue.ID))
+	copies, _, err := env.store.ListIssueAttachments(env.ctx, store.ListIssueAttachmentsParams{IssueID: next.ID, Limit: 10})
+	if err != nil || len(copies) != 0 || next.Description != full {
+		t.Fatalf("overflowing copy = %d attachments, description changed %v, %v", len(copies), next.Description != full, err)
 	}
 }

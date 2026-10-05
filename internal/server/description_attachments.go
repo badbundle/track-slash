@@ -34,7 +34,7 @@ func deleteDescriptionAttachment[T any](s *Server, w http.ResponseWriter, r *htt
 		return zero, false
 	}
 	if s.objectStorage != nil {
-		_ = s.deleteStorageBackendObject(r.Context(), objectKey(deleted))
+		_ = s.deleteRemovedStorageBytes(r.Context(), objectKey(deleted))
 	}
 	return deleted, true
 }
