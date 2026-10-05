@@ -798,7 +798,7 @@ func safeUIIssuePath(path string) bool {
 			_, err := parseTypedRef(parts[4], "context")
 			return err == nil
 		}
-		return ((parts[3] == "title" || parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "worker" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
+		return ((parts[3] == "title" || parts[3] == "description" || parts[3] == "status" || parts[3] == "close-reason" || parts[3] == "priority" || parts[3] == "worker" || parts[3] == "repeat" || parts[3] == "due-date" || parts[3] == "assignee" || parts[3] == "reporter" || parts[3] == "sprint") && parts[4] == "edit") ||
 			(parts[3] == "links" && parts[4] == "new") ||
 			(parts[3] == "sub-issues" && parts[4] == "new")
 	}

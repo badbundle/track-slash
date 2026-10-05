@@ -87,6 +87,46 @@
             </dd>
           </div>
           {{end}}
+          <div data-issue-repeat>
+            <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Repeat</dt>
+            {{if .EditRepeat}}
+            <form method="post" action="{{issueRepeat .Issue}}" hx-post="{{issueRepeat .Issue}}" hx-target="#main" hx-push-url="false" class="mt-1 space-y-2">{{template "csrf-field" $.CSRFToken}}
+              {{template "repeat-fields" .RepeatFields}}
+              <div class="flex items-center justify-end gap-2">
+                <button type="submit" aria-label="Save repeat" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" aria-label="Cancel editing repeat" hx-get="{{issuePanel .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                  <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+              </div>
+            </form>
+            {{else}}
+            <dd class="mt-1 flex items-start justify-between gap-3">
+              {{if and .Issue.Repeat .Issue.Repeat.Current}}
+              <span class="min-w-0">
+                <span class="flex items-center gap-1.5 text-slate-900 dark:text-slate-100"><i data-lucide="repeat" class="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true"></i><span data-issue-repeat-summary>{{.Issue.Repeat.Summary}}</span></span>
+                <span class="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{{with .Issue.Repeat.NextOccurrence}}Then {{repeatDate .}} · {{end}}{{.Issue.Repeat.TimeZone}}</span>
+              </span>
+              {{else if and .Issue.Repeat .Issue.Repeat.Next}}
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">Carried on by the next repetition</span>
+              {{else}}
+              <span class="min-w-0 text-slate-900 dark:text-slate-100">Doesn't repeat</span>
+              {{end}}
+              {{if and .CanWrite (issueRepeatEditable .Issue)}}
+              <button type="button" aria-label="Edit repeat" hx-get="{{issueRepeatEdit .Issue}}" hx-target="#main" hx-push-url="false" class="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900">
+                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+              </button>
+              {{end}}
+            </dd>
+            {{with .Issue.Repeat}}{{if or .Previous .Next}}
+            <dd class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+              {{with .Previous}}{{$prev := repetitionIssue $.Issue .}}<a data-issue-repeat-previous href="{{issueHref $prev}}" hx-get="{{issuePanel $prev}}" hx-target="#main" hx-push-url="{{issueHref $prev}}" class="inline-flex items-center gap-1.5 hover:text-indigo-700 dark:hover:text-indigo-200">Previous {{template "issue-key" .Identifier}}</a>{{end}}
+              {{with .Next}}{{$next := repetitionIssue $.Issue .}}<a data-issue-repeat-next href="{{issueHref $next}}" hx-get="{{issuePanel $next}}" hx-target="#main" hx-push-url="{{issueHref $next}}" class="inline-flex items-center gap-1.5 hover:text-indigo-700 dark:hover:text-indigo-200">Next {{template "issue-key" .Identifier}}</a>{{end}}
+            </dd>
+            {{end}}{{end}}
+            {{end}}
+          </div>
           <div>
             <dt class="text-xs font-medium text-slate-500 dark:text-slate-400">Project</dt>
             <dd class="mt-1 truncate text-slate-900 dark:text-slate-100">{{.Project.Name}}</dd>

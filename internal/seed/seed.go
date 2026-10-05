@@ -311,6 +311,14 @@ func createIssue(
 	if _, exists := issueByKey[seed.Key]; exists {
 		return fmt.Errorf("duplicate issue seed key %q", seed.Key)
 	}
+	var repeat *store.IssueRepeatSetting
+	if seed.Repeat != "" {
+		rule, err := model.ParseRepeatRule(seed.Repeat)
+		if err != nil {
+			return fmt.Errorf("seed issue %q repeat: %w", seed.Key, err)
+		}
+		repeat = &store.IssueRepeatSetting{Rule: rule, CreatedBy: &userID}
+	}
 	created, err := st.CreateIssue(ctx, store.CreateIssueParams{
 		ProjectID:   projectID,
 		Title:       seed.Title,
@@ -319,6 +327,7 @@ func createIssue(
 		Worker:      seed.Worker,
 		AssigneeID:  &userID,
 		ReporterID:  &userID,
+		Repeat:      repeat,
 	})
 	if err != nil {
 		return err
@@ -445,8 +454,10 @@ type issueDefinition struct {
 	Status      model.Status
 	Priority    model.IssuePriority
 	Worker      *model.IssueWorker
-	Comments    []string
-	SubIssues   []issueDefinition
+	// Repeat is rule text for model.ParseRepeatRule; empty doesn't repeat.
+	Repeat    string
+	Comments  []string
+	SubIssues []issueDefinition
 }
 
 var (
@@ -597,6 +608,12 @@ func coreWorkflowProject(key string, now time.Time) projectDefinition {
 			},
 		},
 		BacklogIssues: []issueDefinition{
+			{
+				Key:         "core-weekly-triage",
+				Title:       "Triage new issues",
+				Description: "Go through everything filed since the last triage: set a priority, mark who works on it, and close duplicates.",
+				Repeat:      "FREQ=WEEKLY;BYDAY=MO",
+			},
 			{
 				Key:         "core-saved-search",
 				Title:       "Add saved issue search endpoint",

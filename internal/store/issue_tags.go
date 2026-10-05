@@ -532,9 +532,14 @@ func (s *Store) issueTagsForIssues(ctx context.Context, issueIDs []uuid.UUID) (m
 	return out, nil
 }
 
-func (s *Store) hydrateIssueTags(ctx context.Context, issues []model.Issue) ([]model.Issue, error) {
+// hydrateIssues fills in what lives outside the issues row: tags and repeat
+// details.
+func (s *Store) hydrateIssues(ctx context.Context, issues []model.Issue) ([]model.Issue, error) {
 	if len(issues) == 0 {
 		return issues, nil
+	}
+	if err := s.hydrateIssueRepeats(ctx, issues); err != nil {
+		return nil, err
 	}
 	ids := make([]uuid.UUID, 0, len(issues))
 	for _, issue := range issues {
@@ -553,9 +558,14 @@ func (s *Store) hydrateIssueTags(ctx context.Context, issues []model.Issue) ([]m
 	return issues, nil
 }
 
-func (s *Store) hydrateIssueTagsOne(ctx context.Context, issue model.Issue) (model.Issue, error) {
-	issues, err := s.hydrateIssueTags(ctx, []model.Issue{issue})
+// hydrateIssue is hydrateIssues for one issue, which also names its
+// neighbouring repetitions.
+func (s *Store) hydrateIssue(ctx context.Context, issue model.Issue) (model.Issue, error) {
+	issues, err := s.hydrateIssues(ctx, []model.Issue{issue})
 	if err != nil {
+		return model.Issue{}, err
+	}
+	if err := s.hydrateIssueRepetitions(ctx, &issues[0]); err != nil {
 		return model.Issue{}, err
 	}
 	return issues[0], nil

@@ -909,8 +909,10 @@ type Issue struct {
 	ParentIssueID *uuid.UUID `json:"parent_issue_id,omitempty"`
 	DueDate       *Date      `json:"due_date"`
 	Tags          []IssueTag `json:"tags,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	// Repeat is set on an issue that belongs to a repeating series.
+	Repeat    *IssueRepeat `json:"repeat"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
 }
 
 type IssueTag struct {

@@ -184,6 +184,22 @@
     }
     root.querySelectorAll("[data-checkbox-reveal]").forEach(syncCheckboxReveal);
   };
+  // A repeat picker without a time zone takes the browser's, so its dates
+  // match the person's calendar.
+  const syncRepeatTimeZones = (root = document) => {
+    let zone = "";
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch (_) {
+      return;
+    }
+    const inputs = [];
+    if (root instanceof Element && root.matches("input[data-repeat-time-zone]")) inputs.push(root);
+    root.querySelectorAll("input[data-repeat-time-zone]").forEach((input) => inputs.push(input));
+    inputs.forEach((input) => {
+      if (!input.value && zone) input.value = zone;
+    });
+  };
   const syncDisclosureIcon = (toggle, open) => {
     const icon = toggle.querySelector("[data-disclosure-icon]");
     if (!icon) return;
@@ -1665,6 +1681,7 @@
     localizeTimes(event.target);
     resizeTextareas(event.target);
     syncCheckboxReveals(event.target);
+    syncRepeatTimeZones(event.target);
     restoreIssueListControls(event.target);
     syncSidebarActive();
     syncChangelogRealtime();
@@ -1679,6 +1696,7 @@
       localizeTimes();
       resizeTextareas();
       syncCheckboxReveals();
+      syncRepeatTimeZones();
       syncSidebarActive();
       syncChangelogRealtime();
       syncPushNotifications();
@@ -1690,6 +1708,7 @@
     localizeTimes();
     resizeTextareas();
     syncCheckboxReveals();
+    syncRepeatTimeZones();
     syncSidebarActive();
     syncChangelogRealtime();
     syncPushNotifications();

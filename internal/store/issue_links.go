@@ -140,6 +140,15 @@ func (s *Store) CreateIssueLink(ctx context.Context, p CreateIssueLinkParams) (m
 			`, p.SourceID); err != nil {
 				return err
 			}
+			// Closing a repeating issue as a duplicate creates its next
+			// repetition, as closing it any other way does.
+			closed, err := getIssueForChangelog(ctx, tx, p.SourceID, false)
+			if err != nil {
+				return err
+			}
+			if _, err := advanceIssueRepeat(ctx, tx, closed, s.clock()); err != nil {
+				return err
+			}
 			if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{
 				ProjectID:   sourceIssue.ProjectID,
 				Entity:      "issue",
@@ -293,6 +302,15 @@ func (s *Store) UpdateIssueLink(ctx context.Context, id uuid.UUID, p UpdateIssue
 				SET status = 'closed', close_reason = 'duplicate', updated_at = now()
 				WHERE id = $1
 			`, p.SourceID); err != nil {
+				return err
+			}
+			// Closing a repeating issue as a duplicate creates its next
+			// repetition, as closing it any other way does.
+			closed, err := getIssueForChangelog(ctx, tx, p.SourceID, false)
+			if err != nil {
+				return err
+			}
+			if _, err := advanceIssueRepeat(ctx, tx, closed, s.clock()); err != nil {
 				return err
 			}
 			if err := appendProjectChangelog(ctx, tx, appendProjectChangelogParams{

@@ -25,6 +25,8 @@ type CreateIssueParams struct {
 	AssigneeID  *uuid.UUID
 	ReporterID  *uuid.UUID
 	DueDate     *model.Date
+	// Repeat makes the new issue the first repetition of a series.
+	Repeat *IssueRepeatSetting
 }
 
 type CreateSubIssueParams struct {
@@ -39,6 +41,8 @@ type CreateSubIssueParams struct {
 	AssigneeID *uuid.UUID
 	ReporterID *uuid.UUID
 	DueDate    *model.Date
+	// Repeat makes the new sub-issue the first repetition of a series.
+	Repeat *IssueRepeatSetting
 }
 
 type issueScanner interface {
@@ -167,6 +171,14 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 		out.OwnerUsername = ownerUsername
 		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
 		details := model.ProjectChangelogDetails{}
+		if p.Repeat != nil {
+			change, err := applyIssueRepeat(ctx, tx, out, *p.Repeat, s.clock())
+			if err != nil {
+				return err
+			}
+			out.DueDate = change.DueDate
+			details.Changes = changelogAppendChange(details.Changes, "repeat", "Repeat", change.From, change.To)
+		}
 		if preview := changelogPreview(out.Description); preview != "" {
 			details.Preview = preview
 		}
@@ -189,7 +201,7 @@ func (s *Store) CreateIssue(ctx context.Context, p CreateIssueParams) (model.Iss
 	if err != nil {
 		return model.Issue{}, err
 	}
-	return s.hydrateIssueTagsOne(ctx, out)
+	return s.hydrateIssue(ctx, out)
 }
 
 func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (model.Issue, error) {
@@ -261,6 +273,14 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 		out.OwnerUsername = ownerUsername
 		out.Identifier = fmt.Sprintf("%s-%d", projectKey, out.Number)
 		details := model.ProjectChangelogDetails{}
+		if p.Repeat != nil {
+			change, err := applyIssueRepeat(ctx, tx, out, *p.Repeat, s.clock())
+			if err != nil {
+				return err
+			}
+			out.DueDate = change.DueDate
+			details.Changes = changelogAppendChange(details.Changes, "repeat", "Repeat", change.From, change.To)
+		}
 		if preview := changelogPreview(out.Description); preview != "" {
 			details.Preview = preview
 		}
@@ -284,8 +304,7 @@ func (s *Store) CreateSubIssue(ctx context.Context, p CreateSubIssueParams) (mod
 	if err != nil {
 		return model.Issue{}, err
 	}
-	out.Tags = []model.IssueTag{}
-	return out, nil
+	return s.hydrateIssue(ctx, out)
 }
 
 func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error) {
@@ -304,7 +323,7 @@ func (s *Store) GetIssue(ctx context.Context, id uuid.UUID) (model.Issue, error)
 		}
 		return model.Issue{}, err
 	}
-	return s.hydrateIssueTagsOne(ctx, iss)
+	return s.hydrateIssue(ctx, iss)
 }
 
 func getIssueForChangelog(ctx context.Context, q changelogQueryer, id uuid.UUID, includeDeleted bool) (model.Issue, error) {
@@ -357,7 +376,7 @@ func (s *Store) GetIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, pro
 		}
 		return model.Issue{}, err
 	}
-	return s.hydrateIssueTagsOne(ctx, iss)
+	return s.hydrateIssue(ctx, iss)
 }
 
 func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUsername, projectKey string, number int) (model.Issue, error) {
@@ -377,7 +396,7 @@ func (s *Store) GetDeletedIssueByOwnerKeyNumber(ctx context.Context, ownerUserna
 		}
 		return model.Issue{}, err
 	}
-	return s.hydrateIssueTagsOne(ctx, iss)
+	return s.hydrateIssue(ctx, iss)
 }
 
 type ListIssuesParams struct {
@@ -479,7 +498,7 @@ func (s *Store) ListIssuesByIDs(ctx context.Context, ids []uuid.UUID) ([]model.I
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return s.hydrateIssueTags(ctx, out)
+	return s.hydrateIssues(ctx, out)
 }
 
 func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Issue, bool, error) {
@@ -568,7 +587,7 @@ func (s *Store) ListIssues(ctx context.Context, p ListIssuesParams) ([]model.Iss
 	if hasMore {
 		out = out[:p.Limit]
 	}
-	out, err = s.hydrateIssueTags(ctx, out)
+	out, err = s.hydrateIssues(ctx, out)
 	if err != nil {
 		return nil, false, err
 	}
@@ -811,7 +830,7 @@ func (s *Store) ListDeletedIssues(ctx context.Context, p ListDeletedIssuesParams
 	if hasMore {
 		out = out[:p.Limit]
 	}
-	out, err = s.hydrateIssueTags(ctx, out)
+	out, err = s.hydrateIssues(ctx, out)
 	if err != nil {
 		return nil, false, err
 	}
@@ -930,7 +949,7 @@ func (s *Store) ListSubIssuesForIssue(ctx context.Context, p ListSubIssuesForIss
 	if hasMore {
 		out = out[:p.Limit]
 	}
-	out, err = s.hydrateIssueTags(ctx, out)
+	out, err = s.hydrateIssues(ctx, out)
 	if err != nil {
 		return nil, false, err
 	}
@@ -954,6 +973,10 @@ type UpdateIssueParams struct {
 	ClearSprint   bool
 	DueDate       *model.Date
 	ClearDueDate  bool
+	// Repeat makes the issue repeat, or changes how it repeats; ClearRepeat
+	// stops it repeating and wins over Repeat.
+	Repeat      *IssueRepeatSetting
+	ClearRepeat bool
 }
 
 func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssueParams) (model.Issue, error) {
@@ -1034,7 +1057,8 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		i++
 	}
 
-	if len(sets) == 0 {
+	changesRepeat := p.ClearRepeat || p.Repeat != nil
+	if len(sets) == 0 && !changesRepeat {
 		return s.GetIssue(ctx, id)
 	}
 
@@ -1123,6 +1147,26 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 				return fmt.Errorf("cannot assign issue to completed sprint: %w", ErrConflict)
 			}
 		}
+		// The repeat changes first, so a due date in the same request wins
+		// over the schedule's, and an issue made to repeat and completed in
+		// one request still creates its next repetition.
+		var repeatChange issueRepeatChange
+		if p.ClearRepeat {
+			if repeatChange, err = stopIssueRepeat(ctx, tx, id); err != nil {
+				return err
+			}
+		} else if p.Repeat != nil {
+			effectiveStatus := issueStatus
+			if p.Status != nil {
+				effectiveStatus = *p.Status
+			}
+			if issueStatus.CountsAsDone() && effectiveStatus.CountsAsDone() {
+				return ErrRepeatOnCompletedIssue
+			}
+			if repeatChange, err = applyIssueRepeat(ctx, tx, before, *p.Repeat, s.clock()); err != nil {
+				return err
+			}
+		}
 		tag, err := tx.Exec(ctx, q, args...)
 		if err != nil {
 			return err
@@ -1140,7 +1184,13 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 				return err
 			}
 		}
+		if !before.Status.CountsAsDone() && after.Status.CountsAsDone() {
+			if _, err := advanceIssueRepeat(ctx, tx, after, s.clock()); err != nil {
+				return err
+			}
+		}
 		changes := issueChangelogChanges(ctx, tx, before, after)
+		changes = changelogAppendChange(changes, "repeat", "Repeat", repeatChange.From, repeatChange.To)
 		if len(changes) == 0 {
 			return nil
 		}
@@ -1179,8 +1229,7 @@ func (s *Store) UpdateIssue(ctx context.Context, id uuid.UUID, p UpdateIssuePara
 		}
 		return model.Issue{}, err
 	}
-	out.Tags = []model.IssueTag{}
-	return out, nil
+	return s.hydrateIssue(ctx, out)
 }
 
 // ErrSubIssueOfPrivateIssue refuses to make public a sub-issue whose parent is
@@ -1391,5 +1440,5 @@ func (s *Store) RestoreIssue(ctx context.Context, id uuid.UUID) (model.Issue, er
 	if err != nil {
 		return model.Issue{}, err
 	}
-	return s.hydrateIssueTagsOne(ctx, out)
+	return s.hydrateIssue(ctx, out)
 }

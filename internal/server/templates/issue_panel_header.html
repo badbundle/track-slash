@@ -7,6 +7,7 @@
           {{template "priority-badge" .Issue.Priority}}
           {{if .Issue.Private}}{{template "issue-private-badge"}}{{end}}
           {{template "issue-worker-badge" .Issue.Worker}}
+          {{template "issue-repeat-badge" .Issue}}
         </div>
         {{if .EditTitle}}
         <form method="post" action="{{issueTitle .Issue}}" hx-post="{{issueTitle .Issue}}" hx-target="#main" hx-push-url="false" class="mt-2">{{template "csrf-field" $.CSRFToken}}

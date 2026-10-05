@@ -41,7 +41,9 @@ source of a user's rights in a project.
   issue the way a help-desk reporter does. A sub-issue is never more visible
   than its parent: one filed under a private issue is private, making an issue
   private makes its sub-issues private, and a sub-issue can't be made public
-  under a private parent.
+  under a private parent. A repeating issue's next repetition keeps its
+  private flag, and an issue's `repeat.previous`/`repeat.next` name a private
+  repetition only on a private issue, since only members read one in full.
 - **Members-only data stays with members.** That covers members-only comments,
   block history, deleted issues and the files only they hold, the changelog
   about them, and deleted comments' previews. Members-only comments never reach
