@@ -389,7 +389,7 @@ func (s *Store) ListSprintSnapshotIssues(ctx context.Context, p ListSprintSnapsh
 	if hasMore {
 		out = out[:p.Limit]
 	}
-	out, err = s.hydrateIssueTags(ctx, out)
+	out, err = s.hydrateIssues(ctx, out)
 	if err != nil {
 		return nil, false, err
 	}

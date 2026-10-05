@@ -21,6 +21,7 @@ type createIssueReq struct {
 	AssigneeID  *uuid.UUID           `json:"assignee_id,omitempty"`
 	ReporterID  *uuid.UUID           `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
+	issueRepeatInput
 }
 
 func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
@@ -58,9 +59,14 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid worker")
 		return
 	}
-	// Assignee and worker are triage decisions for members.
-	if !permissions.CanWrite && (req.AssigneeID != nil || req.Worker != nil) {
+	// Assignee, worker and repeat are triage decisions for members.
+	if !permissions.CanWrite && (req.AssigneeID != nil || req.Worker != nil || req.issueRepeatInput.given()) {
 		writeForbidden(w)
+		return
+	}
+	repeat, err := req.issueRepeatInput.setting(currentUser(r).ID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	reporter := !permissions.CanRead && permissions.HelpDeskReporter
@@ -87,6 +93,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		AssigneeID:  req.AssigneeID,
 		ReporterID:  reporterID,
 		DueDate:     req.DueDate,
+		Repeat:      repeat,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -157,6 +164,11 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid worker")
 		return
 	}
+	repeat, err := req.issueRepeatInput.setting(currentUser(r).ID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	reporterID := req.ReporterID
 	if reporterID == nil {
 		id := currentUser(r).ID
@@ -176,6 +188,7 @@ func (s *Server) createSubIssue(w http.ResponseWriter, r *http.Request) {
 		AssigneeID:    req.AssigneeID,
 		ReporterID:    reporterID,
 		DueDate:       req.DueDate,
+		Repeat:        repeat,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -478,6 +491,8 @@ type updateIssueReq struct {
 	ClearSprint   bool        `json:"clear_sprint,omitempty"`
 	DueDate       *model.Date `json:"due_date,omitempty"`
 	ClearDueDate  bool        `json:"clear_due_date,omitempty"`
+	issueRepeatInput
+	ClearRepeat bool `json:"clear_repeat,omitempty"`
 }
 
 func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
@@ -529,6 +544,11 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid worker")
 		return
 	}
+	repeat, err := req.issueRepeatInput.setting(currentUser(r).ID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	var sprintID *uuid.UUID
 	if req.Sprint != nil && !req.ClearSprint {
 		number, err := parseTypedRef(*req.Sprint, "sprint")
@@ -561,6 +581,8 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 		ClearSprint:   req.ClearSprint,
 		DueDate:       req.DueDate,
 		ClearDueDate:  req.ClearDueDate,
+		Repeat:        repeat,
+		ClearRepeat:   req.ClearRepeat,
 	})
 	if err != nil {
 		writeStoreError(w, err)

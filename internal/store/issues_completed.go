@@ -84,7 +84,7 @@ func (s *Store) ListRecentlyCompletedIssues(ctx context.Context, p ListRecentlyC
 	if hasMore {
 		issues = issues[:p.Limit]
 	}
-	issues, err = s.hydrateIssueTags(ctx, issues)
+	issues, err = s.hydrateIssues(ctx, issues)
 	if err != nil {
 		return nil, false, err
 	}

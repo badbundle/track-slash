@@ -678,6 +678,8 @@ type uiIssuePanelData struct {
 	EditPriority       bool
 	EditWorker         bool
 	EditDueDate        bool
+	EditRepeat         bool
+	RepeatFields       *uiRepeatFields
 	EditAssignee       bool
 	EditReporter       bool
 	EditSprint         bool
@@ -817,6 +819,7 @@ type uiNewIssuePanelData struct {
 	Worker            string
 	Private           bool
 	DueDate           string
+	Repeat            uiRepeatFields
 	AssigneeInput     string
 	ReporterInput     string
 	MemberOptions     []model.User

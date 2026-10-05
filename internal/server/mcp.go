@@ -87,6 +87,7 @@ type mcpCreateIssueInput struct {
 	AssigneeID  *string              `json:"assignee_id,omitempty"`
 	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
+	issueRepeatInput
 }
 
 type mcpListIssuesInput struct {
@@ -128,6 +129,8 @@ type mcpUpdateIssueInput struct {
 	ClearSprint   bool                    `json:"clear_sprint,omitempty"`
 	DueDate       *model.Date             `json:"due_date,omitempty"`
 	ClearDueDate  bool                    `json:"clear_due_date,omitempty"`
+	issueRepeatInput
+	ClearRepeat bool `json:"clear_repeat,omitempty" jsonschema:"stop the issue repeating; it stays as it is and no more repetitions are created"`
 }
 
 type mcpCreateSubIssueInput struct {
@@ -140,6 +143,7 @@ type mcpCreateSubIssueInput struct {
 	AssigneeID  *string              `json:"assignee_id,omitempty"`
 	ReporterID  *string              `json:"reporter_id,omitempty"`
 	DueDate     *model.Date          `json:"due_date,omitempty"`
+	issueRepeatInput
 }
 
 type mcpCommentInput struct {
@@ -535,15 +539,15 @@ func (s *Server) newMCPServer() *mcp.Server {
 	addMCPTool(srv, "track_get_project_progress", "Get what a project is working on now: top-level issues in progress, highest priority first, and issues completed within a window (Done or Closed, including won't-do and duplicates), most recently completed first, each with completed_at.", readOnly, s.mcpGetProjectProgress)
 	addMCPTool(srv, "track_list_project_changelog", "List project changelog entries.", readOnly, s.mcpListProjectChangelog)
 
-	addMCPTool(srv, "track_create_issue", "Create issue in project. Set private to keep it to the project's members and you, even on a public project, for example for a security report. In a help desk you are not a member of, only title, description and private are accepted and the issue comes back as its reporter sees it, as does a private issue you file into a public project you are not a member of.", write, s.mcpCreateIssue)
+	addMCPTool(srv, "track_create_issue", "Create issue in project. Set private to keep it to the project's members and you, even on a public project, for example for a security report. Set repeat to make it repeat: only one repetition exists at a time, and completing it creates the next. In a help desk you are not a member of, only title, description and private are accepted and the issue comes back as its reporter sees it, as does a private issue you file into a public project you are not a member of.", write, s.mcpCreateIssue)
 	addMCPTool(srv, "track_list_issues", "List project issues. Filter workers by agent for issues meant for an agent, or by human for issues waiting on a person. Private issues are listed to project members only. In a help desk you are not a member of, lists only the issues you reported, newest first, as their reporter sees them; filters are ignored.", readOnly, s.mcpListIssues)
 	addMCPTool(srv, "track_list_deleted_issues", "List deleted project issues.", readOnly, s.mcpListDeletedIssues)
 	addMCPTool(srv, "track_batch_get_issues", "Get visible issues by refs.", readOnly, s.mcpBatchIssues)
 	addMCPTool(srv, "track_get_issue", "Get issue by ref. The reporter of an issue in a help desk, or of a private issue in a project they are not a member of, gets only its title, description, status (open, in_progress or closed) and times. A private issue is not_found to anyone else outside the project.", readOnly, s.mcpGetIssue)
-	addMCPTool(srv, "track_update_issue", "Update issue fields. worker says who is meant to complete the issue: agent or human. If you cannot finish an issue and a person has to step in, set worker to human and add a comment saying what they need to do.", write, s.mcpUpdateIssue)
+	addMCPTool(srv, "track_update_issue", "Update issue fields. worker says who is meant to complete the issue: agent or human. If you cannot finish an issue and a person has to step in, set worker to human and add a comment saying what they need to do. repeat changes how an issue repeats and clear_repeat stops it. Completing a repeating issue creates its next repetition, which the result's repeat.next names; if the next date had already passed, it is skipped and listed in repeat.next.skipped_dates.", write, s.mcpUpdateIssue)
 	addMCPTool(srv, "track_delete_issue", "Soft-delete issue.", write, s.mcpDeleteIssue)
 	addMCPTool(srv, "track_restore_issue", "Restore deleted issue.", write, s.mcpRestoreIssue)
-	addMCPTool(srv, "track_create_sub_issue", "Create sub-issue under an issue.", write, s.mcpCreateSubIssue)
+	addMCPTool(srv, "track_create_sub_issue", "Create sub-issue under an issue. Set repeat to make it repeat; its repetitions stay under the same parent.", write, s.mcpCreateSubIssue)
 	addMCPTool(srv, "track_list_sub_issues", "List sub-issues under an issue.", readOnly, s.mcpListSubIssues)
 
 	addMCPTool(srv, "track_create_comment", "Create issue comment. visibility is shared (anyone who can read the issue) or members (project members only).", write, s.mcpCreateComment)
@@ -1617,9 +1621,13 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
-	// Assignee and worker are triage decisions for members.
-	if !permissions.CanWrite && (assigneeID != nil || input.Worker != nil) {
+	// Assignee, worker and repeat are triage decisions for members.
+	if !permissions.CanWrite && (assigneeID != nil || input.Worker != nil || input.issueRepeatInput.given()) {
 		return nil, errMCPForbidden
+	}
+	repeat, err := input.issueRepeatInput.setting(auth.User.ID)
+	if err != nil {
+		return nil, validationError(err.Error())
 	}
 	inputReporterID, err := mcpOptionalUUID(input.ReporterID, "reporter_id")
 	if err != nil {
@@ -1639,6 +1647,7 @@ func (s *Server) mcpCreateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     input.DueDate,
+		Repeat:      repeat,
 	})
 	if err != nil {
 		return nil, err
@@ -1686,6 +1695,10 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 	if err != nil {
 		return nil, err
 	}
+	repeat, err := input.issueRepeatInput.setting(auth.User.ID)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
 	issue, err := s.store.CreateSubIssue(ctx, store.CreateSubIssueParams{
 		ParentIssueID: parent.ID,
 		Title:         title,
@@ -1696,6 +1709,7 @@ func (s *Server) mcpCreateSubIssue(ctx context.Context, req *mcp.CallToolRequest
 		AssigneeID:    assigneeID,
 		ReporterID:    reporterID,
 		DueDate:       input.DueDate,
+		Repeat:        repeat,
 	})
 	if err != nil {
 		return nil, err
@@ -2029,6 +2043,10 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 	if err != nil {
 		return nil, err
 	}
+	repeat, err := input.issueRepeatInput.setting(auth.User.ID)
+	if err != nil {
+		return nil, validationError(err.Error())
+	}
 	var sprintID *uuid.UUID
 	if input.Sprint != nil && !input.ClearSprint {
 		number, err := mcpTypedRef(*input.Sprint, "sprint")
@@ -2058,6 +2076,8 @@ func (s *Server) mcpUpdateIssue(ctx context.Context, req *mcp.CallToolRequest, i
 		ClearSprint:   input.ClearSprint,
 		DueDate:       input.DueDate,
 		ClearDueDate:  input.ClearDueDate,
+		Repeat:        repeat,
+		ClearRepeat:   input.ClearRepeat,
 	})
 	if err != nil {
 		return nil, err

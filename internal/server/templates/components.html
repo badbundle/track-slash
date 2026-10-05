@@ -400,6 +400,96 @@
 {{end}}
 {{end}}
 
+{{define "issue-repeat-badge"}}
+{{if and .Repeat .Repeat.Current}}
+<span data-issue-repeat-badge data-tooltip="Repeats: {{.Repeat.Summary}}" class="inline-grid h-5 w-5 shrink-0 place-items-center rounded border border-slate-300 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"><i data-lucide="repeat" class="h-3.5 w-3.5" aria-hidden="true"></i><span class="sr-only">Repeats: {{.Repeat.Summary}}</span></span>
+{{end}}
+{{end}}
+
+{{define "repeat-fields"}}
+<div id="{{.Prefix}}-fields" data-repeat-fields="{{.Prefix}}" hx-get="{{repeatFieldsPath}}" hx-trigger="change" hx-include="[data-repeat-fields='{{.Prefix}}'] :is(input, select)" hx-target="this" hx-swap="outerHTML" hx-sync="this:replace" class="space-y-2">
+  <input type="hidden" name="repeat_prefix" value="{{.Prefix}}">
+  <input type="hidden" name="repeat_time_zone" value="{{.TimeZone}}" data-repeat-time-zone>
+  {{if and (not .Frequency) .StartsOnGiven}}<input type="hidden" name="repeat_starts_on" value="{{.StartsOn}}">{{end}}
+  <select id="{{.Prefix}}-frequency" name="repeat_frequency" aria-label="How often it repeats" class="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+    {{range .FrequencyOptions}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+  {{if .Frequency}}
+  {{with .IntervalUnit}}
+  <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+    <span>Every</span>
+    <input type="number" name="repeat_interval" value="{{$.Interval}}" min="1" max="99" aria-label="Repeat every" class="h-9 w-16 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+    <span>{{.}}</span>
+  </label>
+  {{end}}
+  {{if eq .Frequency "weekly"}}
+  <div class="flex flex-wrap gap-1" role="group" aria-label="Days of the week">
+    {{range .WeekdayOptions}}
+    <label class="cursor-pointer">
+      <input class="peer sr-only" type="checkbox" name="repeat_weekday" value="{{.Value}}" {{if .Selected}}checked{{end}}>
+      <span class="inline-flex h-7 min-w-10 items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-50 peer-checked:border-indigo-300 peer-checked:bg-indigo-50 peer-checked:text-indigo-700 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:peer-checked:border-indigo-800 dark:peer-checked:bg-indigo-950/50 dark:peer-checked:text-indigo-200">{{.Label}}</span>
+    </label>
+    {{end}}
+  </div>
+  {{end}}
+  {{if eq .Frequency "monthly"}}
+  <div class="space-y-2 text-sm text-slate-700 dark:text-slate-200">
+    <label class="flex items-center gap-2">
+      <input type="radio" name="repeat_monthly_by" value="day" {{if eq .MonthlyBy "day"}}checked{{end}} class="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
+      <span>On the</span>
+      <select name="repeat_month_day" aria-label="Day of the month" {{if ne .MonthlyBy "day"}}disabled{{end}} class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+        {{range .MonthDayOptions}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+    <label class="flex flex-wrap items-center gap-2">
+      <input type="radio" name="repeat_monthly_by" value="weekday" {{if eq .MonthlyBy "weekday"}}checked{{end}} class="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950">
+      <span>On the</span>
+      <select name="repeat_ordinal" aria-label="Which week of the month" {{if ne .MonthlyBy "weekday"}}disabled{{end}} class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+        {{range .OrdinalOptions}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+      <select name="repeat_ordinal_weekday" aria-label="Day of the week" {{if ne .MonthlyBy "weekday"}}disabled{{end}} class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+        {{range .OrdinalWeekdayOptions}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+  </div>
+  {{end}}
+  {{if eq .Frequency "yearly"}}
+  <div class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+    <span>On</span>
+    <select name="repeat_year_month" aria-label="Month" class="h-8 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+      {{range .MonthOptions}}<option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+    <input type="number" name="repeat_year_day" value="{{.YearDay}}" min="1" max="31" aria-label="Day" class="h-8 w-16 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+  </div>
+  {{end}}
+  {{if eq .Frequency "cron"}}
+  <input type="text" name="repeat_cron" value="{{.Cron}}" placeholder="0 9 * * 1" autocomplete="off" spellcheck="false" aria-label="Cron expression" class="h-9 w-full font-mono rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+  {{end}}
+  <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+    <span class="shrink-0">Starting</span>
+    <input type="date" name="repeat_starts_on" value="{{.StartsOn}}" aria-label="Repeat starting" class="h-8 min-w-0 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none ring-indigo-500 focus:ring-2 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+  </label>
+  {{if .Summary}}
+  <div data-repeat-preview class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+    <p class="font-medium text-slate-900 dark:text-slate-100">{{.Summary}}</p>
+    <p class="mt-0.5">Next: {{range $i, $d := .Upcoming}}{{if $i}} · {{end}}{{$d}}{{end}}</p>
+    <p class="mt-0.5 text-slate-500 dark:text-slate-400">Dates in {{.TimeZone}}. The next issue is created when this one is done or closed.</p>
+  </div>
+  {{end}}
+  {{end}}
+  {{if .Error}}<p data-repeat-error class="text-xs text-rose-600 dark:text-rose-300">{{.Error}}</p>{{end}}
+</div>
+{{end}}
+
+{{define "issue-repeat-notice"}}
+{{with repeatNotice .}}
+<div data-issue-repeat-notice="{{.Kind}}" role="status" class="mt-4 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm {{if eq .Kind "skipped"}}border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100{{else}}border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300{{end}}">
+  <i data-lucide="{{if eq .Kind "skipped"}}triangle-alert{{else}}repeat{{end}}" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
+  <p class="min-w-0">{{.Before}}{{with .Link}} <a href="{{issueHref .}}" hx-get="{{issuePanel .}}" hx-target="#main" hx-push-url="{{issueHref .}}" class="inline-flex align-middle hover:opacity-80">{{template "issue-key" .Identifier}}</a>{{end}} {{.After}}</p>
+</div>
+{{end}}
+{{end}}
+
 {{define "issue-summary-row"}}
 <span data-issue-summary-row class="grid min-w-0 gap-2 sm:grid-cols-[7rem_auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3">
   <span class="flex min-w-0 items-center gap-2 sm:contents">
@@ -427,6 +517,7 @@
     {{end}}
     {{if .Issue.Private}}{{template "issue-private-badge"}}{{end}}
     {{template "issue-worker-badge" .Issue.Worker}}
+    {{template "issue-repeat-badge" .Issue}}
     {{template "issue-due-badge" .Issue}}
     {{with .SprintBadge}}{{template "issue-sprint-badge" .}}{{end}}
     {{if .CompletedAt}}<span data-completed-at class="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"><span class="sr-only">Completed </span>{{template "local-time" (tokenTime .CompletedAt)}}</span>{{end}}

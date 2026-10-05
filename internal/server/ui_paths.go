@@ -466,6 +466,18 @@ func uiIssuePriorityEditPath(issue any) string {
 	return uiIssuePriorityPath(issue) + "/edit"
 }
 
+func uiIssueRepeatPath(issue any) string {
+	return uiIssuePath(issue) + "/repeat"
+}
+
+func uiIssueRepeatEditPath(issue any) string {
+	return uiIssueRepeatPath(issue) + "/edit"
+}
+
+func uiRepeatFieldsPath() string {
+	return "/issues/repeat-fields"
+}
+
 func uiIssueWorkerPath(issue any) string {
 	return uiIssuePath(issue) + "/worker"
 }

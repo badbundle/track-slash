@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func (s *Server) uiHome(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +308,16 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		dueDate = &parsed
 	}
 
+	repeat, err := input.Repeat.setting(currentUser(r).ID)
+	if err != nil {
+		s.renderUINewIssueWithError(w, r, input, err.Error())
+		return
+	}
+	if repeat != nil && !permissions.CanWrite {
+		s.renderUINewIssueWithError(w, r, input, "Public issue submissions cannot make an issue repeat.")
+		return
+	}
+
 	assigneeID, message, err := s.uiIssueCreateUserID(r.Context(), input.AssigneeInput)
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -349,6 +360,7 @@ func (s *Server) uiCreateIssueForProject(w http.ResponseWriter, r *http.Request,
 		AssigneeID:  assigneeID,
 		ReporterID:  reporterID,
 		DueDate:     dueDate,
+		Repeat:      repeat,
 	})
 	if err != nil {
 		writeUIStoreError(w, err)
@@ -386,6 +398,7 @@ func uiNewIssueInputFromValues(values url.Values) uiNewIssuePanelData {
 		AssigneeInput: values.Get("assignee"),
 		ReporterInput: values.Get("reporter"),
 		Private:       values.Get("private") == "true",
+		Repeat:        uiRepeatFieldsFromValues(uiNewIssueRepeatPrefix, values, time.Now()),
 	}
 }
 

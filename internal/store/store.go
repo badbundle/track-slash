@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,8 @@ var (
 
 type Store struct {
 	db *pgxpool.Pool
+	// now is the clock repeats use; nil means time.Now.
+	now func() time.Time
 }
 
 func New(db *pgxpool.Pool) *Store {

@@ -111,6 +111,7 @@
                 <span class="flex min-w-0 flex-wrap items-center gap-2">
                   {{if .Issue.Private}}{{template "issue-private-badge"}}{{end}}
                   {{template "issue-worker-badge" .Issue.Worker}}
+                  {{template "issue-repeat-badge" .Issue}}
                   {{template "issue-due-badge" .Issue}}
                   {{template "status-badge" .Issue.Status}}
                   {{if eq .Issue.Status "closed"}}{{template "close-reason-badge" .Issue.CloseReason}}{{end}}
