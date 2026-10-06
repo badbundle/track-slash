@@ -474,7 +474,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`const syncSidebarActive = () =>`,
 		`mainContent.querySelector("[data-sidebar-view]")`,
 		`event.detail.successful === false`,
-		`document.body.addEventListener("htmx:historyRestore", syncSidebarActive)`,
+		`document.body.addEventListener("htmx:historyRestore", () => {`,
 		`link.removeAttribute("aria-current")`,
 		`next.setAttribute("aria-current", "page")`,
 	} {
@@ -580,7 +580,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{`[data-autogrow-textarea]`, `resizeTextarea`, `textarea.scrollHeight`, `resizeTextareas(event.target)`, `resizeTextareas();`} {
+	for _, want := range []string{`[data-autogrow-textarea]`, `resizeTextarea`, `textarea.scrollHeight`, `resizeTextareas(root)`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing autogrowing textarea behavior %q: %s", want, body)
 		}
@@ -590,7 +590,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 			t.Fatalf("shell missing search component behavior %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{`[data-checkbox-reveal]`, `syncCheckboxReveal`, `data-checkbox-reveal-toggle`, `data-checkbox-reveal-panel`, `panel.hidden = !open`, `control.disabled = !open`, `control.value = ""`, `aria-expanded`, `syncCheckboxReveals(event.target)`} {
+	for _, want := range []string{`[data-checkbox-reveal]`, `syncCheckboxReveal`, `data-checkbox-reveal-toggle`, `data-checkbox-reveal-panel`, `panel.hidden = !open`, `control.disabled = !open`, `control.value = ""`, `aria-expanded`, `syncCheckboxReveals(root)`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing checkbox reveal behavior %q: %s", want, body)
 		}
@@ -1107,8 +1107,7 @@ func TestUIShellLocalizesSemanticTimes(t *testing.T) {
 		`timeZoneName: "short"`,
 		`const value = new Date(element.getAttribute("datetime") || "")`,
 		`root.querySelectorAll("[data-local-time]").forEach(localizeTime)`,
-		`localizeTimes(event.target)`,
-		`localizeTimes()`,
+		`localizeTimes(root)`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("shell missing local-time behavior %q", want)
@@ -1228,8 +1227,120 @@ func TestUIShellMainLetsTheBrandBackdropShowThrough(t *testing.T) {
 	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
 		t.Fatalf("render shell: %v", err)
 	}
-	if !strings.Contains(buf.String(), `<main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">`) {
+	if !strings.Contains(buf.String(), `<main id="main" hx-history-elt class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">`) {
 		t.Fatalf("#main should have no background of its own: %s", buf.String())
+	}
+}
+
+// Back and Forward restore only #main. When htmx restored the whole body, the
+// sidebar and app bar came back as fresh elements without the listeners app.js
+// attached at load, so the sidebar toggle stopped working until a reload.
+func TestUIShellRestoresHistoryIntoMain(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
+		t.Fatalf("render shell: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, `<main id="main" hx-history-elt `) {
+		t.Fatalf("#main should be the htmx history element: %s", body)
+	}
+	if got := strings.Count(body, "hx-history-elt"); got != 1 {
+		t.Fatalf("shell has %d history elements, want 1: %s", got, body)
+	}
+	// A cache miss would otherwise fetch the page as an htmx request, which
+	// answers with only #main's content.
+	if !strings.Contains(body, `"refreshOnHistoryMiss":true`) {
+		t.Fatalf("shell HTMX config should reload on a history cache miss: %s", body)
+	}
+
+	script, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	start := strings.Index(string(script), `document.body.addEventListener("htmx:historyRestore", () => {`)
+	if start < 0 {
+		t.Fatal("app.js does not handle htmx:historyRestore")
+	}
+	end := strings.Index(string(script[start:]), "\n  });")
+	if end < 0 {
+		t.Fatal("app.js htmx:historyRestore handler is not closed")
+	}
+	handler := string(script[start : start+end])
+	for _, want := range []string{
+		// A snapshot saved while the body was the history element holds the
+		// whole shell, so restoring it into #main reloads the page instead.
+		`if (mainContent && mainContent.querySelector("[data-mobile-sidebar]")) {`,
+		`window.location.reload();`,
+		// The restored content gets the setup a swap gives it, and a tooltip
+		// whose control the restore removed is hidden.
+		`hideAppTooltip();`,
+		`setUpContent(mainContent || document);`,
+	} {
+		if !strings.Contains(handler, want) {
+			t.Fatalf("htmx:historyRestore handler missing %q: %s", want, handler)
+		}
+	}
+}
+
+// Content that arrives in #main is set up the same way on load, after a swap
+// and after a history restore, so nothing works only until the first Back.
+func TestUIShellSetsUpContentTheSameWayEverywhere(t *testing.T) {
+	t.Parallel()
+
+	script, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	body := string(script)
+	start := strings.Index(body, "const setUpContent = (root = document) => {")
+	if start < 0 {
+		t.Fatal("app.js has no shared content setup")
+	}
+	end := strings.Index(body[start:], "\n  };")
+	if end < 0 {
+		t.Fatal("app.js content setup is not closed")
+	}
+	setup := body[start : start+end]
+	for _, want := range []string{
+		"createIcons();",
+		"localizeTimes(root);",
+		"resizeTextareas(root);",
+		"syncCheckboxReveals(root);",
+		"syncRepeatTimeZones(root);",
+		"syncSidebarActive();",
+		"syncChangelogRealtime();",
+		"syncPushNotifications(root);",
+		"initInsightCharts(root);",
+	} {
+		if !strings.Contains(setup, want) {
+			t.Fatalf("content setup missing %q: %s", want, setup)
+		}
+	}
+	for _, want := range []string{
+		"setUpContent(event.target);",
+		"setUpContent(mainContent || document);",
+		"setUpContent();",
+	} {
+		if strings.Count(body, want) != 1 {
+			t.Fatalf("app.js should call %q exactly once", want)
+		}
+	}
+	// A history snapshot keeps a chart's attributes but not its listeners, so
+	// readiness can't be an attribute, and the legend's hidden series carry
+	// over into the restored chart's state.
+	for _, want := range []string{
+		"const readyInsightCharts = new WeakSet();",
+		"if (readyInsightCharts.has(chart)) return;",
+		`if (button.getAttribute("aria-pressed") === "false") state.hidden.add(`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("app.js missing restorable insight chart setup %q", want)
+		}
+	}
+	if strings.Contains(body, "data-insight-ready") {
+		t.Fatal("app.js marks charts ready with an attribute, which a history snapshot keeps")
 	}
 }
 
