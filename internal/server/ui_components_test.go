@@ -580,7 +580,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 			t.Fatalf("shell missing comment submit shortcut %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{`[data-autogrow-textarea]`, `resizeTextarea`, `textarea.scrollHeight`, `resizeTextareas(event.target)`, `resizeTextareas();`} {
+	for _, want := range []string{`[data-autogrow-textarea]`, `resizeTextarea`, `textarea.scrollHeight`, `resizeTextareas(root)`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing autogrowing textarea behavior %q: %s", want, body)
 		}
@@ -590,7 +590,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 			t.Fatalf("shell missing search component behavior %q: %s", want, body)
 		}
 	}
-	for _, want := range []string{`[data-checkbox-reveal]`, `syncCheckboxReveal`, `data-checkbox-reveal-toggle`, `data-checkbox-reveal-panel`, `panel.hidden = !open`, `control.disabled = !open`, `control.value = ""`, `aria-expanded`, `syncCheckboxReveals(event.target)`} {
+	for _, want := range []string{`[data-checkbox-reveal]`, `syncCheckboxReveal`, `data-checkbox-reveal-toggle`, `data-checkbox-reveal-panel`, `panel.hidden = !open`, `control.disabled = !open`, `control.value = ""`, `aria-expanded`, `syncCheckboxReveals(root)`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("shell missing checkbox reveal behavior %q: %s", want, body)
 		}
@@ -1107,8 +1107,7 @@ func TestUIShellLocalizesSemanticTimes(t *testing.T) {
 		`timeZoneName: "short"`,
 		`const value = new Date(element.getAttribute("datetime") || "")`,
 		`root.querySelectorAll("[data-local-time]").forEach(localizeTime)`,
-		`localizeTimes(event.target)`,
-		`localizeTimes()`,
+		`localizeTimes(root)`,
 	} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("shell missing local-time behavior %q", want)
@@ -1274,11 +1273,74 @@ func TestUIShellRestoresHistoryIntoMain(t *testing.T) {
 		// whole shell, so restoring it into #main reloads the page instead.
 		`if (mainContent && mainContent.querySelector("[data-mobile-sidebar]")) {`,
 		`window.location.reload();`,
-		`syncSidebarActive();`,
+		// The restored content gets the setup a swap gives it, and a tooltip
+		// whose control the restore removed is hidden.
+		`hideAppTooltip();`,
+		`setUpContent(mainContent || document);`,
 	} {
 		if !strings.Contains(handler, want) {
 			t.Fatalf("htmx:historyRestore handler missing %q: %s", want, handler)
 		}
+	}
+}
+
+// Content that arrives in #main is set up the same way on load, after a swap
+// and after a history restore, so nothing works only until the first Back.
+func TestUIShellSetsUpContentTheSameWayEverywhere(t *testing.T) {
+	t.Parallel()
+
+	script, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	body := string(script)
+	start := strings.Index(body, "const setUpContent = (root = document) => {")
+	if start < 0 {
+		t.Fatal("app.js has no shared content setup")
+	}
+	end := strings.Index(body[start:], "\n  };")
+	if end < 0 {
+		t.Fatal("app.js content setup is not closed")
+	}
+	setup := body[start : start+end]
+	for _, want := range []string{
+		"createIcons();",
+		"localizeTimes(root);",
+		"resizeTextareas(root);",
+		"syncCheckboxReveals(root);",
+		"syncRepeatTimeZones(root);",
+		"syncSidebarActive();",
+		"syncChangelogRealtime();",
+		"syncPushNotifications(root);",
+		"initInsightCharts(root);",
+	} {
+		if !strings.Contains(setup, want) {
+			t.Fatalf("content setup missing %q: %s", want, setup)
+		}
+	}
+	for _, want := range []string{
+		"setUpContent(event.target);",
+		"setUpContent(mainContent || document);",
+		"setUpContent();",
+	} {
+		if strings.Count(body, want) != 1 {
+			t.Fatalf("app.js should call %q exactly once", want)
+		}
+	}
+	// A history snapshot keeps a chart's attributes but not its listeners, so
+	// readiness can't be an attribute, and the legend's hidden series carry
+	// over into the restored chart's state.
+	for _, want := range []string{
+		"const readyInsightCharts = new WeakSet();",
+		"if (readyInsightCharts.has(chart)) return;",
+		`if (button.getAttribute("aria-pressed") === "false") state.hidden.add(`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("app.js missing restorable insight chart setup %q", want)
+		}
+	}
+	if strings.Contains(body, "data-insight-ready") {
+		t.Fatal("app.js marks charts ready with an attribute, which a history snapshot keeps")
 	}
 }
 

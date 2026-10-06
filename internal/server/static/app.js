@@ -1607,11 +1607,17 @@
     restackInsightAreas(chart);
     if (state.index !== null) showInsightIndex(chart, state.index);
   };
+  // A set rather than a marker attribute: a history snapshot keeps the chart's
+  // attributes but not its listeners, so a restored chart must count as new.
+  const readyInsightCharts = new WeakSet();
   const initInsightChart = (chart) => {
-    if (chart.hasAttribute("data-insight-ready")) return;
-    chart.setAttribute("data-insight-ready", "");
+    if (readyInsightCharts.has(chart)) return;
+    readyInsightCharts.add(chart);
     const plot = chart.querySelector("[data-insight-plot]");
+    const state = insightState(chart);
     chart.querySelectorAll("[data-insight-toggle]").forEach((button) => {
+      // A restored chart still hides the series its legend had turned off.
+      if (button.getAttribute("aria-pressed") === "false") state.hidden.add(button.getAttribute("data-insight-toggle") || "");
       button.addEventListener("click", () => toggleInsightSeries(chart, button));
     });
     if (!plot) return;
@@ -1672,21 +1678,27 @@
   };
   document.addEventListener("pointerdown", (event) => {
     if (event.pointerType === "mouse" || !(event.target instanceof Element)) return;
-    document.querySelectorAll("[data-insight-chart][data-insight-ready]").forEach((chart) => {
-      if (!chart.contains(event.target)) hideInsight(chart);
+    document.querySelectorAll("[data-insight-chart]").forEach((chart) => {
+      if (readyInsightCharts.has(chart) && !chart.contains(event.target)) hideInsight(chart);
     });
   });
-  document.body.addEventListener("htmx:afterSwap", (event) => {
+  // Content needs the same setup whether it came with the page, from an htmx
+  // swap or from a history restore. A restore brings back only the markup
+  // htmx saved, without listeners, sockets or form state.
+  const setUpContent = (root = document) => {
     createIcons();
-    localizeTimes(event.target);
-    resizeTextareas(event.target);
-    syncCheckboxReveals(event.target);
-    syncRepeatTimeZones(event.target);
-    restoreIssueListControls(event.target);
+    localizeTimes(root);
+    resizeTextareas(root);
+    syncCheckboxReveals(root);
+    syncRepeatTimeZones(root);
     syncSidebarActive();
     syncChangelogRealtime();
-    syncPushNotifications(event.target);
-    initInsightCharts(event.target);
+    syncPushNotifications(root);
+    initInsightCharts(root);
+  };
+  document.body.addEventListener("htmx:afterSwap", (event) => {
+    restoreIssueListControls(event.target);
+    setUpContent(event.target);
     window.setTimeout(() => focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)")), 0);
   });
   document.body.addEventListener("htmx:historyRestore", () => {
@@ -1696,31 +1708,17 @@
       window.location.reload();
       return;
     }
-    syncSidebarActive();
+    // The tooltip's control may be gone, and no pointerout will say so.
+    hideAppTooltip();
+    setUpContent(mainContent || document);
   });
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => {
-      createIcons();
-      localizeTimes();
-      resizeTextareas();
-      syncCheckboxReveals();
-      syncRepeatTimeZones();
-      syncSidebarActive();
-      syncChangelogRealtime();
-      syncPushNotifications();
-      initInsightCharts();
-      focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)"));
-    });
-  } else {
-    createIcons();
-    localizeTimes();
-    resizeTextareas();
-    syncCheckboxReveals();
-    syncRepeatTimeZones();
-    syncSidebarActive();
-    syncChangelogRealtime();
-    syncPushNotifications();
-    initInsightCharts();
+  const setUpPage = () => {
+    setUpContent();
     focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)"));
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setUpPage);
+  } else {
+    setUpPage();
   }
 })();
