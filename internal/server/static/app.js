@@ -1689,7 +1689,15 @@
     initInsightCharts(event.target);
     window.setTimeout(() => focusClientModal(document.querySelector("[data-client-modal]:not(.hidden)")), 0);
   });
-  document.body.addEventListener("htmx:historyRestore", syncSidebarActive);
+  document.body.addEventListener("htmx:historyRestore", () => {
+    // A snapshot saved while the whole body was the history element holds
+    // the shell too, and restoring it into #main would show two sidebars.
+    if (mainContent && mainContent.querySelector("[data-mobile-sidebar]")) {
+      window.location.reload();
+      return;
+    }
+    syncSidebarActive();
+  });
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       createIcons();

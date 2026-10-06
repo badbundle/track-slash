@@ -474,7 +474,7 @@ func TestUIShellRendersResponsiveAccessibleSidebar(t *testing.T) {
 		`const syncSidebarActive = () =>`,
 		`mainContent.querySelector("[data-sidebar-view]")`,
 		`event.detail.successful === false`,
-		`document.body.addEventListener("htmx:historyRestore", syncSidebarActive)`,
+		`document.body.addEventListener("htmx:historyRestore", () => {`,
 		`link.removeAttribute("aria-current")`,
 		`next.setAttribute("aria-current", "page")`,
 	} {
@@ -1228,8 +1228,57 @@ func TestUIShellMainLetsTheBrandBackdropShowThrough(t *testing.T) {
 	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
 		t.Fatalf("render shell: %v", err)
 	}
-	if !strings.Contains(buf.String(), `<main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">`) {
+	if !strings.Contains(buf.String(), `<main id="main" hx-history-elt class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">`) {
 		t.Fatalf("#main should have no background of its own: %s", buf.String())
+	}
+}
+
+// Back and Forward restore only #main. When htmx restored the whole body, the
+// sidebar and app bar came back as fresh elements without the listeners app.js
+// attached at load, so the sidebar toggle stopped working until a reload.
+func TestUIShellRestoresHistoryIntoMain(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := uiTemplates.ExecuteTemplate(&buf, "shell", uiShellData{User: model.User{Username: "demo"}}); err != nil {
+		t.Fatalf("render shell: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, `<main id="main" hx-history-elt `) {
+		t.Fatalf("#main should be the htmx history element: %s", body)
+	}
+	if got := strings.Count(body, "hx-history-elt"); got != 1 {
+		t.Fatalf("shell has %d history elements, want 1: %s", got, body)
+	}
+	// A cache miss would otherwise fetch the page as an htmx request, which
+	// answers with only #main's content.
+	if !strings.Contains(body, `"refreshOnHistoryMiss":true`) {
+		t.Fatalf("shell HTMX config should reload on a history cache miss: %s", body)
+	}
+
+	script, err := uiTemplateFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	start := strings.Index(string(script), `document.body.addEventListener("htmx:historyRestore", () => {`)
+	if start < 0 {
+		t.Fatal("app.js does not handle htmx:historyRestore")
+	}
+	end := strings.Index(string(script[start:]), "\n  });")
+	if end < 0 {
+		t.Fatal("app.js htmx:historyRestore handler is not closed")
+	}
+	handler := string(script[start : start+end])
+	for _, want := range []string{
+		// A snapshot saved while the body was the history element holds the
+		// whole shell, so restoring it into #main reloads the page instead.
+		`if (mainContent && mainContent.querySelector("[data-mobile-sidebar]")) {`,
+		`window.location.reload();`,
+		`syncSidebarActive();`,
+	} {
+		if !strings.Contains(handler, want) {
+			t.Fatalf("htmx:historyRestore handler missing %q: %s", want, handler)
+		}
 	}
 }
 

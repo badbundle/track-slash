@@ -8,7 +8,10 @@
   <title>trackslash</title>
 {{template "brand-head"}}
   <script src="/static/preload.js"></script>
-  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
+  {{/* A Back or Forward that misses htmx's history cache reloads the page.
+  Fetching it as an htmx request would get only #main's content, which htmx
+  swaps in without handling its out-of-band parts, redirects or errors. */}}
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"refreshOnHistoryMiss":true}'>
   <script src="/static/htmx.min.js"></script>
   <script defer src="/static/lucide.min.js"></script>
 </head>

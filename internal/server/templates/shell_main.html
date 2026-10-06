@@ -1,5 +1,8 @@
 {{define "shell-main"}}
-    <main id="main" class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+    {{/* Back and Forward restore only #main, as every navigation swaps only
+    #main. Restoring the whole body would rebuild the sidebar and app bar
+    without the listeners app.js attached at load. */}}
+    <main id="main" hx-history-elt class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
       {{template "shell-main-content" .}}
     </main>
 {{end}}
